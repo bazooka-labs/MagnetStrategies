@@ -1,32 +1,52 @@
-# MagnetDAO
+# Magnet Strategies
 
-MagnetDAO is a founder-guided Algorand liquidity DAO. Its core token, Magnet ($U), serves as both the governance token and the base asset in all liquidity pools — connecting voting power, treasury deployment, and fee generation into a single economic system.
+Magnet Strategies is an Algorand-native DeFi organization founded in June 2025 with a single long-term objective: to grow the value of the Magnet token ($U) at a rate that consistently outpaces ALGO. The organization pursues yield across multiple Algorand DeFi strategies — strategic liquidity pools, liquid staking, node participation rewards, and stablecoin lending — and reinvests returns into the token's underlying value.
 
-## Quick Links
+**A Bazooka Labs Product.**
 
-- [Overview](./OVERVIEW.md) — What MagnetDAO is and how it works
-- [Governance](./GOVERNANCE.md) — Proposal process, voting rules, and founder authority
-- [Tokenomics](./TOKENOMICS.md) — Token supply, distribution, and ASA details
-- [Treasury](./TREASURY.md) — How the treasury is funded and managed
+## Live
+
+- **Landing page:** https://magnetstrategies.io
+- **DAO app:** https://magnetstrategies.io/dao
+
+## Products
+
+### MagnetDAO
+Liquidity governance arm of Magnet Strategies. $U holders vote quarterly on which Algorand projects receive treasury-backed liquidity support. LP fees flow back to the treasury and compound into future cycles.
+
+→ [`magnetdao/`](./magnetdao/OVERVIEW.md)
+
+### Magnet Lending *(in development)*
+Overcollateralized lending and borrowing protocol for USDC and $U. Deposit assets to earn yield; borrow against collateral without selling your position.
+
+→ [`lending/`](./lending/OVERVIEW.md)
 
 ## Token
 
-| Field       | Value          |
-|-------------|----------------|
-| Name        | Magnet         |
-| Ticker      | $U             |
-| ASA ID      | 3081853135     |
-| Total Supply| 750,000        |
-| Network     | Algorand       |
+| Field        | Value                         |
+|--------------|-------------------------------|
+| Name         | Magnet                        |
+| Ticker       | $U                            |
+| ASA ID       | 3081853135                    |
+| Total Supply | 750,000 $U                    |
+| Decimals     | 5 (1 $U = 100,000 base units) |
+| Network      | Algorand mainnet              |
+| Founded      | June 2025                     |
 
-## How It Works
+## Repository Structure
 
-1. Projects submit liquidity proposals each quarter
-2. Community discusses proposals in Discord
-3. Magnet holders vote at end of quarter (1 token = 1 vote)
-4. Treasury deploys liquidity to winning proposals
-5. Swap fees accrue to liquidity providers
+```
+MagnetStrategies/
+├── README.md
+├── magnetdao/          ← MagnetDAO governance docs
+├── lending/            ← Lending protocol architecture docs
+├── contracts/
+│   ├── magnetdao/      ← Voting contract (live on mainnet)
+│   └── lending/        ← Lending contracts (in development)
+└── web/                ← Next.js frontend (magnetstrategies.io)
+```
 
 ## Built by Bazooka Labs
 
-MagnetDAO is developed and maintained by [Bazooka Labs](https://github.com/bazooka-labs).
+Magnet Strategies is developed and maintained by Bazooka Labs.  
+Follow: [X / Twitter](https://x.com/Bazooka_Labs) · [Discord](https://discord.gg/naqFXmfM)
