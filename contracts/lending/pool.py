@@ -119,13 +119,13 @@ class PoolContract(ARC4Contract):
         assert optimal_rate <= max_rate, "optimal_rate must be <= max_rate"
 
         dead_transfer = gtxn.AssetTransferTransaction(1)
-        assert dead_transfer.xfer_asset == deposit_asset, "wrong asset in init group"
+        assert dead_transfer.xfer_asset.id == deposit_asset, "wrong asset in init group"
         dead_amount = dead_transfer.asset_amount
         assert dead_amount > UInt64(0), "dead_amount must be > 0"
 
-        _, dep_opted = op.AssetHoldingGet.asset_balance(Global.current_application_address, deposit_asset)
+        dep_bal, dep_opted = op.AssetHoldingGet.asset_balance(Global.current_application_address, deposit_asset)
         assert dep_opted, "not opted into deposit asset"
-        _, col_opted = op.AssetHoldingGet.asset_balance(Global.current_application_address, collateral_asset)
+        col_bal, col_opted = op.AssetHoldingGet.asset_balance(Global.current_application_address, collateral_asset)
         assert col_opted, "not opted into collateral asset"
 
         self.deposit_asset_id.value = deposit_asset
@@ -216,7 +216,7 @@ class PoolContract(ARC4Contract):
         new_interest = annual * blocks // UInt64(BLOCKS_PER_YEAR)
         state.borrow_balance = arc4.UInt64(balance + new_interest)
         state.last_accrual_block = arc4.UInt64(Global.round)
-        self.borrowers[borrower] = state
+        self.borrowers[borrower] = state.copy()
 
     @subroutine
     def _oracle_price(self) -> UInt64:
@@ -394,7 +394,7 @@ class PoolContract(ARC4Contract):
                     state.liquidation_state = arc4.UInt64(0)
                     state.eligible_timestamp = arc4.UInt64(0)
 
-            self.borrowers[Txn.sender] = state
+            self.borrowers[Txn.sender] = state.copy()
         else:
             self.borrowers[Txn.sender] = BorrowerState(
                 collateral_amount=arc4.UInt64(amount),
@@ -438,7 +438,7 @@ class PoolContract(ARC4Contract):
         assert new_total_debt <= max_borrow, "borrow exceeds LTV limit"
 
         state.borrow_balance = arc4.UInt64(new_total_debt)
-        self.borrowers[Txn.sender] = state
+        self.borrowers[Txn.sender] = state.copy()
         self.total_borrowed.value = self.total_borrowed.value + amount
 
         itxn.AssetTransfer(
@@ -510,7 +510,7 @@ class PoolContract(ARC4Contract):
                         state.liquidation_state = arc4.UInt64(0)
                         state.eligible_timestamp = arc4.UInt64(0)
 
-            self.borrowers[Txn.sender] = state
+            self.borrowers[Txn.sender] = state.copy()
             self._safe_sub_borrowed(amount)
 
     @arc4.abimethod
@@ -591,7 +591,7 @@ class PoolContract(ARC4Contract):
 
         state.liquidation_state = arc4.UInt64(1)
         state.eligible_timestamp = arc4.UInt64(Global.latest_timestamp)
-        self.borrowers[borrower] = state
+        self.borrowers[borrower] = state.copy()
 
     @arc4.abimethod
     def liquidate(self, borrower: Account) -> None:
@@ -633,7 +633,7 @@ class PoolContract(ARC4Contract):
         # STATE CHANGES BEFORE INNER TRANSACTIONS (check-effects-interactions)
         state.liquidation_state = arc4.UInt64(2)
         state.collateral_amount = arc4.UInt64(0)
-        self.borrowers[borrower] = state
+        self.borrowers[borrower] = state.copy()
 
         self.liquidations[borrower] = LiquidationState(
             outstanding_balance=arc4.UInt64(borrow_bal),
@@ -672,7 +672,7 @@ class PoolContract(ARC4Contract):
         assert state.outstanding_registered.native == UInt64(0), "already registered"
 
         state.outstanding_registered = arc4.UInt64(1)
-        self.borrowers[borrower] = state
+        self.borrowers[borrower] = state.copy()
         self.outstanding_liq_bal.value = self.outstanding_liq_bal.value + amount
 
     @arc4.abimethod
@@ -690,7 +690,7 @@ class PoolContract(ARC4Contract):
         assert amount <= liq.collateral_held.native, "exceeds collateral held by contract"
 
         liq.collateral_held = arc4.UInt64(liq.collateral_held.native - amount)
-        self.liquidations[borrower] = liq
+        self.liquidations[borrower] = liq.copy()
 
         itxn.AssetTransfer(
             xfer_asset=self.collateral_asset_id.value,
@@ -729,12 +729,12 @@ class PoolContract(ARC4Contract):
             # Settlement complete — delete both boxes
             bor = self.borrowers[borrower].copy()
             bor.outstanding_registered = arc4.UInt64(0)
-            self.borrowers[borrower] = bor
+            self.borrowers[borrower] = bor.copy()
             del self.liquidations[borrower]
             del self.borrowers[borrower]
         else:
             liq.outstanding_balance = arc4.UInt64(new_outstanding)
-            self.liquidations[borrower] = liq
+            self.liquidations[borrower] = liq.copy()
 
     @arc4.abimethod
     def cancel_liquidation_with_repayment(self, borrower: Account) -> None:
@@ -801,7 +801,7 @@ class PoolContract(ARC4Contract):
         bor.liquidation_state = arc4.UInt64(1)
 
         del self.liquidations[borrower]
-        self.borrowers[borrower] = bor
+        self.borrowers[borrower] = bor.copy()
 
         # Return held collateral directly to borrower wallet (not re-deposited into box)
         if collateral_held > UInt64(0):
