@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { Magnet } from "lucide-react";
+import { AboutModal } from "@/components/AboutModal";
 
 const MAGNET_ASA_ID = 3081853135;
 
@@ -73,8 +74,8 @@ async function fetchTVL(): Promise<string> {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="relative rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm p-5 text-center">
-      <div className="absolute inset-x-0 top-0 h-px rounded-t-xl bg-gradient-to-r from-transparent via-magnet-500/50 to-transparent" />
+    <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm p-5 text-center shadow-lg shadow-black/40">
+      <div className="absolute inset-x-0 top-0 h-px rounded-t-xl bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
       <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">{label}</p>
       <p className="text-2xl font-bold text-white" style={{ textShadow: "0 0 20px rgba(168,85,247,0.5)" }}>
         {value}
@@ -130,9 +131,38 @@ export default async function LandingPage() {
 
         <div className="w-full max-w-2xl h-0.5 bg-white mb-6" />
 
-        <p className="max-w-xl text-lg text-white leading-relaxed mb-12">
+        <p className="max-w-xl text-lg text-white leading-relaxed mb-6">
           Exploring the Possibilities &amp; Opportunities within Decentralized Finance
         </p>
+
+        {/* Social links */}
+        <div className="flex flex-col items-center gap-4 mb-12">
+        <div className="flex items-center gap-5">
+          <a
+            href="https://x.com/Bazooka_Labs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/60 hover:text-white transition-colors"
+            aria-label="X / Twitter"
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622Zm-1.161 17.52h1.833L7.084 4.126H5.117Z" />
+            </svg>
+          </a>
+          <a
+            href="https://discord.gg/naqFXmfM"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/60 hover:text-white transition-colors"
+            aria-label="Discord"
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.056a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03ZM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z" />
+            </svg>
+          </a>
+        </div>
+          <AboutModal />
+        </div>
 
         {/* Stats grid */}
         <div className="w-full grid grid-cols-1 gap-3 sm:grid-cols-3 mb-12">
@@ -142,21 +172,21 @@ export default async function LandingPage() {
         </div>
 
         {/* Action cards */}
-        <div className="w-full grid grid-cols-1 gap-4 sm:grid-cols-3 mb-12">
+        <div className="w-full grid grid-cols-1 gap-4 sm:grid-cols-3">
 
           {/* Vestige */}
-          <div className="relative rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden flex flex-col">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/50 to-transparent" />
-            <div className="relative h-40 w-full">
-              <Image src="/vestige.png" fill alt="Vestige" className="object-cover" />
+          <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+            <div className="relative h-56 w-full overflow-hidden">
+              <Image src="/vestige.png" fill alt="Vestige" className="object-cover object-center scale-[1.55]" />
             </div>
-            <div className="flex flex-col flex-1 items-center text-center p-5 gap-4">
-              <p className="text-sm text-white leading-snug">Track Magnet&apos;s ($U) Performance</p>
+            <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
+              <p className="text-sm text-gray-300 leading-snug">Track Magnet&apos;s ($U) Performance</p>
               <a
                 href="https://vestige.fi/asset/3081853135"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 transition-all"
+                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
               >
                 CHART
               </a>
@@ -164,18 +194,18 @@ export default async function LandingPage() {
           </div>
 
           {/* TinyMan */}
-          <div className="relative rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden flex flex-col">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/50 to-transparent" />
-            <div className="relative h-40 w-full">
-              <Image src="/tinyman.png" fill alt="TinyMan" className="object-cover" />
+          <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+            <div className="relative h-56 w-full overflow-hidden">
+              <Image src="/tinyman.png" fill alt="TinyMan" className="object-cover object-center scale-150" />
             </div>
-            <div className="flex flex-col flex-1 items-center text-center p-5 gap-4">
-              <p className="text-sm text-white leading-snug">Add Magnet ($U) to your portfolio</p>
+            <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
+              <p className="text-sm text-gray-300 leading-snug">Add Magnet ($U) to your portfolio</p>
               <a
                 href="https://app.tinyman.org/swap?asset_in=31566704&asset_out=3081853135"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 transition-all"
+                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
               >
                 SWAP
               </a>
@@ -183,16 +213,16 @@ export default async function LandingPage() {
           </div>
 
           {/* MagnetDAO */}
-          <div className="relative rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden flex flex-col">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/50 to-transparent" />
-            <div className="relative h-40 w-full">
-              <Image src="/magnetdao-card.jpg" fill alt="MagnetDAO" className="object-cover" />
+          <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+            <div className="h-56 w-full flex items-center justify-center bg-gradient-to-br from-magnet-600 to-magnet-800">
+              <Magnet className="h-24 w-24 text-white drop-shadow-lg" />
             </div>
-            <div className="flex flex-col flex-1 items-center text-center p-5 gap-4">
-              <p className="text-sm text-white leading-snug">Participate in Algorand liquidity voting</p>
+            <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
+              <p className="text-sm text-gray-300 leading-snug">Participate in Algorand liquidity voting</p>
               <Link
                 href="/dao"
-                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 transition-all"
+                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
               >
                 DAO
               </Link>
@@ -201,14 +231,18 @@ export default async function LandingPage() {
 
         </div>
 
-        {/* CTA */}
-        <Link
-          href="/dao"
-          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-magnet-600/30 hover:from-magnet-500 hover:to-magnet-400 transition-all"
-        >
-          Enter MagnetDAO
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        {/* Attribution */}
+        <div className="mt-8">
+          <a
+            href="https://bazookalabs.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            A Bazooka Labs Product
+          </a>
+        </div>
+
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Lock } from "lucide-react";
+import { Clock, ExternalLink, Lock } from "lucide-react";
+import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import algosdk from "algosdk";
 import { VoteModal } from "./VoteModal";
@@ -92,9 +93,12 @@ export function VotingProposalCard({ proposal, voterRecord, onRefresh }: Props) 
       if (!signed?.[0]) throw new Error("Signing cancelled.");
       const result = await client.sendRawTransaction(signed[0]).do();
       await algosdk.waitForConfirmation(client, result.txid, 4);
+      toast.success(`${Math.floor(voterRecord.lockedAmount / decimalFactor).toLocaleString()} $U returned to your wallet`);
       onRefresh();
     } catch (err) {
-      setClaimError(err instanceof Error ? err.message : "Claim failed.");
+      const msg = err instanceof Error ? err.message : "Claim failed.";
+      setClaimError(msg);
+      toast.error(msg);
     } finally {
       setClaiming(false);
     }
@@ -176,7 +180,17 @@ export function VotingProposalCard({ proposal, voterRecord, onRefresh }: Props) 
             <Clock className="h-3 w-3" />
             <span>{formatDate(proposal.startTime)} → {formatDate(proposal.endTime)}</span>
           </div>
-          <span>{totalVotes.toLocaleString()} $U cast</span>
+          <div className="flex items-center gap-3">
+            <span>{totalVotes.toLocaleString()} $U cast</span>
+            <a
+              href={`https://lora.algokit.io/mainnet/application/${VOTING_APP_ID}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 hover:text-magnet-400 transition-colors"
+            >
+              Contract <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </div>
 
         {/* Wallet states */}

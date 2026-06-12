@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X, Lock } from "lucide-react";
+import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import algosdk from "algosdk";
 import { VOTING_APP_ID, MAGNET_TOKEN, ALGOD_URLS, VOTING_NETWORK } from "@/lib/constants";
@@ -96,10 +97,13 @@ export function VoteModal({ proposal, choiceIndex, magnetBalance, onClose, onSuc
       await algosdk.waitForConfirmation(client, result.txid, 4);
 
       setStatus("idle");
+      toast.success("Vote cast — tokens locked until voting ends");
       onSuccess();
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Vote failed.");
+      const msg = err instanceof Error ? err.message : "Vote failed.";
+      setErrorMsg(msg);
       setStatus("error");
+      toast.error(msg);
     }
   }
 

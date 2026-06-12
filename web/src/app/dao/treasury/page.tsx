@@ -166,9 +166,20 @@ async function fetchVoteEpochs(): Promise<VoteEpoch[]> {
 async function fetchDailyUSDCHistory(): Promise<ChartPoint[]> {
   if (!FOUNDER_ADDRESS) return [];
   try {
+    // Fetch current balance first so we can anchor the reconstruction correctly
+    const acctRes = await fetch(
+      `${ALGOD_URLS.mainnet}/v2/accounts/${FOUNDER_ADDRESS}`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!acctRes.ok) return [];
+    const acctData = await acctRes.json();
+    const holding = (acctData.assets as { "asset-id": number; amount: number }[] | undefined)
+      ?.find((a) => a["asset-id"] === USDC_ASA_ID);
+    const currentMicro = Number(holding?.amount ?? 0);
+
+    // Collect all USDC transactions
     const records: { roundTime: number; delta: number }[] = [];
     let next: string | undefined;
-
     do {
       const p = new URLSearchParams({ "asset-id": String(USDC_ASA_ID), limit: "1000" });
       if (next) p.set("next", next);
@@ -178,7 +189,6 @@ async function fetchDailyUSDCHistory(): Promise<ChartPoint[]> {
       );
       if (!res.ok) break;
       const data = await res.json();
-
       for (const txn of (data.transactions ?? []) as Array<{
         sender: string;
         "round-time": number;
@@ -191,7 +201,6 @@ async function fetchDailyUSDCHistory(): Promise<ChartPoint[]> {
           : -Number(xfer.amount);
         records.push({ roundTime: txn["round-time"], delta });
       }
-
       next = data["next-token"] as string | undefined;
     } while (next);
 
@@ -199,8 +208,11 @@ async function fetchDailyUSDCHistory(): Promise<ChartPoint[]> {
 
     records.sort((a, b) => a.roundTime - b.roundTime);
 
+    // Anchor: derive the balance before the first tracked transaction from the known current balance
+    const totalDelta = records.reduce((sum, r) => sum + r.delta, 0);
+    let balance = currentMicro - totalDelta;
+
     const dayMap = new Map<string, number>();
-    let balance = 0;
     for (const { roundTime, delta } of records) {
       balance += delta;
       const date = new Date(roundTime * 1000).toISOString().slice(0, 10);
@@ -210,7 +222,7 @@ async function fetchDailyUSDCHistory(): Promise<ChartPoint[]> {
     const sortedDates = Array.from(dayMap.keys()).sort();
     const today = new Date().toISOString().slice(0, 10);
     const result: ChartPoint[] = [];
-    let last = 0;
+    let last = currentMicro - totalDelta; // pre-history baseline
 
     for (
       let d = new Date(sortedDates[0] + "T00:00:00Z");

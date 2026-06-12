@@ -10,21 +10,21 @@ export function Footer() {
               <Magnet className="h-3.5 w-3.5 text-white" />
             </div>
             <span className="text-sm font-semibold text-gray-400">
-              MagnetDAO
+              Magnet Strategies
             </span>
           </div>
 
           <div className="flex items-center gap-6 text-xs text-gray-500">
             <a
-              href="https://github.com/bazooka-labs/MagnetDAO"
+              href="https://x.com/Bazooka_Labs"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
-              GitHub
+              X
             </a>
             <a
-              href="https://discord.gg/magnetdao"
+              href="https://discord.gg/naqFXmfM"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export interface ChartPoint {
   date: string;    // "YYYY-MM-DD"
@@ -13,20 +13,37 @@ const PAD = { top: 20, right: 24, bottom: 36, left: 72 };
 const CW = W - PAD.left - PAD.right;
 const CH = H - PAD.top - PAD.bottom;
 
+const RANGES = [
+  { label: "30D", days: 30 },
+  { label: "90D", days: 90 },
+  { label: "6M",  days: 180 },
+  { label: "All", days: 0 },
+] as const;
+
 function fmtUSD(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
 }
 
-function fmtDate(d: string): string {
+function fmtDate(d: string, compact = false): string {
   return new Date(d + "T00:00:00Z").toLocaleDateString("en-US", {
-    month: "short", day: "numeric", timeZone: "UTC",
+    month: "short", day: "numeric", ...(compact ? {} : { year: undefined }), timeZone: "UTC",
   });
 }
 
 export function TreasuryChart({ data }: { data: ChartPoint[] }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [range, setRange] = useState<typeof RANGES[number]["label"]>("90D");
+
+  const filtered = useMemo(() => {
+    const days = RANGES.find((r) => r.label === range)?.days ?? 0;
+    if (days === 0 || data.length === 0) return data;
+    const cutoff = new Date();
+    cutoff.setUTCDate(cutoff.getUTCDate() - days);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return data.filter((p) => p.date >= cutoffStr);
+  }, [data, range]);
 
   if (data.length < 2) {
     return (
@@ -36,31 +53,51 @@ export function TreasuryChart({ data }: { data: ChartPoint[] }) {
     );
   }
 
-  const maxVal = Math.max(...data.map((d) => d.balance));
+  const pts = filtered.length >= 2 ? filtered : data;
+
+  const maxVal = Math.max(...pts.map((d) => d.balance));
   const yMax = maxVal * 1.15 || 1;
 
-  const cx = (i: number) => PAD.left + (i / (data.length - 1)) * CW;
+  const cx = (i: number) => PAD.left + (i / (pts.length - 1)) * CW;
   const cy = (v: number) => PAD.top + (1 - v / yMax) * CH;
 
-  const linePts = data.map((d, i) => `${cx(i)},${cy(d.balance)}`).join(" ");
-  const areaPts = `${cx(0)},${PAD.top + CH} ${linePts} ${cx(data.length - 1)},${PAD.top + CH}`;
+  const linePts = pts.map((d, i) => `${cx(i)},${cy(d.balance)}`).join(" ");
+  const areaPts = `${cx(0)},${PAD.top + CH} ${linePts} ${cx(pts.length - 1)},${PAD.top + CH}`;
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0].map((t) => ({
     y: cy(t * yMax),
     label: fmtUSD(t * yMax),
   }));
 
-  const xStep = Math.max(1, Math.floor(data.length / 5));
-  const xLabels = data.reduce<{ i: number; d: ChartPoint }[]>((acc, d, i) => {
-    if (i === 0 || i % xStep === 0 || i === data.length - 1) acc.push({ i, d });
+  const xStep = Math.max(1, Math.floor(pts.length / 5));
+  const xLabels = pts.reduce<{ i: number; d: ChartPoint }[]>((acc, d, i) => {
+    if (i === 0 || i % xStep === 0 || i === pts.length - 1) acc.push({ i, d });
     return acc;
   }, []);
 
-  const slotW = CW / Math.max(data.length - 1, 1);
-  const hoverPoint = hover !== null ? data[hover] : null;
+  const slotW = CW / Math.max(pts.length - 1, 1);
+  const hoverPoint = hover !== null ? pts[hover] : null;
 
   return (
     <div className="relative w-full select-none" onMouseLeave={() => setHover(null)}>
+
+      {/* Range selector */}
+      <div className="flex justify-end gap-1 mb-3">
+        {RANGES.map((r) => (
+          <button
+            key={r.label}
+            onClick={() => { setHover(null); setRange(r.label); }}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              range === r.label
+                ? "bg-magnet-600 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible">
         <defs>
           <linearGradient id="tGrad" x1="0" y1="0" x2="0" y2="1">
@@ -95,7 +132,7 @@ export function TreasuryChart({ data }: { data: ChartPoint[] }) {
           </text>
         ))}
 
-        {data.map((_, i) => (
+        {pts.map((_, i) => (
           <rect
             key={i}
             x={cx(i) - slotW / 2}
@@ -114,7 +151,7 @@ export function TreasuryChart({ data }: { data: ChartPoint[] }) {
               x2={cx(hover)} y2={PAD.top + CH}
               stroke="#a855f7" strokeWidth="1" strokeDasharray="3 2" opacity="0.4"
             />
-            <circle cx={cx(hover)} cy={cy(data[hover].balance)} r={3.5} fill="#a855f7" />
+            <circle cx={cx(hover)} cy={cy(pts[hover].balance)} r={3.5} fill="#a855f7" />
           </>
         )}
       </svg>
