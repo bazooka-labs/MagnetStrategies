@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Magnet } from "lucide-react";
+import { Magnet, Landmark } from "lucide-react";
 import dynamic from "next/dynamic";
 import { VestigeChart } from "@/components/VestigeChart";
 
@@ -160,28 +160,51 @@ export default async function LandingPage() {
           A Bazooka Labs Product
         </a>
 
-        {/* MagnetDAO — horizontal banner above stats */}
-        <div className="relative w-full rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex items-center gap-5 px-6 py-5 shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200 mb-10">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 shrink-0">
-            <Magnet className="h-7 w-7 text-white drop-shadow-lg" />
+        {/* App cards — MagnetDAO + MagnetFi */}
+        <div className="w-full flex flex-col gap-4 mb-10">
+
+          {/* MagnetDAO */}
+          <div className="relative w-full rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex items-center gap-5 px-6 py-5 shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 shrink-0">
+              <Magnet className="h-7 w-7 text-white drop-shadow-lg" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-base font-semibold text-white">MagnetDAO</p>
+              <p className="text-sm text-gray-400">Participate in Algorand liquidity governance</p>
+            </div>
+            <Link
+              href="/dao"
+              className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
+            >
+              Enter DAO
+            </Link>
           </div>
-          <div className="flex-1 text-left">
-            <p className="text-base font-semibold text-white">MagnetDAO</p>
-            <p className="text-sm text-gray-400">Participate in Algorand liquidity governance</p>
+
+          {/* MagnetFi */}
+          <div className="relative w-full rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex items-center gap-5 px-6 py-5 shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 shrink-0">
+              <Landmark className="h-7 w-7 text-white drop-shadow-lg" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-base font-semibold text-white">MagnetFi</p>
+              <p className="text-sm text-gray-400">Lend and borrow on Algorand</p>
+            </div>
+            <Link
+              href="/magnetfi"
+              className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
+            >
+              Launch App
+            </Link>
           </div>
-          <Link
-            href="/dao"
-            className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
-          >
-            Enter DAO
-          </Link>
+
         </div>
 
         {/* Stats grid */}
         <div className="w-full grid grid-cols-1 gap-3 sm:grid-cols-3 mb-5">
-          <StatCard label="Price" value={price} sub="USDC" />
-          <StatCard label="Holders" value={holders} sub="Active wallets" />
+          <StatCard label="$U Price" value={price} sub="USDC" />
+          <StatCard label="$U Holders" value={holders} sub="Active wallets" />
           <StatCard label="Total TVL" value={tvl} sub="$U pools via Vestige" />
         </div>
 
