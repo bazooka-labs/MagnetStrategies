@@ -1,7 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Magnet } from "lucide-react";
+import dynamic from "next/dynamic";
 import { AboutModal } from "@/components/AboutModal";
+import { VestigeChart } from "@/components/VestigeChart";
+
+const HaystackSwap = dynamic(
+  () => import("@/components/HaystackSwap").then((m) => m.HaystackSwap),
+  { ssr: false, loading: () => <div className="rounded-xl border border-white/10 bg-black/50 h-64 animate-pulse" /> }
+);
 
 const MAGNET_ASA_ID = 3081853135;
 
@@ -171,52 +178,20 @@ export default async function LandingPage() {
           <StatCard label="Total TVL" value={tvl} sub="$U pools via Vestige" />
         </div>
 
-        {/* Action cards */}
-        <div className="w-full grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Chart */}
+        <VestigeChart />
 
-          {/* Vestige */}
-          <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-            <div className="relative h-56 w-full overflow-hidden">
-              <Image src="/vestige.png" fill alt="Vestige" className="object-cover object-center scale-[1.55]" />
-            </div>
-            <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
-              <p className="text-sm text-gray-300 leading-snug">Track Magnet&apos;s ($U) Performance</p>
-              <a
-                href="https://vestige.fi/asset/3081853135"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
-              >
-                CHART
-              </a>
-            </div>
-          </div>
+        {/* Swap + DAO */}
+        <div className="w-full grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-          {/* TinyMan */}
-          <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-            <div className="relative h-56 w-full overflow-hidden">
-              <Image src="/tinyman.png" fill alt="TinyMan" className="object-cover object-center scale-150" />
-            </div>
-            <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
-              <p className="text-sm text-gray-300 leading-snug">Add Magnet ($U) to your portfolio</p>
-              <a
-                href="https://app.tinyman.org/swap?asset_in=31566704&asset_out=3081853135"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-auto w-full rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-magnet-900/60 hover:from-magnet-500 hover:to-magnet-400 hover:shadow-lg hover:shadow-magnet-700/40 transition-all duration-150"
-              >
-                SWAP
-              </a>
-            </div>
-          </div>
+          {/* Haystack swap */}
+          <HaystackSwap />
 
           {/* MagnetDAO */}
           <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex flex-col shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200">
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-            <div className="h-56 w-full flex items-center justify-center bg-gradient-to-br from-magnet-600 to-magnet-800">
-              <Magnet className="h-24 w-24 text-white drop-shadow-lg" />
+            <div className="h-48 w-full flex items-center justify-center bg-gradient-to-br from-magnet-600 to-magnet-800">
+              <Magnet className="h-20 w-20 text-white drop-shadow-lg" />
             </div>
             <div className="flex flex-col flex-1 items-center text-center px-5 pb-5 pt-4 gap-4">
               <p className="text-sm text-gray-300 leading-snug">Participate in Algorand liquidity voting</p>
