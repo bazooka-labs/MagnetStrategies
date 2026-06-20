@@ -4,7 +4,7 @@ export function VestigeChart() {
       <div className="absolute inset-x-0 top-0 h-px z-10 bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
       <iframe
         title="Magnet ($U) / ALGO Chart"
-        src="https://vestige.fi/widget/3081853135/chart?noCookie=true"
+        src="https://vestige.fi/widget/3081853135/chart?noCookie=true&denominatingAssetId=0"
         className="w-full block"
         style={{ height: 440, border: "none" }}
         loading="lazy"

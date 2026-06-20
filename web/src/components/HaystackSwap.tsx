@@ -6,9 +6,10 @@ import type { SwapQuote } from "@txnlab/haystack-router"
 import { useWallet } from "@/hooks/useWallet"
 import { toast } from "sonner"
 
-const ALGO_ID = 0
+const USDC_ID = 31566704
 const MAGNET_ID = 3081853135
 const MAGNET_FACTOR = 100_000
+const USDC_FACTOR = 1_000_000
 const HAYSTACK_KEY = "1b72df7e-1131-4449-8ce1-29b79dd3f51e"
 
 const router = new RouterClient({ apiKey: HAYSTACK_KEY, autoOptIn: true })
@@ -16,7 +17,7 @@ const router = new RouterClient({ apiKey: HAYSTACK_KEY, autoOptIn: true })
 export function HaystackSwap() {
   const { isConnected, activeAddress, transactionSigner, wallets } = useWallet()
 
-  const [algoIn, setAlgoIn] = useState("")
+  const [usdcIn, setUsdcIn] = useState("")
   const [previewOut, setPreviewOut] = useState<number | null>(null)
   const [priceImpact, setPriceImpact] = useState<number | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
@@ -27,8 +28,8 @@ export function HaystackSwap() {
   const latestQuoteRef = useRef<SwapQuote | null>(null)
 
   useEffect(() => {
-    const microAlgo = Math.round(parseFloat(algoIn) * 1_000_000)
-    if (!algoIn || isNaN(microAlgo) || microAlgo <= 0) {
+    const microUsdc = Math.round(parseFloat(usdcIn) * USDC_FACTOR)
+    if (!usdcIn || isNaN(microUsdc) || microUsdc <= 0) {
       setPreviewOut(null)
       setPriceImpact(null)
       latestQuoteRef.current = null
@@ -39,9 +40,9 @@ export function HaystackSwap() {
       setQuoteLoading(true)
       try {
         const q = await router.newQuote({
-          fromASAID: ALGO_ID,
+          fromASAID: USDC_ID,
           toASAID: MAGNET_ID,
-          amount: microAlgo,
+          amount: microUsdc,
           address: activeAddress ?? undefined,
         })
         latestQuoteRef.current = q
@@ -55,19 +56,19 @@ export function HaystackSwap() {
         setQuoteLoading(false)
       }
     }, 500)
-  }, [algoIn, activeAddress])
+  }, [usdcIn, activeAddress])
 
   async function handleSwap() {
     if (!isConnected || !activeAddress || !transactionSigner) return
-    const microAlgo = Math.round(parseFloat(algoIn) * 1_000_000)
-    if (!algoIn || isNaN(microAlgo) || microAlgo <= 0) return
+    const microUsdc = Math.round(parseFloat(usdcIn) * USDC_FACTOR)
+    if (!usdcIn || isNaN(microUsdc) || microUsdc <= 0) return
 
     setSwapping(true)
     try {
       const q = await router.newQuote({
-        fromASAID: ALGO_ID,
+        fromASAID: USDC_ID,
         toASAID: MAGNET_ID,
-        amount: microAlgo,
+        amount: microUsdc,
         address: activeAddress,
       })
       const swap = await router.newSwap({
@@ -78,7 +79,7 @@ export function HaystackSwap() {
       })
       await swap.execute()
       toast.success("Swap successful!")
-      setAlgoIn("")
+      setUsdcIn("")
       setPreviewOut(null)
       setPriceImpact(null)
       latestQuoteRef.current = null
@@ -98,15 +99,15 @@ export function HaystackSwap() {
 
       <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 text-left">Swap</p>
 
-      {/* ALGO input */}
+      {/* USDC input */}
       <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 flex items-center gap-3">
-        <span className="text-sm font-semibold text-gray-400 w-12 shrink-0">ALGO</span>
+        <span className="text-sm font-semibold text-gray-400 w-12 shrink-0">USDC</span>
         <input
           type="number"
           min="0"
           placeholder="0.00"
-          value={algoIn}
-          onChange={(e) => setAlgoIn(e.target.value)}
+          value={usdcIn}
+          onChange={(e) => setUsdcIn(e.target.value)}
           className="flex-1 bg-transparent text-white text-right text-lg font-bold placeholder-white/20 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
       </div>

@@ -161,7 +161,7 @@ export default async function LandingPage() {
         </a>
 
         {/* MagnetDAO — horizontal banner above stats */}
-        <div className="relative w-full rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex items-center gap-5 px-6 py-5 shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200 mb-4">
+        <div className="relative w-full rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm overflow-hidden flex items-center gap-5 px-6 py-5 shadow-xl shadow-black/50 hover:shadow-magnet-900/30 hover:-translate-y-0.5 transition-all duration-200 mb-10">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 shrink-0">
             <Magnet className="h-7 w-7 text-white drop-shadow-lg" />
@@ -179,7 +179,7 @@ export default async function LandingPage() {
         </div>
 
         {/* Stats grid */}
-        <div className="w-full grid grid-cols-1 gap-3 sm:grid-cols-3 mb-12">
+        <div className="w-full grid grid-cols-1 gap-3 sm:grid-cols-3 mb-5">
           <StatCard label="Price" value={price} sub="USDC" />
           <StatCard label="Holders" value={holders} sub="Active wallets" />
           <StatCard label="Total TVL" value={tvl} sub="$U pools via Vestige" />
