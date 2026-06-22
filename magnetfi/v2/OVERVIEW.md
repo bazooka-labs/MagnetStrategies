@@ -4,7 +4,7 @@
 
 MagnetFi v2 protocol is a new approach into Algorand DeFi by leveraging yield bearing LP tokens as suitable collateral for Magnet's own Algorand-native stablecoin $mUSD. Users deposit Tinyman LP tokens as collateral and borrow mUSD where the peg is guaranteed by a protocol-owned reserve module. Repayment is mandatory but interest-only; principal is optional and unlocks collateral. 
 
-This is an admin-managed protocol where the founder controls rates, reserve levels, and all liquidation triggers. There is no external governance at launch.
+This is an admin-managed protocol with a two-role security model: a hot **admin** key controls rates, reserve levels, and liquidation triggers, while a cold **guardian** key can pause the protocol, veto the timelocked oracle/vault repointing powers, and recover a lost or compromised admin key. There is no external governance at launch. See [Admin](./ADMIN.md) for the full trust model.
 
 ---
 

@@ -287,10 +287,27 @@ This eliminates health factor manipulation where a borrower partially withdraws 
 | `musd_asa_id` | uint64 | mUSD ASA ID |
 | `usdc_asa_id` | uint64 | USDC ASA ID |
 | `accumulated_fees` | uint64 | mUSD accumulated from interest payments; swept via `collect_fees()` |
+| `admin` | account | Hot admin key (mutable via 2-step rotation); initialized to deployer |
+| `guardian` | account | Cold guardian key (pause/veto/recovery) |
+| `pending_admin` | account | Proposed admin awaiting `accept_admin()` (zero when none) |
+| `pending_guardian` | account | Proposed guardian awaiting `accept_guardian()` (zero when none) |
+| `paused` | uint64 | 1 = new borrowing halted; 0 = active |
+| `pending_lp_oracle` | uint64 | Queued LP-oracle app id awaiting timelock confirmation (0 when none) |
+| `pending_lp_oracle_eta` | uint64 | Unix timestamp after which the queued oracle change may be confirmed |
 | Rates per vault type | uint64 per pool | `rate_bps_[pool_id]` — interest rate per supported LP pool |
 | LTV per vault type | uint64 per pool | `ltv_bps_[pool_id]` |
 | LTV threshold per vault type | uint64 per pool | `liq_threshold_bps_[pool_id]` |
 | LP ASA per vault type | uint64 per pool | `lp_asa_id_[pool_id]` — LP token ASA ID for each supported pool |
+
+### Two-Role Admin Model
+
+All admin-gated methods assert `Txn.sender == admin` (the stored hot key, not the immutable creator). The **guardian** (cold key) holds containment powers only:
+- `pause()` (either role) / `unpause()` (guardian only) — gates new borrowing
+- `cancel_pending_lp_oracle()` (admin or guardian) — veto a queued oracle repoint
+- `propose_admin()` (admin or guardian) — the guardian path enables recovery of a lost/compromised hot key
+- 2-step rotation: `propose_admin`/`accept_admin`, `propose_guardian`/`accept_guardian`
+
+Seized LP, swept fees, and swept ALGO route to the **current** `admin` (so rotation redirects revenue correctly).
 
 ---
 
@@ -323,12 +340,20 @@ All methods in this section require `Assert Txn.sender == Global.creator_address
 2. Assert `pool_id` is in supported pool whitelist
 3. Update `lp_asa_id_[pool_id]` — the LP token ASA ID used in `open_vault()` and `add_collateral()` type checks
 
-**`set_lp_oracle(new_oracle_app_id)`**
-1. Assert `Txn.sender == Global.creator_address`
-2. Assert `new_oracle_app_id != 0` — rejects zero to prevent permanently disabling oracle reads
-3. Update `lp_oracle_app_id`; all future oracle price reads use the new contract
+**LP-oracle repointing (timelocked — replaces the old instant `set_lp_oracle`)**
 
-**Warning:** this is a high-impact change. A malicious oracle app can post arbitrary prices, enabling over-borrowing or improper liquidations. Admin procedure before calling: audit new oracle contract code; verify deviation guard and authorized updater are correctly configured; run in parallel with old oracle before switching.
+Repointing the oracle is the single most dangerous power (a malicious oracle posts arbitrary prices → over-borrow). It is therefore a **48h timelock with a guardian veto** (P19-03 / P19-10):
+
+- **`propose_lp_oracle(new_oracle_app_id)`** — admin only; asserts `!= 0`; stores `pending_lp_oracle` + `pending_lp_oracle_eta = now + 48h`.
+- **`confirm_lp_oracle()`** — admin only; asserts a pending change exists and `now >= eta`; applies it and clears the pending slots.
+- **`cancel_pending_lp_oracle()`** — admin **or guardian**; clears the pending change. This is the guardian's veto if a compromised hot key queues a malicious oracle.
+
+Admin procedure before proposing: audit the new oracle contract; verify its deviation/anchor guards and authorized updater; run it in parallel before the 48h elapses.
+
+**`advance_accrual(borrower, pool_id)`** — admin only
+1. Assert `Txn.sender == admin`; vault exists; `vault_state != 2`
+2. Run `_accrue_interest` (1-year cap per call) and write back
+3. Purpose: catch up interest on a multi-year-abandoned vault (a delinquent borrower won't trigger accrual themselves); call repeatedly to advance in annual increments before liquidating (P19-13)
 
 **`collect_algo(amount)`** — admin wallet only
 1. Assert `Txn.sender == Global.creator_address`

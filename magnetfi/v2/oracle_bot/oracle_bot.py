@@ -61,6 +61,7 @@ VESTIGE_API = "https://api.vestigelabs.io"
 TINYMAN_V2_VALIDATOR_APP_ID = 1002541853
 
 TWAP_WINDOW      = 5       # number of readings for TWAP
+MIN_TWAP_READINGS = 3      # fail-stale: don't post until the window has this many readings
 POLL_INTERVAL    = 300     # seconds between updates (5 minutes)
 DIVERGENCE_LIMIT = 0.15    # 15% max spread across price sources before skip
 LP_DECIMALS      = 6       # Tinyman LP tokens have 6 decimal places
@@ -119,6 +120,10 @@ class TwapState:
         if len(history) > window:
             self.history[pool_id] = history[-window:]
         self._save()
+
+    def count(self, pool_id: int) -> int:
+        """Number of readings currently held for pool_id."""
+        return len(self.history.get(pool_id, []))
 
     def twap(self, pool_id: int, spot_price: int) -> int:
         """Return TWAP if enough history exists, otherwise return spot_price."""
@@ -462,6 +467,19 @@ def update_pool(
 
     now = int(time.time())
     twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW)
+
+    # Fail-stale gate (P19-07): on thin history a single reading would dominate the
+    # average, so don't post until the window has filled. The existing on-chain price
+    # (admin anchor from add_pool, or the last good post) stands; if the bot stays
+    # below the threshold past the freshness window the oracle goes stale, which blocks
+    # borrows/liquidations — the safe failure mode, not posting a manipulable spot.
+    if twap.count(pool.pool_id) < MIN_TWAP_READINGS:
+        log.info(
+            f"[{pool.label}] only {twap.count(pool.pool_id)}/{MIN_TWAP_READINGS} readings — "
+            f"holding prior on-chain price (fail-stale)"
+        )
+        return
+
     final_price = twap.twap(pool.pool_id, spot_price)
 
     # Asymmetric divergence check: only block upward price spikes (potential manipulation).

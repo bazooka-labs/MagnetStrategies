@@ -251,6 +251,8 @@ What the shortfall *does* cost: `(total_debt − musd_to_settle)` mUSD remains p
 
 **Incremental settlement:** `settle_health_liquidation` accepts any `musd_amount ≤ accrued_interest` and decrements the counter. Admin may settle in multiple calls if the float cannot cover the full seizure value at once.
 
+**Interest realization in liquidation (P19-04).** In a health-factor liquidation the pre-liquidation accrued interest is folded into `total_debt` and retired via the seized collateral, rather than swept to `accumulated_fees` as in a normal `pay_interest`. This is **not** a loss of revenue — it is a different realization path. Settling debt with seized collateral returns mUSD to the PSM, reducing circulating supply; over the loan's full lifecycle the PSM excess (`psm_usdc_balance − circulating_musd`, withdrawable by the admin via `withdraw_usdc`) grows by exactly the interest earned. So liquidation interest is realized as **PSM overcollateralization / withdrawable USDC excess**, the conservative solvency-favoring form, rather than as mUSD in the fee counter. Crediting `accumulated_fees` here would be incorrect: no mUSD physically arrives at the vault during a liquidation, so the entry would be unbacked.
+
 ---
 
 ## LP 50/50 Split — Price Impact Advantage

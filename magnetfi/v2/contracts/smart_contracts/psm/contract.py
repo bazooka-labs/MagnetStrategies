@@ -14,10 +14,13 @@ from algopy import (
     subroutine,
 )
 
+# 48-hour timelock on the catastrophic vault-contract repointing power.
+TIMELOCK_DELAY = 172_800  # 48 × 3600
+
 
 class PSM(
     ARC4Contract,
-    state_totals=StateTotals(global_uints=4, global_bytes=1),
+    state_totals=StateTotals(global_uints=8, global_bytes=6),
 ):
     """
     MagnetFi v2 Peg Stability Module.
@@ -28,9 +31,15 @@ class PSM(
     circulating_musd = total_musd_supply − psm_musd_asa_balance
     vault_ceiling    = psm_usdc_balance − circulating_musd
 
+    Two-role trust model:
+      admin    — hot key: routine ops (fees, reserves, treasury, opt-in, mint pause).
+      guardian — cold key: pause/unpause, cancel queued timelocked changes, recover admin.
+
     Public:   mint_musd, redeem_musd
     Vault:    issue_musd, receive_musd   (Txn.sender must be registered vault app address)
-    Admin:    deposit_usdc, withdraw_usdc, set_redeem_fee, set_treasury, set_vault_contract
+    Admin:    deposit_usdc, withdraw_usdc, set_redeem_fee, set_treasury,
+              propose/confirm_vault_contract, opt_in_asset
+    Guardian: pause, unpause, cancel_pending_vault_contract
     """
 
     def __init__(self) -> None:
@@ -40,6 +49,19 @@ class PSM(
         self.vault_app_id = GlobalState(UInt64)
         self.treasury_address = GlobalState(Account)
 
+        # Two-role admin model.
+        self.admin = GlobalState(Account)
+        self.guardian = GlobalState(Account)
+        self.pending_admin = GlobalState(Account)
+        self.pending_guardian = GlobalState(Account)
+
+        # Incident pause (gates public mint only; redeem/vault flows always open).
+        self.paused = GlobalState(UInt64)
+
+        # Timelocked vault-contract repointing.
+        self.pending_vault_app_id = GlobalState(UInt64)
+        self.pending_vault_eta = GlobalState(UInt64)
+
     # ── deployment ────────────────────────────────────────────────────────────
 
     @arc4.abimethod(allow_actions=["NoOp"], create="require")
@@ -47,16 +69,40 @@ class PSM(
         self,
         musd_asa_id: UInt64,
         usdc_asa_id: UInt64,
+        guardian: Account,
     ) -> None:
-        """Create PSM. Caller becomes admin (Global.creator_address)."""
+        """Create PSM. Caller becomes admin; guardian is a separate cold key."""
         assert musd_asa_id != UInt64(0), "musd_asa_id required"
         assert usdc_asa_id != UInt64(0), "usdc_asa_id required"
         assert musd_asa_id != usdc_asa_id, "musd and usdc must be different assets"
+        assert guardian != Global.zero_address, "guardian required"
         self.musd_asa_id.value = musd_asa_id
         self.usdc_asa_id.value = usdc_asa_id
         self.redeem_fee_bps.value = UInt64(100)  # 1% default
 
+        self.admin.value = Txn.sender
+        self.guardian.value = guardian
+        self.pending_admin.value = Global.zero_address
+        self.pending_guardian.value = Global.zero_address
+        self.paused.value = UInt64(0)
+        self.pending_vault_app_id.value = UInt64(0)
+        self.pending_vault_eta.value = UInt64(0)
+
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    @subroutine
+    def _assert_admin(self) -> None:
+        assert Txn.sender == self.admin.value, "admin only"
+
+    @subroutine
+    def _assert_guardian(self) -> None:
+        assert Txn.sender == self.guardian.value, "guardian only"
+
+    @subroutine
+    def _assert_admin_or_guardian(self) -> None:
+        assert (
+            Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+        ), "admin or guardian only"
 
     @subroutine
     def _psm_musd_balance(self) -> UInt64:
@@ -100,6 +146,55 @@ class PSM(
         high, low = op.mulw(a, b)
         return op.divw(high, low, c)
 
+    # ── role management ───────────────────────────────────────────────────────
+
+    @arc4.abimethod
+    def propose_admin(self, new_admin: Account) -> None:
+        """
+        Start 2-step admin rotation. Callable by admin OR guardian — the guardian path
+        lets a lost/compromised hot key be recovered from the cold key.
+        """
+        self._assert_admin_or_guardian()
+        assert new_admin != Global.zero_address, "zero address not allowed"
+        self.pending_admin.value = new_admin
+
+    @arc4.abimethod
+    def accept_admin(self) -> None:
+        """Complete admin rotation — only the proposed account may accept."""
+        assert self.pending_admin.value != Global.zero_address, "no pending admin"
+        assert Txn.sender == self.pending_admin.value, "not pending admin"
+        self.admin.value = self.pending_admin.value
+        self.pending_admin.value = Global.zero_address
+
+    @arc4.abimethod
+    def propose_guardian(self, new_guardian: Account) -> None:
+        """Start 2-step guardian rotation. Guardian only."""
+        self._assert_guardian()
+        assert new_guardian != Global.zero_address, "zero address not allowed"
+        self.pending_guardian.value = new_guardian
+
+    @arc4.abimethod
+    def accept_guardian(self) -> None:
+        """Complete guardian rotation — only the proposed account may accept."""
+        assert self.pending_guardian.value != Global.zero_address, "no pending guardian"
+        assert Txn.sender == self.pending_guardian.value, "not pending guardian"
+        self.guardian.value = self.pending_guardian.value
+        self.pending_guardian.value = Global.zero_address
+
+    # ── pause (incident response) ─────────────────────────────────────────────
+
+    @arc4.abimethod
+    def pause(self) -> None:
+        """Halt public mint_musd. Either role can pause for fast response."""
+        self._assert_admin_or_guardian()
+        self.paused.value = UInt64(1)
+
+    @arc4.abimethod
+    def unpause(self) -> None:
+        """Resume mint. Guardian only — a compromised hot key cannot lift a lockdown."""
+        self._assert_guardian()
+        self.paused.value = UInt64(0)
+
     # ── public methods (anyone) ───────────────────────────────────────────────
 
     @arc4.abimethod
@@ -110,6 +205,7 @@ class PSM(
         Atomic group: AppCall mint_musd(amount) + AssetTransfer(USDC → PSM, amount).
         The USDC lands in PSM from the outer-group AssetTransfer; PSM sends mUSD to caller.
         """
+        assert self.paused.value == UInt64(0), "minting paused"
         assert amount > UInt64(0), "amount must be > 0"
 
         # Verify the outer group contains the correct USDC deposit (at index-1).
@@ -139,6 +235,8 @@ class PSM(
 
         usdc_out = floor(amount × (10_000 − redeem_fee_bps) / 10_000)
         fee_out  = amount − usdc_out   (sent to treasury wallet in USDC)
+
+        Redemption stays open even while paused — users must always be able to exit.
         """
         assert amount > UInt64(0), "amount must be > 0"
         assert self.treasury_address, "treasury not set"
@@ -225,7 +323,7 @@ class PSM(
 
         Atomic group: AppCall deposit_usdc(amount) + AssetTransfer(USDC → PSM, amount).
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert amount > UInt64(0), "amount must be > 0"
 
         # USDC deposit must be at index-1.
@@ -244,7 +342,7 @@ class PSM(
         Guard (AUD-034): psm_usdc_balance ≥ circulating_musd + amount
         Written as addition to avoid uint64 underflow from the subtraction form.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert amount > UInt64(0), "amount must be > 0"
 
         usdc_bal = self._psm_usdc_balance()
@@ -253,7 +351,7 @@ class PSM(
 
         itxn.AssetTransfer(
             xfer_asset=self.usdc_asa_id.value,
-            asset_receiver=Global.creator_address,
+            asset_receiver=self.admin.value,
             asset_amount=amount,
             fee=0,
         ).submit()
@@ -261,23 +359,47 @@ class PSM(
     @arc4.abimethod
     def set_redeem_fee(self, fee_bps: UInt64) -> None:
         """Set mUSD→USDC redemption fee. On-chain cap: 500 bps (5%)."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert fee_bps <= UInt64(500), "max fee 500 bps"
         self.redeem_fee_bps.value = fee_bps
 
     @arc4.abimethod
     def set_treasury(self, address: Account) -> None:
         """Set treasury wallet for redemption fee routing. Zero address rejected (AUD-011)."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert address != Global.zero_address, "zero address not allowed"
         self.treasury_address.value = address
 
+    # ── timelocked vault-contract repointing ──────────────────────────────────
+
     @arc4.abimethod
-    def set_vault_contract(self, vault_app_id: UInt64) -> None:
-        """Register the vault contract authorized to call issue_musd / receive_musd."""
-        assert Txn.sender == Global.creator_address, "admin only"
+    def propose_vault_contract(self, vault_app_id: UInt64) -> None:
+        """
+        Queue a change to the registered vault contract. Takes effect only after the
+        48h timelock via confirm_vault_contract; guardian may cancel before then.
+        Registering the wrong vault would authorize an attacker to mint mUSD — hence the delay.
+        """
+        self._assert_admin()
         assert vault_app_id != UInt64(0), "invalid vault app id"
-        self.vault_app_id.value = vault_app_id
+        self.pending_vault_app_id.value = vault_app_id
+        self.pending_vault_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+
+    @arc4.abimethod
+    def confirm_vault_contract(self) -> None:
+        """Apply a queued vault-contract change after the timelock has elapsed."""
+        self._assert_admin()
+        assert self.pending_vault_app_id.value != UInt64(0), "no pending vault contract"
+        assert Global.latest_timestamp >= self.pending_vault_eta.value, "timelock not elapsed"
+        self.vault_app_id.value = self.pending_vault_app_id.value
+        self.pending_vault_app_id.value = UInt64(0)
+        self.pending_vault_eta.value = UInt64(0)
+
+    @arc4.abimethod
+    def cancel_pending_vault_contract(self) -> None:
+        """Cancel a queued vault-contract change. Admin or guardian (the guardian veto)."""
+        self._assert_admin_or_guardian()
+        self.pending_vault_app_id.value = UInt64(0)
+        self.pending_vault_eta.value = UInt64(0)
 
     @arc4.abimethod
     def opt_in_asset(self, asa_id: UInt64) -> None:
@@ -285,7 +407,7 @@ class PSM(
         Opt PSM contract account into an ASA (mUSD, USDC).
         Must be called for both ASAs before first use.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert asa_id != UInt64(0), "invalid ASA ID"
         itxn.AssetTransfer(
             xfer_asset=asa_id,

@@ -94,9 +94,19 @@ PSM swaps are self-balancing — they never affect the vault ceiling. The ceilin
 | `redeem_fee_bps` | uint64 | Fee on mUSD → USDC redemptions; default 100 (1%) |
 | `treasury_address` | bytes | Destination for redemption fees |
 | `vault_app_id` | uint64 | Registered vault contract authorized to call issue/receive |
-| `admin` | bytes | Admin wallet address (Global.creator_address) |
+| `admin` | account | Hot admin key (mutable via 2-step rotation); initialized to deployer |
+| `guardian` | account | Cold guardian key (pause/veto/recovery) |
+| `pending_admin` | account | Proposed admin awaiting `accept_admin()` (zero when none) |
+| `pending_guardian` | account | Proposed guardian awaiting `accept_guardian()` (zero when none) |
+| `paused` | uint64 | 1 = public `mint_musd` halted; 0 = active |
+| `pending_vault_app_id` | uint64 | Queued vault app id awaiting timelock confirmation (0 when none) |
+| `pending_vault_eta` | uint64 | Unix timestamp after which the queued vault-contract change may be confirmed |
 
 The PSM's USDC and mUSD balances are read from the contract account's actual ASA balances — no separate counters. This prevents any drift between tracked and actual balances.
+
+### Two-Role Admin Model
+
+Admin-gated methods assert `Txn.sender == admin` (the stored hot key). The **guardian** (cold key) can `pause()` (either role) / `unpause()` (guardian only), `cancel_pending_vault_contract()` (admin or guardian), and `propose_admin()` (recovery). 2-step rotation via `propose_admin`/`accept_admin` and `propose_guardian`/`accept_guardian`. `deploy(musd_asa_id, usdc_asa_id, guardian)` sets admin = deployer and guardian = the passed address. Withdrawn USDC routes to the current `admin`.
 
 ---
 
@@ -177,9 +187,18 @@ All admin methods must include as their **first assertion**: `Assert Txn.sender 
 2. Assert `address != ZeroAddress`
 3. Update `treasury_address`
 
-**`set_vault_contract(new_vault_app_id)`** — AppCall only
-1. Assert `Txn.sender == Global.creator_address`
-2. Update `vault_app_id` — all future `issue_musd` / `receive_musd` calls verified against new app address
+**Vault-contract registration (timelocked — replaces the old instant `set_vault_contract`)**
+
+Registering the wrong vault would authorize an attacker contract to mint mUSD, so this is a **48h timelock with guardian veto** (P19-03 / P19-10):
+- **`propose_vault_contract(vault_app_id)`** — admin only; asserts `!= 0`; stores `pending_vault_app_id` + `pending_vault_eta = now + 48h`.
+- **`confirm_vault_contract()`** — admin only; asserts pending exists and `now >= eta`; applies and clears.
+- **`cancel_pending_vault_contract()`** — admin **or guardian** (the veto).
+
+At genesis this 48h window is unavoidable — plan it into the launch timeline (see ADMIN.md deployment procedure).
+
+**`pause()` / `unpause()`**
+- `pause()` (admin or guardian) sets `paused = 1`, halting public `mint_musd`. Redeem, issue, and receive stay open — users and the vault can always exit.
+- `unpause()` (guardian only) clears it — a compromised hot key cannot lift a guardian lockdown.
 
 ---
 

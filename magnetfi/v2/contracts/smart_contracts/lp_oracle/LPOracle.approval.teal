@@ -3,86 +3,293 @@
 
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
-    intcblock 1 8 0
-    bytecblock 0x6c705f70726963655f 0x6c705f74735f 0x6c705f6163746976655f "authorized_updater"
-    // smart_contracts/lp_oracle/contract.py:26-29
+    intcblock 1 0 8 32
+    bytecblock "admin" "guardian" "pending_admin" "pending_guardian" 0x6c705f6163746976655f 0x6c705f70726963655f 0x6c705f616e63686f725f 0x6c705f74735f "authorized_updater"
+    // smart_contracts/lp_oracle/contract.py:33-36
     // class LPOracle(
     //     ARC4Contract,
-    //     state_totals=StateTotals(global_uints=32, global_bytes=1),
+    //     state_totals=StateTotals(global_uints=40, global_bytes=6),
     // ):
-    txn NumAppArgs
-    bz main___algopy_default_create@14
     txn OnCompletion
     !
     assert
     txn ApplicationID
-    assert
-    pushbytess 0x7d781a7f 0x8955311c 0xdf22ddfa 0x45aab8b8 0xccdc7a17 // method "update_lp_price(uint64,uint64)void", method "set_authorized_updater(address)void", method "add_pool(uint64,uint64)void", method "remove_pool(uint64)void", method "get_lp_price(uint64)(uint64,uint64)"
+    bz main_create_NoOp@16
+    pushbytess 0xc50d6333 0x969a0da3 0x3c30bfe1 0xfe5892d6 0x7d781a7f 0x8955311c 0xdf22ddfa 0xaba3699b 0x45aab8b8 0xccdc7a17 // method "propose_admin(address)void", method "accept_admin()void", method "propose_guardian(address)void", method "accept_guardian()void", method "update_lp_price(uint64,uint64)void", method "set_authorized_updater(address)void", method "add_pool(uint64,uint64)void", method "set_price_anchor(uint64,uint64)void", method "remove_pool(uint64)void", method "get_lp_price(uint64)(uint64,uint64)"
     txna ApplicationArgs 0
-    match update_lp_price set_authorized_updater add_pool remove_pool get_lp_price
+    match propose_admin accept_admin propose_guardian accept_guardian update_lp_price set_authorized_updater add_pool set_price_anchor remove_pool get_lp_price
     err
 
-main___algopy_default_create@14:
-    txn OnCompletion
-    !
-    txn ApplicationID
-    !
-    &&
+main_create_NoOp@16:
+    // smart_contracts/lp_oracle/contract.py:33-36
+    // class LPOracle(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=40, global_bytes=6),
+    // ):
+    pushbytes 0x0a47cd05 // method "deploy(address)void"
+    txna ApplicationArgs 0
+    match deploy
+    err
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.deploy[routing]() -> void:
+deploy:
+    // smart_contracts/lp_oracle/contract.py:62
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/lp_oracle/contract.py:65
+    // assert guardian != Global.zero_address, "guardian required"
+    dup
+    global ZeroAddress
+    !=
+    assert // guardian required
+    // smart_contracts/lp_oracle/contract.py:66
+    // self.admin.value = Txn.sender
+    bytec_0 // "admin"
+    txn Sender
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:67
+    // self.guardian.value = guardian
+    bytec_1 // "guardian"
+    swap
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:68
+    // self.pending_admin.value = Global.zero_address
+    bytec_2 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:69
+    // self.pending_guardian.value = Global.zero_address
+    bytec_3 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:62
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_0 // 1
+    return
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.propose_admin[routing]() -> void:
+propose_admin:
+    // smart_contracts/lp_oracle/contract.py:111
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/lp_oracle/contract.py:84
+    // Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    txn Sender
+    intc_1 // 0
+    bytec_0 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    bnz propose_admin_bool_true@3
+    txn Sender
+    intc_1 // 0
+    bytec_1 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    bz propose_admin_bool_false@4
+
+propose_admin_bool_true@3:
+    intc_0 // 1
+
+propose_admin_bool_merge@5:
+    // smart_contracts/lp_oracle/contract.py:83-85
+    // assert (
+    //     Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    // ), "admin or guardian only"
+    assert // admin or guardian only
+    // smart_contracts/lp_oracle/contract.py:115
+    // assert new_admin != Global.zero_address, "zero address not allowed"
+    global ZeroAddress
+    dig 1
+    dup
+    uncover 2
+    !=
+    assert // zero address not allowed
+    // smart_contracts/lp_oracle/contract.py:116
+    // self.pending_admin.value = new_admin
+    bytec_2 // "pending_admin"
+    swap
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:111
+    // @arc4.abimethod
+    intc_0 // 1
+    return
+
+propose_admin_bool_false@4:
+    intc_1 // 0
+    b propose_admin_bool_merge@5
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.accept_admin[routing]() -> void:
+accept_admin:
+    // smart_contracts/lp_oracle/contract.py:121
+    // assert self.pending_admin.value != Global.zero_address, "no pending admin"
+    intc_1 // 0
+    bytec_2 // "pending_admin"
+    app_global_get_ex
+    assert // check self.pending_admin exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending admin
+    // smart_contracts/lp_oracle/contract.py:122
+    // assert Txn.sender == self.pending_admin.value, "not pending admin"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending admin
+    // smart_contracts/lp_oracle/contract.py:123
+    // self.admin.value = self.pending_admin.value
+    bytec_0 // "admin"
+    swap
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:124
+    // self.pending_admin.value = Global.zero_address
+    bytec_2 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:118
+    // @arc4.abimethod
+    intc_0 // 1
+    return
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.propose_guardian[routing]() -> void:
+propose_guardian:
+    // smart_contracts/lp_oracle/contract.py:126
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/lp_oracle/contract.py:79
+    // assert Txn.sender == self.guardian.value, "guardian only"
+    txn Sender
+    intc_1 // 0
+    bytec_1 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    assert // guardian only
+    // smart_contracts/lp_oracle/contract.py:130
+    // assert new_guardian != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/lp_oracle/contract.py:131
+    // self.pending_guardian.value = new_guardian
+    bytec_3 // "pending_guardian"
+    swap
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:126
+    // @arc4.abimethod
+    intc_0 // 1
+    return
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.accept_guardian[routing]() -> void:
+accept_guardian:
+    // smart_contracts/lp_oracle/contract.py:136
+    // assert self.pending_guardian.value != Global.zero_address, "no pending guardian"
+    intc_1 // 0
+    bytec_3 // "pending_guardian"
+    app_global_get_ex
+    assert // check self.pending_guardian exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending guardian
+    // smart_contracts/lp_oracle/contract.py:137
+    // assert Txn.sender == self.pending_guardian.value, "not pending guardian"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending guardian
+    // smart_contracts/lp_oracle/contract.py:138
+    // self.guardian.value = self.pending_guardian.value
+    bytec_1 // "guardian"
+    swap
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:139
+    // self.pending_guardian.value = Global.zero_address
+    bytec_3 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:133
+    // @arc4.abimethod
+    intc_0 // 1
     return
 
 
 // smart_contracts.lp_oracle.contract.LPOracle.update_lp_price[routing]() -> void:
 update_lp_price:
-    intc_2 // 0
+    intc_1 // 0
     pushbytes ""
-    // smart_contracts/lp_oracle/contract.py:68
+    dup
+    // smart_contracts/lp_oracle/contract.py:143
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
     txna ApplicationArgs 2
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
     dup
     cover 2
-    // smart_contracts/lp_oracle/contract.py:80
+    // smart_contracts/lp_oracle/contract.py:156
     // assert Txn.sender == self.authorized_updater.value, "not authorized updater"
     txn Sender
-    intc_2 // 0
-    bytec_3 // "authorized_updater"
+    intc_1 // 0
+    bytec 8 // "authorized_updater"
     app_global_get_ex
     assert // check self.authorized_updater exists
     ==
     assert // not authorized updater
-    // smart_contracts/lp_oracle/contract.py:81
+    // smart_contracts/lp_oracle/contract.py:157
     // assert new_price > UInt64(0), "price must be > 0"
     assert // price must be > 0
-    // smart_contracts/lp_oracle/contract.py:84
+    // smart_contracts/lp_oracle/contract.py:160
     // Global.current_application_id, self._active_key(pool_id)
     global CurrentApplicationID
-    // smart_contracts/lp_oracle/contract.py:58
+    // smart_contracts/lp_oracle/contract.py:97
     // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
     swap
     itob
     dup
     cover 2
-    bytec_2 // 0x6c705f6163746976655f
+    bytec 4 // 0x6c705f6163746976655f
     swap
     concat
-    // smart_contracts/lp_oracle/contract.py:83-85
+    // smart_contracts/lp_oracle/contract.py:159-161
     // active_val, active_exists = op.AppGlobal.get_ex_uint64(
     //     Global.current_application_id, self._active_key(pool_id)
     // )
     app_global_get_ex
-    // smart_contracts/lp_oracle/contract.py:86
+    // smart_contracts/lp_oracle/contract.py:162
     // assert active_exists and active_val != UInt64(0), "pool not in whitelist"
     bz update_lp_price_bool_false@4
     dup
@@ -90,48 +297,46 @@ update_lp_price:
     intc_0 // 1
 
 update_lp_price_bool_merge@5:
-    // smart_contracts/lp_oracle/contract.py:86
+    // smart_contracts/lp_oracle/contract.py:162
     // assert active_exists and active_val != UInt64(0), "pool not in whitelist"
     assert // pool not in whitelist
-    // smart_contracts/lp_oracle/contract.py:50
+    // smart_contracts/lp_oracle/contract.py:89
     // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
-    bytec_0 // 0x6c705f70726963655f
+    bytec 5 // 0x6c705f70726963655f
     dig 2
     concat
     dup
-    bury 6
-    // smart_contracts/lp_oracle/contract.py:89
+    bury 7
+    // smart_contracts/lp_oracle/contract.py:165
     // prior = op.AppGlobal.get_uint64(price_key)
     app_global_get
     dup
     bury 5
-    // smart_contracts/lp_oracle/contract.py:91-94
-    // # Deviation guard — only when a prior price exists.
-    // # add_pool() always stores initial_price, so prior == 0 only before first add_pool call,
-    // # which cannot happen because add_pool asserts pool is not already active.
+    // smart_contracts/lp_oracle/contract.py:167-168
+    // # Deviation guard vs prior — only when a prior price exists.
     // if prior != UInt64(0):
     bz update_lp_price_after_if_else@7
-    // smart_contracts/lp_oracle/contract.py:63
+    // smart_contracts/lp_oracle/contract.py:106
     // high, low = op.mulw(a, b)
     dig 2
-    // smart_contracts/lp_oracle/contract.py:95-96
+    // smart_contracts/lp_oracle/contract.py:169-170
     // # Lower: new_price >= prior * 50/100  →  floor(new_price*100/50) >= prior
     // assert self._wide_ratio(new_price, UInt64(100), UInt64(50)) >= prior, "price drop >50%"
     pushint 100
-    // smart_contracts/lp_oracle/contract.py:63
+    // smart_contracts/lp_oracle/contract.py:106
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/lp_oracle/contract.py:64
+    // smart_contracts/lp_oracle/contract.py:107
     // return op.divw(high, low, c)
     dup2
-    // smart_contracts/lp_oracle/contract.py:95-96
+    // smart_contracts/lp_oracle/contract.py:169-170
     // # Lower: new_price >= prior * 50/100  →  floor(new_price*100/50) >= prior
     // assert self._wide_ratio(new_price, UInt64(100), UInt64(50)) >= prior, "price drop >50%"
     pushint 50
-    // smart_contracts/lp_oracle/contract.py:64
+    // smart_contracts/lp_oracle/contract.py:107
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/lp_oracle/contract.py:95-96
+    // smart_contracts/lp_oracle/contract.py:169-170
     // # Lower: new_price >= prior * 50/100  →  floor(new_price*100/50) >= prior
     // assert self._wide_ratio(new_price, UInt64(100), UInt64(50)) >= prior, "price drop >50%"
     dig 6
@@ -139,72 +344,125 @@ update_lp_price_bool_merge@5:
     cover 4
     >=
     assert // price drop >50%
-    // smart_contracts/lp_oracle/contract.py:97-98
+    // smart_contracts/lp_oracle/contract.py:171-172
     // # Upper: new_price <= prior * 150/100  →  floor(new_price*100/150) <= prior
     // assert self._wide_ratio(new_price, UInt64(100), UInt64(150)) <= prior, "price spike >50%"
     pushint 150
-    // smart_contracts/lp_oracle/contract.py:64
+    // smart_contracts/lp_oracle/contract.py:107
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/lp_oracle/contract.py:97-98
+    // smart_contracts/lp_oracle/contract.py:171-172
     // # Upper: new_price <= prior * 150/100  →  floor(new_price*100/150) <= prior
     // assert self._wide_ratio(new_price, UInt64(100), UInt64(150)) <= prior, "price spike >50%"
     >=
     assert // price spike >50%
 
 update_lp_price_after_if_else@7:
-    // smart_contracts/lp_oracle/contract.py:100
-    // op.AppGlobal.put(price_key, new_price)
-    dig 4
-    dig 3
-    app_global_put
-    // smart_contracts/lp_oracle/contract.py:54
-    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
-    bytec_1 // 0x6c705f74735f
+    // smart_contracts/lp_oracle/contract.py:101
+    // return Bytes(_ANCHOR_PREFIX) + op.itob(pool_id)
+    bytec 6 // 0x6c705f616e63686f725f
     dig 2
     concat
-    // smart_contracts/lp_oracle/contract.py:101
+    // smart_contracts/lp_oracle/contract.py:174-175
+    // # Anchor band vs admin anchor — bounds cumulative drift (P19-03).
+    // anchor = op.AppGlobal.get_uint64(self._anchor_key(pool_id))
+    app_global_get
+    dup
+    bury 6
+    // smart_contracts/lp_oracle/contract.py:176
+    // if anchor != UInt64(0):
+    bz update_lp_price_after_if_else@9
+    // smart_contracts/lp_oracle/contract.py:106
+    // high, low = op.mulw(a, b)
+    dig 2
+    // smart_contracts/lp_oracle/contract.py:177-178
+    // # Lower: new_price >= anchor * 75/100  →  floor(new_price*100/75) >= anchor
+    // assert self._wide_ratio(new_price, UInt64(100), UInt64(ANCHOR_BAND_LOW)) >= anchor, "below anchor band"
+    pushint 100
+    // smart_contracts/lp_oracle/contract.py:106
+    // high, low = op.mulw(a, b)
+    mulw
+    // smart_contracts/lp_oracle/contract.py:107
+    // return op.divw(high, low, c)
+    dup2
+    // smart_contracts/lp_oracle/contract.py:177-178
+    // # Lower: new_price >= anchor * 75/100  →  floor(new_price*100/75) >= anchor
+    // assert self._wide_ratio(new_price, UInt64(100), UInt64(ANCHOR_BAND_LOW)) >= anchor, "below anchor band"
+    pushint 75
+    // smart_contracts/lp_oracle/contract.py:107
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/lp_oracle/contract.py:177-178
+    // # Lower: new_price >= anchor * 75/100  →  floor(new_price*100/75) >= anchor
+    // assert self._wide_ratio(new_price, UInt64(100), UInt64(ANCHOR_BAND_LOW)) >= anchor, "below anchor band"
+    dig 7
+    dup
+    cover 4
+    >=
+    assert // below anchor band
+    // smart_contracts/lp_oracle/contract.py:179-180
+    // # Upper: new_price <= anchor * 125/100 →  floor(new_price*100/125) <= anchor
+    // assert self._wide_ratio(new_price, UInt64(100), UInt64(ANCHOR_BAND_HIGH)) <= anchor, "above anchor band"
+    pushint 125
+    // smart_contracts/lp_oracle/contract.py:107
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/lp_oracle/contract.py:179-180
+    // # Upper: new_price <= anchor * 125/100 →  floor(new_price*100/125) <= anchor
+    // assert self._wide_ratio(new_price, UInt64(100), UInt64(ANCHOR_BAND_HIGH)) <= anchor, "above anchor band"
+    >=
+    assert // above anchor band
+
+update_lp_price_after_if_else@9:
+    // smart_contracts/lp_oracle/contract.py:182
+    // op.AppGlobal.put(price_key, new_price)
+    dig 5
+    dig 3
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:93
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 7 // 0x6c705f74735f
+    dig 2
+    concat
+    // smart_contracts/lp_oracle/contract.py:183
     // op.AppGlobal.put(self._ts_key(pool_id), Global.latest_timestamp)
     global LatestTimestamp
     app_global_put
-    // smart_contracts/lp_oracle/contract.py:68
+    // smart_contracts/lp_oracle/contract.py:143
     // @arc4.abimethod
     intc_0 // 1
     return
 
 update_lp_price_bool_false@4:
-    intc_2 // 0
+    intc_1 // 0
     b update_lp_price_bool_merge@5
 
 
 // smart_contracts.lp_oracle.contract.LPOracle.set_authorized_updater[routing]() -> void:
 set_authorized_updater:
-    // smart_contracts/lp_oracle/contract.py:105
+    // smart_contracts/lp_oracle/contract.py:187
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
     len
-    pushint 32
+    intc_3 // 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/lp_oracle/contract.py:113
-    // assert Txn.sender == Global.creator_address, "admin only"
-    txn Sender
-    global CreatorAddress
-    ==
-    assert // admin only
-    // smart_contracts/lp_oracle/contract.py:114
+    // smart_contracts/lp_oracle/contract.py:196
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/lp_oracle/contract.py:197
     // assert new_address != Global.zero_address, "zero address not allowed"
     dup
     global ZeroAddress
     !=
     assert // zero address not allowed
-    // smart_contracts/lp_oracle/contract.py:115
+    // smart_contracts/lp_oracle/contract.py:198
     // self.authorized_updater.value = new_address
-    bytec_3 // "authorized_updater"
+    bytec 8 // "authorized_updater"
     swap
     app_global_put
-    // smart_contracts/lp_oracle/contract.py:105
+    // smart_contracts/lp_oracle/contract.py:187
     // @arc4.abimethod
     intc_0 // 1
     return
@@ -212,49 +470,46 @@ set_authorized_updater:
 
 // smart_contracts.lp_oracle.contract.LPOracle.add_pool[routing]() -> void:
 add_pool:
-    // smart_contracts/lp_oracle/contract.py:117
+    // smart_contracts/lp_oracle/contract.py:200
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
     txna ApplicationArgs 2
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
     swap
-    // smart_contracts/lp_oracle/contract.py:126
-    // assert Txn.sender == Global.creator_address, "admin only"
-    txn Sender
-    global CreatorAddress
-    ==
-    assert // admin only
-    // smart_contracts/lp_oracle/contract.py:129
+    // smart_contracts/lp_oracle/contract.py:209
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/lp_oracle/contract.py:212
     // Global.current_application_id, self._active_key(pool_id)
     global CurrentApplicationID
-    // smart_contracts/lp_oracle/contract.py:58
+    // smart_contracts/lp_oracle/contract.py:97
     // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
     swap
     itob
     dup
     cover 2
-    bytec_2 // 0x6c705f6163746976655f
+    bytec 4 // 0x6c705f6163746976655f
     swap
     concat
     dup
     cover 2
-    // smart_contracts/lp_oracle/contract.py:128-130
+    // smart_contracts/lp_oracle/contract.py:211-213
     // active_val, already_exists = op.AppGlobal.get_ex_uint64(
     //     Global.current_application_id, self._active_key(pool_id)
     // )
     app_global_get_ex
-    // smart_contracts/lp_oracle/contract.py:131
+    // smart_contracts/lp_oracle/contract.py:214
     // assert not (already_exists and active_val != UInt64(0)), "pool already registered"
     bz add_pool_bool_false@4
     dup
@@ -262,93 +517,180 @@ add_pool:
     intc_0 // 1
 
 add_pool_bool_merge@5:
-    // smart_contracts/lp_oracle/contract.py:131
+    // smart_contracts/lp_oracle/contract.py:214
     // assert not (already_exists and active_val != UInt64(0)), "pool already registered"
     !
     assert // pool already registered
-    // smart_contracts/lp_oracle/contract.py:132
+    // smart_contracts/lp_oracle/contract.py:215
     // assert initial_price > UInt64(0), "initial price must be > 0"
     dig 3
     dup
     assert // initial price must be > 0
-    // smart_contracts/lp_oracle/contract.py:134
+    // smart_contracts/lp_oracle/contract.py:217
     // op.AppGlobal.put(self._active_key(pool_id), UInt64(1))
     dig 2
     intc_0 // 1
     app_global_put
-    // smart_contracts/lp_oracle/contract.py:50
+    // smart_contracts/lp_oracle/contract.py:89
     // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
-    bytec_0 // 0x6c705f70726963655f
+    bytec 5 // 0x6c705f70726963655f
     dig 4
     dup
     cover 2
     concat
-    // smart_contracts/lp_oracle/contract.py:135
+    // smart_contracts/lp_oracle/contract.py:218
     // op.AppGlobal.put(self._price_key(pool_id), initial_price)
+    dig 2
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:101
+    // return Bytes(_ANCHOR_PREFIX) + op.itob(pool_id)
+    bytec 6 // 0x6c705f616e63686f725f
+    dig 1
+    concat
+    // smart_contracts/lp_oracle/contract.py:219
+    // op.AppGlobal.put(self._anchor_key(pool_id), initial_price)
     uncover 2
     app_global_put
-    // smart_contracts/lp_oracle/contract.py:54
+    // smart_contracts/lp_oracle/contract.py:93
     // return Bytes(_TS_PREFIX) + op.itob(pool_id)
-    bytec_1 // 0x6c705f74735f
+    bytec 7 // 0x6c705f74735f
     swap
     concat
-    // smart_contracts/lp_oracle/contract.py:136
+    // smart_contracts/lp_oracle/contract.py:220
     // op.AppGlobal.put(self._ts_key(pool_id), Global.latest_timestamp)
     global LatestTimestamp
     app_global_put
-    // smart_contracts/lp_oracle/contract.py:117
+    // smart_contracts/lp_oracle/contract.py:200
     // @arc4.abimethod
     intc_0 // 1
     return
 
 add_pool_bool_false@4:
-    intc_2 // 0
+    intc_1 // 0
     b add_pool_bool_merge@5
 
 
-// smart_contracts.lp_oracle.contract.LPOracle.remove_pool[routing]() -> void:
-remove_pool:
-    // smart_contracts/lp_oracle/contract.py:138
+// smart_contracts.lp_oracle.contract.LPOracle.set_price_anchor[routing]() -> void:
+set_price_anchor:
+    // smart_contracts/lp_oracle/contract.py:222
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/lp_oracle/contract.py:147
-    // assert Txn.sender == Global.creator_address, "admin only"
-    txn Sender
-    global CreatorAddress
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
     ==
-    assert // admin only
-    // smart_contracts/lp_oracle/contract.py:58
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    dup
+    cover 2
+    // smart_contracts/lp_oracle/contract.py:229
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/lp_oracle/contract.py:230
+    // assert anchor_price > UInt64(0), "anchor must be > 0"
+    assert // anchor must be > 0
+    // smart_contracts/lp_oracle/contract.py:232
+    // Global.current_application_id, self._active_key(pool_id)
+    global CurrentApplicationID
+    // smart_contracts/lp_oracle/contract.py:97
     // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
+    swap
     itob
-    bytec_2 // 0x6c705f6163746976655f
-    dig 1
-    concat
-    // smart_contracts/lp_oracle/contract.py:148
-    // op.AppGlobal.delete(self._active_key(pool_id))
-    app_global_del
-    // smart_contracts/lp_oracle/contract.py:50
-    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
-    bytec_0 // 0x6c705f70726963655f
-    dig 1
-    concat
-    // smart_contracts/lp_oracle/contract.py:149
-    // op.AppGlobal.delete(self._price_key(pool_id))
-    app_global_del
-    // smart_contracts/lp_oracle/contract.py:54
-    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
-    bytec_1 // 0x6c705f74735f
+    dup
+    cover 2
+    bytec 4 // 0x6c705f6163746976655f
     swap
     concat
-    // smart_contracts/lp_oracle/contract.py:150
+    // smart_contracts/lp_oracle/contract.py:231-233
+    // active_val, exists = op.AppGlobal.get_ex_uint64(
+    //     Global.current_application_id, self._active_key(pool_id)
+    // )
+    app_global_get_ex
+    // smart_contracts/lp_oracle/contract.py:234
+    // assert exists and active_val != UInt64(0), "pool not registered"
+    bz set_price_anchor_bool_false@4
+    dup
+    bz set_price_anchor_bool_false@4
+    intc_0 // 1
+
+set_price_anchor_bool_merge@5:
+    // smart_contracts/lp_oracle/contract.py:234
+    // assert exists and active_val != UInt64(0), "pool not registered"
+    assert // pool not registered
+    // smart_contracts/lp_oracle/contract.py:101
+    // return Bytes(_ANCHOR_PREFIX) + op.itob(pool_id)
+    bytec 6 // 0x6c705f616e63686f725f
+    dig 2
+    concat
+    // smart_contracts/lp_oracle/contract.py:235
+    // op.AppGlobal.put(self._anchor_key(pool_id), anchor_price)
+    dig 3
+    app_global_put
+    // smart_contracts/lp_oracle/contract.py:222
+    // @arc4.abimethod
+    intc_0 // 1
+    return
+
+set_price_anchor_bool_false@4:
+    intc_1 // 0
+    b set_price_anchor_bool_merge@5
+
+
+// smart_contracts.lp_oracle.contract.LPOracle.remove_pool[routing]() -> void:
+remove_pool:
+    // smart_contracts/lp_oracle/contract.py:237
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/lp_oracle/contract.py:246
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/lp_oracle/contract.py:97
+    // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
+    itob
+    bytec 4 // 0x6c705f6163746976655f
+    dig 1
+    concat
+    // smart_contracts/lp_oracle/contract.py:247
+    // op.AppGlobal.delete(self._active_key(pool_id))
+    app_global_del
+    // smart_contracts/lp_oracle/contract.py:89
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f70726963655f
+    dig 1
+    concat
+    // smart_contracts/lp_oracle/contract.py:248
+    // op.AppGlobal.delete(self._price_key(pool_id))
+    app_global_del
+    // smart_contracts/lp_oracle/contract.py:93
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 7 // 0x6c705f74735f
+    dig 1
+    concat
+    // smart_contracts/lp_oracle/contract.py:249
     // op.AppGlobal.delete(self._ts_key(pool_id))
     app_global_del
-    // smart_contracts/lp_oracle/contract.py:138
+    // smart_contracts/lp_oracle/contract.py:101
+    // return Bytes(_ANCHOR_PREFIX) + op.itob(pool_id)
+    bytec 6 // 0x6c705f616e63686f725f
+    swap
+    concat
+    // smart_contracts/lp_oracle/contract.py:250
+    // op.AppGlobal.delete(self._anchor_key(pool_id))
+    app_global_del
+    // smart_contracts/lp_oracle/contract.py:237
     // @arc4.abimethod
     intc_0 // 1
     return
@@ -356,40 +698,40 @@ remove_pool:
 
 // smart_contracts.lp_oracle.contract.LPOracle.get_lp_price[routing]() -> void:
 get_lp_price:
-    // smart_contracts/lp_oracle/contract.py:154
+    // smart_contracts/lp_oracle/contract.py:254
     // @arc4.abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
     len
-    intc_1 // 8
+    intc_2 // 8
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/lp_oracle/contract.py:50
+    // smart_contracts/lp_oracle/contract.py:89
     // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
     itob
-    bytec_0 // 0x6c705f70726963655f
+    bytec 5 // 0x6c705f70726963655f
     dig 1
     concat
-    // smart_contracts/lp_oracle/contract.py:165
+    // smart_contracts/lp_oracle/contract.py:265
     // price = op.AppGlobal.get_uint64(self._price_key(pool_id))
     app_global_get
-    // smart_contracts/lp_oracle/contract.py:54
+    // smart_contracts/lp_oracle/contract.py:93
     // return Bytes(_TS_PREFIX) + op.itob(pool_id)
-    bytec_1 // 0x6c705f74735f
+    bytec 7 // 0x6c705f74735f
     uncover 2
     concat
-    // smart_contracts/lp_oracle/contract.py:166
+    // smart_contracts/lp_oracle/contract.py:266
     // ts = op.AppGlobal.get_uint64(self._ts_key(pool_id))
     app_global_get
-    // smart_contracts/lp_oracle/contract.py:167
+    // smart_contracts/lp_oracle/contract.py:267
     // return arc4.Tuple((arc4.UInt64(price), arc4.UInt64(ts)))
     swap
     itob
     swap
     itob
     concat
-    // smart_contracts/lp_oracle/contract.py:154
+    // smart_contracts/lp_oracle/contract.py:254
     // @arc4.abimethod(readonly=True)
     pushbytes 0x151f7c75
     swap
@@ -397,3 +739,17 @@ get_lp_price:
     log
     intc_0 // 1
     return
+
+
+// smart_contracts.lp_oracle.contract.LPOracle._assert_admin() -> void:
+_assert_admin:
+    // smart_contracts/lp_oracle/contract.py:75
+    // assert Txn.sender == self.admin.value, "admin only"
+    txn Sender
+    intc_1 // 0
+    bytec_0 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    assert // admin only
+    retsub

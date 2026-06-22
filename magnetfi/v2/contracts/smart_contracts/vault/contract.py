@@ -24,6 +24,7 @@ DAYS_90 = 7_776_000             # 90 × 24 × 3600
 VAULT_MBR = 46_500              # µALGO MBR: 2500 + 400×(46+64)
 MICRO_LIQ_BUFFER_BPS = 500      # 5% buffer on micro-liq seizure
 ORACLE_FRESHNESS = 1_800        # 30 minutes
+TIMELOCK_DELAY = 172_800        # 48h on the catastrophic oracle-repointing power
 
 # Dynamic global-state key prefixes for per-pool parameters
 _RATE_PREFIX   = b"rate_"
@@ -54,7 +55,7 @@ class VaultState(arc4.Struct):
 
 class Vault(
     ARC4Contract,
-    state_totals=StateTotals(global_uints=32, global_bytes=0),
+    state_totals=StateTotals(global_uints=40, global_bytes=6),
 ):
     """
     MagnetFi v2 Vault — LP collateral engine.
@@ -62,6 +63,10 @@ class Vault(
     Borrowers deposit Tinyman LP tokens and receive mUSD loans up to the LTV limit.
     Repayment is interest-only every ~90 days; principal is optional.
     Two independent liquidation paths: missed payment (micro-liq) and health factor (tiered).
+
+    Two-role trust model:
+      admin    — hot key: rates/LTV/thresholds, liquidations, fees, opt-in, advance accrual.
+      guardian — cold key: pause/unpause borrowing, cancel queued oracle repoint, recover admin.
 
     Box storage: one VaultState per (borrower, pool_id) pair.
     BoxMap key_prefix = b"vault_"; suffix = borrower.bytes (32B) + itob(pool_id) (8B).
@@ -73,6 +78,20 @@ class Vault(
         self.musd_asa_id = GlobalState(UInt64)
         self.usdc_asa_id = GlobalState(UInt64)
         self.accumulated_fees = GlobalState(UInt64)
+
+        # Two-role admin model.
+        self.admin = GlobalState(Account)
+        self.guardian = GlobalState(Account)
+        self.pending_admin = GlobalState(Account)
+        self.pending_guardian = GlobalState(Account)
+
+        # Incident pause (gates new borrowing only; repay/liquidate/settle stay open).
+        self.paused = GlobalState(UInt64)
+
+        # Timelocked LP-oracle repointing.
+        self.pending_lp_oracle = GlobalState(UInt64)
+        self.pending_lp_oracle_eta = GlobalState(UInt64)
+
         # Per-pool params live in dynamic global-state slots using prefixed keys:
         # b"rate_" + itob(pool_id), b"ltv_" + itob(pool_id), etc.
 
@@ -87,18 +106,42 @@ class Vault(
         lp_oracle_app_id: UInt64,
         musd_asa_id: UInt64,
         usdc_asa_id: UInt64,
+        guardian: Account,
     ) -> None:
         assert psm_app_id != UInt64(0)
         assert lp_oracle_app_id != UInt64(0)
         assert musd_asa_id != UInt64(0)
         assert usdc_asa_id != UInt64(0)
+        assert guardian != Global.zero_address, "guardian required"
         self.psm_app_id.value = psm_app_id
         self.lp_oracle_app_id.value = lp_oracle_app_id
         self.musd_asa_id.value = musd_asa_id
         self.usdc_asa_id.value = usdc_asa_id
         self.accumulated_fees.value = UInt64(0)
 
+        self.admin.value = Txn.sender
+        self.guardian.value = guardian
+        self.pending_admin.value = Global.zero_address
+        self.pending_guardian.value = Global.zero_address
+        self.paused.value = UInt64(0)
+        self.pending_lp_oracle.value = UInt64(0)
+        self.pending_lp_oracle_eta.value = UInt64(0)
+
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    @subroutine
+    def _assert_admin(self) -> None:
+        assert Txn.sender == self.admin.value, "admin only"
+
+    @subroutine
+    def _assert_guardian(self) -> None:
+        assert Txn.sender == self.guardian.value, "guardian only"
+
+    @subroutine
+    def _assert_admin_or_guardian(self) -> None:
+        assert (
+            Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+        ), "admin or guardian only"
 
     @subroutine
     def _vault_key(self, account: Account, pool_id: UInt64) -> Bytes:
@@ -190,6 +233,52 @@ class Vault(
         assert exists, "PSM app not found"
         return addr
 
+    # ── role management ───────────────────────────────────────────────────────
+
+    @arc4.abimethod
+    def propose_admin(self, new_admin: Account) -> None:
+        """Start 2-step admin rotation. Admin OR guardian (guardian path = recovery)."""
+        self._assert_admin_or_guardian()
+        assert new_admin != Global.zero_address, "zero address not allowed"
+        self.pending_admin.value = new_admin
+
+    @arc4.abimethod
+    def accept_admin(self) -> None:
+        """Complete admin rotation — only the proposed account may accept."""
+        assert self.pending_admin.value != Global.zero_address, "no pending admin"
+        assert Txn.sender == self.pending_admin.value, "not pending admin"
+        self.admin.value = self.pending_admin.value
+        self.pending_admin.value = Global.zero_address
+
+    @arc4.abimethod
+    def propose_guardian(self, new_guardian: Account) -> None:
+        """Start 2-step guardian rotation. Guardian only."""
+        self._assert_guardian()
+        assert new_guardian != Global.zero_address, "zero address not allowed"
+        self.pending_guardian.value = new_guardian
+
+    @arc4.abimethod
+    def accept_guardian(self) -> None:
+        """Complete guardian rotation — only the proposed account may accept."""
+        assert self.pending_guardian.value != Global.zero_address, "no pending guardian"
+        assert Txn.sender == self.pending_guardian.value, "not pending guardian"
+        self.guardian.value = self.pending_guardian.value
+        self.pending_guardian.value = Global.zero_address
+
+    # ── pause (incident response) ─────────────────────────────────────────────
+
+    @arc4.abimethod
+    def pause(self) -> None:
+        """Halt new borrowing (open_vault w/ borrow, borrow_more). Either role can pause."""
+        self._assert_admin_or_guardian()
+        self.paused.value = UInt64(1)
+
+    @arc4.abimethod
+    def unpause(self) -> None:
+        """Resume borrowing. Guardian only — a compromised hot key cannot lift a lockdown."""
+        self._assert_guardian()
+        self.paused.value = UInt64(0)
+
     # ── open vault ────────────────────────────────────────────────────────────
 
     @arc4.abimethod
@@ -239,6 +328,8 @@ class Vault(
         if borrow_amount == UInt64(0):
             self.vaults[key] = vault.copy()
         else:
+            # New borrowing is gated by the incident pause.
+            assert self.paused.value == UInt64(0), "borrowing paused"
             assert self._oracle_is_fresh(pool_id), "oracle stale"
             lp_val = self._lp_value(lp_amount, pool_id)
             ltv = self._pool_ltv(pool_id)
@@ -420,6 +511,7 @@ class Vault(
     @arc4.abimethod
     def borrow_more(self, pool_id: UInt64, amount: UInt64) -> None:
         """Draw additional mUSD from an existing active vault."""
+        assert self.paused.value == UInt64(0), "borrowing paused"
         assert amount > UInt64(0), "zero borrow"
 
         key = self._vault_key(Txn.sender, pool_id)
@@ -453,8 +545,8 @@ class Vault(
 
     @arc4.abimethod
     def collect_fees(self) -> None:
-        """Sweep accumulated interest to admin wallet as mUSD."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        """Sweep accumulated interest to the admin wallet as mUSD."""
+        self._assert_admin()
         fees = self.accumulated_fees.value
         assert fees > UInt64(0), "no fees"
 
@@ -471,7 +563,7 @@ class Vault(
         self.accumulated_fees.value = fees - sweep
         itxn.AssetTransfer(
             xfer_asset=self.musd_asa_id.value,
-            asset_receiver=Global.creator_address,
+            asset_receiver=self.admin.value,
             asset_amount=sweep,
             fee=0,
         ).submit()
@@ -479,13 +571,14 @@ class Vault(
     @arc4.abimethod
     def collect_algo(self, amount: UInt64) -> None:
         """
-        Sweep excess ALGO to admin wallet.
+        Sweep excess ALGO to the admin wallet.
         Admin computes safe amount off-chain: contract_balance − (vault_count × 46_500) − buffer.
+        The AVM rejects any amount that would drop below the contract's own min balance.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert amount > UInt64(0), "zero amount"
         itxn.Payment(
-            receiver=Global.creator_address,
+            receiver=self.admin.value,
             amount=amount,
             fee=0,
         ).submit()
@@ -496,7 +589,7 @@ class Vault(
         Opt vault contract account into an ASA (mUSD, LP tokens).
         Must be called for every ASA the vault needs to hold before first use.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert asa_id != UInt64(0), "invalid ASA ID"
         itxn.AssetTransfer(
             xfer_asset=asa_id,
@@ -510,13 +603,28 @@ class Vault(
     @arc4.abimethod
     def mark_payment_overdue(self, borrower: Account, pool_id: UInt64) -> None:
         """Explicitly transition vault from active → payment_overdue after 90-day window."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         key = self._vault_key(borrower, pool_id)
         assert key in self.vaults, "vault not found"
         vault = self.vaults[key].copy()
         assert vault.vault_state.native == UInt64(0), "vault not active"
         assert Global.latest_timestamp >= vault.last_payment_timestamp.native + UInt64(DAYS_90), "not overdue"
         vault.vault_state = arc4.UInt64(1)
+        self.vaults[key] = vault.copy()
+
+    @arc4.abimethod
+    def advance_accrual(self, borrower: Account, pool_id: UInt64) -> None:
+        """
+        Admin: advance interest accrual on a vault (1-year cap per call).
+        Lets the protocol catch up interest on a multi-year-abandoned position by calling
+        repeatedly before liquidation, since a delinquent borrower won't trigger accrual (P19-13).
+        """
+        self._assert_admin()
+        key = self._vault_key(borrower, pool_id)
+        assert key in self.vaults, "vault not found"
+        vault = self.vaults[key].copy()
+        assert vault.vault_state.native != UInt64(2), "vault in liquidation"
+        vault = self._accrue_interest(vault)
         self.vaults[key] = vault.copy()
 
     # ── liquidation: micro ────────────────────────────────────────────────────
@@ -527,7 +635,7 @@ class Vault(
         Seize LP covering accrued interest + 5% buffer after 90-day non-payment.
         Position continues; payment clock resets.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
 
         key = self._vault_key(borrower, pool_id)
         assert key in self.vaults, "vault not found"
@@ -562,7 +670,7 @@ class Vault(
         lp_asa_id = self._pool_lp_asa(pool_id)
         itxn.AssetTransfer(
             xfer_asset=lp_asa_id,
-            asset_receiver=Global.creator_address,
+            asset_receiver=self.admin.value,
             asset_amount=lp_to_seize,
             fee=0,
         ).submit()
@@ -577,7 +685,7 @@ class Vault(
         Seize 35% (tier 1) or 60% (tier 2) of LP for HF in [0.85, 1.0).
         Sets vault_state = 2 pending admin mUSD settlement.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert tier == UInt64(1) or tier == UInt64(2), "tier must be 1 or 2"
 
         key = self._vault_key(borrower, pool_id)
@@ -627,7 +735,7 @@ class Vault(
         lp_asa_id = self._pool_lp_asa(pool_id)
         itxn.AssetTransfer(
             xfer_asset=lp_asa_id,
-            asset_receiver=Global.creator_address,
+            asset_receiver=self.admin.value,
             asset_amount=lp_to_seize,
             fee=0,
         ).submit()
@@ -641,7 +749,7 @@ class Vault(
         Surplus LP above total debt is returned to borrower immediately.
         Dust positions (total_lp_value == 0) are closed as bad debt immediately.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
 
         key = self._vault_key(borrower, pool_id)
         assert key in self.vaults, "vault not found"
@@ -670,7 +778,7 @@ class Vault(
             del self.vaults[key]
             itxn.AssetTransfer(
                 xfer_asset=lp_asa_id,
-                asset_receiver=Global.creator_address,
+                asset_receiver=self.admin.value,
                 asset_amount=lp_amount,
                 fee=0,
             ).submit()
@@ -708,7 +816,7 @@ class Vault(
 
         itxn.AssetTransfer(
             xfer_asset=lp_asa_id,
-            asset_receiver=Global.creator_address,
+            asset_receiver=self.admin.value,
             asset_amount=lp_to_seize,
             fee=0,
         ).submit()
@@ -725,7 +833,7 @@ class Vault(
         Atomic group: AppCall settle_health_liquidation + AssetTransfer (mUSD → PSM address)
         May be called multiple times until the settlement counter (accrued_interest) reaches 0.
         """
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
 
         key = self._vault_key(borrower, pool_id)
         assert key in self.vaults, "vault not found"
@@ -793,14 +901,14 @@ class Vault(
     @arc4.abimethod
     def set_rate(self, pool_id: UInt64, rate_bps: UInt64) -> None:
         """Set annual interest rate for new accrual periods. Cap: 3000 bps (30% APR)."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert rate_bps <= UInt64(3_000), "rate exceeds 30% cap"
         op.AppGlobal.put(Bytes(_RATE_PREFIX) + op.itob(pool_id), rate_bps)
 
     @arc4.abimethod
     def set_ltv(self, pool_id: UInt64, ltv_bps: UInt64) -> None:
         """Set LTV for a pool. Must be strictly below the pool's liquidation threshold."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert ltv_bps > UInt64(0), "ltv must be > 0"
         liq = op.AppGlobal.get_uint64(Bytes(_LIQ_PREFIX) + op.itob(pool_id))
         assert liq != UInt64(0), "set liq threshold before ltv"
@@ -810,7 +918,7 @@ class Vault(
     @arc4.abimethod
     def set_liq_threshold(self, pool_id: UInt64, threshold_bps: UInt64) -> None:
         """Set liquidation threshold. Must exceed LTV and be ≤ 9000 bps (90%)."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         ltv = op.AppGlobal.get_uint64(Bytes(_LTV_PREFIX) + op.itob(pool_id))
         assert threshold_bps > ltv, "threshold must exceed LTV"
         assert threshold_bps <= UInt64(9_000), "threshold cap 90%"
@@ -819,13 +927,37 @@ class Vault(
     @arc4.abimethod
     def set_lp_asa_id(self, pool_id: UInt64, lp_asa_id: UInt64) -> None:
         """Register LP token ASA ID for a pool. Required before any vault can open."""
-        assert Txn.sender == Global.creator_address, "admin only"
+        self._assert_admin()
         assert lp_asa_id != UInt64(0), "invalid ASA ID"
         op.AppGlobal.put(Bytes(_LP_ASA_PREFIX) + op.itob(pool_id), lp_asa_id)
 
+    # ── timelocked LP-oracle repointing ───────────────────────────────────────
+
     @arc4.abimethod
-    def set_lp_oracle(self, new_oracle_app_id: UInt64) -> None:
-        """Update LP oracle app reference. High-impact — audit new oracle before switching."""
-        assert Txn.sender == Global.creator_address, "admin only"
+    def propose_lp_oracle(self, new_oracle_app_id: UInt64) -> None:
+        """
+        Queue an LP-oracle reference change. Takes effect only after the 48h timelock via
+        confirm_lp_oracle; guardian may cancel before then. A malicious oracle could post
+        arbitrary prices enabling over-borrow — hence the delay and the guardian veto.
+        """
+        self._assert_admin()
         assert new_oracle_app_id != UInt64(0), "invalid oracle app id"
-        self.lp_oracle_app_id.value = new_oracle_app_id
+        self.pending_lp_oracle.value = new_oracle_app_id
+        self.pending_lp_oracle_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+
+    @arc4.abimethod
+    def confirm_lp_oracle(self) -> None:
+        """Apply a queued LP-oracle change after the timelock has elapsed."""
+        self._assert_admin()
+        assert self.pending_lp_oracle.value != UInt64(0), "no pending oracle"
+        assert Global.latest_timestamp >= self.pending_lp_oracle_eta.value, "timelock not elapsed"
+        self.lp_oracle_app_id.value = self.pending_lp_oracle.value
+        self.pending_lp_oracle.value = UInt64(0)
+        self.pending_lp_oracle_eta.value = UInt64(0)
+
+    @arc4.abimethod
+    def cancel_pending_lp_oracle(self) -> None:
+        """Cancel a queued LP-oracle change. Admin or guardian (the guardian veto)."""
+        self._assert_admin_or_guardian()
+        self.pending_lp_oracle.value = UInt64(0)
+        self.pending_lp_oracle_eta.value = UInt64(0)

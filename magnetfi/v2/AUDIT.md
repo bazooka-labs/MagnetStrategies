@@ -906,3 +906,37 @@ Senior-auditor deep dive focused on protocol safety. Headline finding verified o
 - **[P19-03] 🟠 High (open)** — the on-chain deviation guard bounds only movement vs. the *prior* post, so a compromised bot key can ratchet the price arbitrarily over many updates → over-borrow → bad debt. The "bot compromise = no fund risk" claim in the docs is too strong for the over-borrow direction. Proposed fix: an on-chain admin price anchor with a bounded cumulative-drift guard. **Awaiting design sign-off before implementation.**
 - **[P19-02 / P19-07] 🟡 Medium (open)** — single price-derivation path (spec promises multi-source median + cross-source divergence) and weak thin-history TWAP; add a minimum-readings gate that fails *stale* not *open*.
 - **[P19-10 → P19-13] ⚪ Documented admin-trust items** — timelock on `set_lp_oracle`/`set_vault_contract`, admin rotation, protocol pause, multi-year accrual cap. Accepted for v2 launch; revisit before significant TVL.
+
+---
+
+## Pass 20 — Two-Role Security Hardening (resolves all open Pass 19 items)
+
+Implemented the full **two-role guardian model** plus the deferred oracle and accrual hardening. All three contracts recompile clean. This is a broad refactor — every admin gate moved from the immutable `Global.creator_address` to a stored, rotatable `admin`, with a separate cold `guardian` role for containment.
+
+### Two-role admin model (P19-10 / P19-11 / P19-12 — all three contracts)
+- **Stored roles:** `admin` (hot, mutable) replaces `Global.creator_address` on every admin-gated method; `guardian` (cold) added. Both set at `deploy()` (admin = deployer, guardian = new required param). Seized LP / swept fees / swept ALGO / withdrawn USDC now route to the *current* `admin`.
+- **2-step rotation:** `propose_admin`/`accept_admin` (admin OR guardian may propose → recovery of a lost/compromised hot key) and `propose_guardian`/`accept_guardian`. Proposed account must accept; zero-address rejected.
+- **Pause (P19-12):** `pause()` (admin or guardian) / `unpause()` (**guardian only** — a compromised hot key cannot lift a lockdown). Vault pause gates new borrowing (`open_vault` w/ borrow, `borrow_more`); PSM pause gates public `mint_musd`. Repay / liquidate / settle / redeem always stay open so users can exit.
+
+### Catastrophic-power timelock (P19-03 / P19-10)
+- **Vault `set_lp_oracle` → `propose_lp_oracle` / `confirm_lp_oracle` / `cancel_pending_lp_oracle`** (48h). **PSM `set_vault_contract` → `propose_vault_contract` / `confirm_vault_contract` / `cancel_pending_vault_contract`** (48h). Both queue a change with `eta = now + 48h`; only `admin` can confirm after the delay; **admin or guardian** can cancel (the guardian veto). This converts the two "instant total drain" powers into delayed, observable, guardian-revertible actions.
+
+### Oracle cumulative-drift anchor (P19-03)
+- Added `lp_anchor_[pool_id]`. `update_lp_price` now enforces the prior ±50% guard **and** a ±25% band vs. the admin anchor. `add_pool` stores the anchor alongside the initial price; `set_price_anchor` (admin) re-anchors during genuine large moves; `remove_pool` deletes it. A compromised bot can no longer ratchet price arbitrarily — total drift is capped at ±25% until the admin (not the bot) re-anchors. Docs corrected: bot compromise is *bounded* mispricing, not "no fund risk."
+
+### Bot fail-stale gate (P19-02 / P19-07)
+- `oracle_bot.py`: min-readings gate (`MIN_TWAP_READINGS = 3`) — on thin history the bot holds the prior on-chain price (fail-stale) instead of posting a single manipulable spot. Combined with the trapezoidal TWAP from Pass 18.
+
+### Multi-year accrual (P19-13)
+- Vault `advance_accrual(borrower, pool_id)` (admin) — runs the 1-yr-capped `_accrue_interest` and writes back, so the protocol can catch up interest on a multi-year-abandoned vault by calling repeatedly before liquidating.
+
+### P19-04 — resolved as documentation (confirmed not a bug)
+- Verified via PSM-excess trace: liquidation-derived interest is realized as PSM overcollateralization (withdrawable USDC via `withdraw_usdc`), not lost. Crediting `accumulated_fees` would create an unbacked entry. Documented in LIQUIDATION.md; no code change.
+
+### State schema
+- PSM `StateTotals` → `global_uints=8, global_bytes=6`. Vault → `global_uints=40, global_bytes=6` (preserves ~8-pool dynamic budget). LP Oracle → `global_uints=40, global_bytes=6` (4 uints/pool incl. anchor). LP Oracle gained an explicit `deploy(guardian)` create method (was bare-create).
+
+### Docs synced
+- ADMIN.md (trust model rewritten: roles, guardian wallet, incident playbook; deploy procedure: guardian param, timelocked vault registration, pool_address config; admin-action tables). VAULT.md / PSM.md / LP_ORACLE.md (state tables, role model, timelocked methods, anchor, `set_price_anchor`, `advance_accrual`). LIQUIDATION.md (P19-04). 
+
+**Verdict:** all Pass 19 findings now resolved or accepted-with-fix. Recommend one more independent audit pass against the refactored contracts before mainnet, since the admin-gate refactor touched every privileged method.

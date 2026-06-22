@@ -2,28 +2,38 @@
 
 ## Trust Model
 
-MagnetFi v2 is an admin-managed protocol. Bazooka Labs holds full operational authority — all revenue collection, liquidation triggers, rate adjustments, and reserve management require the admin wallet. There is no on-chain governance at launch.
+MagnetFi v2 is an admin-managed protocol with a **two-role security model**. Bazooka Labs holds operational authority through a *hot admin* key for day-to-day operations, backed by a *cold guardian* key that exists solely to contain a compromise of the hot key. There is no on-chain governance at launch.
 
-This is a deliberate choice. Trustless governance adds complexity and attack surface. The admin-managed model is appropriate for a protocol at this stage and scale. Users trust Bazooka Labs as operator.
+This is a deliberate choice. Trustless governance adds complexity and attack surface. The admin-managed model is appropriate for a protocol at this stage and scale — and the guardian split means a single hot-key compromise cannot drain the protocol.
+
+### Roles
+
+| Role | Key type | Powers |
+|---|---|---|
+| **Admin** (hot) | Hardware wallet | Rates/LTV/thresholds, all liquidations, fee/reserve management, oracle-bot authorization, price re-anchoring, opt-ins, *proposing* the timelocked oracle/vault repoints, pause |
+| **Guardian** (cold) | Cold multisig | Pause **and** unpause, **cancel** any queued timelocked change (the veto), and propose admin rotation (recovery). Never signs routine transactions. |
 
 **What the admin can do:**
-- Trigger all liquidations (both types)
-- Set interest rates per vault type
-- Add/remove supported LP pools
-- Add/withdraw PSM USDC reserves (within contract guards)
-- Collect all protocol revenue
-- Update oracle references
-- Transfer the oracle bot authorization
+- Trigger all liquidations; set rates / LTV / thresholds; manage PSM reserves; collect revenue
+- Authorize/rotate the oracle bot key; re-anchor oracle prices
+- *Propose* (not instantly execute) oracle/vault-contract repoints — these are timelocked 48h
+- Pause new borrowing / minting
 
-**What the admin cannot do (contract-enforced):**
+**What the admin canNOT do (contract-enforced):**
 - Withdraw PSM USDC below total circulating mUSD
 - Trigger micro-liquidation before 90 days of non-payment
-- Post prices with >50% deviation from prior (oracle guard applies to all callers)
-- Set rates above 3000 bps (30% APR per `set_rate()` on-chain cap)
+- Post prices with >50% deviation from prior, or >±25% from the admin anchor (oracle guards)
+- Set rates above 3000 bps (30% APR)
+- **Instantly** repoint the LP oracle or the registered vault contract — these wait out a 48h timelock during which the guardian can cancel
+- **Unpause** after the guardian has paused (only the guardian can lift a guardian-set lock)
+
+### Catastrophic-power containment
+
+The two highest-leverage powers — repointing the LP oracle (→ fake prices → over-borrow) and repointing the registered vault on the PSM (→ unauthorized mUSD minting) — are **timelocked 48h** and **guardian-cancellable**. If the hot key is compromised and the attacker queues a malicious repoint, the cold guardian cancels it during the delay window and rotates the admin. This is the core reason a single-key compromise is survivable.
 
 ---
 
-## Admin Wallet
+## Admin Wallet (hot)
 
 | Property | Recommendation |
 |---|---|
@@ -32,23 +42,39 @@ This is a deliberate choice. Trustless governance adds complexity and attack sur
 | Operations frequency | Quarterly (fee collection + rate review) + on-demand (liquidations) |
 | Backup | Cold backup of seed phrase in secure offline location |
 | USDC float | Keep ~$500 USDC in admin wallet at all times |
+| Rotation | 2-step: `propose_admin(new)` then new key calls `accept_admin()`. Guardian may also propose (recovery). |
 
 **USDC float rationale:** when a health-factor liquidation is triggered, LP collateral is seized immediately but selling it takes time. Keeping $500 USDC in the admin wallet allows instant settlement — use the float to buy mUSD from the PSM and close the vault in the same session. The seized LP can then be sold at the admin's discretion, at favorable market conditions rather than under distress.
 
-The admin wallet is `Global.creator_address` on all v2 contracts (PSM, Vault, LP Oracle).
+The admin is stored on-chain (mutable via 2-step rotation) on all three contracts; it is initialized to the deployer at creation. Seized LP and swept fees/ALGO route to the *current* admin.
+
+---
+
+## Guardian Wallet (cold)
+
+Separate **cold multisig**, ideally 2-of-3 across hardware wallets held by different principals. Touched only during incidents or scheduled rotations — never for routine operations.
+
+| Property | Recommendation |
+|---|---|
+| Wallet type | Cold multisig (2-of-3 hardware) |
+| Powers | `pause`/`unpause`, `cancel_pending_*` (veto a queued repoint), `propose_admin` (recovery), `propose_guardian`/`accept_guardian` (rotate itself) |
+| Storage | Fully offline; signing only for incident response |
+| Compromise impact | Guardian alone cannot move funds or change parameters — it can only pause and veto. A guardian compromise is a griefing risk (can pause), not a drain risk. |
+
+**Incident playbook (suspected hot-key compromise):** (1) guardian `pause` to halt new borrowing/minting; (2) guardian `cancel_pending_lp_oracle` / `cancel_pending_vault_contract` if anything is queued; (3) guardian `propose_admin(clean_key)`, then the clean key `accept_admin()`; (4) rotate the oracle bot key via the new admin if needed; (5) guardian `unpause` once clean.
 
 ---
 
 ## Oracle Bot Wallet
 
-Separate hot wallet authorized only to post LP prices. Separate from admin wallet.
+Separate hot wallet authorized only to post LP prices. Separate from both admin and guardian.
 
 | Property | Value |
 |---|---|
 | Permissions | `update_lp_price()` only across LP oracle contract |
 | Storage | Server environment variable (encrypted); never in shell history |
 | Operations frequency | Every 5 minutes (automated) |
-| Compromise impact | Oracle staleness only — no fund risk (50% guard blocks bad prices) |
+| Compromise impact | **Bounded price movement, not unbounded.** A compromised bot can move price only within ±50% of the prior post AND ±25% of the admin anchor before it needs the admin to re-anchor (which a compromised bot cannot do). Worst case is bounded mispricing + staleness, not arbitrary drift. Rotate via `set_authorized_updater()`. |
 
 ---
 
@@ -72,7 +98,8 @@ Separate hot wallet authorized only to post LP prices. Separate from admin walle
 | Capitalize PSM | `deposit_usdc(amount)` | Initial deploy + as needed | Opens vault ceiling; direct deposit to PSM address |
 | Withdraw excess reserves | `withdraw_usdc(amount)` | Rare; admin discretion | Contract guard: cannot reduce below circulating mUSD |
 | Adjust redemption fee | `set_redeem_fee(fee_bps)` | Rarely | Applies to mUSD → USDC only; default 100 bps (1%); max 500 bps; USDC → mUSD is always 0% |
-| Register vault contract | `set_vault_contract(vault_app_id)` | Once at deploy; if vault redeployed | PSM will only accept issue/receive calls from registered vault |
+| Register vault contract | `propose_vault_contract(vault_app_id)` → wait 48h → `confirm_vault_contract()` | At deploy; if vault redeployed | **Timelocked 48h.** Guardian can `cancel_pending_vault_contract()`. PSM only accepts issue/receive calls from the registered vault. |
+| Pause / unpause mint | `pause()` / `unpause()` | Incident only | `pause` halts public `mint_musd` (redeem stays open). Either role pauses; **guardian only** unpauses. |
 
 **PSM withdrawal procedure:**
 1. Check `psm.usdc_balance − circulating_musd` = available excess
@@ -88,11 +115,15 @@ Separate hot wallet authorized only to post LP prices. Separate from admin walle
 | Action | Method | Notes |
 |---|---|---|
 | Set interest rate | `set_rate(pool_id, rate_bps)` | Per vault type; max 3000 bps (30% APR) |
-| Set LTV | `set_ltv(pool_id, ltv_bps)` | Lower LTV = less borrowing capacity; affects new borrows only |
+| Set LTV | `set_ltv(pool_id, ltv_bps)` | Lower LTV = less borrowing capacity; affects new borrows only. Set `set_liq_threshold` first. |
 | Set liquidation threshold | `set_liq_threshold(pool_id, bps)` | Cannot be lower than LTV (would allow instant liquidation) |
-| Update LP oracle reference | `set_lp_oracle(new_app_id)` | If oracle contract redeployed |
+| Update LP oracle reference | `propose_lp_oracle(new_app_id)` → wait 48h → `confirm_lp_oracle()` | **Timelocked 48h.** Guardian can `cancel_pending_lp_oracle()`. Only if oracle redeployed. |
+| Advance accrual | `advance_accrual(borrower, pool_id)` | Catch up interest on a multi-year-abandoned vault (1yr cap per call); call repeatedly before liquidating |
+| Pause / unpause borrowing | `pause()` / `unpause()` | Incident only | `pause` halts `open_vault` (with borrow) and `borrow_more`; repay/liquidate/settle stay open. Either role pauses; **guardian only** unpauses. |
 
 **Rate change note:** rate changes take effect on next accrual event per position. Borrowers are not notified on-chain. The frontend must display the current rate and alert borrowers when rates change.
+
+**Oracle re-anchoring note:** the LP oracle bounds posted prices to ±25% of an admin anchor. During a genuine large price move, call `set_price_anchor(pool_id, new_anchor)` (LP Oracle, admin) to follow it; otherwise the bot's posts will be rejected once they hit the band edge. This manual step is the cumulative-drift backstop a compromised bot cannot perform.
 
 #### Liquidations
 
@@ -189,19 +220,22 @@ Order matters — do not skip steps or reorder.
 - [ ] Create mUSD ASA (admin wallet in Pera): name "Magnet USD", unit "mUSD", 6 decimals, 500M supply, freeze=zero, clawback=zero
 - [ ] Note mUSD ASA ID; update `MUSD_ASA_ID` in `web/src/lib/constants.ts`
 - [ ] Create oracle bot wallet (separate hot key); fund with ALGO for transaction fees (~5 ALGO)
+- [ ] **Create the guardian wallet** — a cold multisig (recommend 2-of-3 hardware), separate from the admin and bot keys. Record its address; it is passed to all three `deploy()` calls.
 - [ ] **Verify wBTC ASA decimal count on Algorand mainnet** — actual decimals must match the value hardcoded in the oracle bot decimal config table (AUD-006)
+- [ ] **Confirm Tinyman v2 pool account address + AMM validator app id** for each pool (the bot reads reserves from the pool account's LOCAL state — see P19-01). Set `pool_address` and `amm_validator_app_id` in `oracle_bot/config.json`.
 - [ ] Prepare initial risk parameter values for all supported pool types: `rate_bps`, `ltv_bps`, `liq_threshold_bps`, `lp_asa_id` per pool (confirm `liq_threshold_bps > ltv_bps` for each pool before deploying)
-- [ ] Confirm initial oracle prices for each pool (will be used as `initial_price` argument to `add_pool()`)
+- [ ] Confirm initial oracle prices for each pool (used as `initial_price` to `add_pool()` — sets both the live price and the ±25% anchor)
 
 ### Deploy Contracts (admin wallet, via deploy wizard or script)
-- [ ] Deploy LP Oracle contract; record App ID
-- [ ] Deploy PSM contract with mUSD ASA ID and USDC ASA ID; record App ID
-- [ ] Deploy Vault contract with PSM App ID, LP Oracle App ID, mUSD ASA ID; record App ID
+- [ ] Deploy LP Oracle: `deploy(guardian)`; record App ID
+- [ ] Deploy PSM: `deploy(musd_asa_id, usdc_asa_id, guardian)`; record App ID
+- [ ] Deploy Vault: `deploy(psm_app_id, lp_oracle_app_id, musd_asa_id, usdc_asa_id, guardian)`; record App ID
+- [ ] The deployer becomes `admin` on each; the passed address becomes `guardian`. Verify both on each contract.
 - [ ] Update `LP_ORACLE_V2_APP_ID`, `PSM_APP_ID`, `VAULT_APP_ID` in constants.ts
 
 ### Initialize LP Oracle
 - [ ] Call `set_authorized_updater(bot_wallet_address)`
-- [ ] For each supported pool: call `add_pool(pool_app_id, initial_price)` — admin-verified price serves as the anchor for the on-chain deviation guard (AUD-043)
+- [ ] For each supported pool: call `add_pool(pool_id, initial_price)` — sets live price AND the ±25% drift anchor (AUD-043 / P19-03)
 - [ ] Verify price and timestamp stored for each pool; confirm `lp_price_[pool_id] > 0`
 
 ### Initialize PSM
@@ -214,7 +248,7 @@ Order matters — do not skip steps or reorder.
 ### Initialize Vault
 - [ ] Call `opt_in_asset(musd_asa_id)` — vault contract account opts into mUSD; required to receive interest payments and issue `collect_fees` transfers
 - [ ] For each supported pool, call `opt_in_asset(lp_asa_id)` — vault must opt into each LP token before `open_vault` can receive deposits for that pool
-- [ ] Call `set_vault_contract(vault_app_id)` on PSM — authorizes vault to call issue_musd / receive_musd
+- [ ] On PSM: `propose_vault_contract(vault_app_id)`, **wait out the 48h timelock**, then `confirm_vault_contract()` — authorizes vault to call issue_musd / receive_musd. (At genesis the timelock is unavoidable; plan the 48h gap before public launch, or deploy the vault first so the window overlaps other setup.)
 - [ ] For each supported pool, set initial risk parameters in this exact order:
   - `set_rate(pool_id, rate_bps)` — e.g., 500 for U/USDC (5%), 800 for others (8%)
   - `set_liq_threshold(pool_id, threshold_bps)` — **must come before set_ltv**; e.g., 7500 (75%) for all pools

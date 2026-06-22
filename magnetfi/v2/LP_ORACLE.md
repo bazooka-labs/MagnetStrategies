@@ -51,8 +51,11 @@ The LP oracle is a separate contract from the v1 price oracle. It stores one pri
 |---|---|---|
 | `lp_price_[pool_id]` | uint64 | mUSD value per LP token, scaled to 6 decimal places |
 | `lp_last_updated_[pool_id]` | uint64 | Unix timestamp of last successful update per pool |
+| `lp_anchor_[pool_id]` | uint64 | Admin-set anchor; posts must stay within ±25% of it (P19-03) |
 | `authorized_updater` | bytes | Oracle bot wallet address |
-| `admin` | bytes | Global.creator_address |
+| `admin` | account | Hot admin key (mutable via 2-step rotation); initialized to deployer |
+| `guardian` | account | Cold guardian key (admin recovery, guardian rotation) |
+| `pending_admin` / `pending_guardian` | account | Proposed roles awaiting acceptance (zero when none) |
 
 **Price representation:** same as v1. 1.00 mUSD per LP token = `1_000_000`. All vault math uses this scaled integer.
 
@@ -79,11 +82,15 @@ All admin methods must include as their **first assertion**: `Assert Txn.sender 
 1. Assert `Txn.sender == authorized_updater`
 2. Assert `new_price > 0` — a zero price permanently bricks the pool oracle: if 0 is stored as the initial price, the deviation guard (step 4) then constrains all future posts to `[0 × 50/100, 0 × 150/100] = [0, 0]`, making it impossible to ever post a real price
 3. Assert `pool_id` is in supported whitelist
-4. Deviation guard — applied only when a prior price exists (`lp_price_[pool_id] != 0`):
+4. Deviation guard vs **prior** — applied only when a prior price exists (`lp_price_[pool_id] != 0`):
    - Lower: `Assert WideRatio(new_price, 100, 50) >= lp_price_[pool_id]` — reject if >50% drop
    - Upper: `Assert WideRatio(new_price, 100, 150) <= lp_price_[pool_id]` — reject if >50% spike
-   - Wide math (mulw/divw) required: avoid overflow at large LP prices
-5. Store `lp_price_[pool_id] = new_price` and `lp_last_updated_[pool_id] = current_timestamp`
+5. Anchor band vs **admin anchor** — applied when `lp_anchor_[pool_id] != 0` (P19-03):
+   - Lower: `Assert WideRatio(new_price, 100, 75) >= lp_anchor_[pool_id]` — reject if <−25% of anchor
+   - Upper: `Assert WideRatio(new_price, 100, 125) <= lp_anchor_[pool_id]` — reject if >+25% of anchor
+   - The prior-guard alone bounds only *per-update* movement; a compromised bot could ratchet it arbitrarily over many posts. The anchor caps **cumulative** drift until the admin re-anchors.
+   - Wide math (mulw/divw) required throughout: avoid overflow at large LP prices
+6. Store `lp_price_[pool_id] = new_price` and `lp_last_updated_[pool_id] = current_timestamp`
 
 **`get_lp_price(pool_id)`** — read-only; vault reads oracle global state directly via cross-app state reference
 - Returns `lp_price_[pool_id]` and `lp_last_updated_[pool_id]`
@@ -95,13 +102,21 @@ All admin methods must include as their **first assertion**: `Assert Txn.sender 
 3. Update `authorized_updater`
 
 **`add_pool(pool_id, initial_price)`** — admin only
-1. Assert `Txn.sender == Global.creator_address`
+1. Assert `Txn.sender == admin`
 2. Assert `pool_id` not already in supported whitelist
 3. Assert `initial_price > 0`
 4. Add `pool_id` to supported whitelist
-5. Store `lp_price_[pool_id] = initial_price` and `lp_last_updated_[pool_id] = current_timestamp`
+5. Store `lp_price_[pool_id] = initial_price`, **`lp_anchor_[pool_id] = initial_price`**, and `lp_last_updated_[pool_id] = current_timestamp`
 
-**Why `initial_price`:** The first bot post for a new pool bypasses the deviation guard (no prior price). Admin sets the initial price under the hardware wallet — a verified anchor. All subsequent bot posts are bounded by the 50% deviation guard from this anchor, closing the first-post manipulation window (AUD-003).
+**Why `initial_price`:** The first bot post for a new pool bypasses the prior-deviation guard (no prior price). Admin sets the initial price under the hardware wallet — stored as both the live price and the drift anchor, so both guards are active from the first bot update, closing the first-post manipulation window (AUD-003).
+
+**`set_price_anchor(pool_id, anchor_price)`** — admin only
+1. Assert `Txn.sender == admin`; `anchor_price > 0`; pool is registered
+2. Store `lp_anchor_[pool_id] = anchor_price`
+
+**When to re-anchor:** during a genuine large move (beyond ±25%), the bot's posts will hit the anchor band and be rejected. The admin re-anchors under the hardware wallet to follow the real price. This deliberate manual step is the cumulative-drift backstop — a compromised bot key cannot perform it (P19-03).
+
+**Role management:** `deploy(guardian)` sets admin = deployer, guardian = the passed cold key. 2-step rotation via `propose_admin`/`accept_admin` (admin or guardian proposes) and `propose_guardian`/`accept_guardian`.
 
 **`remove_pool(pool_id)`** — admin only
 1. Assert `Txn.sender == Global.creator_address`
@@ -120,11 +135,15 @@ Same architecture as v1: contract-level guard is independent of off-chain bot di
 # Inside update_lp_price() — enforced by contract
 # Applied only when a prior price exists (lp_price[pool_id] != 0)
 if lp_price[pool_id] != 0:
-    Assert WideRatio(new_price, 100, 50) >= lp_price[pool_id]   # reject if >50% drop
-    Assert WideRatio(new_price, 100, 150) <= lp_price[pool_id]  # reject if >50% spike
+    Assert WideRatio(new_price, 100, 50) >= lp_price[pool_id]    # reject if >50% drop vs prior
+    Assert WideRatio(new_price, 100, 150) <= lp_price[pool_id]   # reject if >50% spike vs prior
+    Assert WideRatio(new_price, 100, 75) >= lp_anchor[pool_id]   # reject if <−25% of anchor
+    Assert WideRatio(new_price, 100, 125) <= lp_anchor[pool_id]  # reject if >+25% of anchor
 ```
 
 **Wide math required:** naive form `new_price * 150` overflows uint64 for LP prices above ~1.2 × 10^17 (physically impossible, but best practice is to match WideRatio/mulw+divw pattern used throughout the protocol).
+
+**Two-tier bounding (P19-03):** the prior-guard bounds movement per update; the anchor band bounds *cumulative* drift. Without the anchor, a compromised bot could post +49% repeatedly and walk the price arbitrarily far over many updates — enabling over-borrow and real bad debt. With the anchor, total drift is capped at ±25% until the admin re-anchors under the hardware wallet (a step the bot cannot perform).
 
 **First-post security:** `add_pool()` now takes an `initial_price` set by the admin under the hardware wallet. This price is stored immediately, making the deviation guard active from the very first bot update. The unguarded first-post window (AUD-003) is eliminated.
 
@@ -251,11 +270,12 @@ This design allows:
 
 ## Wallet Separation
 
-Same two-wallet model as v1:
+Three-key model:
 
 | Wallet | Privileges |
 |---|---|
 | Oracle bot wallet | `update_lp_price()` only — hot wallet, minimum ALGO |
-| Admin wallet | `add_pool()`, `remove_pool()`, `set_authorized_updater()` — hardware wallet |
+| Admin wallet (hot) | `add_pool()`, `remove_pool()`, `set_authorized_updater()`, `set_price_anchor()` — hardware wallet |
+| Guardian wallet (cold) | admin recovery (`propose_admin`), guardian rotation — cold multisig |
 
-Bot key compromise can only attempt to post bad prices, blocked by the on-chain 50% deviation guard. The blast radius of bot key compromise is oracle staleness, not fund loss.
+**Bot-compromise blast radius (corrected — P19-03):** a compromised bot key can post bad prices only within ±50% of the prior post **and** ±25% of the admin anchor. Worst case is therefore *bounded* mispricing plus staleness — not arbitrary drift, and not unbounded fund loss. The earlier claim that bot compromise carries "no fund risk" was too strong: within the ±25% band a bad price can still enable some over-borrow, which is why the band is tight and the admin holds the re-anchor key. To move price beyond the band an attacker needs the admin key (to re-anchor), not just the bot key.
