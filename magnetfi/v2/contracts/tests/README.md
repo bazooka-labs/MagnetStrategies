@@ -38,6 +38,8 @@ Reset LocalNet between long sessions if round counts grow very large:
 | `test_liquidation.py` | micro-liq (90d), partial tier 1/2, full (surplus + shortfall/bad-debt), settlement end-states, stale-oracle block; PSM invariant after each |
 | `test_roles_timelock.py` | 2-step admin/guardian rotation, guardian recovery, admin≠guardian guards, pause, 48h timelock + guardian veto (vault oracle & PSM vault-contract) |
 | `test_oracle.py` | updater auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness blocks borrow |
+| `test_attacks_authz.py` | **cross-contract bypass** (direct `issue_musd`/`receive_musd` rejected — the unlimited-mint guard), full admin-only sweep across all 3 contracts, borrower can't self-liquidate, guardian/bot least-privilege |
+| `test_attacks_logic.py` | group manipulation (MBR underpay/wrong-receiver, wrong/zero LP, standalone call, mint amount-mismatch/wrong-receiver, double-mint one deposit, repay/pay mis-routing), state-machine abuse (state-2 blocks borrower ops, overdue blocks borrow), liquidation correctness (no healthy liq, no tier over-seizure, no double liq, invalid tier, micro timing, settle over-counter / healthy), dust/zero guards, bounded opt-out griefing |
 
 ## Harness notes
 

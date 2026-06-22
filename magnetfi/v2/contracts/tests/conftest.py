@@ -310,6 +310,16 @@ class Protocol:
             )
         )
 
+    # Public aliases for attack tests that build raw / malformed groups.
+    def group(self):
+        return self.algorand.new_group()
+
+    def send_group(self, grp):
+        return grp.send(_SP)
+
+    def mc(self, client, method: str, args: list, sender: SigningAccount):
+        return self._mc(client, method, args, sender)
+
     # ── user setup ───────────────────────────────────────────────────────────────
     def new_user(self, algo: float = 100, lp: int = 0, usdc: int = 0,
                  opt_musd: bool = True) -> SigningAccount:

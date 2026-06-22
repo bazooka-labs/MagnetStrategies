@@ -987,3 +987,27 @@ Built a full LocalNet integration test suite (`contracts/tests/`, 34 tests) that
 PSM mint/redeem/fee-routing/invariant-guard/pause; full vault lifecycle (open deferred + with-borrow, LTV caps, interest, overpayment→principal, repay, add_collateral, borrow_more); accrual incl. the **P21-01 multi-year catch-up** (regression test for the lost-time fix) and rate-lock; all liquidation paths (micro, partial tier1/2, full surplus + shortfall/bad-debt) with settlement end-states and PSM-invariant checks; two-role rotation/recovery/distinctness, pause (guardian-only unpause), 48h timelock + guardian veto on both repointing powers; oracle updater-auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness-blocks-borrow.
 
 **Verdict:** contracts now compile clean AND pass executable integration tests covering every privileged path. The test suite is committed and re-runnable (`contracts/tests/README.md`). This materially de-risks mainnet beyond static review. A professional third-party audit is still recommended before significant TVL.
+
+---
+
+## Pass 23 — Adversarial / Security Test Suite
+
+Added 33 adversarial tests (`test_attacks_authz.py`, `test_attacks_logic.py`) probing the protocol *outside* normal operation. Full suite now 67 tests, all passing. No new exploitable vulnerability found; one bounded griefing edge documented.
+
+### Attack classes exercised (all correctly rejected / contained)
+- **Cross-contract bypass (highest stakes):** direct `PSM.issue_musd` and `receive_musd` calls from an attacker EOA — and from the admin — are rejected by `_assert_vault_caller`. Confirms the unlimited-mint guard: only the registered vault app address can mint mUSD. Repeated attempts change nothing (no funds minted).
+- **Admin access control:** every privileged method on all three contracts rejects non-admin callers (full sweep). Guardian is containment-only (cannot set params, trigger liquidations, or move funds). Bot is prices-only.
+- **Self-liquidation / grief:** a borrower cannot trigger any liquidation on their own vault (admin-gated).
+- **Group composition manipulation:** MBR underpay / wrong receiver; wrong-asset or wrong-receiver or zero-amount LP deposit; `open_vault` called standalone (no group); mint amount-mismatch / wrong-receiver; **double-mint off one deposit** (second call reads the prior app call, not a transfer → rejected); repay routed to vault instead of PSM; pay_interest routed to PSM instead of vault. All rejected.
+- **State-machine abuse:** a state-2 (in-liquidation) vault rejects `borrow_more` / `pay_interest` / `add_collateral` / `repay_principal`; an overdue (state-1) vault rejects `borrow_more`.
+- **Liquidation correctness:** healthy vaults (HF > 1) cannot be liquidated by any path; a tier-1 health factor cannot be used to seize the larger tier-2 fraction (no over-seizure); invalid tier values (0/3/99) rejected; double-liquidation rejected; micro-liq rejected before 90 days / when not overdue; settling more than the counter rejected; settling a healthy vault rejected.
+- **Dust / zero:** zero-amount borrow and mint rejected.
+
+### Low — documented, not fixed (bounded griefing)
+
+**[P23-01] ⚪ LP opt-out can delay (not prevent) a surplus full-liquidation**
+- A borrower who holds zero LP (all deposited) can opt out of the LP ASA. `trigger_full_liquidation` returns *surplus* LP to the borrower via an inner transfer when `lp_value > total_debt`; that transfer fails to an opted-out account, reverting the liquidation.
+- **Impact is bounded and non-economic:** the grief only works while the position still has surplus equity (`lp_value > debt`), during which the protocol remains fully covered (collateral value exceeds debt — only the 0.75 safety buffer is breached, not solvency). Once the position goes underwater past the debt there is no surplus transfer and full-liquidation proceeds normally. Partial liquidation (seizes to admin, no borrower-bound transfer) is also unaffected at the appropriate HF band. The borrower cannot extract the locked LP and gains nothing but delay. Verified by `test_optout_griefing_is_bounded`.
+- **Future hardening (post-v2, optional):** custody surplus LP in the vault for the borrower to claim separately, rather than force-pushing it during liquidation. Not blocking for launch.
+
+**Verdict:** the contracts pass 67 functional + adversarial integration tests covering every privileged path and the major attack classes. Internal verification is now strong (23 passes incl. executable + adversarial testing). A professional third-party audit remains the recommended final gate before significant TVL.
