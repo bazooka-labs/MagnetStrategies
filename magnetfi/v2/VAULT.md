@@ -112,7 +112,10 @@ Interest continues accruing for every block the position sits unpaid. When the a
 
 **Interest payment only:**
 
-Atomic group: AppCall `pay_interest(pool_id)` + AssetTransfer (mUSD to vault contract address)
+Atomic group: AssetTransfer (mUSD to vault contract address) + AppCall `pay_interest(pool_id)`
+
+**Transfer ordering (P22-01):** the mUSD transfer MUST come *before* the app call (it is read at `group_index − 1`). On the overpayment path the vault forwards the principal-repayment portion to the PSM via an inner transaction *during* this call, so the mUSD must already have landed in the vault — a group transaction at a later index has not executed yet when the inner transfer runs. This matches the mint/redeem/deposit "transfer first" pattern.
+
 [Lazy check: if `current_timestamp >= last_payment_timestamp + 90 days`, set `vault_state = 1` before any other logic — state may be stale if no vault interaction has occurred since the window expired]
 1. Assert `vault_state != 2` — blocked while health liquidation settlement is pending
 2. Assert AssetTransfer ASA ID = mUSD, receiver = vault contract address, amount > 0

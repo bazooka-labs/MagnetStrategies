@@ -969,3 +969,21 @@ Fresh independent audit focused on the two-role refactor (every privileged metho
 PSM invariant across all mint/redeem/issue/receive/withdraw/overpay/settlement paths; tier boundaries (contiguous, no gap/overlap); all four `settle_health_liquidation` end-states reachable; `_accrue_interest` state-2 early return; group-index bounds; `collect_fees` balance clamp; `collect_algo` AVM-bounded fail-closed; oracle anchor band math + anchor-0 not dangerously reachable (whitelist check reverts first); oracle bot pool-state read matches Tinyman v2 layout.
 
 **Verdict:** after the P21 fixes, the auditor's one blocking finding (P21-01) and all hardening items are resolved; all three contracts compile clean. Remaining pre-mainnet work is operational (fill config, verify wBTC decimals, plan the genesis 48h timelock window).
+
+---
+
+## Pass 22 — LocalNet Integration Test Suite (executable verification)
+
+Built a full LocalNet integration test suite (`contracts/tests/`, 34 tests) that deploys the three real compiled contracts to a dev-mode Algorand node and exercises them with real atomic groups, inner transactions, cross-contract calls, and dev-mode time travel. This is the first time the contracts were *executed* rather than only compiled + reviewed — and it immediately surfaced a real bug that 21 review passes missed.
+
+### High — Fixed
+
+**[P22-01] 🟢 `pay_interest` overpayment path reverts on-chain — funds-it-spends read at the wrong group index**
+- `pay_interest` read the borrower's mUSD transfer at `group_index + 1` (after the app call). On the overpayment path the vault forwards the principal-repayment portion (`change`) to the PSM via an inner AssetTransfer **during** the app call. On Algorand, a group transaction at a *later* index has not executed when the app call runs, so the vault held 0 mUSD and the inner forward underflowed (`underflow on subtracting … from sender amount 0`). Any borrower overpaying to reduce principal would have their transaction revert — a core documented feature, broken on-chain. (The interest-only path, `change == 0`, has no inner forward and would have worked, which is likely why review missed it.)
+- Every other method that *spends* funds it receives in the same group (`mint_musd`, `redeem_musd`, `deposit_usdc`) correctly reads them at `group_index − 1` (transfer first). `pay_interest` was the lone inconsistency.
+- **Fix:** read the mUSD transfer at `group_index − 1` and require it to precede the app call (assert `group_index >= 1`). The funds now land in the vault before the inner forward runs. `contract.py` (vault) `pay_interest`; docs updated (VAULT.md group order). Fails-safe either way (it reverted), so no funds were ever at risk — but it would have shipped a broken feature requiring a redeploy to fix.
+
+### Coverage (all 34 passing)
+PSM mint/redeem/fee-routing/invariant-guard/pause; full vault lifecycle (open deferred + with-borrow, LTV caps, interest, overpayment→principal, repay, add_collateral, borrow_more); accrual incl. the **P21-01 multi-year catch-up** (regression test for the lost-time fix) and rate-lock; all liquidation paths (micro, partial tier1/2, full surplus + shortfall/bad-debt) with settlement end-states and PSM-invariant checks; two-role rotation/recovery/distinctness, pause (guardian-only unpause), 48h timelock + guardian veto on both repointing powers; oracle updater-auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness-blocks-borrow.
+
+**Verdict:** contracts now compile clean AND pass executable integration tests covering every privileged path. The test suite is committed and re-runnable (`contracts/tests/README.md`). This materially de-risks mainnet beyond static review. A professional third-party audit is still recommended before significant TVL.

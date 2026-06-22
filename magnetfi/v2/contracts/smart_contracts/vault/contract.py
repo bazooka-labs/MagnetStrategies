@@ -365,7 +365,10 @@ class Vault(
         """
         Pay accrued interest. Overpayment reduces principal; full repayment closes vault.
 
-        Atomic group: AppCall pay_interest(pool_id) + AssetTransfer (mUSD → vault address)
+        Atomic group: AssetTransfer (mUSD → vault address) + AppCall pay_interest(pool_id)
+        The transfer MUST precede the app call: the vault forwards the principal-repayment
+        portion (`change`) to the PSM via an inner transaction during this call, so the
+        mUSD must already have landed in the vault (a later group txn has not executed yet).
         """
         key = self._vault_key(Txn.sender, pool_id)
         assert key in self.vaults, "vault not found"
@@ -375,8 +378,8 @@ class Vault(
         vault = self._lazy_overdue_check(vault)
         assert vault.vault_state.native != UInt64(2), "vault in liquidation"
 
-        assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing mUSD payment txn"
-        musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
+        assert op.Txn.group_index >= UInt64(1), "missing mUSD payment txn"
+        musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index - UInt64(1))
         assert musd_xfer.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
         assert musd_xfer.asset_receiver == Global.current_application_address, "wrong receiver"
         assert musd_xfer.asset_amount > UInt64(0), "zero payment"

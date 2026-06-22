@@ -1,0 +1,58 @@
+# MagnetFi v2 — Integration Test Suite
+
+LocalNet integration tests: the three real compiled contracts are deployed to a
+dev-mode Algorand node and exercised with real atomic transaction groups, inner
+transactions, cross-contract calls, and time travel. This is the truest available
+simulation short of mainnet (which we can't use because LP pricing depends on live
+Tinyman state).
+
+## Prerequisites
+
+1. Docker running.
+2. LocalNet started:  `algokit localnet start`
+3. Contracts compiled (ARC56 specs present):
+   `.venv/bin/puyapy smart_contracts/lp_oracle/contract.py smart_contracts/psm/contract.py smart_contracts/vault/contract.py`
+4. Test deps installed in a dedicated venv:
+   ```
+   python3 -m venv .venv-test
+   .venv-test/bin/pip install pytest "algokit-utils>=3,<4"
+   ```
+
+## Run
+
+```
+.venv-test/bin/python -m pytest tests/ -q
+```
+
+Reset LocalNet between long sessions if round counts grow very large:
+`algokit localnet reset`.
+
+## What's covered
+
+| File | Coverage |
+|---|---|
+| `test_smoke.py` | Deploy + wiring; open → borrow → repay round trip |
+| `test_psm.py` | mint 1:1, redeem fee→treasury, withdraw invariant guard, pause (mint blocked, redeem open, guardian-only unpause) |
+| `test_vault_lifecycle.py` | deferred-draw, LTV caps, interest payment, overpayment→principal, repay, add_collateral, borrow_more |
+| `test_accrual.py` | one-year interest vs formula; **P21-01 multi-year catch-up**; rate lock at open |
+| `test_liquidation.py` | micro-liq (90d), partial tier 1/2, full (surplus + shortfall/bad-debt), settlement end-states, stale-oracle block; PSM invariant after each |
+| `test_roles_timelock.py` | 2-step admin/guardian rotation, guardian recovery, admin≠guardian guards, pause, 48h timelock + guardian veto (vault oracle & PSM vault-contract) |
+| `test_oracle.py` | updater auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness blocks borrow |
+
+## Harness notes
+
+- `conftest.py` deploys a fresh protocol per test (`proto` fixture) with distinct
+  admin / guardian / bot / treasury keys and fresh mUSD / USDC / LP assets.
+- Time travel uses dev-mode `set_timestamp_offset` (the 48h timelock and interest
+  accrual depend on it).
+- Inner-transaction fees and foreign references are covered automatically via
+  `SendParams(cover_app_call_inner_transaction_fees=True, populate_app_call_resources=True)`.
+- Suggested-params caching is disabled (dev mode advances a round per txn, which
+  staled the default time-based cache).
+
+## Bug found by this suite
+
+`P22-01` (High) — `pay_interest` read the mUSD transfer at `group_index + 1`
+(after the call), but the overpayment path forwards `change` to the PSM via an
+inner transfer *during* the call. The funds hadn't arrived yet → underflow. Fixed
+to read at `group_index − 1` (transfer first). See AUDIT.md Pass 22.

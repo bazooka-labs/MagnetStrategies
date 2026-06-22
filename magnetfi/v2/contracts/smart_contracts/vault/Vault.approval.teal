@@ -679,7 +679,7 @@ pay_interest:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:370
+    // smart_contracts/vault/contract.py:373
     // key = self._vault_key(Txn.sender, pool_id)
     txn Sender
     // smart_contracts/vault/contract.py:149
@@ -687,7 +687,7 @@ pay_interest:
     swap
     itob
     concat
-    // smart_contracts/vault/contract.py:371
+    // smart_contracts/vault/contract.py:374
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -696,16 +696,16 @@ pay_interest:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:372
+    // smart_contracts/vault/contract.py:375
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:374-375
+    // smart_contracts/vault/contract.py:377-378
     // # Lazy overdue check before any state assertions.
     // vault = self._lazy_overdue_check(vault)
     callsub _lazy_overdue_check
     pop
-    // smart_contracts/vault/contract.py:376
+    // smart_contracts/vault/contract.py:379
     // assert vault.vault_state.native != UInt64(2), "vault in liquidation"
     dup
     pushint 56
@@ -713,25 +713,21 @@ pay_interest:
     pushint 2
     !=
     assert // vault in liquidation
-    // smart_contracts/vault/contract.py:378
-    // assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing mUSD payment txn"
+    // smart_contracts/vault/contract.py:381
+    // assert op.Txn.group_index >= UInt64(1), "missing mUSD payment txn"
     txn GroupIndex
-    intc_1 // 1
-    +
-    global GroupSize
-    <
     assert // missing mUSD payment txn
-    // smart_contracts/vault/contract.py:379
-    // musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
+    // smart_contracts/vault/contract.py:382
+    // musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index - UInt64(1))
     txn GroupIndex
     intc_1 // 1
-    +
+    -
     dup
     gtxns TypeEnum
     intc_3 // axfer
     ==
     assert // transaction type is axfer
-    // smart_contracts/vault/contract.py:380
+    // smart_contracts/vault/contract.py:383
     // assert musd_xfer.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
     dup
     gtxns XferAsset
@@ -741,44 +737,44 @@ pay_interest:
     assert // check self.musd_asa_id exists
     ==
     assert // wrong asset
-    // smart_contracts/vault/contract.py:381
+    // smart_contracts/vault/contract.py:384
     // assert musd_xfer.asset_receiver == Global.current_application_address, "wrong receiver"
     dup
     gtxns AssetReceiver
     global CurrentApplicationAddress
     ==
     assert // wrong receiver
-    // smart_contracts/vault/contract.py:382
+    // smart_contracts/vault/contract.py:385
     // assert musd_xfer.asset_amount > UInt64(0), "zero payment"
     gtxns AssetAmount
     dup
     cover 2
     dup
     assert // zero payment
-    // smart_contracts/vault/contract.py:384
+    // smart_contracts/vault/contract.py:387
     // vault = self._accrue_interest(vault)
     swap
     callsub _accrue_interest
     pop
-    // smart_contracts/vault/contract.py:386
+    // smart_contracts/vault/contract.py:389
     // interest_due = vault.accrued_interest.native
     dup
     pushint 24
     extract_uint64
     dup
     cover 3
-    // smart_contracts/vault/contract.py:387
+    // smart_contracts/vault/contract.py:390
     // assert payment >= interest_due, "insufficient payment"
     uncover 2
     dig 1
     >=
     assert // insufficient payment
-    // smart_contracts/vault/contract.py:389
+    // smart_contracts/vault/contract.py:392
     // vault.accrued_interest = arc4.UInt64(0)
     swap
     bytec_2 // 0x0000000000000000
     replace2 24
-    // smart_contracts/vault/contract.py:390
+    // smart_contracts/vault/contract.py:393
     // self.accumulated_fees.value = self.accumulated_fees.value + interest_due
     intc_0 // 0
     bytec 7 // "accumulated_fees"
@@ -789,20 +785,20 @@ pay_interest:
     bytec 7 // "accumulated_fees"
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:391
+    // smart_contracts/vault/contract.py:394
     // vault.last_payment_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
     itob
     replace2 48
     dup
-    // smart_contracts/vault/contract.py:392
+    // smart_contracts/vault/contract.py:395
     // if vault.vault_state.native == UInt64(1):
     pushint 56
     extract_uint64
     intc_1 // 1
     ==
     bz pay_interest_after_if_else@3
-    // smart_contracts/vault/contract.py:393
+    // smart_contracts/vault/contract.py:396
     // vault.vault_state = arc4.UInt64(0)
     dup
     bytec_2 // 0x0000000000000000
@@ -810,17 +806,17 @@ pay_interest:
     bury 1
 
 pay_interest_after_if_else@3:
-    // smart_contracts/vault/contract.py:395
+    // smart_contracts/vault/contract.py:398
     // change = payment - interest_due
     dig 2
     dig 2
     -
     dup
     bury 8
-    // smart_contracts/vault/contract.py:396
+    // smart_contracts/vault/contract.py:399
     // if change > UInt64(0):
     bz pay_interest_else_body@14
-    // smart_contracts/vault/contract.py:397
+    // smart_contracts/vault/contract.py:400
     // assert change <= vault.musd_borrowed.native, "overpayment exceeds principal"
     dupn 2
     pushint 16
@@ -831,11 +827,11 @@ pay_interest_after_if_else@3:
     dig 1
     <=
     assert // overpayment exceeds principal
-    // smart_contracts/vault/contract.py:398
+    // smart_contracts/vault/contract.py:401
     // new_borrowed = vault.musd_borrowed.native - change
     dig 1
     -
-    // smart_contracts/vault/contract.py:399
+    // smart_contracts/vault/contract.py:402
     // vault.musd_borrowed = arc4.UInt64(new_borrowed)
     dup
     itob
@@ -843,10 +839,10 @@ pay_interest_after_if_else@3:
     swap
     replace2 16
     bury 3
-    // smart_contracts/vault/contract.py:401
+    // smart_contracts/vault/contract.py:404
     // psm_addr = self._psm_address()
     callsub _psm_address
-    // smart_contracts/vault/contract.py:402-407
+    // smart_contracts/vault/contract.py:405-410
     // itxn.AssetTransfer(
     //     xfer_asset=self.musd_asa_id.value,
     //     asset_receiver=psm_addr,
@@ -854,7 +850,7 @@ pay_interest_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:403
+    // smart_contracts/vault/contract.py:406
     // xfer_asset=self.musd_asa_id.value,
     intc_0 // 0
     bytec 4 // "musd_asa_id"
@@ -864,15 +860,15 @@ pay_interest_after_if_else@3:
     itxn_field AssetAmount
     itxn_field XferAsset
     itxn_field AssetReceiver
-    // smart_contracts/vault/contract.py:402
+    // smart_contracts/vault/contract.py:405
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:406
+    // smart_contracts/vault/contract.py:409
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:402-407
+    // smart_contracts/vault/contract.py:405-410
     // itxn.AssetTransfer(
     //     xfer_asset=self.musd_asa_id.value,
     //     asset_receiver=psm_addr,
@@ -880,7 +876,7 @@ pay_interest_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:408-413
+    // smart_contracts/vault/contract.py:411-416
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     change,
@@ -888,23 +884,23 @@ pay_interest_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:410
+    // smart_contracts/vault/contract.py:413
     // change,
     swap
     itob
-    // smart_contracts/vault/contract.py:411
+    // smart_contracts/vault/contract.py:414
     // app_id=self.psm_app_id.value,
     intc_0 // 0
     bytec_3 // "psm_app_id"
     app_global_get_ex
     assert // check self.psm_app_id exists
     itxn_field ApplicationID
-    // smart_contracts/vault/contract.py:409
+    // smart_contracts/vault/contract.py:412
     // PSM.receive_musd,
     bytec 15 // method "receive_musd(uint64)void"
     itxn_field ApplicationArgs
     itxn_field ApplicationArgs
-    // smart_contracts/vault/contract.py:408-413
+    // smart_contracts/vault/contract.py:411-416
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     change,
@@ -913,11 +909,11 @@ pay_interest_after_if_else@3:
     // ).submit()
     pushint 6 // appl
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:412
+    // smart_contracts/vault/contract.py:415
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:408-413
+    // smart_contracts/vault/contract.py:411-416
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     change,
@@ -925,31 +921,31 @@ pay_interest_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:415
+    // smart_contracts/vault/contract.py:418
     // if new_borrowed == UInt64(0):
     bnz pay_interest_else_body@12
-    // smart_contracts/vault/contract.py:416
+    // smart_contracts/vault/contract.py:419
     // lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
     dupn 2
     intc_2 // 8
     extract_uint64
     callsub _pool_lp_asa
     bury 6
-    // smart_contracts/vault/contract.py:417
+    // smart_contracts/vault/contract.py:420
     // lp_amount = vault.lp_amount.native
     intc_0 // 0
     extract_uint64
     dup
     bury 7
-    // smart_contracts/vault/contract.py:418
+    // smart_contracts/vault/contract.py:421
     // del self.vaults[key]
     dig 4
     box_del
     pop
-    // smart_contracts/vault/contract.py:419
+    // smart_contracts/vault/contract.py:422
     // if lp_amount > UInt64(0):
     bz pay_interest_after_if_else@10
-    // smart_contracts/vault/contract.py:420-425
+    // smart_contracts/vault/contract.py:423-428
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=Txn.sender,
@@ -957,7 +953,7 @@ pay_interest_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:422
+    // smart_contracts/vault/contract.py:425
     // asset_receiver=Txn.sender,
     txn Sender
     dig 6
@@ -965,15 +961,15 @@ pay_interest_after_if_else@3:
     itxn_field AssetReceiver
     dig 4
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:420
+    // smart_contracts/vault/contract.py:423
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:424
+    // smart_contracts/vault/contract.py:427
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:420-425
+    // smart_contracts/vault/contract.py:423-428
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=Txn.sender,
@@ -983,30 +979,30 @@ pay_interest_after_if_else@3:
     itxn_submit
 
 pay_interest_after_if_else@10:
-    // smart_contracts/vault/contract.py:426-430
+    // smart_contracts/vault/contract.py:429-433
     // itxn.Payment(
     //     receiver=Txn.sender,
     //     amount=UInt64(VAULT_MBR),
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:427
+    // smart_contracts/vault/contract.py:430
     // receiver=Txn.sender,
     txn Sender
-    // smart_contracts/vault/contract.py:428
+    // smart_contracts/vault/contract.py:431
     // amount=UInt64(VAULT_MBR),
     intc 6 // 46500
     itxn_field Amount
     itxn_field Receiver
-    // smart_contracts/vault/contract.py:426
+    // smart_contracts/vault/contract.py:429
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:429
+    // smart_contracts/vault/contract.py:432
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:426-430
+    // smart_contracts/vault/contract.py:429-433
     // itxn.Payment(
     //     receiver=Txn.sender,
     //     amount=UInt64(VAULT_MBR),
@@ -1021,7 +1017,7 @@ pay_interest_after_if_else@15:
     return
 
 pay_interest_else_body@12:
-    // smart_contracts/vault/contract.py:432
+    // smart_contracts/vault/contract.py:435
     // self.vaults[key] = vault.copy()
     dig 3
     dig 1
@@ -1029,7 +1025,7 @@ pay_interest_else_body@12:
     b pay_interest_after_if_else@15
 
 pay_interest_else_body@14:
-    // smart_contracts/vault/contract.py:434
+    // smart_contracts/vault/contract.py:437
     // self.vaults[key] = vault.copy()
     dig 3
     dig 1
@@ -1041,7 +1037,7 @@ pay_interest_else_body@14:
 repay_principal:
     pushbytes ""
     dup
-    // smart_contracts/vault/contract.py:438
+    // smart_contracts/vault/contract.py:441
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1050,7 +1046,7 @@ repay_principal:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:445
+    // smart_contracts/vault/contract.py:448
     // key = self._vault_key(Txn.sender, pool_id)
     txn Sender
     // smart_contracts/vault/contract.py:149
@@ -1058,7 +1054,7 @@ repay_principal:
     swap
     itob
     concat
-    // smart_contracts/vault/contract.py:446
+    // smart_contracts/vault/contract.py:449
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1067,15 +1063,15 @@ repay_principal:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:447
+    // smart_contracts/vault/contract.py:450
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:449
+    // smart_contracts/vault/contract.py:452
     // vault = self._lazy_overdue_check(vault)
     callsub _lazy_overdue_check
     pop
-    // smart_contracts/vault/contract.py:450
+    // smart_contracts/vault/contract.py:453
     // assert vault.vault_state.native != UInt64(2), "vault in liquidation"
     dup
     pushint 56
@@ -1083,10 +1079,10 @@ repay_principal:
     pushint 2
     !=
     assert // vault in liquidation
-    // smart_contracts/vault/contract.py:452
+    // smart_contracts/vault/contract.py:455
     // psm_addr = self._psm_address()
     callsub _psm_address
-    // smart_contracts/vault/contract.py:453
+    // smart_contracts/vault/contract.py:456
     // assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing mUSD repayment txn"
     txn GroupIndex
     intc_1 // 1
@@ -1094,7 +1090,7 @@ repay_principal:
     global GroupSize
     <
     assert // missing mUSD repayment txn
-    // smart_contracts/vault/contract.py:454
+    // smart_contracts/vault/contract.py:457
     // musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
     txn GroupIndex
     intc_1 // 1
@@ -1104,7 +1100,7 @@ repay_principal:
     intc_3 // axfer
     ==
     assert // transaction type is axfer
-    // smart_contracts/vault/contract.py:455
+    // smart_contracts/vault/contract.py:458
     // assert musd_xfer.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
     dup
     gtxns XferAsset
@@ -1114,26 +1110,26 @@ repay_principal:
     assert // check self.musd_asa_id exists
     ==
     assert // wrong asset
-    // smart_contracts/vault/contract.py:456
+    // smart_contracts/vault/contract.py:459
     // assert musd_xfer.asset_receiver == psm_addr, "mUSD must go to PSM"
     dup
     gtxns AssetReceiver
     uncover 2
     ==
     assert // mUSD must go to PSM
-    // smart_contracts/vault/contract.py:457
+    // smart_contracts/vault/contract.py:460
     // assert musd_xfer.asset_amount > UInt64(0), "zero repayment"
     gtxns AssetAmount
     dup
     assert // zero repayment
-    // smart_contracts/vault/contract.py:459
+    // smart_contracts/vault/contract.py:462
     // assert vault.accrued_interest.native == UInt64(0), "clear interest first"
     dig 1
     pushint 24
     extract_uint64
     !
     assert // clear interest first
-    // smart_contracts/vault/contract.py:462
+    // smart_contracts/vault/contract.py:465
     // assert repayment <= vault.musd_borrowed.native, "repayment exceeds debt"
     dig 1
     pushint 16
@@ -1141,11 +1137,11 @@ repay_principal:
     dup2
     <=
     assert // repayment exceeds debt
-    // smart_contracts/vault/contract.py:464
+    // smart_contracts/vault/contract.py:467
     // new_borrowed = vault.musd_borrowed.native - repayment
     dig 1
     -
-    // smart_contracts/vault/contract.py:465
+    // smart_contracts/vault/contract.py:468
     // vault.musd_borrowed = arc4.UInt64(new_borrowed)
     dup
     itob
@@ -1153,7 +1149,7 @@ repay_principal:
     swap
     replace2 16
     cover 2
-    // smart_contracts/vault/contract.py:467-472
+    // smart_contracts/vault/contract.py:470-475
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     repayment,
@@ -1161,23 +1157,23 @@ repay_principal:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:469
+    // smart_contracts/vault/contract.py:472
     // repayment,
     swap
     itob
-    // smart_contracts/vault/contract.py:470
+    // smart_contracts/vault/contract.py:473
     // app_id=self.psm_app_id.value,
     intc_0 // 0
     bytec_3 // "psm_app_id"
     app_global_get_ex
     assert // check self.psm_app_id exists
     itxn_field ApplicationID
-    // smart_contracts/vault/contract.py:468
+    // smart_contracts/vault/contract.py:471
     // PSM.receive_musd,
     bytec 15 // method "receive_musd(uint64)void"
     itxn_field ApplicationArgs
     itxn_field ApplicationArgs
-    // smart_contracts/vault/contract.py:467-472
+    // smart_contracts/vault/contract.py:470-475
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     repayment,
@@ -1186,11 +1182,11 @@ repay_principal:
     // ).submit()
     pushint 6 // appl
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:471
+    // smart_contracts/vault/contract.py:474
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:467-472
+    // smart_contracts/vault/contract.py:470-475
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     repayment,
@@ -1198,31 +1194,31 @@ repay_principal:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:474
+    // smart_contracts/vault/contract.py:477
     // if new_borrowed == UInt64(0):
     bnz repay_principal_else_body@8
-    // smart_contracts/vault/contract.py:475
+    // smart_contracts/vault/contract.py:478
     // lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
     dup
     intc_2 // 8
     extract_uint64
     callsub _pool_lp_asa
     bury 3
-    // smart_contracts/vault/contract.py:476
+    // smart_contracts/vault/contract.py:479
     // lp_amount = vault.lp_amount.native
     intc_0 // 0
     extract_uint64
     dup
     bury 4
-    // smart_contracts/vault/contract.py:477
+    // smart_contracts/vault/contract.py:480
     // del self.vaults[key]
     dig 1
     box_del
     pop
-    // smart_contracts/vault/contract.py:478
+    // smart_contracts/vault/contract.py:481
     // if lp_amount > UInt64(0):
     bz repay_principal_after_if_else@6
-    // smart_contracts/vault/contract.py:479-484
+    // smart_contracts/vault/contract.py:482-487
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=Txn.sender,
@@ -1230,7 +1226,7 @@ repay_principal:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:481
+    // smart_contracts/vault/contract.py:484
     // asset_receiver=Txn.sender,
     txn Sender
     dig 3
@@ -1238,15 +1234,15 @@ repay_principal:
     itxn_field AssetReceiver
     dig 1
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:479
+    // smart_contracts/vault/contract.py:482
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:483
+    // smart_contracts/vault/contract.py:486
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:479-484
+    // smart_contracts/vault/contract.py:482-487
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=Txn.sender,
@@ -1256,30 +1252,30 @@ repay_principal:
     itxn_submit
 
 repay_principal_after_if_else@6:
-    // smart_contracts/vault/contract.py:485-489
+    // smart_contracts/vault/contract.py:488-492
     // itxn.Payment(
     //     receiver=Txn.sender,
     //     amount=UInt64(VAULT_MBR),
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:486
+    // smart_contracts/vault/contract.py:489
     // receiver=Txn.sender,
     txn Sender
-    // smart_contracts/vault/contract.py:487
+    // smart_contracts/vault/contract.py:490
     // amount=UInt64(VAULT_MBR),
     intc 6 // 46500
     itxn_field Amount
     itxn_field Receiver
-    // smart_contracts/vault/contract.py:485
+    // smart_contracts/vault/contract.py:488
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:488
+    // smart_contracts/vault/contract.py:491
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:485-489
+    // smart_contracts/vault/contract.py:488-492
     // itxn.Payment(
     //     receiver=Txn.sender,
     //     amount=UInt64(VAULT_MBR),
@@ -1288,13 +1284,13 @@ repay_principal_after_if_else@6:
     itxn_submit
 
 repay_principal_after_if_else@9:
-    // smart_contracts/vault/contract.py:438
+    // smart_contracts/vault/contract.py:441
     // @arc4.abimethod
     intc_1 // 1
     return
 
 repay_principal_else_body@8:
-    // smart_contracts/vault/contract.py:491
+    // smart_contracts/vault/contract.py:494
     // self.vaults[key] = vault.copy()
     dig 1
     swap
@@ -1304,7 +1300,7 @@ repay_principal_else_body@8:
 
 // smart_contracts.vault.contract.Vault.add_collateral[routing]() -> void:
 add_collateral:
-    // smart_contracts/vault/contract.py:495
+    // smart_contracts/vault/contract.py:498
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1313,7 +1309,7 @@ add_collateral:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:502
+    // smart_contracts/vault/contract.py:505
     // key = self._vault_key(Txn.sender, pool_id)
     txn Sender
     // smart_contracts/vault/contract.py:149
@@ -1321,7 +1317,7 @@ add_collateral:
     swap
     itob
     concat
-    // smart_contracts/vault/contract.py:503
+    // smart_contracts/vault/contract.py:506
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1330,16 +1326,16 @@ add_collateral:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:504
+    // smart_contracts/vault/contract.py:507
     // vault = self.vaults[key].copy()
     dup
     box_get
     pop
-    // smart_contracts/vault/contract.py:506
+    // smart_contracts/vault/contract.py:509
     // vault = self._lazy_overdue_check(vault)
     callsub _lazy_overdue_check
     pop
-    // smart_contracts/vault/contract.py:507
+    // smart_contracts/vault/contract.py:510
     // assert vault.vault_state.native != UInt64(2), "vault in liquidation"
     dup
     pushint 56
@@ -1347,13 +1343,13 @@ add_collateral:
     pushint 2
     !=
     assert // vault in liquidation
-    // smart_contracts/vault/contract.py:509
+    // smart_contracts/vault/contract.py:512
     // lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
     dup
     intc_2 // 8
     extract_uint64
     callsub _pool_lp_asa
-    // smart_contracts/vault/contract.py:510
+    // smart_contracts/vault/contract.py:513
     // assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing LP deposit txn"
     txn GroupIndex
     intc_1 // 1
@@ -1361,7 +1357,7 @@ add_collateral:
     global GroupSize
     <
     assert // missing LP deposit txn
-    // smart_contracts/vault/contract.py:511
+    // smart_contracts/vault/contract.py:514
     // lp_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
     txn GroupIndex
     intc_1 // 1
@@ -1371,31 +1367,31 @@ add_collateral:
     intc_3 // axfer
     ==
     assert // transaction type is axfer
-    // smart_contracts/vault/contract.py:512
+    // smart_contracts/vault/contract.py:515
     // assert lp_xfer.xfer_asset == Asset(lp_asa_id), "wrong LP token"
     dup
     gtxns XferAsset
     uncover 2
     ==
     assert // wrong LP token
-    // smart_contracts/vault/contract.py:513
+    // smart_contracts/vault/contract.py:516
     // assert lp_xfer.asset_receiver == Global.current_application_address, "wrong receiver"
     dup
     gtxns AssetReceiver
     global CurrentApplicationAddress
     ==
     assert // wrong receiver
-    // smart_contracts/vault/contract.py:514
+    // smart_contracts/vault/contract.py:517
     // assert lp_xfer.asset_amount > UInt64(0), "zero deposit"
     gtxns AssetAmount
     dup
     assert // zero deposit
-    // smart_contracts/vault/contract.py:516
+    // smart_contracts/vault/contract.py:519
     // vault = self._accrue_interest(vault)
     swap
     callsub _accrue_interest
     pop
-    // smart_contracts/vault/contract.py:517
+    // smart_contracts/vault/contract.py:520
     // vault.lp_amount = arc4.UInt64(vault.lp_amount.native + lp_xfer.asset_amount)
     dup
     intc_0 // 0
@@ -1404,10 +1400,10 @@ add_collateral:
     +
     itob
     replace2 0
-    // smart_contracts/vault/contract.py:518
+    // smart_contracts/vault/contract.py:521
     // self.vaults[key] = vault.copy()
     box_put
-    // smart_contracts/vault/contract.py:495
+    // smart_contracts/vault/contract.py:498
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1415,7 +1411,7 @@ add_collateral:
 
 // smart_contracts.vault.contract.Vault.borrow_more[routing]() -> void:
 borrow_more:
-    // smart_contracts/vault/contract.py:522
+    // smart_contracts/vault/contract.py:525
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1432,7 +1428,7 @@ borrow_more:
     assert // invalid number of bytes for arc4.uint64
     dup
     btoi
-    // smart_contracts/vault/contract.py:525
+    // smart_contracts/vault/contract.py:528
     // assert self.paused.value == UInt64(0), "borrowing paused"
     intc_0 // 0
     bytec 9 // "paused"
@@ -1440,11 +1436,11 @@ borrow_more:
     assert // check self.paused exists
     !
     assert // borrowing paused
-    // smart_contracts/vault/contract.py:526
+    // smart_contracts/vault/contract.py:529
     // assert amount > UInt64(0), "zero borrow"
     dup
     assert // zero borrow
-    // smart_contracts/vault/contract.py:528
+    // smart_contracts/vault/contract.py:531
     // key = self._vault_key(Txn.sender, pool_id)
     txn Sender
     // smart_contracts/vault/contract.py:149
@@ -1454,7 +1450,7 @@ borrow_more:
     swap
     dig 1
     concat
-    // smart_contracts/vault/contract.py:529
+    // smart_contracts/vault/contract.py:532
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1463,32 +1459,32 @@ borrow_more:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:530
+    // smart_contracts/vault/contract.py:533
     // vault = self.vaults[key].copy()
     dup
     box_get
     pop
-    // smart_contracts/vault/contract.py:532
+    // smart_contracts/vault/contract.py:535
     // vault = self._lazy_overdue_check(vault)
     callsub _lazy_overdue_check
     pop
-    // smart_contracts/vault/contract.py:533
+    // smart_contracts/vault/contract.py:536
     // assert vault.vault_state.native == UInt64(0), "vault not active"
     dup
     pushint 56
     extract_uint64
     !
     assert // vault not active
-    // smart_contracts/vault/contract.py:534
+    // smart_contracts/vault/contract.py:537
     // assert self._oracle_is_fresh(pool_id), "oracle stale"
     dig 5
     callsub _oracle_is_fresh
     assert // oracle stale
-    // smart_contracts/vault/contract.py:536
+    // smart_contracts/vault/contract.py:539
     // vault = self._accrue_interest(vault)
     callsub _accrue_interest
     pop
-    // smart_contracts/vault/contract.py:537
+    // smart_contracts/vault/contract.py:540
     // lp_val = self._lp_value(vault.lp_amount.native, pool_id)
     dup
     intc_0 // 0
@@ -1515,13 +1511,13 @@ borrow_more:
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/vault/contract.py:539
+    // smart_contracts/vault/contract.py:542
     // max_debt = self._wide_ratio(lp_val, ltv, UInt64(10_000))
     intc 5 // 10000
     // smart_contracts/vault/contract.py:155
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/vault/contract.py:541
+    // smart_contracts/vault/contract.py:544
     // total_after = vault.musd_borrowed.native + vault.accrued_interest.native + amount
     dig 1
     pushint 16
@@ -1533,21 +1529,21 @@ borrow_more:
     +
     dig 5
     +
-    // smart_contracts/vault/contract.py:542
+    // smart_contracts/vault/contract.py:545
     // assert total_after <= max_debt, "exceeds LTV"
     uncover 2
     <=
     assert // exceeds LTV
-    // smart_contracts/vault/contract.py:544
+    // smart_contracts/vault/contract.py:547
     // vault.musd_borrowed = arc4.UInt64(vault.musd_borrowed.native + amount)
     uncover 3
     +
     itob
     replace2 16
-    // smart_contracts/vault/contract.py:545
+    // smart_contracts/vault/contract.py:548
     // self.vaults[key] = vault.copy()
     box_put
-    // smart_contracts/vault/contract.py:547-553
+    // smart_contracts/vault/contract.py:550-556
     // itxn.abi_call(
     //     PSM.issue_musd,
     //     Txn.sender,
@@ -1556,23 +1552,23 @@ borrow_more:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:549
+    // smart_contracts/vault/contract.py:552
     // Txn.sender,
     txn Sender
-    // smart_contracts/vault/contract.py:551
+    // smart_contracts/vault/contract.py:554
     // app_id=self.psm_app_id.value,
     intc_0 // 0
     bytec_3 // "psm_app_id"
     app_global_get_ex
     assert // check self.psm_app_id exists
     itxn_field ApplicationID
-    // smart_contracts/vault/contract.py:548
+    // smart_contracts/vault/contract.py:551
     // PSM.issue_musd,
     bytec 17 // method "issue_musd(address,uint64)void"
     itxn_field ApplicationArgs
     itxn_field ApplicationArgs
     itxn_field ApplicationArgs
-    // smart_contracts/vault/contract.py:547-553
+    // smart_contracts/vault/contract.py:550-556
     // itxn.abi_call(
     //     PSM.issue_musd,
     //     Txn.sender,
@@ -1582,11 +1578,11 @@ borrow_more:
     // ).submit()
     pushint 6 // appl
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:552
+    // smart_contracts/vault/contract.py:555
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:547-553
+    // smart_contracts/vault/contract.py:550-556
     // itxn.abi_call(
     //     PSM.issue_musd,
     //     Txn.sender,
@@ -1595,7 +1591,7 @@ borrow_more:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:522
+    // smart_contracts/vault/contract.py:525
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1603,27 +1599,27 @@ borrow_more:
 
 // smart_contracts.vault.contract.Vault.collect_fees[routing]() -> void:
 collect_fees:
-    // smart_contracts/vault/contract.py:560
+    // smart_contracts/vault/contract.py:563
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:561
+    // smart_contracts/vault/contract.py:564
     // fees = self.accumulated_fees.value
     intc_0 // 0
     bytec 7 // "accumulated_fees"
     app_global_get_ex
     assert // check self.accumulated_fees exists
-    // smart_contracts/vault/contract.py:562
+    // smart_contracts/vault/contract.py:565
     // assert fees > UInt64(0), "no fees"
     dup
     assert // no fees
-    // smart_contracts/vault/contract.py:568
+    // smart_contracts/vault/contract.py:571
     // Global.current_application_address, self.musd_asa_id.value
     global CurrentApplicationAddress
     intc_0 // 0
     bytec 4 // "musd_asa_id"
     app_global_get_ex
     assert // check self.musd_asa_id exists
-    // smart_contracts/vault/contract.py:564-569
+    // smart_contracts/vault/contract.py:567-572
     // # Clamp to the vault's actual mUSD balance. The counter should always be
     // # backed 1:1 by mUSD received via pay_interest, but clamping guarantees a
     // # phantom-fee entry can never brick collection (defense-in-depth).
@@ -1631,21 +1627,21 @@ collect_fees:
     //     Global.current_application_address, self.musd_asa_id.value
     // )
     asset_holding_get AssetBalance
-    // smart_contracts/vault/contract.py:570
+    // smart_contracts/vault/contract.py:573
     // assert exists, "vault not opted into mUSD"
     assert // vault not opted into mUSD
-    // smart_contracts/vault/contract.py:571
+    // smart_contracts/vault/contract.py:574
     // sweep = fees if fees <= bal else bal
     dup2
     <=
     dig 2
     swap
     select
-    // smart_contracts/vault/contract.py:572
+    // smart_contracts/vault/contract.py:575
     // assert sweep > UInt64(0), "no mUSD balance to sweep"
     dup
     assert // no mUSD balance to sweep
-    // smart_contracts/vault/contract.py:574
+    // smart_contracts/vault/contract.py:577
     // self.accumulated_fees.value = fees - sweep
     swap
     dig 1
@@ -1653,7 +1649,7 @@ collect_fees:
     bytec 7 // "accumulated_fees"
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:575-580
+    // smart_contracts/vault/contract.py:578-583
     // itxn.AssetTransfer(
     //     xfer_asset=self.musd_asa_id.value,
     //     asset_receiver=self.admin.value,
@@ -1661,13 +1657,13 @@ collect_fees:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:576
+    // smart_contracts/vault/contract.py:579
     // xfer_asset=self.musd_asa_id.value,
     intc_0 // 0
     bytec 4 // "musd_asa_id"
     app_global_get_ex
     assert // check self.musd_asa_id exists
-    // smart_contracts/vault/contract.py:577
+    // smart_contracts/vault/contract.py:580
     // asset_receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -1677,15 +1673,15 @@ collect_fees:
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:575
+    // smart_contracts/vault/contract.py:578
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:579
+    // smart_contracts/vault/contract.py:582
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:575-580
+    // smart_contracts/vault/contract.py:578-583
     // itxn.AssetTransfer(
     //     xfer_asset=self.musd_asa_id.value,
     //     asset_receiver=self.admin.value,
@@ -1693,7 +1689,7 @@ collect_fees:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:557
+    // smart_contracts/vault/contract.py:560
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1701,7 +1697,7 @@ collect_fees:
 
 // smart_contracts.vault.contract.Vault.collect_algo[routing]() -> void:
 collect_algo:
-    // smart_contracts/vault/contract.py:582
+    // smart_contracts/vault/contract.py:585
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1710,21 +1706,21 @@ collect_algo:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:589
+    // smart_contracts/vault/contract.py:592
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:590
+    // smart_contracts/vault/contract.py:593
     // assert amount > UInt64(0), "zero amount"
     dup
     assert // zero amount
-    // smart_contracts/vault/contract.py:591-595
+    // smart_contracts/vault/contract.py:594-598
     // itxn.Payment(
     //     receiver=self.admin.value,
     //     amount=amount,
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:592
+    // smart_contracts/vault/contract.py:595
     // receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -1732,22 +1728,22 @@ collect_algo:
     assert // check self.admin exists
     itxn_field Receiver
     itxn_field Amount
-    // smart_contracts/vault/contract.py:591
+    // smart_contracts/vault/contract.py:594
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:594
+    // smart_contracts/vault/contract.py:597
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:591-595
+    // smart_contracts/vault/contract.py:594-598
     // itxn.Payment(
     //     receiver=self.admin.value,
     //     amount=amount,
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:582
+    // smart_contracts/vault/contract.py:585
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1755,7 +1751,7 @@ collect_algo:
 
 // smart_contracts.vault.contract.Vault.opt_in_asset[routing]() -> void:
 opt_in_asset:
-    // smart_contracts/vault/contract.py:597
+    // smart_contracts/vault/contract.py:600
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1764,14 +1760,14 @@ opt_in_asset:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:603
+    // smart_contracts/vault/contract.py:606
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:604
+    // smart_contracts/vault/contract.py:607
     // assert asa_id != UInt64(0), "invalid ASA ID"
     dup
     assert // invalid ASA ID
-    // smart_contracts/vault/contract.py:605-610
+    // smart_contracts/vault/contract.py:608-613
     // itxn.AssetTransfer(
     //     xfer_asset=asa_id,
     //     asset_receiver=Global.current_application_address,
@@ -1779,24 +1775,24 @@ opt_in_asset:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:607
+    // smart_contracts/vault/contract.py:610
     // asset_receiver=Global.current_application_address,
     global CurrentApplicationAddress
-    // smart_contracts/vault/contract.py:608
+    // smart_contracts/vault/contract.py:611
     // asset_amount=0,
     intc_0 // 0
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:605
+    // smart_contracts/vault/contract.py:608
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:609
+    // smart_contracts/vault/contract.py:612
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:605-610
+    // smart_contracts/vault/contract.py:608-613
     // itxn.AssetTransfer(
     //     xfer_asset=asa_id,
     //     asset_receiver=Global.current_application_address,
@@ -1804,7 +1800,7 @@ opt_in_asset:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:597
+    // smart_contracts/vault/contract.py:600
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1812,7 +1808,7 @@ opt_in_asset:
 
 // smart_contracts.vault.contract.Vault.mark_payment_overdue[routing]() -> void:
 mark_payment_overdue:
-    // smart_contracts/vault/contract.py:614
+    // smart_contracts/vault/contract.py:617
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1827,14 +1823,14 @@ mark_payment_overdue:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:617
+    // smart_contracts/vault/contract.py:620
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/vault/contract.py:149
     // return account.bytes + op.itob(pool_id)
     itob
     concat
-    // smart_contracts/vault/contract.py:619
+    // smart_contracts/vault/contract.py:622
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1843,19 +1839,19 @@ mark_payment_overdue:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:620
+    // smart_contracts/vault/contract.py:623
     // vault = self.vaults[key].copy()
     dup
     box_get
     pop
-    // smart_contracts/vault/contract.py:621
+    // smart_contracts/vault/contract.py:624
     // assert vault.vault_state.native == UInt64(0), "vault not active"
     dup
     pushint 56
     extract_uint64
     !
     assert // vault not active
-    // smart_contracts/vault/contract.py:622
+    // smart_contracts/vault/contract.py:625
     // assert Global.latest_timestamp >= vault.last_payment_timestamp.native + UInt64(DAYS_90), "not overdue"
     global LatestTimestamp
     swap
@@ -1865,18 +1861,18 @@ mark_payment_overdue:
     +
     >=
     assert // not overdue
-    // smart_contracts/vault/contract.py:623-624
+    // smart_contracts/vault/contract.py:626-627
     // vault.vault_state = arc4.UInt64(1)
     // self.vaults[key] = vault.copy()
     pushint 56
-    // smart_contracts/vault/contract.py:623
+    // smart_contracts/vault/contract.py:626
     // vault.vault_state = arc4.UInt64(1)
     bytec 18 // 0x0000000000000001
-    // smart_contracts/vault/contract.py:623-624
+    // smart_contracts/vault/contract.py:626-627
     // vault.vault_state = arc4.UInt64(1)
     // self.vaults[key] = vault.copy()
     box_replace // on error: index out of bounds
-    // smart_contracts/vault/contract.py:614
+    // smart_contracts/vault/contract.py:617
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1884,7 +1880,7 @@ mark_payment_overdue:
 
 // smart_contracts.vault.contract.Vault.advance_accrual[routing]() -> void:
 advance_accrual:
-    // smart_contracts/vault/contract.py:626
+    // smart_contracts/vault/contract.py:629
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1899,14 +1895,14 @@ advance_accrual:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:633
+    // smart_contracts/vault/contract.py:636
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/vault/contract.py:149
     // return account.bytes + op.itob(pool_id)
     itob
     concat
-    // smart_contracts/vault/contract.py:635
+    // smart_contracts/vault/contract.py:638
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1915,12 +1911,12 @@ advance_accrual:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:636
+    // smart_contracts/vault/contract.py:639
     // vault = self.vaults[key].copy()
     dup
     box_get
     pop
-    // smart_contracts/vault/contract.py:637
+    // smart_contracts/vault/contract.py:640
     // assert vault.vault_state.native != UInt64(2), "vault in liquidation"
     dup
     pushint 56
@@ -1928,14 +1924,14 @@ advance_accrual:
     pushint 2
     !=
     assert // vault in liquidation
-    // smart_contracts/vault/contract.py:638
+    // smart_contracts/vault/contract.py:641
     // vault = self._accrue_interest(vault)
     callsub _accrue_interest
     pop
-    // smart_contracts/vault/contract.py:639
+    // smart_contracts/vault/contract.py:642
     // self.vaults[key] = vault.copy()
     box_put
-    // smart_contracts/vault/contract.py:626
+    // smart_contracts/vault/contract.py:629
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -1943,7 +1939,7 @@ advance_accrual:
 
 // smart_contracts.vault.contract.Vault.trigger_micro_liquidation[routing]() -> void:
 trigger_micro_liquidation:
-    // smart_contracts/vault/contract.py:643
+    // smart_contracts/vault/contract.py:646
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -1960,7 +1956,7 @@ trigger_micro_liquidation:
     btoi
     dup
     cover 2
-    // smart_contracts/vault/contract.py:649
+    // smart_contracts/vault/contract.py:652
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/vault/contract.py:149
@@ -1970,7 +1966,7 @@ trigger_micro_liquidation:
     uncover 2
     swap
     concat
-    // smart_contracts/vault/contract.py:652
+    // smart_contracts/vault/contract.py:655
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -1981,11 +1977,11 @@ trigger_micro_liquidation:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:653
+    // smart_contracts/vault/contract.py:656
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:655
+    // smart_contracts/vault/contract.py:658
     // assert vault.vault_state.native == UInt64(1), "vault not payment_overdue"
     dup
     pushint 56
@@ -1993,7 +1989,7 @@ trigger_micro_liquidation:
     intc_1 // 1
     ==
     assert // vault not payment_overdue
-    // smart_contracts/vault/contract.py:656
+    // smart_contracts/vault/contract.py:659
     // assert Global.latest_timestamp >= vault.last_payment_timestamp.native + UInt64(DAYS_90), "not overdue"
     global LatestTimestamp
     dig 1
@@ -2003,51 +1999,51 @@ trigger_micro_liquidation:
     +
     >=
     assert // not overdue
-    // smart_contracts/vault/contract.py:657
+    // smart_contracts/vault/contract.py:660
     // assert self._oracle_is_fresh(pool_id), "oracle stale"
     dig 1
     callsub _oracle_is_fresh
     assert // oracle stale
-    // smart_contracts/vault/contract.py:659
+    // smart_contracts/vault/contract.py:662
     // vault = self._accrue_interest(vault)
     callsub _accrue_interest
     pop
     dup
     cover 2
-    // smart_contracts/vault/contract.py:660
+    // smart_contracts/vault/contract.py:663
     // interest = vault.accrued_interest.native
     pushint 24
     extract_uint64
-    // smart_contracts/vault/contract.py:661
+    // smart_contracts/vault/contract.py:664
     // assert interest > UInt64(0), "no accrued interest"
     dup
     assert // no accrued interest
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     dup
-    // smart_contracts/vault/contract.py:663
+    // smart_contracts/vault/contract.py:666
     // buffer = self._wide_ratio(interest, UInt64(MICRO_LIQ_BUFFER_BPS), UInt64(10_000))
     pushint 500
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/vault/contract.py:663
+    // smart_contracts/vault/contract.py:666
     // buffer = self._wide_ratio(interest, UInt64(MICRO_LIQ_BUFFER_BPS), UInt64(10_000))
     intc 5 // 10000
     // smart_contracts/vault/contract.py:155
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/vault/contract.py:664
+    // smart_contracts/vault/contract.py:667
     // total_recovery = interest + buffer
     +
-    // smart_contracts/vault/contract.py:665
+    // smart_contracts/vault/contract.py:668
     // lp_price = self._oracle_price(pool_id)
     swap
     callsub _oracle_price
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     dig 1
-    // smart_contracts/vault/contract.py:667
+    // smart_contracts/vault/contract.py:670
     // lp_to_seize = self._wide_ratio(total_recovery, UInt64(1_000_000), lp_price)
     intc 4 // 1000000
     // smart_contracts/vault/contract.py:154
@@ -2062,25 +2058,25 @@ trigger_micro_liquidation:
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/vault/contract.py:668-669
+    // smart_contracts/vault/contract.py:671-672
     // # Ceiling: add 1 if floor undervalues
     // if self._wide_ratio(lp_to_seize, lp_price, UInt64(1_000_000)) < total_recovery:
     intc 4 // 1000000
     // smart_contracts/vault/contract.py:155
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/vault/contract.py:668-669
+    // smart_contracts/vault/contract.py:671-672
     // # Ceiling: add 1 if floor undervalues
     // if self._wide_ratio(lp_to_seize, lp_price, UInt64(1_000_000)) < total_recovery:
     >
     bz trigger_micro_liquidation_after_if_else@3
-    // smart_contracts/vault/contract.py:670
+    // smart_contracts/vault/contract.py:673
     // lp_to_seize = lp_to_seize + UInt64(1)
     intc_1 // 1
     +
 
 trigger_micro_liquidation_after_if_else@3:
-    // smart_contracts/vault/contract.py:672
+    // smart_contracts/vault/contract.py:675
     // assert lp_to_seize <= vault.lp_amount.native, "insufficient collateral for micro-liq"
     dig 1
     dup
@@ -2092,7 +2088,7 @@ trigger_micro_liquidation_after_if_else@3:
     dig 1
     <=
     assert // insufficient collateral for micro-liq
-    // smart_contracts/vault/contract.py:674
+    // smart_contracts/vault/contract.py:677
     // vault.lp_amount = arc4.UInt64(vault.lp_amount.native - lp_to_seize)
     dig 1
     -
@@ -2100,34 +2096,34 @@ trigger_micro_liquidation_after_if_else@3:
     uncover 2
     swap
     replace2 0
-    // smart_contracts/vault/contract.py:675
+    // smart_contracts/vault/contract.py:678
     // vault.accrued_interest = arc4.UInt64(0)
     bytec_2 // 0x0000000000000000
     replace2 24
-    // smart_contracts/vault/contract.py:676
+    // smart_contracts/vault/contract.py:679
     // vault.last_accrual_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
     itob
     replace2 40
-    // smart_contracts/vault/contract.py:677
+    // smart_contracts/vault/contract.py:680
     // vault.last_payment_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
     itob
     replace2 48
-    // smart_contracts/vault/contract.py:678
+    // smart_contracts/vault/contract.py:681
     // vault.vault_state = arc4.UInt64(0)
     bytec_2 // 0x0000000000000000
     replace2 56
-    // smart_contracts/vault/contract.py:679
+    // smart_contracts/vault/contract.py:682
     // self.vaults[key] = vault.copy()
     dig 3
     swap
     box_put
-    // smart_contracts/vault/contract.py:681
+    // smart_contracts/vault/contract.py:684
     // lp_asa_id = self._pool_lp_asa(pool_id)
     dig 3
     callsub _pool_lp_asa
-    // smart_contracts/vault/contract.py:682-687
+    // smart_contracts/vault/contract.py:685-690
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2135,7 +2131,7 @@ trigger_micro_liquidation_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:684
+    // smart_contracts/vault/contract.py:687
     // asset_receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -2145,15 +2141,15 @@ trigger_micro_liquidation_after_if_else@3:
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:682
+    // smart_contracts/vault/contract.py:685
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:686
+    // smart_contracts/vault/contract.py:689
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:682-687
+    // smart_contracts/vault/contract.py:685-690
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2161,7 +2157,7 @@ trigger_micro_liquidation_after_if_else@3:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:643
+    // smart_contracts/vault/contract.py:646
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -2173,7 +2169,7 @@ trigger_partial_liquidation:
     dup
     pushbytes ""
     dupn 3
-    // smart_contracts/vault/contract.py:691
+    // smart_contracts/vault/contract.py:694
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -2196,10 +2192,10 @@ trigger_partial_liquidation:
     assert // invalid number of bytes for arc4.uint64
     btoi
     dup
-    // smart_contracts/vault/contract.py:699
+    // smart_contracts/vault/contract.py:702
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:700
+    // smart_contracts/vault/contract.py:703
     // assert tier == UInt64(1) or tier == UInt64(2), "tier must be 1 or 2"
     intc_1 // 1
     ==
@@ -2214,7 +2210,7 @@ trigger_partial_liquidation_bool_true@3:
     intc_1 // 1
 
 trigger_partial_liquidation_bool_merge@5:
-    // smart_contracts/vault/contract.py:700
+    // smart_contracts/vault/contract.py:703
     // assert tier == UInt64(1) or tier == UInt64(2), "tier must be 1 or 2"
     assert // tier must be 1 or 2
     // smart_contracts/vault/contract.py:149
@@ -2225,7 +2221,7 @@ trigger_partial_liquidation_bool_merge@5:
     dig 5
     dig 1
     concat
-    // smart_contracts/vault/contract.py:703
+    // smart_contracts/vault/contract.py:706
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -2236,11 +2232,11 @@ trigger_partial_liquidation_bool_merge@5:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:704
+    // smart_contracts/vault/contract.py:707
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:706
+    // smart_contracts/vault/contract.py:709
     // assert vault.vault_state.native != UInt64(2), "already in liquidation"
     dup
     pushint 56
@@ -2248,18 +2244,18 @@ trigger_partial_liquidation_bool_merge@5:
     pushint 2
     !=
     assert // already in liquidation
-    // smart_contracts/vault/contract.py:707
+    // smart_contracts/vault/contract.py:710
     // assert self._oracle_is_fresh(pool_id), "oracle stale"
     dig 2
     callsub _oracle_is_fresh
     assert // oracle stale
-    // smart_contracts/vault/contract.py:709
+    // smart_contracts/vault/contract.py:712
     // vault = self._accrue_interest(vault)
     callsub _accrue_interest
     pop
     dup
     bury 12
-    // smart_contracts/vault/contract.py:710
+    // smart_contracts/vault/contract.py:713
     // total_debt = vault.musd_borrowed.native + vault.accrued_interest.native
     dup
     pushint 16
@@ -2270,10 +2266,10 @@ trigger_partial_liquidation_bool_merge@5:
     +
     dup
     bury 9
-    // smart_contracts/vault/contract.py:711
+    // smart_contracts/vault/contract.py:714
     // assert total_debt > UInt64(0), "no debt"
     assert // no debt
-    // smart_contracts/vault/contract.py:713
+    // smart_contracts/vault/contract.py:716
     // lp_val = self._lp_value(vault.lp_amount.native, pool_id)
     intc_0 // 0
     extract_uint64
@@ -2301,17 +2297,17 @@ trigger_partial_liquidation_bool_merge@5:
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/vault/contract.py:715
+    // smart_contracts/vault/contract.py:718
     // hf_num = self._wide_ratio(lp_val, liq_threshold, UInt64(10_000))
     intc 5 // 10000
     // smart_contracts/vault/contract.py:155
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/vault/contract.py:717
+    // smart_contracts/vault/contract.py:720
     // if tier == UInt64(1):
     dig 1
     bz trigger_partial_liquidation_else_body@7
-    // smart_contracts/vault/contract.py:718-719
+    // smart_contracts/vault/contract.py:721-722
     // # Tier 1: 0.95 ≤ HF < 1.0
     // assert hf_num * UInt64(100) >= total_debt * UInt64(95), "HF not in tier 1 (lower)"
     dup
@@ -2324,13 +2320,13 @@ trigger_partial_liquidation_bool_merge@5:
     *
     >=
     assert // HF not in tier 1 (lower)
-    // smart_contracts/vault/contract.py:720
+    // smart_contracts/vault/contract.py:723
     // assert hf_num < total_debt, "HF not in tier 1 (upper)"
     <
     assert // HF not in tier 1 (upper)
 
 trigger_partial_liquidation_after_if_else@8:
-    // smart_contracts/vault/contract.py:726
+    // smart_contracts/vault/contract.py:729
     // tier_bps = UInt64(3_500) if tier == UInt64(1) else UInt64(6_000)
     pushints 6000 3500
     dig 2
@@ -2342,7 +2338,7 @@ trigger_partial_liquidation_after_if_else@8:
     cover 2
     dig 1
     mulw
-    // smart_contracts/vault/contract.py:729
+    // smart_contracts/vault/contract.py:732
     // lp_to_seize = self._wide_ratio(lp_amount, tier_bps, UInt64(10_000))
     intc 5 // 10000
     // smart_contracts/vault/contract.py:155
@@ -2350,7 +2346,7 @@ trigger_partial_liquidation_after_if_else@8:
     divw
     dup
     bury 10
-    // smart_contracts/vault/contract.py:730-731
+    // smart_contracts/vault/contract.py:733-734
     // # Ceiling division
     // if self._wide_ratio(lp_to_seize, UInt64(10_000), tier_bps) < lp_amount:
     intc 5 // 10000
@@ -2361,12 +2357,12 @@ trigger_partial_liquidation_after_if_else@8:
     // return op.divw(high, low, c)
     uncover 2
     divw
-    // smart_contracts/vault/contract.py:730-731
+    // smart_contracts/vault/contract.py:733-734
     // # Ceiling division
     // if self._wide_ratio(lp_to_seize, UInt64(10_000), tier_bps) < lp_amount:
     >
     bz trigger_partial_liquidation_after_if_else@10
-    // smart_contracts/vault/contract.py:732
+    // smart_contracts/vault/contract.py:735
     // lp_to_seize = lp_to_seize + UInt64(1)
     dig 6
     intc_1 // 1
@@ -2374,7 +2370,7 @@ trigger_partial_liquidation_after_if_else@8:
     bury 7
 
 trigger_partial_liquidation_after_if_else@10:
-    // smart_contracts/vault/contract.py:734
+    // smart_contracts/vault/contract.py:737
     // lp_price = self._oracle_price(pool_id)
     dig 2
     callsub _oracle_price
@@ -2382,7 +2378,7 @@ trigger_partial_liquidation_after_if_else@10:
     // high, low = op.mulw(a, b)
     dig 7
     mulw
-    // smart_contracts/vault/contract.py:735
+    // smart_contracts/vault/contract.py:738
     // seized_lp_value = self._wide_ratio(lp_to_seize, lp_price, UInt64(1_000_000))
     intc 4 // 1000000
     // smart_contracts/vault/contract.py:155
@@ -2390,7 +2386,7 @@ trigger_partial_liquidation_after_if_else@10:
     divw
     dup
     bury 7
-    // smart_contracts/vault/contract.py:736
+    // smart_contracts/vault/contract.py:739
     // if seized_lp_value > total_debt:
     dig 5
     >
@@ -2399,7 +2395,7 @@ trigger_partial_liquidation_after_if_else@10:
     bury 6
 
 trigger_partial_liquidation_after_if_else@12:
-    // smart_contracts/vault/contract.py:739
+    // smart_contracts/vault/contract.py:742
     // vault.musd_borrowed = arc4.UInt64(total_debt - seized_lp_value)
     dig 4
     dig 6
@@ -2410,12 +2406,12 @@ trigger_partial_liquidation_after_if_else@12:
     dig 10
     swap
     replace2 16
-    // smart_contracts/vault/contract.py:740
+    // smart_contracts/vault/contract.py:743
     // vault.accrued_interest = arc4.UInt64(seized_lp_value)  # settlement counter
     swap
     itob
     replace2 24
-    // smart_contracts/vault/contract.py:741
+    // smart_contracts/vault/contract.py:744
     // vault.lp_amount = arc4.UInt64(lp_amount - lp_to_seize)
     dig 8
     dig 8
@@ -2424,25 +2420,25 @@ trigger_partial_liquidation_after_if_else@12:
     -
     itob
     replace2 0
-    // smart_contracts/vault/contract.py:742
+    // smart_contracts/vault/contract.py:745
     // vault.last_accrual_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
     itob
     replace2 40
-    // smart_contracts/vault/contract.py:743
+    // smart_contracts/vault/contract.py:746
     // vault.vault_state = arc4.UInt64(2)
     bytec 19 // 0x0000000000000002
     replace2 56
-    // smart_contracts/vault/contract.py:744
+    // smart_contracts/vault/contract.py:747
     // self.vaults[key] = vault.copy()
     dig 11
     swap
     box_put
-    // smart_contracts/vault/contract.py:746
+    // smart_contracts/vault/contract.py:749
     // lp_asa_id = self._pool_lp_asa(pool_id)
     dig 3
     callsub _pool_lp_asa
-    // smart_contracts/vault/contract.py:747-752
+    // smart_contracts/vault/contract.py:750-755
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2450,7 +2446,7 @@ trigger_partial_liquidation_after_if_else@12:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:749
+    // smart_contracts/vault/contract.py:752
     // asset_receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -2460,15 +2456,15 @@ trigger_partial_liquidation_after_if_else@12:
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:747
+    // smart_contracts/vault/contract.py:750
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:751
+    // smart_contracts/vault/contract.py:754
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:747-752
+    // smart_contracts/vault/contract.py:750-755
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2476,13 +2472,13 @@ trigger_partial_liquidation_after_if_else@12:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:691
+    // smart_contracts/vault/contract.py:694
     // @arc4.abimethod
     intc_1 // 1
     return
 
 trigger_partial_liquidation_else_body@7:
-    // smart_contracts/vault/contract.py:722-723
+    // smart_contracts/vault/contract.py:725-726
     // # Tier 2: 0.85 ≤ HF < 0.95
     // assert hf_num * UInt64(100) >= total_debt * UInt64(85), "HF not in tier 2 (lower)"
     pushint 100
@@ -2495,7 +2491,7 @@ trigger_partial_liquidation_else_body@7:
     dig 1
     <=
     assert // HF not in tier 2 (lower)
-    // smart_contracts/vault/contract.py:724
+    // smart_contracts/vault/contract.py:727
     // assert hf_num * UInt64(100) < total_debt * UInt64(95), "HF not in tier 2 (upper)"
     swap
     pushint 95
@@ -2513,7 +2509,7 @@ trigger_partial_liquidation_bool_false@4:
 trigger_full_liquidation:
     pushbytes ""
     dup
-    // smart_contracts/vault/contract.py:756
+    // smart_contracts/vault/contract.py:759
     // @arc4.abimethod
     txna ApplicationArgs 1
     dupn 2
@@ -2528,7 +2524,7 @@ trigger_full_liquidation:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:763
+    // smart_contracts/vault/contract.py:766
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/vault/contract.py:149
@@ -2538,7 +2534,7 @@ trigger_full_liquidation:
     uncover 2
     dig 1
     concat
-    // smart_contracts/vault/contract.py:766
+    // smart_contracts/vault/contract.py:769
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -2549,11 +2545,11 @@ trigger_full_liquidation:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:767
+    // smart_contracts/vault/contract.py:770
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:769
+    // smart_contracts/vault/contract.py:772
     // assert vault.vault_state.native != UInt64(2), "already in liquidation"
     dup
     pushint 56
@@ -2561,18 +2557,18 @@ trigger_full_liquidation:
     pushint 2
     !=
     assert // already in liquidation
-    // smart_contracts/vault/contract.py:770
+    // smart_contracts/vault/contract.py:773
     // assert self._oracle_is_fresh(pool_id), "oracle stale"
     dig 2
     callsub _oracle_is_fresh
     assert // oracle stale
-    // smart_contracts/vault/contract.py:772
+    // smart_contracts/vault/contract.py:775
     // vault = self._accrue_interest(vault)
     callsub _accrue_interest
     pop
     dup
     cover 3
-    // smart_contracts/vault/contract.py:773
+    // smart_contracts/vault/contract.py:776
     // total_debt = vault.musd_borrowed.native + vault.accrued_interest.native
     dup
     pushint 16
@@ -2583,18 +2579,18 @@ trigger_full_liquidation:
     +
     dup
     cover 4
-    // smart_contracts/vault/contract.py:774
+    // smart_contracts/vault/contract.py:777
     // assert total_debt > UInt64(0), "no debt"
     dup
     assert // no debt
-    // smart_contracts/vault/contract.py:776
+    // smart_contracts/vault/contract.py:779
     // lp_amount = vault.lp_amount.native
     swap
     intc_0 // 0
     extract_uint64
     dup
     cover 4
-    // smart_contracts/vault/contract.py:777
+    // smart_contracts/vault/contract.py:780
     // lp_price = self._oracle_price(pool_id)
     dig 3
     callsub _oracle_price
@@ -2603,7 +2599,7 @@ trigger_full_liquidation:
     // smart_contracts/vault/contract.py:154
     // high, low = op.mulw(a, b)
     mulw
-    // smart_contracts/vault/contract.py:778
+    // smart_contracts/vault/contract.py:781
     // total_lp_value = self._wide_ratio(lp_amount, lp_price, UInt64(1_000_000))
     intc 4 // 1000000
     // smart_contracts/vault/contract.py:155
@@ -2621,13 +2617,13 @@ trigger_full_liquidation:
     // high, low = op.mulw(a, b)
     dig 1
     mulw
-    // smart_contracts/vault/contract.py:782
+    // smart_contracts/vault/contract.py:785
     // hf_num = self._wide_ratio(total_lp_value, liq_threshold, UInt64(10_000))
     intc 5 // 10000
     // smart_contracts/vault/contract.py:155
     // return op.divw(high, low, c)
     divw
-    // smart_contracts/vault/contract.py:783
+    // smart_contracts/vault/contract.py:786
     // assert hf_num * UInt64(100) < total_debt * UInt64(85), "HF not below 0.85"
     pushint 100
     *
@@ -2636,21 +2632,21 @@ trigger_full_liquidation:
     *
     <
     assert // HF not below 0.85
-    // smart_contracts/vault/contract.py:785
+    // smart_contracts/vault/contract.py:788
     // lp_asa_id = self._pool_lp_asa(pool_id)
     swap
     callsub _pool_lp_asa
     swap
-    // smart_contracts/vault/contract.py:787-788
+    // smart_contracts/vault/contract.py:790-791
     // # Dust-position fast-path: LP value rounds to zero.
     // if total_lp_value == UInt64(0):
     bnz trigger_full_liquidation_after_if_else@5
-    // smart_contracts/vault/contract.py:789
+    // smart_contracts/vault/contract.py:792
     // del self.vaults[key]
     dig 6
     box_del
     pop
-    // smart_contracts/vault/contract.py:790-795
+    // smart_contracts/vault/contract.py:793-798
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2658,7 +2654,7 @@ trigger_full_liquidation:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:792
+    // smart_contracts/vault/contract.py:795
     // asset_receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -2669,15 +2665,15 @@ trigger_full_liquidation:
     itxn_field AssetReceiver
     dup
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:790
+    // smart_contracts/vault/contract.py:793
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:794
+    // smart_contracts/vault/contract.py:797
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:790-795
+    // smart_contracts/vault/contract.py:793-798
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2685,28 +2681,28 @@ trigger_full_liquidation:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:796-800
+    // smart_contracts/vault/contract.py:799-803
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:798
+    // smart_contracts/vault/contract.py:801
     // amount=UInt64(VAULT_MBR),
     intc 6 // 46500
     itxn_field Amount
     dig 7
     itxn_field Receiver
-    // smart_contracts/vault/contract.py:796
+    // smart_contracts/vault/contract.py:799
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:799
+    // smart_contracts/vault/contract.py:802
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:796-800
+    // smart_contracts/vault/contract.py:799-803
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
@@ -2715,17 +2711,17 @@ trigger_full_liquidation:
     itxn_submit
 
 trigger_full_liquidation_after_inlined_smart_contracts.vault.contract.Vault.trigger_full_liquidation@12:
-    // smart_contracts/vault/contract.py:756
+    // smart_contracts/vault/contract.py:759
     // @arc4.abimethod
     intc_1 // 1
     return
 
 trigger_full_liquidation_after_if_else@5:
-    // smart_contracts/vault/contract.py:803
+    // smart_contracts/vault/contract.py:806
     // surplus_lp = UInt64(0)
     intc_0 // 0
     bury 9
-    // smart_contracts/vault/contract.py:805
+    // smart_contracts/vault/contract.py:808
     // if total_lp_value > total_debt:
     dig 1
     dig 5
@@ -2735,11 +2731,11 @@ trigger_full_liquidation_after_if_else@5:
     bury 10
 
 trigger_full_liquidation_after_if_else@7:
-    // smart_contracts/vault/contract.py:810
+    // smart_contracts/vault/contract.py:813
     // assert lp_to_seize > UInt64(0), "nothing to seize after surplus"
     dig 9
     assert // nothing to seize after surplus
-    // smart_contracts/vault/contract.py:812
+    // smart_contracts/vault/contract.py:815
     // musd_to_settle = total_debt if total_lp_value >= total_debt else total_lp_value
     dig 1
     dup
@@ -2750,34 +2746,34 @@ trigger_full_liquidation_after_if_else@7:
     swap
     cover 2
     select
-    // smart_contracts/vault/contract.py:814
+    // smart_contracts/vault/contract.py:817
     // vault.musd_borrowed = arc4.UInt64(0)
     dig 6
     bytec_2 // 0x0000000000000000
     replace2 16
-    // smart_contracts/vault/contract.py:815
+    // smart_contracts/vault/contract.py:818
     // vault.accrued_interest = arc4.UInt64(musd_to_settle)  # settlement counter
     swap
     itob
     replace2 24
-    // smart_contracts/vault/contract.py:816
+    // smart_contracts/vault/contract.py:819
     // vault.lp_amount = arc4.UInt64(0)
     bytec_2 // 0x0000000000000000
     replace2 0
-    // smart_contracts/vault/contract.py:817
+    // smart_contracts/vault/contract.py:820
     // vault.vault_state = arc4.UInt64(2)
     bytec 19 // 0x0000000000000002
     replace2 56
-    // smart_contracts/vault/contract.py:818
+    // smart_contracts/vault/contract.py:821
     // self.vaults[key] = vault.copy()
     dig 7
     swap
     box_put
-    // smart_contracts/vault/contract.py:820
+    // smart_contracts/vault/contract.py:823
     // if surplus_lp > UInt64(0):
     dig 8
     bz trigger_full_liquidation_after_if_else@10
-    // smart_contracts/vault/contract.py:821-826
+    // smart_contracts/vault/contract.py:824-829
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=borrower,
@@ -2791,15 +2787,15 @@ trigger_full_liquidation_after_if_else@7:
     itxn_field AssetReceiver
     dup
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:821
+    // smart_contracts/vault/contract.py:824
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:825
+    // smart_contracts/vault/contract.py:828
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:821-826
+    // smart_contracts/vault/contract.py:824-829
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=borrower,
@@ -2809,7 +2805,7 @@ trigger_full_liquidation_after_if_else@7:
     itxn_submit
 
 trigger_full_liquidation_after_if_else@10:
-    // smart_contracts/vault/contract.py:828-833
+    // smart_contracts/vault/contract.py:831-836
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2817,7 +2813,7 @@ trigger_full_liquidation_after_if_else@10:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:830
+    // smart_contracts/vault/contract.py:833
     // asset_receiver=self.admin.value,
     intc_0 // 0
     bytec_0 // "admin"
@@ -2828,15 +2824,15 @@ trigger_full_liquidation_after_if_else@10:
     itxn_field AssetReceiver
     dup
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:828
+    // smart_contracts/vault/contract.py:831
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:832
+    // smart_contracts/vault/contract.py:835
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:828-833
+    // smart_contracts/vault/contract.py:831-836
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=self.admin.value,
@@ -2844,12 +2840,12 @@ trigger_full_liquidation_after_if_else@10:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:756
+    // smart_contracts/vault/contract.py:759
     // @arc4.abimethod
     b trigger_full_liquidation_after_inlined_smart_contracts.vault.contract.Vault.trigger_full_liquidation@12
 
 trigger_full_liquidation_if_body@6:
-    // smart_contracts/vault/contract.py:807
+    // smart_contracts/vault/contract.py:810
     // total_lp_value - total_debt, UInt64(1_000_000), lp_price
     dig 1
     dig 5
@@ -2864,7 +2860,7 @@ trigger_full_liquidation_if_body@6:
     divw
     dup
     bury 10
-    // smart_contracts/vault/contract.py:809
+    // smart_contracts/vault/contract.py:812
     // lp_to_seize = lp_amount - surplus_lp
     dig 4
     swap
@@ -2877,7 +2873,7 @@ trigger_full_liquidation_if_body@6:
 settle_health_liquidation:
     pushbytes ""
     dup
-    // smart_contracts/vault/contract.py:837
+    // smart_contracts/vault/contract.py:840
     // @arc4.abimethod
     txna ApplicationArgs 1
     dupn 2
@@ -2900,7 +2896,7 @@ settle_health_liquidation:
     assert // invalid number of bytes for arc4.uint64
     dup
     btoi
-    // smart_contracts/vault/contract.py:847
+    // smart_contracts/vault/contract.py:850
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/vault/contract.py:149
@@ -2910,7 +2906,7 @@ settle_health_liquidation:
     uncover 3
     swap
     concat
-    // smart_contracts/vault/contract.py:850
+    // smart_contracts/vault/contract.py:853
     // assert key in self.vaults, "vault not found"
     bytec_1 // 0x7661756c745f
     swap
@@ -2921,11 +2917,11 @@ settle_health_liquidation:
     box_len
     bury 1
     assert // vault not found
-    // smart_contracts/vault/contract.py:851
+    // smart_contracts/vault/contract.py:854
     // vault = self.vaults[key].copy()
     box_get
     pop
-    // smart_contracts/vault/contract.py:853
+    // smart_contracts/vault/contract.py:856
     // assert vault.vault_state.native == UInt64(2), "vault not in liquidation"
     dup
     pushint 56
@@ -2933,10 +2929,10 @@ settle_health_liquidation:
     pushint 2
     ==
     assert // vault not in liquidation
-    // smart_contracts/vault/contract.py:855
+    // smart_contracts/vault/contract.py:858
     // psm_addr = self._psm_address()
     callsub _psm_address
-    // smart_contracts/vault/contract.py:856
+    // smart_contracts/vault/contract.py:859
     // assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing mUSD settlement txn"
     txn GroupIndex
     intc_1 // 1
@@ -2944,7 +2940,7 @@ settle_health_liquidation:
     global GroupSize
     <
     assert // missing mUSD settlement txn
-    // smart_contracts/vault/contract.py:857
+    // smart_contracts/vault/contract.py:860
     // musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
     txn GroupIndex
     intc_1 // 1
@@ -2954,7 +2950,7 @@ settle_health_liquidation:
     intc_3 // axfer
     ==
     assert // transaction type is axfer
-    // smart_contracts/vault/contract.py:858
+    // smart_contracts/vault/contract.py:861
     // assert musd_xfer.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
     dup
     gtxns XferAsset
@@ -2964,35 +2960,35 @@ settle_health_liquidation:
     assert // check self.musd_asa_id exists
     ==
     assert // wrong asset
-    // smart_contracts/vault/contract.py:859
+    // smart_contracts/vault/contract.py:862
     // assert musd_xfer.asset_receiver == psm_addr, "mUSD must go to PSM"
     dup
     gtxns AssetReceiver
     uncover 2
     ==
     assert // mUSD must go to PSM
-    // smart_contracts/vault/contract.py:860
+    // smart_contracts/vault/contract.py:863
     // assert musd_xfer.asset_amount == musd_amount, "amount mismatch"
     gtxns AssetAmount
     dig 2
     ==
     assert // amount mismatch
-    // smart_contracts/vault/contract.py:862
+    // smart_contracts/vault/contract.py:865
     // settlement_remaining = vault.accrued_interest.native
     dup
     pushint 24
     extract_uint64
-    // smart_contracts/vault/contract.py:863
+    // smart_contracts/vault/contract.py:866
     // assert musd_amount <= settlement_remaining, "exceeds settlement counter"
     dig 2
     dig 1
     <=
     assert // exceeds settlement counter
-    // smart_contracts/vault/contract.py:865
+    // smart_contracts/vault/contract.py:868
     // new_remaining = settlement_remaining - musd_amount
     uncover 2
     -
-    // smart_contracts/vault/contract.py:866
+    // smart_contracts/vault/contract.py:869
     // vault.accrued_interest = arc4.UInt64(new_remaining)
     dup
     itob
@@ -3002,7 +2998,7 @@ settle_health_liquidation:
     swap
     replace2 24
     cover 2
-    // smart_contracts/vault/contract.py:868-873
+    // smart_contracts/vault/contract.py:871-876
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     musd_amount,
@@ -3010,20 +3006,20 @@ settle_health_liquidation:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:871
+    // smart_contracts/vault/contract.py:874
     // app_id=self.psm_app_id.value,
     intc_0 // 0
     bytec_3 // "psm_app_id"
     app_global_get_ex
     assert // check self.psm_app_id exists
     itxn_field ApplicationID
-    // smart_contracts/vault/contract.py:869
+    // smart_contracts/vault/contract.py:872
     // PSM.receive_musd,
     bytec 15 // method "receive_musd(uint64)void"
     itxn_field ApplicationArgs
     swap
     itxn_field ApplicationArgs
-    // smart_contracts/vault/contract.py:868-873
+    // smart_contracts/vault/contract.py:871-876
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     musd_amount,
@@ -3032,11 +3028,11 @@ settle_health_liquidation:
     // ).submit()
     pushint 6 // appl
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:872
+    // smart_contracts/vault/contract.py:875
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:868-873
+    // smart_contracts/vault/contract.py:871-876
     // itxn.abi_call(
     //     PSM.receive_musd,
     //     musd_amount,
@@ -3044,10 +3040,10 @@ settle_health_liquidation:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:875
+    // smart_contracts/vault/contract.py:878
     // if new_remaining > UInt64(0):
     bz settle_health_liquidation_else_body@4
-    // smart_contracts/vault/contract.py:866
+    // smart_contracts/vault/contract.py:869
     // vault.accrued_interest = arc4.UInt64(new_remaining)
     dig 2
     pushint 24
@@ -3055,13 +3051,13 @@ settle_health_liquidation:
     box_replace // on error: index out of bounds
 
 settle_health_liquidation_after_if_else@16:
-    // smart_contracts/vault/contract.py:837
+    // smart_contracts/vault/contract.py:840
     // @arc4.abimethod
     intc_1 // 1
     return
 
 settle_health_liquidation_else_body@4:
-    // smart_contracts/vault/contract.py:878
+    // smart_contracts/vault/contract.py:881
     // elif vault.musd_borrowed.native > UInt64(0) and vault.lp_amount.native > UInt64(0):
     dup
     pushint 16
@@ -3073,7 +3069,7 @@ settle_health_liquidation_else_body@4:
     intc_0 // 0
     extract_uint64
     bz settle_health_liquidation_else_body@7
-    // smart_contracts/vault/contract.py:879-880
+    // smart_contracts/vault/contract.py:882-883
     // # Partial liq fully settled: restore active state.
     // vault.last_accrual_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
@@ -3081,16 +3077,16 @@ settle_health_liquidation_else_body@4:
     dig 1
     swap
     replace2 40
-    // smart_contracts/vault/contract.py:881
+    // smart_contracts/vault/contract.py:884
     // vault.last_payment_timestamp = arc4.UInt64(Global.latest_timestamp)
     global LatestTimestamp
     itob
     replace2 48
-    // smart_contracts/vault/contract.py:882
+    // smart_contracts/vault/contract.py:885
     // vault.vault_state = arc4.UInt64(0)
     bytec_2 // 0x0000000000000000
     replace2 56
-    // smart_contracts/vault/contract.py:883
+    // smart_contracts/vault/contract.py:886
     // self.vaults[key] = vault.copy()
     dig 3
     swap
@@ -3098,7 +3094,7 @@ settle_health_liquidation_else_body@4:
     b settle_health_liquidation_after_if_else@16
 
 settle_health_liquidation_else_body@7:
-    // smart_contracts/vault/contract.py:884
+    // smart_contracts/vault/contract.py:887
     // elif vault.musd_borrowed.native == UInt64(0) and vault.lp_amount.native > UInt64(0):
     dig 4
     bnz settle_health_liquidation_else_body@12
@@ -3108,7 +3104,7 @@ settle_health_liquidation_else_body@7:
     dup
     bury 7
     bz settle_health_liquidation_else_body@12
-    // smart_contracts/vault/contract.py:885-887
+    // smart_contracts/vault/contract.py:888-890
     // # Seized LP value exactly equalled total debt (cap hit) — remaining LP is surplus.
     // # Return it to borrower and close the vault.
     // lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
@@ -3116,12 +3112,12 @@ settle_health_liquidation_else_body@7:
     intc_2 // 8
     extract_uint64
     callsub _pool_lp_asa
-    // smart_contracts/vault/contract.py:889
+    // smart_contracts/vault/contract.py:892
     // del self.vaults[key]
     dig 3
     box_del
     pop
-    // smart_contracts/vault/contract.py:890-895
+    // smart_contracts/vault/contract.py:893-898
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=borrower,
@@ -3136,15 +3132,15 @@ settle_health_liquidation_else_body@7:
     cover 2
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/vault/contract.py:890
+    // smart_contracts/vault/contract.py:893
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:894
+    // smart_contracts/vault/contract.py:897
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:890-895
+    // smart_contracts/vault/contract.py:893-898
     // itxn.AssetTransfer(
     //     xfer_asset=lp_asa_id,
     //     asset_receiver=borrower,
@@ -3152,27 +3148,27 @@ settle_health_liquidation_else_body@7:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/vault/contract.py:896-900
+    // smart_contracts/vault/contract.py:899-903
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:898
+    // smart_contracts/vault/contract.py:901
     // amount=UInt64(VAULT_MBR),
     intc 6 // 46500
     itxn_field Amount
     itxn_field Receiver
-    // smart_contracts/vault/contract.py:896
+    // smart_contracts/vault/contract.py:899
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:899
+    // smart_contracts/vault/contract.py:902
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:896-900
+    // smart_contracts/vault/contract.py:899-903
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
@@ -3182,34 +3178,34 @@ settle_health_liquidation_else_body@7:
     b settle_health_liquidation_after_if_else@16
 
 settle_health_liquidation_else_body@12:
-    // smart_contracts/vault/contract.py:902-903
+    // smart_contracts/vault/contract.py:905-906
     // # Full liq settled or dust bad-debt write-off: close vault.
     // del self.vaults[key]
     dig 2
     box_del
     pop
-    // smart_contracts/vault/contract.py:904-908
+    // smart_contracts/vault/contract.py:907-911
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/vault/contract.py:906
+    // smart_contracts/vault/contract.py:909
     // amount=UInt64(VAULT_MBR),
     intc 6 // 46500
     itxn_field Amount
     dig 3
     itxn_field Receiver
-    // smart_contracts/vault/contract.py:904
+    // smart_contracts/vault/contract.py:907
     // itxn.Payment(
     intc_1 // pay
     itxn_field TypeEnum
-    // smart_contracts/vault/contract.py:907
+    // smart_contracts/vault/contract.py:910
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/vault/contract.py:904-908
+    // smart_contracts/vault/contract.py:907-911
     // itxn.Payment(
     //     receiver=borrower,
     //     amount=UInt64(VAULT_MBR),
@@ -3221,7 +3217,7 @@ settle_health_liquidation_else_body@12:
 
 // smart_contracts.vault.contract.Vault.set_rate[routing]() -> void:
 set_rate:
-    // smart_contracts/vault/contract.py:912
+    // smart_contracts/vault/contract.py:915
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -3237,16 +3233,16 @@ set_rate:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:915
+    // smart_contracts/vault/contract.py:918
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:916
+    // smart_contracts/vault/contract.py:919
     // assert rate_bps <= UInt64(3_000), "rate exceeds 30% cap"
     dup
     pushint 3000
     <=
     assert // rate exceeds 30% cap
-    // smart_contracts/vault/contract.py:917
+    // smart_contracts/vault/contract.py:920
     // op.AppGlobal.put(Bytes(_RATE_PREFIX) + op.itob(pool_id), rate_bps)
     swap
     itob
@@ -3255,7 +3251,7 @@ set_rate:
     concat
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:912
+    // smart_contracts/vault/contract.py:915
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3263,7 +3259,7 @@ set_rate:
 
 // smart_contracts.vault.contract.Vault.set_ltv[routing]() -> void:
 set_ltv:
-    // smart_contracts/vault/contract.py:919
+    // smart_contracts/vault/contract.py:922
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -3279,14 +3275,14 @@ set_ltv:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:922
+    // smart_contracts/vault/contract.py:925
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:923
+    // smart_contracts/vault/contract.py:926
     // assert ltv_bps > UInt64(0), "ltv must be > 0"
     dup
     assert // ltv must be > 0
-    // smart_contracts/vault/contract.py:924
+    // smart_contracts/vault/contract.py:927
     // liq = op.AppGlobal.get_uint64(Bytes(_LIQ_PREFIX) + op.itob(pool_id))
     swap
     itob
@@ -3294,23 +3290,23 @@ set_ltv:
     dig 1
     concat
     app_global_get
-    // smart_contracts/vault/contract.py:925
+    // smart_contracts/vault/contract.py:928
     // assert liq != UInt64(0), "set liq threshold before ltv"
     dup
     assert // set liq threshold before ltv
-    // smart_contracts/vault/contract.py:926
+    // smart_contracts/vault/contract.py:929
     // assert ltv_bps < liq, "LTV must be below liquidation threshold"
     dig 2
     >
     assert // LTV must be below liquidation threshold
-    // smart_contracts/vault/contract.py:927
+    // smart_contracts/vault/contract.py:930
     // op.AppGlobal.put(Bytes(_LTV_PREFIX) + op.itob(pool_id), ltv_bps)
     bytec 13 // 0x6c74765f
     swap
     concat
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:919
+    // smart_contracts/vault/contract.py:922
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3318,7 +3314,7 @@ set_ltv:
 
 // smart_contracts.vault.contract.Vault.set_liq_threshold[routing]() -> void:
 set_liq_threshold:
-    // smart_contracts/vault/contract.py:929
+    // smart_contracts/vault/contract.py:932
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -3334,10 +3330,10 @@ set_liq_threshold:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:932
+    // smart_contracts/vault/contract.py:935
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:933
+    // smart_contracts/vault/contract.py:936
     // ltv = op.AppGlobal.get_uint64(Bytes(_LTV_PREFIX) + op.itob(pool_id))
     swap
     itob
@@ -3345,25 +3341,25 @@ set_liq_threshold:
     dig 1
     concat
     app_global_get
-    // smart_contracts/vault/contract.py:934
+    // smart_contracts/vault/contract.py:937
     // assert threshold_bps > ltv, "threshold must exceed LTV"
     dig 2
     <
     assert // threshold must exceed LTV
-    // smart_contracts/vault/contract.py:935
+    // smart_contracts/vault/contract.py:938
     // assert threshold_bps <= UInt64(9_000), "threshold cap 90%"
     dig 1
     pushint 9000
     <=
     assert // threshold cap 90%
-    // smart_contracts/vault/contract.py:936
+    // smart_contracts/vault/contract.py:939
     // op.AppGlobal.put(Bytes(_LIQ_PREFIX) + op.itob(pool_id), threshold_bps)
     bytec 14 // 0x6c69715f
     swap
     concat
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:929
+    // smart_contracts/vault/contract.py:932
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3371,7 +3367,7 @@ set_liq_threshold:
 
 // smart_contracts.vault.contract.Vault.set_lp_asa_id[routing]() -> void:
 set_lp_asa_id:
-    // smart_contracts/vault/contract.py:938
+    // smart_contracts/vault/contract.py:941
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -3387,14 +3383,14 @@ set_lp_asa_id:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:941
+    // smart_contracts/vault/contract.py:944
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:942
+    // smart_contracts/vault/contract.py:945
     // assert lp_asa_id != UInt64(0), "invalid ASA ID"
     dup
     assert // invalid ASA ID
-    // smart_contracts/vault/contract.py:943
+    // smart_contracts/vault/contract.py:946
     // op.AppGlobal.put(Bytes(_LP_ASA_PREFIX) + op.itob(pool_id), lp_asa_id)
     swap
     itob
@@ -3403,7 +3399,7 @@ set_lp_asa_id:
     concat
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:938
+    // smart_contracts/vault/contract.py:941
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3411,7 +3407,7 @@ set_lp_asa_id:
 
 // smart_contracts.vault.contract.Vault.propose_lp_oracle[routing]() -> void:
 propose_lp_oracle:
-    // smart_contracts/vault/contract.py:947
+    // smart_contracts/vault/contract.py:950
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -3420,19 +3416,19 @@ propose_lp_oracle:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/vault/contract.py:954
+    // smart_contracts/vault/contract.py:957
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:955
+    // smart_contracts/vault/contract.py:958
     // assert new_oracle_app_id != UInt64(0), "invalid oracle app id"
     dup
     assert // invalid oracle app id
-    // smart_contracts/vault/contract.py:956
+    // smart_contracts/vault/contract.py:959
     // self.pending_lp_oracle.value = new_oracle_app_id
     bytec 5 // "pending_lp_oracle"
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:957
+    // smart_contracts/vault/contract.py:960
     // self.pending_lp_oracle_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
     global LatestTimestamp
     pushint 172800
@@ -3440,7 +3436,7 @@ propose_lp_oracle:
     bytec 6 // "pending_lp_oracle_eta"
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:947
+    // smart_contracts/vault/contract.py:950
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3448,10 +3444,10 @@ propose_lp_oracle:
 
 // smart_contracts.vault.contract.Vault.confirm_lp_oracle[routing]() -> void:
 confirm_lp_oracle:
-    // smart_contracts/vault/contract.py:962
+    // smart_contracts/vault/contract.py:965
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/vault/contract.py:963
+    // smart_contracts/vault/contract.py:966
     // assert self.pending_lp_oracle.value != UInt64(0), "no pending oracle"
     intc_0 // 0
     bytec 5 // "pending_lp_oracle"
@@ -3459,7 +3455,7 @@ confirm_lp_oracle:
     assert // check self.pending_lp_oracle exists
     dup
     assert // no pending oracle
-    // smart_contracts/vault/contract.py:964
+    // smart_contracts/vault/contract.py:967
     // assert Global.latest_timestamp >= self.pending_lp_oracle_eta.value, "timelock not elapsed"
     global LatestTimestamp
     intc_0 // 0
@@ -3468,22 +3464,22 @@ confirm_lp_oracle:
     assert // check self.pending_lp_oracle_eta exists
     >=
     assert // timelock not elapsed
-    // smart_contracts/vault/contract.py:965
+    // smart_contracts/vault/contract.py:968
     // self.lp_oracle_app_id.value = self.pending_lp_oracle.value
     bytec 10 // "lp_oracle_app_id"
     swap
     app_global_put
-    // smart_contracts/vault/contract.py:966
+    // smart_contracts/vault/contract.py:969
     // self.pending_lp_oracle.value = UInt64(0)
     bytec 5 // "pending_lp_oracle"
     intc_0 // 0
     app_global_put
-    // smart_contracts/vault/contract.py:967
+    // smart_contracts/vault/contract.py:970
     // self.pending_lp_oracle_eta.value = UInt64(0)
     bytec 6 // "pending_lp_oracle_eta"
     intc_0 // 0
     app_global_put
-    // smart_contracts/vault/contract.py:959
+    // smart_contracts/vault/contract.py:962
     // @arc4.abimethod
     intc_1 // 1
     return
@@ -3491,20 +3487,20 @@ confirm_lp_oracle:
 
 // smart_contracts.vault.contract.Vault.cancel_pending_lp_oracle[routing]() -> void:
 cancel_pending_lp_oracle:
-    // smart_contracts/vault/contract.py:972
+    // smart_contracts/vault/contract.py:975
     // self._assert_admin_or_guardian()
     callsub _assert_admin_or_guardian
-    // smart_contracts/vault/contract.py:973
+    // smart_contracts/vault/contract.py:976
     // self.pending_lp_oracle.value = UInt64(0)
     bytec 5 // "pending_lp_oracle"
     intc_0 // 0
     app_global_put
-    // smart_contracts/vault/contract.py:974
+    // smart_contracts/vault/contract.py:977
     // self.pending_lp_oracle_eta.value = UInt64(0)
     bytec 6 // "pending_lp_oracle_eta"
     intc_0 // 0
     app_global_put
-    // smart_contracts/vault/contract.py:969
+    // smart_contracts/vault/contract.py:972
     // @arc4.abimethod
     intc_1 // 1
     return

@@ -37,13 +37,8 @@ _Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
 
 ## 🟠 Strongly recommended before mainnet (not code-blocking)
 
-- [ ] **Automated test suite.** There is currently no test suite — verification to date is compilation + multi-pass manual/agent audit. Add LocalNet integration tests covering the full lifecycle:
-  - open_vault (deferred-draw and with-borrow) → accrue → pay_interest (incl. overpayment closing) → borrow_more → add_collateral → repay_principal
-  - micro-liquidation; partial liquidation tier 1 & tier 2; full liquidation (surplus, exact-cover, shortfall, dust) → all four `settle_health_liquidation` end-states
-  - two-role flows: pause/unpause, propose/accept admin & guardian, propose/confirm/cancel timelocked repoints
-  - oracle: deviation guard, anchor band, re-anchor, freshness expiry
-  - the P21-01 multi-year `advance_accrual` catch-up path
-- [ ] **Professional third-party audit** before significant TVL. Internal review is strong (21 passes), but real-fund custody warrants an external firm.
+- [x] **Automated test suite.** ✅ Done — LocalNet integration suite at `contracts/tests/` (34 tests), deploying the real compiled contracts and exercising every privileged path: full lifecycle, all liquidation paths + settlement end-states, two-role/pause/timelock flows, oracle guards, and the P21-01 multi-year catch-up regression. Caught a real bug on first run (P22-01, fixed). Re-run with `.venv-test/bin/python -m pytest tests/` (see `tests/README.md`).
+- [ ] **Professional third-party audit** before significant TVL. Internal review is strong (22 passes + executable tests), but real-fund custody warrants an external firm.
 - [ ] **Test borrow on mainnet** with a small amount (single vault, full open→borrow→repay) before opening to the public.
 
 ---

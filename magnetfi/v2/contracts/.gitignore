@@ -178,3 +178,7 @@ node_modules
 debug_traces/
 .algokit/static-analysis/ # Replace with .algokit/static-analysis/tealer/ to enable snapshot checks in CI
 .algokit/sources
+
+# Integration-test venv & cache
+.venv-test/
+.pytest_cache/
