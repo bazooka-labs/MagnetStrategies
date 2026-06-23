@@ -1011,3 +1011,21 @@ Added 33 adversarial tests (`test_attacks_authz.py`, `test_attacks_logic.py`) pr
 - **Future hardening (post-v2, optional):** custody surplus LP in the vault for the borrower to claim separately, rather than force-pushing it during liquidation. Not blocking for launch.
 
 **Verdict:** the contracts pass 67 functional + adversarial integration tests covering every privileged path and the major attack classes. Internal verification is now strong (23 passes incl. executable + adversarial testing). A professional third-party audit remains the recommended final gate before significant TVL.
+
+---
+
+## Pass 24 — Oracle Bot Unit Tests
+
+Closed the last untested component. Added 30 fast, network-free unit tests for the off-chain price bot (`oracle_bot/tests/`), covering the logic that determines what price reaches the on-chain oracle:
+
+- **TWAP math:** thin-history fallback to spot, zero-elapsed-time guard, window trimming/`count`, and the trapezoidal average — including a regression assertion that the latest reading is reflected (the P19-16/F-16 left-Riemann bug would fail it).
+- **Persistence:** cross-instance round-trip, atomic save (no stray `.tmp`), and corrupt-file recovery (starts fresh, never raises).
+- **`_decode_local_state`:** extracts uints / ignores byte values, handles both algod key casings (`app-local-state`/`appLocalState`).
+- **`compute_lp_price`:** TVL/LP math, decimal normalization, zero-supply and zero-reserve → None.
+- **`get_lp_price` guards:** happy path, on-chain asset-id mismatch → None (wrong `pool_address` defence, P19-01), missing Vestige price → None, and the absolute min/max sanity bounds.
+- **`update_pool` orchestration:** the fail-stale min-readings gate (P19-07), asymmetric divergence (upward spike blocked, downward drop allowed through), skip when price unavailable, and `post_price` dry-run with no network.
+- **`load_config`:** missing file / zero oracle id → exit; happy parse.
+
+Run: `cd oracle_bot && <test-venv>/bin/python -m pytest tests -q` (needs `pytest` + `requests`). All 30 pass.
+
+**Coverage status:** all three contracts (67 integration/adversarial tests) and the oracle bot (30 unit tests) now have executable test coverage.
