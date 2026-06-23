@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { Landmark, Vault, Coins, LayoutGrid } from "lucide-react";
+import { Landmark, Vault, Coins, LayoutGrid, TrendingUp } from "lucide-react";
 import { PROTOCOL_LIVE } from "@/lib/magnetfi";
 import { OverviewTab } from "@/components/magnetfi/v2/OverviewTab";
 import { VaultsTab } from "@/components/magnetfi/v2/VaultsTab";
 import { MusdTab } from "@/components/magnetfi/v2/MusdTab";
+import dynamic from "next/dynamic";
 
-type Tab = "overview" | "borrow" | "musd";
+const CompXMarkets = dynamic(
+  () => import("@/components/magnetfi/CompXMarkets").then((m) => m.CompXMarkets),
+  { ssr: false, loading: () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" /> }
+);
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+type Tab = "overview" | "markets" | "borrow" | "musd";
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
-  { id: "borrow", label: "Borrow", icon: <Vault className="h-4 w-4" /> },
+  { id: "markets", label: "Markets", icon: <TrendingUp className="h-4 w-4" />, badge: "Live" },
+  { id: "borrow", label: "LP Vaults", icon: <Vault className="h-4 w-4" /> },
   { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" /> },
 ];
 
@@ -38,24 +45,31 @@ export default function MagnetFiPage() {
                 MagnetFi
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Borrow the <span className="font-semibold text-white">mUSD</span> stablecoin against your
-                Tinyman LP — your liquidity keeps earning while it works as collateral.
+                Single-token lending via <span className="font-semibold text-white">CompX</span> markets,
+                plus LP-collateral vaults that let your liquidity keep earning while you borrow{" "}
+                <span className="font-semibold text-white">mUSD</span>.
               </p>
             </div>
           </div>
 
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200">
-            <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse-slow" />
-            {PROTOCOL_LIVE ? "Live on Algorand mainnet" : "Mainnet launch incoming"}
-          </span>
+          <div className="flex flex-col gap-2">
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Single-token markets live
+            </span>
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse-slow" />
+              {PROTOCOL_LIVE ? "LP vaults live" : "LP vaults — mainnet launch incoming"}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Pre-launch banner */}
+      {/* Pre-launch banner for v2 vaults only */}
       {!PROTOCOL_LIVE && (
         <div className="mb-8 rounded-xl border border-magnet-500/20 bg-magnet-500/5 px-5 py-3.5 text-sm text-magnet-200">
-          MagnetFi v2 is in final pre-launch. Explore the vaults and run the numbers below — borrowing
-          and minting open as soon as the contracts go live on mainnet.
+          MagnetFi LP vaults are in final pre-launch — explore the vault types and run the numbers below.
+          Single-token lending and borrowing is live now via the Markets tab.
         </div>
       )}
 
@@ -73,12 +87,41 @@ export default function MagnetFiPage() {
           >
             {tab.icon}
             {tab.label}
+            {tab.badge && (
+              <span className="rounded-full bg-blue-500/20 border border-blue-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 leading-none">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {/* Content */}
-      {activeTab === "overview" && <OverviewTab onBorrow={() => setActiveTab("borrow")} />}
+      {activeTab === "overview" && (
+        <div className="space-y-12">
+          {/* Single-token markets section */}
+          <CompXMarkets />
+
+          {/* Divider with label */}
+          <div className="relative flex items-center gap-4">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="shrink-0 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1 text-xs font-medium text-magnet-300">
+              MagnetFi v2 — LP Collateral Vaults
+            </span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          {/* LP vault overview */}
+          <OverviewTab onBorrow={() => setActiveTab("borrow")} />
+        </div>
+      )}
+
+      {activeTab === "markets" && (
+        <div className="space-y-6">
+          <CompXMarkets />
+        </div>
+      )}
+
       {activeTab === "borrow" && <VaultsTab />}
       {activeTab === "musd" && <MusdTab />}
     </div>
