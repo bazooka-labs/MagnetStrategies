@@ -73,9 +73,7 @@ async function fetchTVL(): Promise<string> {
     const data = await res.json();
     const entry = Array.isArray(data) ? data[0] : null;
     if (!entry?.total_lockup) return "—";
-    const tvl = Math.round(
-      Number(entry.total_lockup) * Number(entry.price) * 2 * Number(entry.confidence)
-    );
+    const tvl = Math.round(Number(entry.total_lockup) * Number(entry.price) * 2);
     return `${tvl.toLocaleString("en-US")} ALGO`;
   } catch {
     return "—";
