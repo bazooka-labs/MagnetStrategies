@@ -24,7 +24,7 @@ export const MAGNETFI_APPS = {
   vault: 0,
 } as const;
 
-export const MUSD_ASA_ID = 0;
+export const MUSD_ASA_ID = 3615600399;
 
 // Bazooka admin wallet — gates the /magnetfi Admin panel in the UI (a UX guard so the
 // live site doesn't expose admin tools; real authority is enforced on-chain by the

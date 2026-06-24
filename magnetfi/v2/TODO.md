@@ -14,7 +14,7 @@ _Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
 ### Keys & assets
 - [ ] Create the **guardian cold multisig** (recommend 2-of-3 hardware), distinct from the admin and oracle-bot keys. Its address is a required parameter to all three `deploy()` calls. The contract rejects `guardian == admin`.
 - [ ] Create the **oracle bot wallet** (separate hot key); fund with ~5 ALGO for fees.
-- [ ] Create **mUSD ASA** on mainnet: name "Magnet USD", unit "mUSD", 6 decimals, 500M supply, freeze=zero, clawback=zero. Record the ASA ID.
+- [x] Create **mUSD ASA** on mainnet — ✅ **ASA `3615600399`** (Magnet USD / mUSD, 6 dp, 500M, default-frozen off, freeze + clawback renounced, manager/creator = `KNML…NYU6A`). Created via the admin-panel Pera handshake; verified on-chain. Wired into `web/src/lib/magnetfi.ts` (`MUSD_ASA_ID`).
 - [ ] Gather first-vault (U/tALGO) mainnet IDs:
   - [ ] tALGO ASA ID
   - [ ] U/tALGO **Tinyman v2 pool ACCOUNT address** (the bot reads reserves from the pool account's *local* state — not a per-pool app)
