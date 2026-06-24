@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { Landmark, Vault, Coins, LayoutGrid, TrendingUp } from "lucide-react";
-import { PROTOCOL_LIVE } from "@/lib/magnetfi";
+import { useEffect, useState } from "react";
+import { Landmark, Vault, Coins, LayoutGrid, TrendingUp, Shield } from "lucide-react";
+import { useWallet } from "@/hooks/useWallet";
+import { PROTOCOL_LIVE, MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { OverviewTab } from "@/components/magnetfi/v2/OverviewTab";
 import { VaultsTab } from "@/components/magnetfi/v2/VaultsTab";
 import { MusdTab } from "@/components/magnetfi/v2/MusdTab";
+import { AdminTab } from "@/components/magnetfi/v2/AdminTab";
 import dynamic from "next/dynamic";
 
 const CompXMarkets = dynamic(
@@ -13,7 +15,7 @@ const CompXMarkets = dynamic(
   { ssr: false, loading: () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" /> }
 );
 
-type Tab = "overview" | "markets" | "borrow" | "musd";
+type Tab = "overview" | "markets" | "borrow" | "musd" | "admin";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
@@ -23,7 +25,18 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] 
 ];
 
 export default function MagnetFiPage() {
+  const { address, isConnected } = useWallet();
+  const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+
+  // If the admin disconnects while on the Admin tab, fall back to Overview.
+  useEffect(() => {
+    if (!isAdmin && activeTab === "admin") setActiveTab("overview");
+  }, [isAdmin, activeTab]);
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] = isAdmin
+    ? [...TABS, { id: "admin", label: "Admin", icon: <Shield className="h-4 w-4" /> }]
+    : TABS;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -75,7 +88,7 @@ export default function MagnetFiPage() {
 
       {/* Tabs */}
       <div className="mb-8 flex flex-wrap gap-2">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -124,6 +137,7 @@ export default function MagnetFiPage() {
 
       {activeTab === "borrow" && <VaultsTab />}
       {activeTab === "musd" && <MusdTab />}
+      {activeTab === "admin" && isAdmin && <AdminTab />}
     </div>
   );
 }

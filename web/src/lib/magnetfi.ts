@@ -26,6 +26,12 @@ export const MAGNETFI_APPS = {
 
 export const MUSD_ASA_ID = 0;
 
+// Bazooka admin wallet — gates the /magnetfi Admin panel in the UI (a UX guard so the
+// live site doesn't expose admin tools; real authority is enforced on-chain by the
+// contracts' admin checks). Must be the wallet you connect to deploy/operate v2.
+export const MAGNETFI_ADMIN_ADDRESS =
+  "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A";
+
 // True once the core vault contract is deployed.
 export const PROTOCOL_LIVE = MAGNETFI_APPS.vault !== 0;
 
