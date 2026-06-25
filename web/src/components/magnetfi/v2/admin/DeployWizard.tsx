@@ -5,21 +5,21 @@ import algosdk from "algosdk";
 import { toast } from "sonner";
 import { CheckCircle2, Circle, Loader2, Copy, Clock, AlertTriangle } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { MUSD_ASA_ID } from "@/lib/magnetfi";
 import {
-  makeAlgorand, USDC_ASA_ID,
+  makeAlgorand,
   deployOracle, deployPsm, deployVault, fundApps,
   configOracle, configPsm, configVault,
   proposeVaultRegistration, readVaultEta, confirmVaultRegistration,
   seedReserve, openCeiling,
 } from "@/lib/magnetfiDeploy";
-import { Panel, PrimaryButton } from "../shared";
+import { Panel } from "../shared";
 
 const LS_KEY = "magnetfi_deploy_v1";
 
 type Inputs = {
   guardian: string; bot: string; treasury: string;
-  lpAsaId: string; poolId: string; initialPrice: string;
+  musdAsaId: string; usdcAsaId: string; lpAsaId: string;
+  poolId: string; initialPrice: string;
   rateBps: string; ltvBps: string; liqThresholdBps: string; usdcDeposit: string;
 };
 type Ids = { oracle?: string; psm?: string; vault?: string };
@@ -28,7 +28,8 @@ type State = { inputs: Inputs; ids: Ids; done: Done; etaTs?: number };
 
 const DEFAULTS: Inputs = {
   guardian: "", bot: "", treasury: "",
-  lpAsaId: "", poolId: "", initialPrice: "",
+  musdAsaId: "3615600399", usdcAsaId: "31566704", lpAsaId: "",
+  poolId: "", initialPrice: "",
   rateBps: "800", ltvBps: "6000", liqThresholdBps: "7500", usdcDeposit: "",
 };
 
@@ -57,7 +58,7 @@ function field(label: string, value: string, onChange: (v: string) => void, plac
 }
 
 export function DeployWizard() {
-  const { address, algodClient, transactionSigner } = useWallet();
+  const { address, algodClient, transactionSigner, network } = useWallet();
   const [state, setState] = useState<State>(load);
   const [busy, setBusy] = useState<string | null>(null);
   const [, forceTick] = useState(0);
@@ -66,7 +67,6 @@ export function DeployWizard() {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   }, [state]);
 
-  // Re-render once a second so the timelock countdown updates.
   useEffect(() => {
     const t = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -81,22 +81,24 @@ export function DeployWizard() {
   const setInput = (k: keyof Inputs, v: string) =>
     setState((s) => ({ ...s, inputs: { ...s.inputs, [k]: v } }));
 
-  // ── validation ──
   const addrOk = (a: string) => !!a && algosdk.isValidAddress(a);
   const poolId = () => BigInt(inputs.poolId || inputs.lpAsaId || "0");
   const priceScaled = () => BigInt(Math.round((Number(inputs.initialPrice) || 0) * 1_000_000));
   const usdcBase = () => BigInt(Math.round((Number(inputs.usdcDeposit) || 0) * 1_000_000));
+  const musd = () => Number(inputs.musdAsaId);
+  const usdc = () => Number(inputs.usdcAsaId);
 
   const inputsValid =
     addrOk(inputs.guardian) && addrOk(inputs.bot) && addrOk(inputs.treasury) &&
     inputs.guardian !== address &&
-    Number(inputs.lpAsaId) > 0 && Number(inputs.initialPrice) > 0 &&
+    musd() > 0 && usdc() > 0 && Number(inputs.lpAsaId) > 0 && Number(inputs.initialPrice) > 0 &&
     Number(inputs.rateBps) > 0 && Number(inputs.liqThresholdBps) > Number(inputs.ltvBps) &&
     Number(inputs.ltvBps) > 0;
 
   const now = Math.floor(Date.now() / 1000);
   const etaReady = !!state.etaTs && now >= state.etaTs;
   const etaRemaining = state.etaTs ? Math.max(0, state.etaTs - now) : 0;
+  const isMainnet = network === "mainnet";
 
   async function run(id: string, fn: () => Promise<void>) {
     if (!algorand || !address) return;
@@ -131,7 +133,7 @@ export function DeployWizard() {
       id: "deploy_psm", label: "Deploy PSM", desc: "Creates the PSM with mUSD, USDC, and the guardian.",
       done: !!ids.psm, ready: inputsValid && !ids.psm,
       action: async () => {
-        const id = await deployPsm(a(), me(), inputs.guardian);
+        const id = await deployPsm(a(), me(), inputs.guardian, musd(), usdc());
         setState((s) => ({ ...s, ids: { ...s.ids, psm: id.toString() } }));
         toast.success(`PSM deployed — app ${id}`);
       },
@@ -140,7 +142,7 @@ export function DeployWizard() {
       id: "deploy_vault", label: "Deploy Vault", desc: "Creates the vault, wired to the PSM + oracle.",
       done: !!ids.vault, ready: inputsValid && !!ids.psm && !!ids.oracle && !ids.vault,
       action: async () => {
-        const id = await deployVault(a(), me(), inputs.guardian, BigInt(ids.psm!), BigInt(ids.oracle!));
+        const id = await deployVault(a(), me(), inputs.guardian, BigInt(ids.psm!), BigInt(ids.oracle!), musd(), usdc());
         setState((s) => ({ ...s, ids: { ...s.ids, vault: id.toString() } }));
         toast.success(`Vault deployed — app ${id}`);
       },
@@ -167,7 +169,7 @@ export function DeployWizard() {
       id: "psm", label: "Configure PSM", desc: "Opt into mUSD + USDC and set the treasury.",
       done: !!done.psm, ready: !!ids.psm && !!done.fund && !done.psm,
       action: async () => {
-        await configPsm(a(), me(), BigInt(ids.psm!), inputs.treasury);
+        await configPsm(a(), me(), BigInt(ids.psm!), inputs.treasury, musd(), usdc());
         setState((s) => ({ ...s, done: { ...s.done, psm: true } }));
         toast.success("PSM configured");
       },
@@ -177,7 +179,7 @@ export function DeployWizard() {
       done: !!done.vault, ready: !!ids.vault && !!done.fund && !done.vault,
       action: async () => {
         await configVault(a(), me(), BigInt(ids.vault!), BigInt(inputs.lpAsaId), poolId(),
-          BigInt(inputs.rateBps), BigInt(inputs.liqThresholdBps), BigInt(inputs.ltvBps));
+          BigInt(inputs.rateBps), BigInt(inputs.liqThresholdBps), BigInt(inputs.ltvBps), musd());
         setState((s) => ({ ...s, done: { ...s.done, vault: true } }));
         toast.success("Vault configured");
       },
@@ -208,7 +210,7 @@ export function DeployWizard() {
       id: "seed", label: "Seed mUSD reserve", desc: "Transfer the full 500M mUSD supply into the PSM.",
       done: !!done.seed, ready: !!done.confirm && !done.seed,
       action: async () => {
-        await seedReserve(a(), me(), BigInt(ids.psm!));
+        await seedReserve(a(), me(), BigInt(ids.psm!), musd());
         setState((s) => ({ ...s, done: { ...s.done, seed: true } }));
         toast.success("Reserve seeded");
       },
@@ -217,7 +219,7 @@ export function DeployWizard() {
       id: "ceiling", label: "Open vault ceiling", desc: "Deposit initial USDC to open borrowing capacity.",
       done: !!done.ceiling, ready: !!done.seed && Number(inputs.usdcDeposit) > 0 && !done.ceiling,
       action: async () => {
-        await openCeiling(a(), me(), BigInt(ids.psm!), usdcBase());
+        await openCeiling(a(), me(), BigInt(ids.psm!), usdcBase(), usdc());
         setState((s) => ({ ...s, done: { ...s.done, ceiling: true } }));
         toast.success("Ceiling opened — deploy complete 🎉");
       },
@@ -269,13 +271,17 @@ export function DeployWizard() {
 
   return (
     <div className="space-y-6">
-      {/* Safety banner */}
-      <div className="flex items-start gap-2 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-400" />
-        <p className="text-xs leading-relaxed text-yellow-200/90">
-          Deploys real mainnet contracts that will custody funds. <strong>Rehearse the full flow on
-          testnet first</strong> (switch your wallet to testnet). Progress is saved in this browser —
-          you can close and resume, including across the 48-hour timelock.
+      {/* Network + safety banner */}
+      <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 ${
+        isMainnet ? "border-red-500/30 bg-red-500/5" : "border-blue-500/30 bg-blue-500/5"
+      }`}>
+        <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${isMainnet ? "text-red-400" : "text-blue-400"}`} />
+        <p className={`text-xs leading-relaxed ${isMainnet ? "text-red-200/90" : "text-blue-200/90"}`}>
+          Active network: <strong>{network}</strong>.{" "}
+          {isMainnet
+            ? "This deploys REAL mainnet contracts that custody funds. Rehearse the full flow on testnet first."
+            : "Testnet rehearsal mode. Create stand-in assets below and enter their IDs before running."}{" "}
+          Progress is saved in this browser — you can close and resume, including across the 48-hour timelock.
         </p>
       </div>
 
@@ -286,7 +292,9 @@ export function DeployWizard() {
           {field("Guardian address (cold, ≠ admin)", inputs.guardian, (v) => setInput("guardian", v), "ALGORAND ADDRESS")}
           {field("Oracle bot address", inputs.bot, (v) => setInput("bot", v), "ALGORAND ADDRESS")}
           {field("Treasury address", inputs.treasury, (v) => setInput("treasury", v), "ALGORAND ADDRESS")}
-          {field("U/tALGO LP token ASA ID", inputs.lpAsaId, (v) => setInput("lpAsaId", v), "e.g. 123456789")}
+          {field("mUSD ASA ID", inputs.musdAsaId, (v) => setInput("musdAsaId", v), "", isMainnet ? "Mainnet mUSD." : "Use your testnet mUSD ID.")}
+          {field("USDC ASA ID", inputs.usdcAsaId, (v) => setInput("usdcAsaId", v), "", isMainnet ? "Mainnet USDC." : "Use your mock-USDC ID.")}
+          {field("LP token ASA ID", inputs.lpAsaId, (v) => setInput("lpAsaId", v), "e.g. 123456789")}
           {field("Pool ID", inputs.poolId, (v) => setInput("poolId", v), "defaults to the LP ASA ID", "Arbitrary key; leave blank to use the LP ASA ID.")}
           {field("Initial LP price (mUSD per LP)", inputs.initialPrice, (v) => setInput("initialPrice", v), "e.g. 2.50", "Stored as price ×1e6 and the ±25% anchor.")}
           {field("Interest rate (bps)", inputs.rateBps, (v) => setInput("rateBps", v))}
@@ -296,12 +304,9 @@ export function DeployWizard() {
         </div>
         {!inputsValid && (
           <p className="mt-3 text-xs text-yellow-400/80">
-            Fill all addresses (guardian must differ from the admin), and ensure liquidation threshold &gt; LTV.
+            Fill all addresses (guardian must differ from the admin) and asset IDs, and ensure liquidation threshold &gt; LTV.
           </p>
         )}
-        <p className="mt-2 text-[11px] text-gray-600">
-          mUSD ASA {MUSD_ASA_ID} · USDC ASA {USDC_ASA_ID} (fixed)
-        </p>
       </Panel>
 
       {/* Deployed IDs */}
@@ -314,8 +319,8 @@ export function DeployWizard() {
             {idRow("Vault", ids.vault)}
           </div>
           <p className="mt-3 text-xs text-gray-500">
-            Paste these into <code className="font-mono">src/lib/magnetfi.ts</code> (`MAGNETFI_APPS`) and the
-            oracle bot config once deployed.
+            For a mainnet deploy, paste these into <code className="font-mono">src/lib/magnetfi.ts</code> (`MAGNETFI_APPS`)
+            and the oracle bot config.
           </p>
         </Panel>
       )}

@@ -1,10 +1,11 @@
 "use client";
 
-import { ShieldCheck, Lock, SlidersHorizontal } from "lucide-react";
+import { ShieldCheck, Lock, SlidersHorizontal, Globe } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { Panel } from "./shared";
 import { CreateMusd } from "./admin/CreateMusd";
+import { CreateTestAssets } from "./admin/CreateTestAssets";
 import { DeployWizard } from "./admin/DeployWizard";
 
 function NotAuthorized() {
@@ -24,26 +25,10 @@ function NotAuthorized() {
   );
 }
 
-function FutureTool({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
-  return (
-    <Panel className="p-6 opacity-70">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-gray-400">
-          {icon}
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-gray-500">
-          Next
-        </span>
-      </div>
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-1.5 text-sm leading-relaxed text-gray-500">{body}</p>
-    </Panel>
-  );
-}
-
 export function AdminTab() {
-  const { address, isConnected } = useWallet();
+  const { address, isConnected, network } = useWallet();
   const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
+  const isTestnet = network === "testnet";
 
   if (!isAdmin) return <NotAuthorized />;
 
@@ -51,25 +36,39 @@ export function AdminTab() {
     <div className="space-y-8">
       {/* Header */}
       <Panel className="p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800">
-            <ShieldCheck className="h-6 w-6 text-white" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800">
+              <ShieldCheck className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-base font-semibold text-white">Admin</p>
+              <p className="mt-0.5 text-sm text-gray-400">
+                Every action is built here and signed by your connected wallet.
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-base font-semibold text-white">Admin</p>
-            <p className="mt-0.5 text-sm text-gray-400">
-              Bazooka operations — every action is built here and signed by your connected wallet.
-            </p>
-          </div>
+
+          {/* Network indicator (fixed at startup via NEXT_PUBLIC_ALGO_NETWORK) */}
+          <span
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold capitalize ${
+              isTestnet
+                ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
+                : "border-red-500/30 bg-red-500/10 text-red-200"
+            }`}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            {network}
+          </span>
         </div>
       </Panel>
 
-      {/* Token setup */}
+      {/* Asset setup — testnet stand-ins vs mainnet mUSD */}
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Token setup
+          {isTestnet ? "Testnet rehearsal — stand-in assets" : "Token setup"}
         </h3>
-        <CreateMusd />
+        {isTestnet ? <CreateTestAssets /> : <CreateMusd />}
       </section>
 
       {/* Deploy & initialize */}
@@ -80,18 +79,21 @@ export function AdminTab() {
         <DeployWizard />
       </section>
 
-      {/* Coming next */}
+      {/* Operations (next) */}
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
           Operations
         </h3>
-        <div className="grid gap-5 md:grid-cols-2">
-          <FutureTool
-            icon={<SlidersHorizontal className="h-5 w-5" />}
-            title="Operations"
-            body="Rates, liquidations, pause / unpause, oracle re-anchoring, and fee collection once the contracts are live."
-          />
-        </div>
+        <Panel className="p-6 opacity-70">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-gray-400">
+            <SlidersHorizontal className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-semibold text-white">Operations</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-gray-500">
+            Rates, liquidations, pause / unpause, oracle re-anchoring, and fee collection — coming
+            once the contracts are live.
+          </p>
+        </Panel>
       </section>
     </div>
   );

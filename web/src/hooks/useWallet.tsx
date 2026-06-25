@@ -10,11 +10,19 @@ import {
 } from "@txnlab/use-wallet-react";
 import { type ReactNode, useMemo } from "react";
 
+// Network is fixed at app startup. Defaults to mainnet (the live site); set
+// NEXT_PUBLIC_ALGO_NETWORK=testnet to run the whole app against testnet for a
+// deploy rehearsal (e.g. `NEXT_PUBLIC_ALGO_NETWORK=testnet npm run dev`).
+export const MAGNET_NETWORK: "mainnet" | "testnet" =
+  process.env.NEXT_PUBLIC_ALGO_NETWORK === "testnet" ? "testnet" : "mainnet";
+
+const DEFAULT_NETWORK = MAGNET_NETWORK === "testnet" ? NetworkId.TESTNET : NetworkId.MAINNET;
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const manager = useMemo(
     () =>
       new WalletManager({
-        defaultNetwork: NetworkId.MAINNET,
+        defaultNetwork: DEFAULT_NETWORK,
         options: { resetNetwork: true },
         networks: {
           [NetworkId.MAINNET]: {
@@ -74,6 +82,7 @@ export function useWallet() {
     signTransactions,
     transactionSigner,
     algodClient,
+    network: MAGNET_NETWORK,
     connect: async (walletId?: WalletId) => {
       const wallet = walletId
         ? wallets?.find((w: Wallet) => w.id === walletId)

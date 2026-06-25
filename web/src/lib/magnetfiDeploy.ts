@@ -2,12 +2,14 @@
 // Mirrors the exact sequence proven by the LocalNet test harness (conftest._wire),
 // but every step is built here and signed by the connected admin wallet via use-wallet.
 // algokit-utils handles ABI encoding, resource population, and inner-fee coverage.
+//
+// Asset IDs (mUSD, USDC) are passed in by the caller so the same code works on
+// mainnet (real IDs) and testnet (stand-in IDs created during a rehearsal).
 
 import algosdk, { type TransactionSigner } from "algosdk";
 import { AlgorandClient, algo, microAlgo } from "@algorandfoundation/algokit-utils";
-import { MUSD_ASA_ID } from "./magnetfi";
 
-export const USDC_ASA_ID = 31566704; // mainnet USDC
+export const USDC_ASA_ID_MAINNET = 31566704; // mainnet USDC (default for the wizard)
 const SEED_MUSD_BASE = BigInt("500000000000000"); // 500M × 1e6 — full reserve
 const MAX_FEE = microAlgo(50_000); // ceiling for inner-fee coverage
 
@@ -56,22 +58,25 @@ export async function deployOracle(algorand: AlgorandClient, sender: string, gua
   return c.appId;
 }
 
-export async function deployPsm(algorand: AlgorandClient, sender: string, guardian: string): Promise<bigint> {
+export async function deployPsm(
+  algorand: AlgorandClient, sender: string, guardian: string, musdAsaId: number, usdcAsaId: number,
+): Promise<bigint> {
   const f = await factory(algorand, "psm", sender);
   const { appClient: c } = await f.send.create({
     method: "deploy",
-    args: [BigInt(MUSD_ASA_ID), BigInt(USDC_ASA_ID), guardian],
+    args: [BigInt(musdAsaId), BigInt(usdcAsaId), guardian],
   });
   return c.appId;
 }
 
 export async function deployVault(
-  algorand: AlgorandClient, sender: string, guardian: string, psmId: bigint, oracleId: bigint,
+  algorand: AlgorandClient, sender: string, guardian: string,
+  psmId: bigint, oracleId: bigint, musdAsaId: number, usdcAsaId: number,
 ): Promise<bigint> {
   const f = await factory(algorand, "vault", sender);
   const { appClient: c } = await f.send.create({
     method: "deploy",
-    args: [psmId, oracleId, BigInt(MUSD_ASA_ID), BigInt(USDC_ASA_ID), guardian],
+    args: [psmId, oracleId, BigInt(musdAsaId), BigInt(usdcAsaId), guardian],
   });
   return c.appId;
 }
@@ -107,12 +112,13 @@ export async function configOracle(
 
 export async function configPsm(
   algorand: AlgorandClient, sender: string, psmId: bigint, treasury: string,
+  musdAsaId: number, usdcAsaId: number,
 ): Promise<void> {
   const c = await appClient(algorand, "psm", psmId, sender);
   await algorand
     .newGroup()
-    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(MUSD_ASA_ID)], maxFee: MAX_FEE }))
-    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(USDC_ASA_ID)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(musdAsaId)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(usdcAsaId)], maxFee: MAX_FEE }))
     .addAppCallMethodCall(await c.params.call({ method: "set_treasury", args: [treasury], maxFee: MAX_FEE }))
     .send(SEND_OPTS);
 }
@@ -122,11 +128,12 @@ export async function configPsm(
 export async function configVault(
   algorand: AlgorandClient, sender: string, vaultId: bigint,
   lpAsaId: bigint, poolId: bigint, rateBps: bigint, liqThresholdBps: bigint, ltvBps: bigint,
+  musdAsaId: number,
 ): Promise<void> {
   const c = await appClient(algorand, "vault", vaultId, sender);
   await algorand
     .newGroup()
-    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(MUSD_ASA_ID)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(musdAsaId)], maxFee: MAX_FEE }))
     .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [lpAsaId], maxFee: MAX_FEE }))
     .addAppCallMethodCall(await c.params.call({ method: "set_rate", args: [poolId, rateBps], maxFee: MAX_FEE }))
     .addAppCallMethodCall(await c.params.call({ method: "set_liq_threshold", args: [poolId, liqThresholdBps], maxFee: MAX_FEE }))
@@ -163,21 +170,23 @@ export async function confirmVaultRegistration(
 
 // ── 10: seed the PSM with the full mUSD reserve ──
 
-export async function seedReserve(algorand: AlgorandClient, sender: string, psmId: bigint): Promise<void> {
+export async function seedReserve(
+  algorand: AlgorandClient, sender: string, psmId: bigint, musdAsaId: number,
+): Promise<void> {
   await algorand.send.assetTransfer({
-    sender, receiver: appAddr(psmId), assetId: BigInt(MUSD_ASA_ID), amount: SEED_MUSD_BASE,
+    sender, receiver: appAddr(psmId), assetId: BigInt(musdAsaId), amount: SEED_MUSD_BASE,
   });
 }
 
 // ── 11: open the vault ceiling with an initial USDC deposit ──
 
 export async function openCeiling(
-  algorand: AlgorandClient, sender: string, psmId: bigint, usdcBase: bigint,
+  algorand: AlgorandClient, sender: string, psmId: bigint, usdcBase: bigint, usdcAsaId: number,
 ): Promise<void> {
   const c = await appClient(algorand, "psm", psmId, sender);
   await algorand
     .newGroup()
-    .addAssetTransfer({ sender, receiver: appAddr(psmId), assetId: BigInt(USDC_ASA_ID), amount: usdcBase })
+    .addAssetTransfer({ sender, receiver: appAddr(psmId), assetId: BigInt(usdcAsaId), amount: usdcBase })
     .addAppCallMethodCall(await c.params.call({ method: "deposit_usdc", args: [usdcBase], maxFee: MAX_FEE }))
     .send(SEND_OPTS);
 }
