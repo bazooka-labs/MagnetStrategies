@@ -1,116 +1,58 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import algosdk from "algosdk";
+import { LendingClient, type MarketData } from "@compx/sdk";
 import { TrendingUp, Wallet, CircleDollarSign, Coins } from "lucide-react";
 import { Panel } from "./v2/shared";
+import { LendingActionModal, type LendingAction } from "./LendingActionModal";
 
 const COMPX_MAGNET_APP_ID = 3607827540;
 const COMPX_USDC_APP_ID   = 3491050310;
-const MAGNET_ASA_ID       = 3081853135;
 
-const POOL_META: Record<number, { name: string; ticker: string; icon: React.ReactNode; decimals: number }> = {
-  [COMPX_MAGNET_APP_ID]: { name: "Magnet", ticker: "$U", icon: <Coins className="h-5 w-5 text-white" />, decimals: 5 },
-  [COMPX_USDC_APP_ID]:   { name: "USD Coin", ticker: "USDC", icon: <CircleDollarSign className="h-5 w-5 text-white" />, decimals: 6 },
+const POOL_META: Record<number, { name: string; ticker: string; icon: React.ReactNode }> = {
+  [COMPX_MAGNET_APP_ID]: {
+    name: "Magnet",
+    ticker: "$U",
+    icon: <Coins className="h-5 w-5 text-white" />,
+  },
+  [COMPX_USDC_APP_ID]: {
+    name: "USD Coin",
+    ticker: "USDC",
+    icon: <CircleDollarSign className="h-5 w-5 text-white" />,
+  },
 };
 
-interface PoolData {
-  appId: number;
-  totalDeposits: number;   // in token display units
-  totalBorrows: number;
-  availableToBorrow: number;
-  utilizationRate: number;
-  supplyApy: number;
-  borrowApy: number;
-  usdPrice: number;        // price of 1 token in USD
-}
-
-function readState(globalState: algosdk.modelsv2.TealKeyValue[]): Record<string, bigint | Uint8Array> {
-  const state: Record<string, bigint | Uint8Array> = {};
-  for (const item of globalState) {
-    const key = Buffer.from(item.key as Uint8Array).toString("utf8");
-    if (Number(item.value.type) === 1) {
-      state[key] = item.value.bytes as Uint8Array;
-    } else {
-      state[key] = item.value.uint as bigint;
-    }
-  }
-  return state;
-}
-
-function uint(state: Record<string, bigint | Uint8Array>, key: string): bigint {
-  const v = state[key];
-  return typeof v === "bigint" ? v : BigInt(0);
-}
-
-function toStandard(raw: bigint, decimals: number): number {
-  return Number(raw) / Math.pow(10, decimals);
-}
-
-async function fetchUsdPrice(): Promise<number> {
-  try {
-    const [vestigeRes, algoRes] = await Promise.all([
-      fetch(`https://api.vestigelabs.org/assets/price?asset_ids=${MAGNET_ASA_ID}&network_id=0`),
-      fetch("https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd"),
-    ]);
-    if (!vestigeRes.ok || !algoRes.ok) return 0;
-    const vestigeData = await vestigeRes.json();
-    const algoData    = await algoRes.json();
-    const algoPrice   = vestigeData?.[0]?.price ?? 0;
-    const algoUsd     = algoData?.algorand?.usd ?? 0;
-    return Number(algoPrice) * Number(algoUsd);
-  } catch {
-    return 0;
-  }
-}
-
-async function fetchPool(algod: algosdk.Algodv2, appId: number, usdPrice: number): Promise<PoolData> {
-  const app = await algod.getApplicationByID(appId).do();
-  const raw = readState(app.params.globalState ?? []);
-  const dec = POOL_META[appId].decimals;
-
-  const totalDepositsRaw = uint(raw, "total_deposits");
-  const totalBorrowsRaw  = uint(raw, "total_borrows");
-  const cashRaw          = uint(raw, "cash_on_hand");
-
-  const totalDeposits    = toStandard(totalDepositsRaw, dec);
-  const totalBorrows     = toStandard(totalBorrowsRaw, dec);
-  const availableToBorrow = toStandard(cashRaw, dec);
-
-  const utilizationRate =
-    totalDepositsRaw > BigInt(0)
-      ? (Number(totalBorrowsRaw) / Number(totalDepositsRaw)) * 100
-      : 0;
-
-  const borrowAprBps     = Number(uint(raw, "last_apr_bps"));
-  const borrowApy        = borrowAprBps / 100;
-  const protocolShareBps = Number(uint(raw, "protocol_share_bps") || BigInt(1000));
-  const supplyApy        = borrowApy * (utilizationRate / 100) * (1 - protocolShareBps / 10_000);
-
-  return { appId, totalDeposits, totalBorrows, availableToBorrow, utilizationRate, supplyApy, borrowApy, usdPrice };
-}
-
-function fmtApy(n: number): string {
-  return isFinite(n) ? `${n.toFixed(2)}%` : "—";
-}
+const ACTIONS: { id: LendingAction; label: string }[] = [
+  { id: "supply",   label: "Supply"   },
+  { id: "withdraw", label: "Withdraw" },
+  { id: "borrow",   label: "Borrow"   },
+  { id: "repay",    label: "Repay"    },
+];
 
 function fmtUsd(n: number): string {
-  if (!isFinite(n)) return "—";
+  if (!isFinite(n) || n === 0) return "$0.00";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(2)}K`;
   return `$${n.toFixed(2)}`;
 }
 
-function PoolCard({ appId, data, loading }: { appId: number; data: PoolData | null; loading: boolean }) {
+function PoolCard({
+  appId,
+  data,
+  loading,
+  onAction,
+}: {
+  appId: number;
+  data: MarketData | null;
+  loading: boolean;
+  onAction: (action: LendingAction) => void;
+}) {
   const meta = POOL_META[appId];
   const skeleton = (w: string) => (
     <span className={`inline-block h-4 ${w} animate-pulse rounded bg-white/10`} />
   );
   const utilPct   = data?.utilizationRate ?? 0;
   const utilColor = utilPct > 80 ? "bg-red-500" : utilPct > 60 ? "bg-yellow-500" : "bg-magnet-500";
-
-  const toUsd = (tokens: number) =>
-    data ? fmtUsd(tokens * data.usdPrice) : "—";
 
   return (
     <Panel className="p-6 flex flex-col gap-5">
@@ -136,35 +78,35 @@ function PoolCard({ appId, data, loading }: { appId: number; data: PoolData | nu
         <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3">
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Supply APY</p>
           <p className="mt-1 font-mono text-2xl font-bold text-green-400">
-            {loading || !data ? skeleton("w-16") : fmtApy(data.supplyApy)}
+            {loading || !data ? skeleton("w-16") : `${data.supplyApy.toFixed(2)}%`}
           </p>
         </div>
         <div className="rounded-xl border border-white/5 bg-white/5 px-4 py-3">
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Borrow APY</p>
           <p className="mt-1 font-mono text-2xl font-bold text-magnet-300">
-            {loading || !data ? skeleton("w-16") : fmtApy(data.borrowApy)}
+            {loading || !data ? skeleton("w-16") : `${data.borrowApy.toFixed(2)}%`}
           </p>
         </div>
       </div>
 
-      {/* Stats row — all in USD */}
+      {/* Stats row — USD */}
       <div className="grid grid-cols-3 gap-2 border-t border-white/5 pt-4 text-center">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">TVL</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : toUsd(data.totalDeposits)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalDepositsUSD)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Borrowed</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : toUsd(data.totalBorrows)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalBorrowsUSD)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Available</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : toUsd(data.availableToBorrow)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.availableToBorrowUSD)}
           </p>
         </div>
       </div>
@@ -187,60 +129,99 @@ function PoolCard({ appId, data, loading }: { appId: number; data: PoolData | nu
         </div>
       </div>
 
-      <p className="text-center text-xs text-gray-600 mt-auto">Hosted by CompX</p>
+      {/* Action buttons */}
+      <div className="grid grid-cols-4 gap-2 border-t border-white/5 pt-1">
+        {ACTIONS.map((a) => (
+          <button
+            key={a.id}
+            onClick={() => onAction(a.id)}
+            disabled={!data}
+            className="rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-medium text-gray-300 hover:border-magnet-500/50 hover:bg-magnet-500/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-center text-xs text-gray-600 -mt-2">Hosted by CompX</p>
     </Panel>
   );
 }
 
 export function CompXMarkets() {
-  const [pools, setPools]   = useState<Record<number, PoolData>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState(false);
+  const [markets, setMarkets]   = useState<Record<number, MarketData>>({});
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(false);
+  const [activeModal, setActiveModal] = useState<{ appId: number; action: LendingAction } | null>(null);
 
   useEffect(() => {
-    const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
-
-    fetchUsdPrice()
-      .then((magnetUsdPrice) =>
-        Promise.all([
-          fetchPool(algod, COMPX_MAGNET_APP_ID, magnetUsdPrice),
-          fetchPool(algod, COMPX_USDC_APP_ID, 1), // USDC = $1
-        ])
+    const client = new LendingClient({ network: "mainnet" });
+    Promise.all([
+      client.getMarket(COMPX_MAGNET_APP_ID),
+      client.getMarket(COMPX_USDC_APP_ID),
+    ])
+      .then(([magnet, usdc]) =>
+        setMarkets({ [magnet.appId]: magnet, [usdc.appId]: usdc })
       )
-      .then(([magnet, usdc]) => setPools({ [magnet.appId]: magnet, [usdc.appId]: usdc }))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
+  const activeMarket = activeModal ? (markets[activeModal.appId] ?? null) : null;
+  const pairedMarket = activeModal
+    ? markets[activeModal.appId === COMPX_MAGNET_APP_ID ? COMPX_USDC_APP_ID : COMPX_MAGNET_APP_ID]
+    : undefined;
+
   return (
-    <section>
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <>
+      <section>
+        <div className="mb-5 flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/15 border border-blue-500/20">
             <TrendingUp className="h-4 w-4 text-blue-400" />
           </div>
           <div>
             <h2 className="text-sm font-semibold text-white">Single-Token Markets</h2>
-            <p className="text-xs text-gray-500">Lend or borrow individual assets · data live from Algorand mainnet</p>
+            <p className="text-xs text-gray-500">
+              Lend or borrow individual assets · live on Algorand mainnet
+            </p>
           </div>
         </div>
-      </div>
 
-      {error ? (
-        <Panel className="p-6 text-center">
-          <p className="text-sm text-gray-400">Failed to load market data. Try refreshing.</p>
-        </Panel>
-      ) : (
-        <div className="grid gap-5 md:grid-cols-2">
-          <PoolCard appId={COMPX_MAGNET_APP_ID} data={pools[COMPX_MAGNET_APP_ID] ?? null} loading={loading} />
-          <PoolCard appId={COMPX_USDC_APP_ID}   data={pools[COMPX_USDC_APP_ID]   ?? null} loading={loading} />
-        </div>
+        {error ? (
+          <Panel className="p-6 text-center">
+            <p className="text-sm text-gray-400">Failed to load market data. Try refreshing.</p>
+          </Panel>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2">
+            <PoolCard
+              appId={COMPX_MAGNET_APP_ID}
+              data={markets[COMPX_MAGNET_APP_ID] ?? null}
+              loading={loading}
+              onAction={(action) => setActiveModal({ appId: COMPX_MAGNET_APP_ID, action })}
+            />
+            <PoolCard
+              appId={COMPX_USDC_APP_ID}
+              data={markets[COMPX_USDC_APP_ID] ?? null}
+              loading={loading}
+              onAction={(action) => setActiveModal({ appId: COMPX_USDC_APP_ID, action })}
+            />
+          </div>
+        )}
+
+        <p className="mt-4 flex items-center gap-1.5 text-xs text-gray-500">
+          <Wallet className="h-3.5 w-3.5 shrink-0" />
+          Connect your wallet to supply, withdraw, borrow, or repay.
+        </p>
+      </section>
+
+      {activeModal && activeMarket && (
+        <LendingActionModal
+          marketData={activeMarket}
+          collateralMarket={pairedMarket}
+          defaultAction={activeModal.action}
+          onClose={() => setActiveModal(null)}
+        />
       )}
-
-      <p className="mt-4 flex items-center gap-1.5 text-xs text-gray-500">
-        <Wallet className="h-3.5 w-3.5 shrink-0" />
-        Connect your wallet on CompX to supply or borrow.
-      </p>
-    </section>
+    </>
   );
 }
