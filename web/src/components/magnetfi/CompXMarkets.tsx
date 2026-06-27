@@ -29,6 +29,41 @@ const ACTIONS: { id: LendingAction; label: string }[] = [
   { id: "repay",    label: "Repay"    },
 ];
 
+// SDK 2.0.2 reports 6 decimals for all assets; $U is actually 5.
+const CORRECT_DECIMALS: Record<number, number> = {
+  3081853135: 5, // $U
+  3607827779: 5, // cU v3 (LST)
+}
+function correctDeposits(market: MarketData): number {
+  const sdkDec = market.baseTokenDecimals
+  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
+  if (realDec === sdkDec) return market.totalDeposits
+  // SDK over-divided by 10^(sdkDec-realDec); undo it
+  return market.totalDeposits * Math.pow(10, sdkDec - realDec)
+}
+function correctBorrows(market: MarketData): number {
+  const sdkDec = market.baseTokenDecimals
+  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
+  if (realDec === sdkDec) return market.totalBorrows
+  return market.totalBorrows * Math.pow(10, sdkDec - realDec)
+}
+function correctAvailable(market: MarketData): number {
+  const sdkDec = market.baseTokenDecimals
+  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
+  if (realDec === sdkDec) return market.availableToBorrow
+  return market.availableToBorrow * Math.pow(10, sdkDec - realDec)
+}
+
+async function fetchUPriceUSD(): Promise<number> {
+  try {
+    const [v, a] = await Promise.all([
+      fetch("https://api.vestigelabs.org/assets/price?asset_ids=3081853135&network_id=0").then(r => r.json()),
+      fetch("https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd").then(r => r.json()),
+    ])
+    return Number(v[0].price) * Number(a.algorand.usd)
+  } catch { return 0 }
+}
+
 function fmtUsd(n: number): string {
   if (!isFinite(n) || n === 0) return "$0.00";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -40,11 +75,13 @@ function PoolCard({
   appId,
   data,
   loading,
+  usdPrice,
   onAction,
 }: {
   appId: number;
   data: MarketData | null;
   loading: boolean;
+  usdPrice: number;        // correct USD price per token (overrides SDK oracle)
   onAction: (action: LendingAction) => void;
 }) {
   const meta = POOL_META[appId];
@@ -89,24 +126,24 @@ function PoolCard({
         </div>
       </div>
 
-      {/* Stats row — USD */}
+      {/* Stats row — USD (corrected decimals × market price) */}
       <div className="grid grid-cols-3 gap-2 border-t border-white/5 pt-4 text-center">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">TVL</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalDepositsUSD)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(correctDeposits(data) * usdPrice)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Borrowed</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalBorrowsUSD)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(correctBorrows(data) * usdPrice)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Available</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(data.availableToBorrowUSD)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(correctAvailable(data) * usdPrice)}
           </p>
         </div>
       </div>
@@ -152,6 +189,7 @@ export function CompXMarkets() {
   const [markets, setMarkets]   = useState<Record<number, MarketData>>({});
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(false);
+  const [uPriceUSD, setUPriceUSD] = useState(0);
   const [activeModal, setActiveModal] = useState<{ appId: number; action: LendingAction } | null>(null);
 
   useEffect(() => {
@@ -159,10 +197,12 @@ export function CompXMarkets() {
     Promise.all([
       client.getMarket(COMPX_MAGNET_APP_ID),
       client.getMarket(COMPX_USDC_APP_ID),
+      fetchUPriceUSD(),
     ])
-      .then(([magnet, usdc]) =>
+      .then(([magnet, usdc, uPrice]) => {
         setMarkets({ [magnet.appId]: magnet, [usdc.appId]: usdc })
-      )
+        setUPriceUSD(uPrice)
+      })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
@@ -197,12 +237,14 @@ export function CompXMarkets() {
               appId={COMPX_MAGNET_APP_ID}
               data={markets[COMPX_MAGNET_APP_ID] ?? null}
               loading={loading}
+              usdPrice={uPriceUSD}
               onAction={(action) => setActiveModal({ appId: COMPX_MAGNET_APP_ID, action })}
             />
             <PoolCard
               appId={COMPX_USDC_APP_ID}
               data={markets[COMPX_USDC_APP_ID] ?? null}
               loading={loading}
+              usdPrice={1}
               onAction={(action) => setActiveModal({ appId: COMPX_USDC_APP_ID, action })}
             />
           </div>
