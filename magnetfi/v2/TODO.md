@@ -1,11 +1,17 @@
 # MagnetFi v2 — Open Items / Pre-Mainnet TODO
 
-Compiled from all audit passes (1–21). This tracks what remains **open**; every audit
+Compiled from all audit passes (1–24). This tracks what remains **open**; every audit
 finding that required a *code* change is already resolved and recorded in [AUDIT.md](./AUDIT.md).
-The three contracts compile clean and have been through three independent fresh-context
-reviews (Passes 18, 19, 21) on the final architecture.
+The three contracts compile clean, have been through three independent fresh-context
+reviews + adversarial testing, and pass 67 integration/adversarial + 30 oracle-bot tests.
 
-_Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
+_Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
+
+## Deployment status
+- ✅ **mUSD ASA on mainnet:** `3615600399`.
+- ✅ **Full UI built** — `/magnetfi` app (Overview / CompX Markets / LP Vaults / mUSD) + gated Admin panel (Create mUSD, testnet asset factory, deploy wizard, operations console). Borrower tabs wired to live on-chain data + transactions.
+- ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
+- ⬜ **Mainnet deploy** — pending guardian address + U/tALGO pool/LP IDs + a fresh oracle bot run.
 
 ---
 
@@ -37,8 +43,8 @@ _Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
 
 ## 🟠 Strongly recommended before mainnet (not code-blocking)
 
-- [x] **Automated test suite.** ✅ Done — LocalNet integration suite at `contracts/tests/` (34 tests), deploying the real compiled contracts and exercising every privileged path: full lifecycle, all liquidation paths + settlement end-states, two-role/pause/timelock flows, oracle guards, and the P21-01 multi-year catch-up regression. Caught a real bug on first run (P22-01, fixed). Re-run with `.venv-test/bin/python -m pytest tests/` (see `tests/README.md`).
-- [ ] **Professional third-party audit** before significant TVL. Internal review is strong (22 passes + executable tests), but real-fund custody warrants an external firm.
+- [x] **Automated test suite.** ✅ Done — LocalNet integration + adversarial suite at `contracts/tests/` (67 tests) deploying the real compiled contracts across every privileged path, attack class, and the P21-01 regression (caught a real bug on first run, P22-01, fixed); plus 30 oracle-bot unit tests at `oracle_bot/tests/`. Re-run: `.venv-test/bin/python -m pytest tests/` (see `tests/README.md`).
+- [ ] **Professional third-party audit** before significant TVL. Internal review is strong (24 passes + executable, adversarial & oracle-bot tests), but real-fund custody warrants an external firm.
 - [ ] **Test borrow on mainnet** with a small amount (single vault, full open→borrow→repay) before opening to the public.
 
 ---
@@ -53,13 +59,15 @@ _Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
 
 ---
 
-## 🔵 Frontend / integration
+## 🔵 Frontend / integration — ✅ built (testnet-validated)
 
-- [ ] Update `web/src/lib/constants.ts` with deployed IDs: `LP_ORACLE_V2_APP_ID`, `PSM_APP_ID`, `VAULT_APP_ID`, `MUSD_ASA_ID`.
-- [ ] Frontend must construct the correct **atomic groups** — group ordering is enforced on-chain (e.g. `open_vault`: MBR payment at index−1, LP transfer at index+1; mUSD/USDC transfers adjacent to their app calls).
-- [ ] Frontend must display the **current rate** and alert borrowers on rate changes (rate locks at vault open; changes apply only to new vaults).
-- [ ] Surface **pending timelocked changes** and **pause state** on the admin dashboard (operators should cancel any stale pending repoint as part of every admin rotation — P21-04 auto-clears it on `accept_admin`, but visibility matters).
-- [ ] Redeploy the site with updated contract IDs after deploy.
+- [x] **MagnetFi v2 app** at `/magnetfi`: Overview / Markets (CompX) / LP Vaults / mUSD tabs + gated Admin panel.
+- [x] **Network-aware config** (`lib/magnetfi` `ACTIVE` / `DEPLOYMENTS`) replaces hand-edited constants; resolves app + asset IDs per network via `NEXT_PUBLIC_ALGO_NETWORK`.
+- [x] **Admin panel** (gated to the admin wallet): Create mUSD, testnet asset factory, the resumable **deploy & initialize wizard** (48h-timelock aware), and the **operations console** (rates, liquidations, pause/unpause, reserves & fees, oracle re-anchor, governance/rotation + timelocked repoints).
+- [x] **Borrower tabs wired to live data + transactions** with correct atomic-group ordering (incl. the pay-interest transfer-before-call fix, P22-01), live health factors, and oracle-freshness gating on borrows.
+- [x] **CompX single-token markets** integrated (live read + deep-link).
+- [ ] After mainnet deploy: fill `DEPLOYMENTS.mainnet` in `web/src/lib/magnetfi.ts` with the real Oracle/PSM/Vault app IDs + U/tALGO LP/pool IDs, fill the oracle bot config, and redeploy the site.
+- [ ] (Polish) Frontend should display the current rate and alert borrowers on rate changes (rate locks at vault open).
 
 ---
 
@@ -76,9 +84,10 @@ _Last updated: 2026-06-22. First vault target: **U/tALGO** on mainnet._
 
 ## ✅ Resolved (reference only)
 
-All code-level audit findings through Pass 21 are fixed and recorded in [AUDIT.md](./AUDIT.md), including:
+All code-level audit findings through Pass 24 are fixed and recorded in [AUDIT.md](./AUDIT.md), including:
 the two-role guardian model (admin rotation, pause, 48h timelock on oracle/vault repointing),
 the oracle ±25% drift anchor (P19-03), the oracle-bot pool-state read correction (P19-01),
-the settlement-branch LP-trap fix (F-01), the accrual lost-time fix (P21-01), and role-distinctness
-guards (P21-02/03/04). P19-04 was confirmed *not* a bug (liquidation interest is realized as PSM
-overcollateralization, withdrawable via `withdraw_usdc`).
+the settlement-branch LP-trap fix (F-01), the accrual lost-time fix (P21-01), role-distinctness
+guards (P21-02/03/04), and the `pay_interest` group-ordering fix found by the test suite (P22-01).
+P19-04 (liquidation interest realized as PSM overcollateralization) and P23-01 (bounded LP-opt-out
+liquidation-delay griefing) were reviewed and documented as non-issues / accepted.

@@ -8,6 +8,17 @@ This is an admin-managed protocol with a two-role security model: a hot **admin*
 
 ---
 
+## Product Surfaces
+
+The MagnetFi app exposes two complementary borrowing/lending surfaces:
+
+1. **LP-collateral vaults (these contracts).** Deposit Tinyman LP tokens, borrow mUSD. Built and owned by MagnetFi — the LP Oracle, PSM, and Vault documented here.
+2. **Single-token markets (CompX).** Lend or borrow individual assets ($U, USDC, …) via our partner **CompX**'s lending pools, surfaced in the MagnetFi UI through their SDK (read-only market data + deep-link to transact). These pools are hosted and operated by CompX; MagnetFi adds no contract surface or custody for them.
+
+Together they give MagnetFi both single-token and LP-collateralized options. Everything else in this document set concerns the LP-vault contracts only.
+
+---
+
 ## Protocol Architecture
 
 ```
