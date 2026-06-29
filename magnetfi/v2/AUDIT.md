@@ -1029,3 +1029,23 @@ Closed the last untested component. Added 30 fast, network-free unit tests for t
 Run: `cd oracle_bot && <test-venv>/bin/python -m pytest tests -q` (needs `pytest` + `requests`). All 30 pass.
 
 **Coverage status:** all three contracts (67 integration/adversarial tests) and the oracle bot (30 unit tests) now have executable test coverage.
+
+---
+
+## Pass 25 — Oracle Bot Price-Source Rebuild (on-chain + CompX second source)
+
+The configured price feed (Vestige `api.vestigelabs.io`) was **dead** — the domain was retired in Vestige's rebrand, and the current host (`free-api.vestige.fi`) returns Cloudflare 530 to datacenter IPs. This surfaced **P19-02** (single external price feed = SPOF) as a live failure. The bot's entire price layer was rebuilt to be self-contained and independently cross-checked.
+
+### Resolved
+
+**[P19-02] 🟢 Primary pricing is now fully on-chain.** Each underlying is priced in USDC by walking a reference-pool graph over Tinyman v2 reserves, rooted at USDC: `ALGO ← ALGO/USDC`, `tALGO ← tALGO/ALGO`, `U ← U/tALGO` (`derive_asset_price_usdc`, recursive + memoized). No external HTTP price API, no API keys, no rate limits, no dead domains. Reserves are read from each pool account's local state under the AMM validator app — the same path already used for the LP itself.
+
+**Second source / divergence guard.** The volatile underlying ($U) is cross-checked against CompX's on-chain **Flux oracle** (mainnet app `3307588794`, price box `"prices"+uint64(assetId)`, tuple `(assetId, price, lastUpdated)` ×1e6 — read directly, the public `@compx/sdk` helper pointed at a stale default). A genuine divergence beyond `compx_divergence_limit` (default 5%) while CompX is fresh **refuses the post** (fail-stale, P19-02's intent). CompX being unavailable/stale is a soft warning — bot liveness is not coupled to CompX uptime.
+
+### Verification
+- Mainnet `--dry-run`: derived `U=$0.117608`, `tALGO=$0.092594` → U/tALGO LP `675635` ($0.6756); CompX cross-check `derived $0.1176 vs CompX $0.1186 (Δ0.86%)`; fail-stale gate + dry-run post all fired correctly.
+- `config.json` filled with the real U/tALGO vault pool (`AIR4…`, LP token `3163770927`, `pool_id=3163770927`), reference pools (ALGO/USDC `2PIFZW…`, tALGO/ALGO `LIHQGE…`, U/tALGO `AIR4…`), and asset decimals.
+- Test suite expanded **30 → 42** (added `_pool_reserves`, `derive_asset_price_usdc`, `read_compx_price`, `compx_cross_check`, and a CompX-divergence `get_lp_price` guard); all green. Removed the dead `requests`/Vestige dependency.
+
+### Still open (operational, pre-mainnet)
+Set the mainnet `oracle_app_id` + bot wallet at deploy time; bot uptime alerting + redundant instances (AUD-004).

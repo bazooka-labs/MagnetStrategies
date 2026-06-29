@@ -155,45 +155,46 @@ The 50% guard catches catastrophic oracle compromise or severely broken price so
 
 The bot runs on the same interval as the v1 oracle (5 minutes). It prices each supported LP pool in sequence.
 
-### Price Sources
+### Price Sources (on-chain — no external HTTP price API)
 
-| Priority | Source | Method |
+The bot derives every price directly from on-chain Tinyman v2 pool reserves, then
+cross-checks the volatile underlying against CompX's on-chain Flux oracle. There is
+**no dependency on an external price API** — the original Vestige integration was
+removed after its endpoint was retired, and a single external feed was the P19-02
+single-point-of-failure anyway.
+
+| Role | Source | Method |
 |---|---|---|
-| 1 | Vestige API | `GET /v1/assets/{pool_id}/lp-price` — direct LP pricing if available |
-| 2 | Computed from Vestige asset prices + on-chain pool state | Fetch $U/USDC and ALGO/USDC from Vestige; read pool reserves from algod |
-| 3 | Full on-chain fallback | Read all data from algod only (pool reserves + Tinyman global state for total LP supply) |
+| **Primary** | On-chain reference-pool graph (Tinyman v2) | Price each underlying in USDC by walking pool ratios rooted at USDC: `ALGO ← ALGO/USDC`, `tALGO ← tALGO/ALGO`, `U ← U/tALGO`. Reserves read from each pool account's local state under the AMM validator app. |
+| **Second source / divergence guard (P19-02)** | CompX Flux oracle (on-chain, mainnet app `3307588794`) | Read the volatile underlying's price from CompX's price box (`"prices"+uint64(assetId)`, tuple `(assetId, price, lastUpdated)` ×1e6). If the bot's derived price diverges beyond `compx_divergence_limit` (default 5%) while CompX is fresh, the post is refused (fail-stale). CompX merely being unavailable/stale is a soft warning (we don't couple our liveness to CompX uptime). |
 
-### Computation Steps (for each pool)
+`reference_pools` in `config.json` maps each asset → `{pool_address, quote_asset_id}`; `compx_oracle_app_id` + per-pool `compx_check_asset_id` configure the cross-check. Live cross-check at build time: derived $U `$0.1176` vs CompX `$0.1186` (Δ0.86%).
+
+### Computation Steps (per pool)
 
 ```python
-# Step 1: fetch underlying asset prices in USDC
-u_price_usdc   = fetch_price(U_ASA_ID)    # from Vestige or Haystack
-algo_price_usdc = fetch_price(ALGO_ASA_ID)
+# 1. Read the LP pool reserves + issued LP from the pool ACCOUNT's local state
+pool_state = account_application_info(pool_address, amm_validator_app_id).local_state
+reserve_a, reserve_b = pool_state["asset_1_reserves"], pool_state["asset_2_reserves"]
+total_lp             = pool_state["issued_pool_tokens"]
 
-# Step 2: read pool state from algod
-pool_state  = algod.get_application_state(pool_app_id)
-reserve_a   = pool_state["asset_1_reserves"]  # base units
-reserve_b   = pool_state["asset_2_reserves"]  # base units
-total_lp    = pool_state["lp_asset_total"]    # LP token base units
+# 2. Derive each underlying's USD price ON-CHAIN via the reference-pool graph
+#    (recursive, memoized, rooted at USDC = 1.0; e.g. U ← U/tALGO × tALGO ← tALGO/ALGO × ALGO ← ALGO/USDC)
+price_a = derive_asset_price_usdc(asset_a)
+price_b = derive_asset_price_usdc(asset_b)
 
-# Step 3: compute TVL with decimal normalization
-tvl_a = (reserve_a / 10**decimals_a) * price_a
-tvl_b = (reserve_b / 10**decimals_b) * price_b
-pool_tvl = tvl_a + tvl_b
+# 3. TVL with decimal normalization → price per LP token (scaled 1e6)
+pool_tvl     = (reserve_a/10**dec_a)*price_a + (reserve_b/10**dec_b)*price_b
+scaled_price = int((pool_tvl / (total_lp/10**LP_DECIMALS)) * 1_000_000)
 
-# Step 4: compute price per LP token scaled to 6 decimal places
-lp_supply_display = total_lp / 10**LP_DECIMALS  # LP tokens have 6 decimals
-lp_price_display  = pool_tvl / lp_supply_display
-scaled_price      = int(lp_price_display * 1_000_000)
+# 4. Absolute sanity bound, then CompX second-source cross-check (fail-stale on divergence)
+if not (min_price <= scaled_price <= max_price): return            # skip
+cx = read_compx_price(compx_oracle_app_id, compx_check_asset_id)    # CompX Flux oracle box
+if cx and cx.fresh and abs(derived_check - cx.price)/cx.price > divergence_limit:
+    return                                                          # skip (fail-stale)
 
-# Step 5: divergence check against other sources (same as v1)
-if max(prices) / min(prices) > 1.15:
-    skip_update()
-    alert("Source divergence")
-    return
-
-final_price = median(prices)
-post_to_oracle(pool_id, final_price)
+# 5. Trapezoidal TWAP (≥3 readings) + asymmetric divergence guard, then post
+post_to_oracle(pool_id, twap(scaled_price))
 ```
 
 ---

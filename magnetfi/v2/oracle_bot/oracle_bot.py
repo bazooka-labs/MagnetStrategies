@@ -3,22 +3,25 @@ MagnetFi v2 LP Oracle Bot
 
 Posts TWAP-smoothed LP token prices to the on-chain LP Oracle contract every 5 minutes.
 
-Price pipeline per pool:
-  1. Read pool reserves + issued LP supply from the pool ACCOUNT's local state under
-     the shared Tinyman v2 AMM validator app (NOT a per-pool app's global state)
-  2. Verify the pool's on-chain asset ids match config (guards against wrong pool_address)
-  3. Fetch underlying asset USD prices from Vestige
+Price pipeline per pool (fully on-chain — no external HTTP price API):
+  1. Read the LP pool's reserves + issued LP supply from the pool ACCOUNT's local
+     state under the shared Tinyman v2 AMM validator app (NOT a per-pool app)
+  2. Verify the pool's on-chain asset ids match config (guards a wrong pool_address)
+  3. Derive each underlying's USD price ON-CHAIN via a reference-pool graph rooted at
+     USDC (e.g. ALGO←ALGO/USDC, tALGO←tALGO/ALGO, U←U/tALGO) — see reference_pools
   4. Compute pool TVL and price per LP token (scaled × 1_000_000)
   5. Apply an absolute price sanity bound (min_price/max_price)
-  6. Apply 5-reading trapezoidal TWAP (≈25-minute window)
-  7. Run asymmetric divergence check (block upward spikes; let drops through)
-  8. Post to oracle contract if all checks pass
+  6. Cross-check the volatile underlying against CompX's on-chain Flux oracle
+     (second source / divergence guard, P19-02); refuse to post on disagreement
+  7. Apply 5-reading trapezoidal TWAP (≈25-minute window)
+  8. Run asymmetric divergence check (block upward spikes; let drops through)
+  9. Post to oracle contract if all checks pass
 
 Usage:
-  python oracle_bot.py [--dry-run] [--config config.json]
+  python oracle_bot.py [--dry-run] [--once] [--config config.json]
 
-Environment variables required:
-  BOT_MNEMONIC   — oracle bot wallet mnemonic (25 words)
+Environment variables:
+  BOT_MNEMONIC   — oracle bot wallet mnemonic (25 words) — required unless --dry-run
   ALGOD_URL      — algod node URL (default: https://mainnet-api.algonode.cloud)
   ALGOD_TOKEN    — algod API token (default: empty for public nodes)
   ORACLE_APP_ID  — LP Oracle contract app ID (can also be in config.json)
@@ -29,21 +32,17 @@ import base64
 import json
 import logging
 import os
-import statistics
 import sys
 import time
 from pathlib import Path
 
-import requests
 import algosdk
 from algosdk import account, mnemonic
 from algosdk.v2client import algod
-from algosdk.transaction import wait_for_confirmation
 from algosdk.abi import Method
 from algosdk.atomic_transaction_composer import (
     AtomicTransactionComposer,
     AccountTransactionSigner,
-    TransactionWithSigner,
 )
 
 
@@ -52,25 +51,22 @@ from algosdk.atomic_transaction_composer import (
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.json"
 STATE_FILE = Path(__file__).parent / "twap_state.json"
 
-VESTIGE_API = "https://api.vestigelabs.io"
-
 # Tinyman v2 AMM validator app — ONE shared app for all pools on mainnet.
 # Each pool is a separate ACCOUNT opted into this app; the pool's reserves and
-# issued-LP supply live in that account's LOCAL state under this app id (NOT in a
-# per-pool application's global state). Override via config "amm_validator_app_id".
+# issued-LP supply live in that account's LOCAL state under this app id.
 TINYMAN_V2_VALIDATOR_APP_ID = 1002541853
 
-TWAP_WINDOW      = 5       # number of readings for TWAP
-MIN_TWAP_READINGS = 3      # fail-stale: don't post until the window has this many readings
-POLL_INTERVAL    = 300     # seconds between updates (5 minutes)
-DIVERGENCE_LIMIT = 0.15    # 15% max spread across price sources before skip
-LP_DECIMALS      = 6       # Tinyman LP tokens have 6 decimal places
-PRICE_SCALE      = 1_000_000   # on-chain price representation: 1.00 = 1_000_000
+TWAP_WINDOW       = 5       # number of readings for TWAP
+MIN_TWAP_READINGS = 3       # fail-stale: don't post until the window has this many readings
+POLL_INTERVAL     = 300     # seconds between updates (5 minutes)
+DIVERGENCE_LIMIT  = 0.15    # 15% max spot-vs-TWAP spread before skip
+LP_DECIMALS       = 6       # Tinyman LP tokens have 6 decimal places
+PRICE_SCALE       = 1_000_000   # on-chain price representation: 1.00 = 1_000_000
 
 # Algod timeout / retry settings
-ALGOD_TIMEOUT    = 10
-MAX_RETRIES      = 3
-RETRY_DELAY      = 5
+ALGOD_TIMEOUT = 10
+MAX_RETRIES   = 3
+RETRY_DELAY   = 5
 
 # ABI method signature for update_lp_price
 UPDATE_LP_PRICE_SIG = "update_lp_price(uint64,uint64)void"
@@ -142,20 +138,14 @@ class TwapState:
         return int(weighted / total_time)
 
 
-# ── pool configuration ────────────────────────────────────────────────────────
+# ── configuration objects ──────────────────────────────────────────────────────
 
 class PoolConfig:
-    """Per-pool parameters loaded from config.json."""
+    """Per-pool parameters for an LP token we price and post."""
     __slots__ = (
-        "pool_id",        # arbitrary unique id we assign; matches the pool_id key used in Vault/Oracle
-        "pool_address",   # Tinyman v2 pool ACCOUNT address (holds reserves in local state under the AMM app)
-        "asset_a_id",     # ASA ID of asset_1 in the pool (0 for ALGO) — must match Tinyman asset_1_id
-        "asset_a_decimals",
-        "asset_b_id",     # ASA ID of asset_2 in the pool — must match Tinyman asset_2_id
-        "asset_b_decimals",
-        "min_price",      # absolute sanity floor (scaled ×1e6); 0 disables
-        "max_price",      # absolute sanity ceiling (scaled ×1e6); 0 disables
-        "label",          # human-readable name e.g. "U/ALGO"
+        "pool_id", "pool_address",
+        "asset_a_id", "asset_a_decimals", "asset_b_id", "asset_b_decimals",
+        "min_price", "max_price", "compx_check_asset_id", "label",
     )
 
     def __init__(self, d: dict) -> None:
@@ -167,25 +157,47 @@ class PoolConfig:
         self.asset_b_decimals = int(d["asset_b_decimals"])
         self.min_price = int(d.get("min_price", 0))
         self.max_price = int(d.get("max_price", 0))
+        # Asset id to cross-check against the CompX oracle (the volatile underlying);
+        # 0/absent disables the cross-check for this pool.
+        self.compx_check_asset_id = int(d.get("compx_check_asset_id", 0))
         self.label = d.get("label", f"pool_{self.pool_id}")
 
 
-def load_config(path: Path) -> tuple[int, int, list[PoolConfig]]:
-    """Returns (oracle_app_id, amm_validator_app_id, [PoolConfig])."""
+class BotConfig:
+    """Top-level bot configuration loaded from config.json."""
+    __slots__ = (
+        "oracle_app_id", "amm_app_id", "usdc_asa_id", "asset_decimals",
+        "reference_pools", "compx_oracle_app_id", "compx_divergence_limit",
+        "compx_max_age", "pools",
+    )
+
+    def __init__(self, raw: dict) -> None:
+        self.oracle_app_id = int(raw.get("oracle_app_id", os.environ.get("ORACLE_APP_ID", 0)))
+        self.amm_app_id = int(raw.get("amm_validator_app_id", TINYMAN_V2_VALIDATOR_APP_ID))
+        self.usdc_asa_id = int(raw.get("usdc_asa_id", 31566704))
+        # asset_id → decimals
+        self.asset_decimals = {int(k): int(v) for k, v in raw.get("asset_decimals", {}).items()}
+        # asset_id → {"pool_address": str, "quote_asset_id": int}
+        self.reference_pools = {
+            int(k): {"pool_address": str(v["pool_address"]),
+                     "quote_asset_id": int(v["quote_asset_id"])}
+            for k, v in raw.get("reference_pools", {}).items()
+        }
+        self.compx_oracle_app_id = int(raw.get("compx_oracle_app_id", 0))
+        self.compx_divergence_limit = float(raw.get("compx_divergence_limit", 0.05))
+        self.compx_max_age = int(raw.get("compx_max_age_seconds", 3600))
+        self.pools = [PoolConfig(p) for p in raw.get("pools", [])]
+
+
+def load_config(path: Path) -> BotConfig:
     if not path.exists():
         log.error(f"Config file not found: {path}")
         sys.exit(1)
-    raw = json.loads(path.read_text())
-    oracle_app_id = int(raw.get("oracle_app_id", os.environ.get("ORACLE_APP_ID", 0)))
-    if oracle_app_id == 0:
-        log.error("oracle_app_id must be set in config.json or ORACLE_APP_ID env var")
-        sys.exit(1)
-    amm_app_id = int(raw.get("amm_validator_app_id", TINYMAN_V2_VALIDATOR_APP_ID))
-    pools = [PoolConfig(p) for p in raw.get("pools", [])]
-    if not pools:
+    cfg = BotConfig(json.loads(path.read_text()))
+    if not cfg.pools:
         log.error("No pools configured in config.json")
         sys.exit(1)
-    return oracle_app_id, amm_app_id, pools
+    return cfg
 
 
 # ── algod client ──────────────────────────────────────────────────────────────
@@ -193,7 +205,7 @@ def load_config(path: Path) -> tuple[int, int, list[PoolConfig]]:
 def make_algod_client() -> algod.AlgodClient:
     url   = os.environ.get("ALGOD_URL", "https://mainnet-api.algonode.cloud")
     token = os.environ.get("ALGOD_TOKEN", "")
-    return algod.AlgodClient(token, url, {"User-Agent": "magnetfi-oracle/1.0"})
+    return algod.AlgodClient(token, url, {"User-Agent": "magnetfi-oracle/2.0"})
 
 
 # ── on-chain pool state ───────────────────────────────────────────────────────
@@ -204,11 +216,10 @@ def _decode_local_state(account_app_info: dict) -> dict[str, int]:
     into a flat dict of str → int. Only uint values are extracted.
 
     Key fields used here (all uint64, in the pool account's local state):
-      asset_1_reserves     — net tradeable reserve of asset_1 (already excludes protocol fees)
-      asset_2_reserves     — net tradeable reserve of asset_2
-      issued_pool_tokens   — circulating LP token supply (base units)
+      asset_1_id / asset_2_id        — the pool's two asset ids
+      asset_1_reserves / asset_2_reserves — net tradeable reserves (exclude protocol fees)
+      issued_pool_tokens             — circulating LP token supply (base units)
     """
-    # algosdk returns the local state under "app-local-state" → "key-value".
     local = account_app_info.get("app-local-state", account_app_info.get("appLocalState", {}))
     kvs = local.get("key-value", local.get("keyValue", []))
     result: dict[str, int] = {}
@@ -220,15 +231,10 @@ def _decode_local_state(account_app_info: dict) -> dict[str, int]:
     return result
 
 
-def fetch_pool_state(
-    client: algod.AlgodClient, pool_address: str, amm_app_id: int
-) -> dict[str, int]:
+def fetch_pool_state(client: algod.AlgodClient, pool_address: str, amm_app_id: int) -> dict[str, int]:
     """
     Read and decode a Tinyman v2 pool's reserves/LP supply from the pool ACCOUNT's
     local state under the shared AMM validator app, with retry.
-
-    NOTE: Tinyman v2 has no per-pool application. Each pool is an account opted into
-    the single AMM validator app; its state lives in that account's local state.
     """
     for attempt in range(MAX_RETRIES):
         try:
@@ -242,45 +248,58 @@ def fetch_pool_state(
     return {}   # unreachable
 
 
-# ── price feeds ───────────────────────────────────────────────────────────────
+def _pool_reserves(state: dict[str, int], asset_id: int, quote_id: int) -> tuple[int, int]:
+    """Return (reserve_of_asset, reserve_of_quote) base units from a decoded pool state,
+    matching by the pool's on-chain asset_1_id / asset_2_id ordering."""
+    a1, a2 = state.get("asset_1_id"), state.get("asset_2_id")
+    if asset_id == a1 and quote_id == a2:
+        return state["asset_1_reserves"], state["asset_2_reserves"]
+    if asset_id == a2 and quote_id == a1:
+        return state["asset_2_reserves"], state["asset_1_reserves"]
+    raise ValueError(
+        f"reference pool asset mismatch: pool holds {a1}/{a2}, wanted {asset_id}/{quote_id}"
+    )
 
-def fetch_vestige_price(asa_id: int) -> float | None:
+
+# ── on-chain price derivation (reference-pool graph rooted at USDC) ──────────────
+
+def derive_asset_price_usdc(
+    client: algod.AlgodClient, asset_id: int, cfg: BotConfig, memo: dict[int, float] | None = None
+) -> float:
     """
-    Fetch USD price for an ASA from Vestige.
-    Returns None on any error (caller falls back to on-chain computation).
-    asa_id = 0 means ALGO.
+    Price an asset in USDC purely from on-chain Tinyman pool reserves, walking a
+    reference-pool graph until it reaches USDC. Recursive + memoized.
+
+    Each reference_pools[asset] entry names a pool and the quote asset to price
+    against; the asset's price = (quote_reserve/asset_reserve) × price(quote).
     """
-    try:
-        if asa_id == 0:
-            url = f"{VESTIGE_API}/v1/assets/0/price"
-        else:
-            url = f"{VESTIGE_API}/v1/assets/{asa_id}/price"
-        resp = requests.get(url, timeout=ALGOD_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        price = float(data.get("price_usdc", 0))
-        return price if price > 0 else None
-    except Exception as e:
-        log.debug(f"Vestige price fetch failed for ASA {asa_id}: {e}")
-        return None
+    if memo is None:
+        memo = {}
+    if asset_id == cfg.usdc_asa_id:
+        return 1.0
+    if asset_id in memo:
+        return memo[asset_id]
+
+    ref = cfg.reference_pools.get(asset_id)
+    if ref is None:
+        raise ValueError(f"no reference pool configured for asset {asset_id}")
+
+    state = fetch_pool_state(client, ref["pool_address"], cfg.amm_app_id)
+    quote_id = ref["quote_asset_id"]
+    asset_res, quote_res = _pool_reserves(state, asset_id, quote_id)
+    if asset_res == 0 or quote_res == 0:
+        raise ValueError(f"zero reserve in reference pool for asset {asset_id}")
+
+    a_dec = cfg.asset_decimals[asset_id]
+    q_dec = cfg.asset_decimals[quote_id]
+    ratio = (quote_res / 10 ** q_dec) / (asset_res / 10 ** a_dec)   # price in quote units
+    price = ratio * derive_asset_price_usdc(client, quote_id, cfg, memo)
+    memo[asset_id] = price
+    return price
 
 
-def compute_lp_price(
-    pool: PoolConfig,
-    pool_state: dict[str, int],
-    price_a: float,
-    price_b: float,
-) -> int | None:
-    """
-    Compute LP token price in mUSD, scaled × 1_000_000.
-
-    Tinyman v2 pool-account local-state keys:
-      asset_1_reserves    → net tradeable reserve of asset_a (already excludes protocol fees)
-      asset_2_reserves    → net tradeable reserve of asset_b
-      issued_pool_tokens  → circulating LP token base units outstanding
-
-    Returns None if pool state is invalid (zero supply, zero reserves).
-    """
+def compute_lp_price(pool: PoolConfig, pool_state: dict[str, int], price_a: float, price_b: float) -> int | None:
+    """Compute LP token price in USDC, scaled × 1_000_000. None if pool state invalid."""
     reserve_a = pool_state.get("asset_1_reserves", 0)
     reserve_b = pool_state.get("asset_2_reserves", 0)
     lp_total  = pool_state.get("issued_pool_tokens", 0)
@@ -297,81 +316,130 @@ def compute_lp_price(
     pool_tvl = tvl_a + tvl_b
 
     lp_supply_display = lp_total / 10 ** LP_DECIMALS
-    lp_price_display  = pool_tvl / lp_supply_display
-    scaled_price = int(lp_price_display * PRICE_SCALE)
+    scaled_price = int((pool_tvl / lp_supply_display) * PRICE_SCALE)
 
     if scaled_price <= 0:
         log.warning(f"[{pool.label}] computed price ≤ 0 — skipping")
         return None
-
     return scaled_price
 
 
-def get_lp_price(
-    client: algod.AlgodClient,
-    pool: PoolConfig,
-    amm_app_id: int,
-) -> int | None:
-    """
-    Full price pipeline for a single pool.
+# ── CompX Flux oracle (second source / divergence guard) ────────────────────────
 
-    Reads reserves + issued LP from the pool account's local state, prices the
-    underlyings via Vestige, computes price-per-LP, and applies an absolute
-    sanity bound. Returns the scaled price or None if it cannot price safely.
+def read_compx_price(client: algod.AlgodClient, oracle_app_id: int, asset_id: int) -> tuple[float, int] | None:
     """
-    # Fetch pool state first (needed regardless of price source).
+    Read an asset's USD price from CompX's on-chain Flux oracle.
+    Box name = "prices" + uint64(asset_id); value = ABI tuple
+    (uint64 assetId, uint64 price, uint64 lastUpdated), price scaled × 1e6.
+    Returns (price_usdc, last_updated_ts) or None on any error.
+    """
     try:
-        pool_state = fetch_pool_state(client, pool.pool_address, amm_app_id)
+        name = b"prices" + int(asset_id).to_bytes(8, "big")
+        box = client.application_box_by_name(oracle_app_id, name)
+        raw = base64.b64decode(box["value"])
+        if len(raw) < 24:
+            return None
+        price = int.from_bytes(raw[8:16], "big")
+        updated = int.from_bytes(raw[16:24], "big")
+        return price / PRICE_SCALE, updated
+    except Exception as e:
+        log.debug(f"CompX price read failed for asset {asset_id}: {e}")
+        return None
+
+
+def compx_cross_check(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
+                      derived_usdc: float) -> bool:
+    """
+    Cross-check our on-chain-derived price of the pool's volatile asset against
+    CompX's independent oracle. Returns True to proceed, False to refuse posting.
+
+    Policy: a genuine *disagreement* (both fresh, but diverged) is a hard stop
+    (fail-stale, P19-02). CompX merely being unavailable/stale is a soft warning
+    — we don't couple our liveness to CompX's uptime.
+    """
+    if not pool.compx_check_asset_id or not cfg.compx_oracle_app_id:
+        return True
+    cx = read_compx_price(client, cfg.compx_oracle_app_id, pool.compx_check_asset_id)
+    if cx is None:
+        log.warning(f"[{pool.label}] CompX cross-check unavailable — proceeding on on-chain derivation alone")
+        return True
+    cx_price, cx_updated = cx
+    age = int(time.time()) - cx_updated
+    if age > cfg.compx_max_age:
+        log.warning(f"[{pool.label}] CompX price stale ({age}s > {cfg.compx_max_age}s) — proceeding without cross-check")
+        return True
+    if cx_price <= 0:
+        log.warning(f"[{pool.label}] CompX price ≤ 0 — proceeding without cross-check")
+        return True
+    divergence = abs(derived_usdc - cx_price) / cx_price
+    if divergence > cfg.compx_divergence_limit:
+        log.error(
+            f"[{pool.label}] DIVERGENCE: derived ${derived_usdc:.6f} vs CompX ${cx_price:.6f} "
+            f"= {divergence:.2%} > {cfg.compx_divergence_limit:.0%}; refusing to post (fail-stale)"
+        )
+        return False
+    log.info(f"[{pool.label}] CompX cross-check OK: derived ${derived_usdc:.6f} vs CompX ${cx_price:.6f} (Δ{divergence:.2%})")
+    return True
+
+
+# ── full price pipeline for one pool ────────────────────────────────────────────
+
+def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) -> int | None:
+    """Read LP pool state, derive underlyings on-chain, compute LP price, apply sanity
+    bounds + CompX cross-check. Returns the scaled price or None if it cannot price safely."""
+    try:
+        pool_state = fetch_pool_state(client, pool.pool_address, cfg.amm_app_id)
     except Exception as e:
         log.error(f"[{pool.label}] failed to fetch pool state: {e}")
         return None
 
-    # Defensive: confirm the pool account holds the asset ids we expect. A wrong
-    # pool_address would otherwise produce a plausible-but-wrong price.
+    # Confirm the pool account holds the asset ids we expect (wrong pool_address guard).
     onchain_a = pool_state.get("asset_1_id", -1)
     onchain_b = pool_state.get("asset_2_id", -1)
     if onchain_a != pool.asset_a_id or onchain_b != pool.asset_b_id:
         log.error(
-            f"[{pool.label}] pool asset mismatch: on-chain "
-            f"asset_1_id={onchain_a} asset_2_id={onchain_b} vs config "
-            f"asset_a={pool.asset_a_id} asset_b={pool.asset_b_id}; refusing to price"
+            f"[{pool.label}] pool asset mismatch: on-chain asset_1_id={onchain_a} "
+            f"asset_2_id={onchain_b} vs config asset_a={pool.asset_a_id} asset_b={pool.asset_b_id}; refusing"
         )
         return None
 
-    # Fetch underlying asset prices from Vestige.
-    price_a = fetch_vestige_price(pool.asset_a_id)
-    price_b = fetch_vestige_price(pool.asset_b_id)
-
-    if price_a is None or price_b is None:
-        log.warning(
-            f"[{pool.label}] Vestige missing price: "
-            f"asset_a={price_a} asset_b={price_b}; cannot compute LP price"
-        )
+    # Derive both underlyings' USD price purely on-chain.
+    memo: dict[int, float] = {}
+    try:
+        price_a = derive_asset_price_usdc(client, pool.asset_a_id, cfg, memo)
+        price_b = derive_asset_price_usdc(client, pool.asset_b_id, cfg, memo)
+    except Exception as e:
+        log.warning(f"[{pool.label}] on-chain price derivation failed: {e}")
         return None
 
     price = compute_lp_price(pool, pool_state, price_a, price_b)
     if price is None:
         return None
 
-    # Absolute sanity bound — catches catastrophically wrong inputs that the
-    # relative on-chain deviation guard cannot (it only bounds movement vs prior).
+    # Absolute sanity bound — catches catastrophically wrong inputs the relative
+    # on-chain deviation guard cannot (it only bounds movement vs prior).
     if pool.min_price > 0 and price < pool.min_price:
-        log.error(
-            f"[{pool.label}] price {price} below sanity floor {pool.min_price}; refusing to post"
-        )
+        log.error(f"[{pool.label}] price {price} below sanity floor {pool.min_price}; refusing to post")
         return None
     if pool.max_price > 0 and price > pool.max_price:
-        log.error(
-            f"[{pool.label}] price {price} above sanity ceiling {pool.max_price}; refusing to post"
-        )
+        log.error(f"[{pool.label}] price {price} above sanity ceiling {pool.max_price}; refusing to post")
+        return None
+
+    # Second source: cross-check the volatile underlying against CompX's oracle.
+    check_price = memo.get(pool.compx_check_asset_id)
+    if check_price is None and pool.compx_check_asset_id:
+        try:
+            check_price = derive_asset_price_usdc(client, pool.compx_check_asset_id, cfg, memo)
+        except Exception:
+            check_price = None
+    if check_price is not None and not compx_cross_check(client, cfg, pool, check_price):
         return None
 
     log.info(
         f"[{pool.label}] reserve_a={pool_state.get('asset_1_reserves')} "
         f"reserve_b={pool_state.get('asset_2_reserves')} "
         f"issued_lp={pool_state.get('issued_pool_tokens')} "
-        f"price_a={price_a:.6f} price_b={price_b:.6f} "
-        f"raw_price={price}"
+        f"price_a={price_a:.6f} price_b={price_b:.6f} raw_price={price}"
     )
     return price
 
@@ -379,10 +447,9 @@ def get_lp_price(
 # ── on-chain oracle read ──────────────────────────────────────────────────────
 
 def read_onchain_price(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int:
-    """Read the current on-chain price for pool_id from oracle global state."""
+    """Read the current on-chain price for pool_id from MagnetFi oracle global state."""
     try:
-        key_bytes = b"lp_price_" + pool_id.to_bytes(8, "big")
-        key_b64 = base64.b64encode(key_bytes).decode()
+        key_b64 = base64.b64encode(b"lp_price_" + pool_id.to_bytes(8, "big")).decode()
         info = client.application_info(oracle_app_id)
         for item in info.get("params", {}).get("global-state", []):
             if item["key"] == key_b64:
@@ -394,19 +461,9 @@ def read_onchain_price(client: algod.AlgodClient, oracle_app_id: int, pool_id: i
 
 # ── transaction builder ───────────────────────────────────────────────────────
 
-def post_price(
-    client: algod.AlgodClient,
-    oracle_app_id: int,
-    bot_sk: str,
-    bot_address: str,
-    pool_id: int,
-    price: int,
-    dry_run: bool,
-) -> bool:
-    """
-    Build and submit an update_lp_price ABI call using AtomicTransactionComposer.
-    Returns True on success, False on failure.
-    """
+def post_price(client: algod.AlgodClient, oracle_app_id: int, bot_sk: str, bot_address: str,
+               pool_id: int, price: int, dry_run: bool) -> bool:
+    """Build and submit an update_lp_price ABI call. Returns True on success."""
     if dry_run:
         log.info(f"[DRY-RUN] would post pool_id={pool_id} price={price} to app {oracle_app_id}")
         return True
@@ -422,18 +479,12 @@ def post_price(
 
             atc = AtomicTransactionComposer()
             atc.add_method_call(
-                app_id=oracle_app_id,
-                method=method,
-                sender=bot_address,
-                sp=params,
-                signer=signer,
-                method_args=[pool_id, price],
+                app_id=oracle_app_id, method=method, sender=bot_address,
+                sp=params, signer=signer, method_args=[pool_id, price],
             )
             result = atc.execute(client, wait_rounds=4)
-            log.info(
-                f"pool_id={pool_id} price={price} confirmed in round "
-                f"{result.confirmed_round} txid={result.tx_ids[0]}"
-            )
+            log.info(f"pool_id={pool_id} price={price} confirmed in round "
+                     f"{result.confirmed_round} txid={result.tx_ids[0]}")
             return True
         except Exception as e:
             if attempt == MAX_RETRIES - 1:
@@ -441,26 +492,17 @@ def post_price(
                 return False
             log.warning(f"Txn error (attempt {attempt + 1}): {e}; retrying in {RETRY_DELAY}s")
             time.sleep(RETRY_DELAY)
-
     return False
 
 
 # ── single update cycle ───────────────────────────────────────────────────────
 
-def update_pool(
-    client: algod.AlgodClient,
-    oracle_app_id: int,
-    amm_app_id: int,
-    pool: PoolConfig,
-    twap: TwapState,
-    bot_sk: str,
-    bot_address: str,
-    dry_run: bool,
-) -> None:
+def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
+                twap: TwapState, bot_sk: str, bot_address: str, dry_run: bool) -> None:
     """Run the full price pipeline for one pool and post to oracle if valid."""
     log.info(f"[{pool.label}] computing price ...")
 
-    spot_price = get_lp_price(client, pool, amm_app_id)
+    spot_price = get_lp_price(client, pool, cfg)
     if spot_price is None:
         log.warning(f"[{pool.label}] could not compute price — skipping update")
         return
@@ -468,53 +510,35 @@ def update_pool(
     now = int(time.time())
     twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW)
 
-    # Fail-stale gate (P19-07): on thin history a single reading would dominate the
-    # average, so don't post until the window has filled. The existing on-chain price
-    # (admin anchor from add_pool, or the last good post) stands; if the bot stays
-    # below the threshold past the freshness window the oracle goes stale, which blocks
-    # borrows/liquidations — the safe failure mode, not posting a manipulable spot.
+    # Fail-stale gate (P19-07): on thin history a single reading would dominate, so
+    # don't post until the window has filled. The prior on-chain price stands.
     if twap.count(pool.pool_id) < MIN_TWAP_READINGS:
-        log.info(
-            f"[{pool.label}] only {twap.count(pool.pool_id)}/{MIN_TWAP_READINGS} readings — "
-            f"holding prior on-chain price (fail-stale)"
-        )
+        log.info(f"[{pool.label}] only {twap.count(pool.pool_id)}/{MIN_TWAP_READINGS} readings — "
+                 f"holding prior on-chain price (fail-stale)")
         return
 
     final_price = twap.twap(pool.pool_id, spot_price)
 
-    # Asymmetric divergence check: only block upward price spikes (potential manipulation).
-    # Price drops are allowed through — silencing the bot during a genuine price decline
-    # causes oracle staleness exactly when health-factor liquidations are most needed.
+    # Asymmetric divergence check: only block upward price spikes (potential manipulation);
+    # let drops through so the oracle does not go stale during a genuine decline.
     if final_price > 0 and spot_price > final_price:
         upward_spread = (spot_price - final_price) / final_price
         if upward_spread > DIVERGENCE_LIMIT:
-            log.warning(
-                f"[{pool.label}] spot price spike {upward_spread:.2%} above TWAP — "
-                f"spot={spot_price} twap={final_price}; possible manipulation, skipping"
-            )
+            log.warning(f"[{pool.label}] spot spike {upward_spread:.2%} above TWAP "
+                        f"(spot={spot_price} twap={final_price}); possible manipulation, skipping")
             return
     elif final_price > 0 and spot_price < final_price:
         downward_spread = (final_price - spot_price) / final_price
         if downward_spread > DIVERGENCE_LIMIT:
-            log.info(
-                f"[{pool.label}] spot {downward_spread:.2%} below TWAP — "
-                f"posting TWAP ({final_price}) to reflect price drop gradually"
-            )
+            log.info(f"[{pool.label}] spot {downward_spread:.2%} below TWAP — "
+                     f"posting TWAP ({final_price}) to reflect drop gradually")
 
-    # Compare against current on-chain price (informational, not a gate)
-    onchain = read_onchain_price(client, oracle_app_id, pool.pool_id)
+    onchain = read_onchain_price(client, cfg.oracle_app_id, pool.pool_id)
     if onchain > 0:
         pct_change = abs(final_price - onchain) / onchain
-        log.info(
-            f"[{pool.label}] on-chain={onchain} → new={final_price} "
-            f"(Δ{pct_change:+.2%})"
-        )
+        log.info(f"[{pool.label}] on-chain={onchain} → new={final_price} (Δ{pct_change:+.2%})")
 
-    success = post_price(
-        client, oracle_app_id, bot_sk, bot_address,
-        pool.pool_id, final_price, dry_run,
-    )
-    if not success:
+    if not post_price(client, cfg.oracle_app_id, bot_sk, bot_address, pool.pool_id, final_price, dry_run):
         log.error(f"[{pool.label}] price post failed")
 
 
@@ -527,30 +551,35 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="run once then exit (for cron use)")
     args = parser.parse_args()
 
-    oracle_app_id, amm_app_id, pools = load_config(Path(args.config))
+    cfg = load_config(Path(args.config))
     client = make_algod_client()
     twap = TwapState(STATE_FILE)
 
-    bot_mnemonic = os.environ.get("BOT_MNEMONIC", "")
-    if not bot_mnemonic:
-        log.error("BOT_MNEMONIC environment variable not set")
+    if cfg.oracle_app_id == 0 and not args.dry_run:
+        log.error("oracle_app_id must be set in config.json or ORACLE_APP_ID env var (unless --dry-run)")
         sys.exit(1)
-    bot_sk     = mnemonic.to_private_key(bot_mnemonic)
-    bot_address = account.address_from_private_key(bot_sk)
-    log.info(f"Oracle bot wallet: {bot_address}")
-    log.info(f"Oracle app ID:     {oracle_app_id}")
-    log.info(f"AMM validator app: {amm_app_id}")
-    log.info(f"Pools configured:  {[p.label for p in pools]}")
+
+    bot_sk = bot_address = ""
+    if not args.dry_run:
+        bot_mnemonic = os.environ.get("BOT_MNEMONIC", "")
+        if not bot_mnemonic:
+            log.error("BOT_MNEMONIC environment variable not set")
+            sys.exit(1)
+        bot_sk = mnemonic.to_private_key(bot_mnemonic)
+        bot_address = account.address_from_private_key(bot_sk)
+        log.info(f"Oracle bot wallet: {bot_address}")
+
+    log.info(f"Oracle app ID:     {cfg.oracle_app_id}")
+    log.info(f"AMM validator app: {cfg.amm_app_id}")
+    log.info(f"CompX oracle app:  {cfg.compx_oracle_app_id}")
+    log.info(f"Pools configured:  {[p.label for p in cfg.pools]}")
     if args.dry_run:
         log.info("DRY-RUN mode — no transactions will be submitted")
 
     def run_once() -> None:
-        for pool in pools:
+        for pool in cfg.pools:
             try:
-                update_pool(
-                    client, oracle_app_id, amm_app_id, pool, twap,
-                    bot_sk, bot_address, args.dry_run,
-                )
+                update_pool(client, cfg, pool, twap, bot_sk, bot_address, args.dry_run)
             except Exception as e:
                 log.exception(f"[{pool.label}] unhandled error: {e}")
 

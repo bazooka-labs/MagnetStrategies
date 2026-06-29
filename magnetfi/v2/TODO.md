@@ -21,17 +21,18 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - [ ] Create the **guardian cold multisig** (recommend 2-of-3 hardware), distinct from the admin and oracle-bot keys. Its address is a required parameter to all three `deploy()` calls. The contract rejects `guardian == admin`.
 - [ ] Create the **oracle bot wallet** (separate hot key); fund with ~5 ALGO for fees.
 - [x] Create **mUSD ASA** on mainnet — ✅ **ASA `3615600399`** (Magnet USD / mUSD, 6 dp, 500M, default-frozen off, freeze + clawback renounced, manager/creator = `KNML…NYU6A`). Created via the admin-panel Pera handshake; verified on-chain. Wired into `web/src/lib/magnetfi.ts` (`MUSD_ASA_ID`).
-- [ ] Gather first-vault (U/tALGO) mainnet IDs:
-  - [ ] tALGO ASA ID
-  - [ ] U/tALGO **Tinyman v2 pool ACCOUNT address** (the bot reads reserves from the pool account's *local* state — not a per-pool app)
-  - [ ] U/tALGO **LP token ASA ID** (used for `set_lp_asa_id` and vault deposit checks)
-  - [ ] Confirm AMM validator app id = `1002541853` (mainnet)
+- [x] Gather first-vault (U/tALGO) mainnet IDs — ✅ all confirmed on-chain:
+  - [x] tALGO ASA ID = `2537013734` (6 dp); $U = `3081853135` (5 dp)
+  - [x] U/tALGO Tinyman v2 pool ACCOUNT = `AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI`
+  - [x] U/tALGO LP token ASA = `3163770927` (used as `lp_asa_id` and `pool_id`)
+  - [x] AMM validator app id = `1002541853` (mainnet) confirmed
 
-### Oracle bot config (`oracle_bot/config.json` ships as a template — fill before starting)
-- [ ] Set `oracle_app_id` and `amm_validator_app_id`
-- [ ] For **each** pool: real `pool_address`, **distinct** `pool_id`, correct `asset_a_id`/`asset_b_id` and decimals
-- [ ] Set non-zero `min_price`/`max_price` absolute sanity bounds per pool (0 = disabled; leaving them 0 removes the absolute-bound backstop)
-- [ ] **(If/when a wBTC pool is added)** verify wBTC ASA decimal count on mainnet matches config — long-standing AUD-006 flag. Not required for the U/tALGO launch.
+### Oracle bot config — ✅ rebuilt on-chain (Pass 25); `config.json` filled for U/tALGO
+- [x] Pricing is now **fully on-chain** (no external price API): reference-pool graph over Tinyman v2 reserves (`ALGO←ALGO/USDC`, `tALGO←tALGO/ALGO`, `U←U/tALGO`), rooted at USDC. Resolves P19-02.
+- [x] **CompX Flux oracle** (mainnet `3307588794`) wired as the second-source divergence guard; verified live (derived vs CompX Δ0.86%). Sanity bounds set for U/tALGO.
+- [x] Verified against mainnet via `--dry-run` (LP price `675635` ≈ $0.6756); test suite 30→42, all green.
+- [ ] Set `oracle_app_id` (the MagnetFi LP Oracle) in `config.json` after the mainnet deploy.
+- [ ] **(If/when a wBTC pool is added)** verify wBTC ASA decimals + add its reference pool — AUD-006. Not required for the U/tALGO launch.
 
 ### Deployment sequencing
 - [ ] Follow the [ADMIN.md deployment procedure](./ADMIN.md#deployment-procedure-v2) exactly (order matters).

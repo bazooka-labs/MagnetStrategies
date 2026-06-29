@@ -1,28 +1,37 @@
 {
   "oracle_app_id": 0,
   "amm_validator_app_id": 1002541853,
+  "usdc_asa_id": 31566704,
+
+  "compx_oracle_app_id": 3307588794,
+  "compx_divergence_limit": 0.05,
+  "compx_max_age_seconds": 3600,
+
+  "asset_decimals": {
+    "0": 6,
+    "31566704": 6,
+    "2537013734": 6,
+    "3081853135": 5
+  },
+
+  "reference_pools": {
+    "0":          { "pool_address": "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM", "quote_asset_id": 31566704 },
+    "2537013734": { "pool_address": "LIHQGEOPOTMQKAJMXUJP2BT4R4AX4FPUC2SLBLYT27K536CA3XUQJVXE3Y", "quote_asset_id": 0 },
+    "3081853135": { "pool_address": "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI", "quote_asset_id": 2537013734 }
+  },
+
   "pools": [
     {
-      "pool_id": 0,
-      "pool_address": "TINYMAN_V2_POOL_ACCOUNT_ADDRESS",
-      "asset_a_id": 0,
-      "asset_a_decimals": 6,
-      "asset_b_id": 0,
-      "asset_b_decimals": 5,
-      "min_price": 0,
-      "max_price": 0,
-      "label": "U/ALGO"
-    },
-    {
-      "pool_id": 0,
-      "pool_address": "TINYMAN_V2_POOL_ACCOUNT_ADDRESS",
-      "asset_a_id": 0,
-      "asset_a_decimals": 6,
-      "asset_b_id": 0,
+      "pool_id": 3163770927,
+      "pool_address": "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
+      "asset_a_id": 3081853135,
+      "asset_a_decimals": 5,
+      "asset_b_id": 2537013734,
       "asset_b_decimals": 6,
-      "min_price": 0,
-      "max_price": 0,
-      "label": "U/USDC"
+      "min_price": 400000,
+      "max_price": 1200000,
+      "compx_check_asset_id": 3081853135,
+      "label": "U/tALGO"
     }
   ]
 }

@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.local
 deployment.json
+twap_state.json
 *.egg-info/
 .venv/
 contracts/.venv/

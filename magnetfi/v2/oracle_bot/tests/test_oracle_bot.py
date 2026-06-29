@@ -25,6 +25,22 @@ def make_pool(**over):
     return ob.PoolConfig(d)
 
 
+def make_cfg(**over):
+    raw = {
+        "oracle_app_id": 555,
+        "amm_validator_app_id": 1002541853,
+        "usdc_asa_id": 31566704,
+        "compx_oracle_app_id": 0,
+        "compx_divergence_limit": 0.05,
+        "compx_max_age_seconds": 3600,
+        "asset_decimals": {},
+        "reference_pools": {},
+        "pools": [],
+    }
+    raw.update(over)
+    return ob.BotConfig(raw)
+
+
 def _kv_uint(key: str, val: int):
     return {"key": base64.b64encode(key.encode()).decode(), "value": {"type": 2, "uint": val}}
 
@@ -36,13 +52,15 @@ def _kv_bytes(key: str, b64: str = ""):
 # ── PoolConfig ───────────────────────────────────────────────────────────────────
 
 def test_poolconfig_parses_and_defaults():
-    p = make_pool(min_price=5, max_price=9, label="U/tALGO")
+    p = make_pool(min_price=5, max_price=9, label="U/tALGO", compx_check_asset_id=3081853135)
     assert (p.pool_id, p.asset_a_id, p.asset_b_id) == (1, 111, 222)
     assert (p.min_price, p.max_price, p.label) == (5, 9, "U/tALGO")
+    assert p.compx_check_asset_id == 3081853135
     # defaults applied when omitted
     p2 = ob.PoolConfig({"pool_id": 2, "pool_address": "X", "asset_a_id": 1,
                         "asset_a_decimals": 6, "asset_b_id": 0, "asset_b_decimals": 6})
     assert p2.min_price == 0 and p2.max_price == 0 and p2.label == "pool_2"
+    assert p2.compx_check_asset_id == 0
 
 
 # ── TWAP math ────────────────────────────────────────────────────────────────────
@@ -128,6 +146,22 @@ def test_decode_local_state_empty():
     assert ob._decode_local_state({}) == {}
 
 
+# ── _pool_reserves ───────────────────────────────────────────────────────────────
+
+def test_pool_reserves_matches_either_ordering():
+    state = {"asset_1_id": 0, "asset_2_id": 31566704,
+             "asset_1_reserves": 100, "asset_2_reserves": 200}
+    assert ob._pool_reserves(state, 0, 31566704) == (100, 200)        # asset is asset_1
+    assert ob._pool_reserves(state, 31566704, 0) == (200, 100)        # asset is asset_2
+
+
+def test_pool_reserves_raises_on_mismatch():
+    state = {"asset_1_id": 0, "asset_2_id": 31566704,
+             "asset_1_reserves": 100, "asset_2_reserves": 200}
+    with pytest.raises(ValueError):
+        ob._pool_reserves(state, 999, 31566704)
+
+
 # ── compute_lp_price ─────────────────────────────────────────────────────────────
 
 def test_compute_lp_price_basic():
@@ -159,6 +193,98 @@ def test_compute_lp_price_zero_reserves_returns_none():
     assert ob.compute_lp_price(pool, state, 1.0, 1.0) is None
 
 
+# ── derive_asset_price_usdc (on-chain reference-pool graph) ───────────────────────
+
+def test_derive_asset_price_usdc_chain(monkeypatch):
+    # ALGO/USDC: 1000 ALGO / 100 USDC → ALGO = $0.10
+    # tALGO/ALGO: 1000 tALGO / 1100 ALGO → tALGO = 1.1 ALGO = $0.11
+    # U/tALGO: 1000 U (5dp) / 2000 tALGO (6dp) → U = 2 tALGO = $0.22
+    states = {
+        "ALGOUSDC":  {"asset_1_id": 0, "asset_2_id": 31566704,
+                      "asset_1_reserves": 1000_000000, "asset_2_reserves": 100_000000},
+        "TALGOALGO": {"asset_1_id": 2537013734, "asset_2_id": 0,
+                      "asset_1_reserves": 1000_000000, "asset_2_reserves": 1100_000000},
+        "UTALGO":    {"asset_1_id": 3081853135, "asset_2_id": 2537013734,
+                      "asset_1_reserves": 1000_00000, "asset_2_reserves": 2000_000000},
+    }
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda c, addr, amm: states[addr])
+    cfg = make_cfg(
+        asset_decimals={0: 6, 31566704: 6, 2537013734: 6, 3081853135: 5},
+        reference_pools={
+            0:          {"pool_address": "ALGOUSDC",  "quote_asset_id": 31566704},
+            2537013734: {"pool_address": "TALGOALGO", "quote_asset_id": 0},
+            3081853135: {"pool_address": "UTALGO",    "quote_asset_id": 2537013734},
+        },
+    )
+    assert ob.derive_asset_price_usdc(None, 31566704, cfg) == 1.0          # USDC root
+    assert abs(ob.derive_asset_price_usdc(None, 0, cfg) - 0.10) < 1e-9     # ALGO
+    assert abs(ob.derive_asset_price_usdc(None, 2537013734, cfg) - 0.11) < 1e-9  # tALGO
+    assert abs(ob.derive_asset_price_usdc(None, 3081853135, cfg) - 0.22) < 1e-9  # U
+
+
+def test_derive_asset_price_usdc_unknown_asset_raises():
+    with pytest.raises(ValueError):
+        ob.derive_asset_price_usdc(None, 999, make_cfg())
+
+
+# ── CompX oracle read + cross-check ──────────────────────────────────────────────
+
+def test_read_compx_price_decodes_tuple():
+    raw = (3081853135).to_bytes(8, "big") + (118630).to_bytes(8, "big") + (1700000000).to_bytes(8, "big")
+
+    class FakeClient:
+        def application_box_by_name(self, app, name):
+            assert name == b"prices" + (3081853135).to_bytes(8, "big")
+            return {"value": base64.b64encode(raw).decode()}
+
+    price, updated = ob.read_compx_price(FakeClient(), 3307588794, 3081853135)
+    assert abs(price - 0.11863) < 1e-9 and updated == 1700000000
+
+
+def test_read_compx_price_none_on_error():
+    class FakeClient:
+        def application_box_by_name(self, app, name):
+            raise Exception("no box")
+    assert ob.read_compx_price(FakeClient(), 1, 1) is None
+
+
+def _cross_cfg():
+    return make_cfg(compx_oracle_app_id=3307588794, compx_divergence_limit=0.05,
+                    compx_max_age_seconds=3600)
+
+
+def test_compx_cross_check_passes_within_limit(monkeypatch):
+    monkeypatch.setattr(ob.time, "time", lambda: 1_000_000)
+    monkeypatch.setattr(ob, "read_compx_price", lambda c, app, aid: (0.118, 1_000_000 - 60))
+    pool = make_pool(compx_check_asset_id=3081853135)
+    assert ob.compx_cross_check(None, _cross_cfg(), pool, 0.120) is True   # Δ1.7% < 5%
+
+
+def test_compx_cross_check_blocks_on_divergence(monkeypatch):
+    monkeypatch.setattr(ob.time, "time", lambda: 1_000_000)
+    monkeypatch.setattr(ob, "read_compx_price", lambda c, app, aid: (0.10, 1_000_000 - 60))
+    pool = make_pool(compx_check_asset_id=3081853135)
+    assert ob.compx_cross_check(None, _cross_cfg(), pool, 0.20) is False   # Δ100% > 5%
+
+
+def test_compx_cross_check_soft_when_unavailable(monkeypatch):
+    monkeypatch.setattr(ob, "read_compx_price", lambda c, app, aid: None)
+    pool = make_pool(compx_check_asset_id=3081853135)
+    assert ob.compx_cross_check(None, _cross_cfg(), pool, 0.20) is True    # don't couple liveness
+
+
+def test_compx_cross_check_soft_when_stale(monkeypatch):
+    monkeypatch.setattr(ob.time, "time", lambda: 1_000_000)
+    monkeypatch.setattr(ob, "read_compx_price", lambda c, app, aid: (0.10, 1))   # ancient
+    pool = make_pool(compx_check_asset_id=3081853135)
+    assert ob.compx_cross_check(None, _cross_cfg(), pool, 0.20) is True
+
+
+def test_compx_cross_check_disabled_when_no_check_asset():
+    pool = make_pool()  # compx_check_asset_id == 0
+    assert ob.compx_cross_check(None, _cross_cfg(), pool, 999.0) is True
+
+
 # ── get_lp_price orchestration (guards) ──────────────────────────────────────────
 
 GOOD_STATE = {
@@ -170,39 +296,48 @@ GOOD_STATE = {
 
 def _stub_pricing(monkeypatch, state, price=1.0):
     monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: dict(state))
-    monkeypatch.setattr(ob, "fetch_vestige_price", lambda asa: price)
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda c, aid, cfg, memo=None: price)
 
 
 def test_get_lp_price_happy(monkeypatch):
     _stub_pricing(monkeypatch, GOOD_STATE, price=1.0)
-    assert ob.get_lp_price(None, make_pool(), amm_app_id=1) == 2_000_000
+    assert ob.get_lp_price(None, make_pool(), make_cfg()) == 2_000_000
 
 
 def test_get_lp_price_rejects_asset_id_mismatch(monkeypatch):
     bad = dict(GOOD_STATE, asset_1_id=999)       # wrong pool_address would show wrong ids
     _stub_pricing(monkeypatch, bad, price=1.0)
-    assert ob.get_lp_price(None, make_pool(), amm_app_id=1) is None
+    assert ob.get_lp_price(None, make_pool(), make_cfg()) is None
 
 
-def test_get_lp_price_none_when_vestige_missing(monkeypatch):
+def test_get_lp_price_none_when_derivation_fails(monkeypatch):
     monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: dict(GOOD_STATE))
-    monkeypatch.setattr(ob, "fetch_vestige_price", lambda asa: None)
-    assert ob.get_lp_price(None, make_pool(), amm_app_id=1) is None
+    def boom(*a, **k):
+        raise ValueError("no reference pool")
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", boom)
+    assert ob.get_lp_price(None, make_pool(), make_cfg()) is None
 
 
 def test_get_lp_price_rejects_below_sanity_floor(monkeypatch):
     _stub_pricing(monkeypatch, GOOD_STATE, price=1.0)        # computes 2_000_000
-    assert ob.get_lp_price(None, make_pool(min_price=3_000_000), amm_app_id=1) is None
+    assert ob.get_lp_price(None, make_pool(min_price=3_000_000), make_cfg()) is None
 
 
 def test_get_lp_price_rejects_above_sanity_ceiling(monkeypatch):
     _stub_pricing(monkeypatch, GOOD_STATE, price=1.0)        # computes 2_000_000
-    assert ob.get_lp_price(None, make_pool(max_price=1_000_000), amm_app_id=1) is None
+    assert ob.get_lp_price(None, make_pool(max_price=1_000_000), make_cfg()) is None
 
 
 def test_get_lp_price_passes_within_sanity_band(monkeypatch):
     _stub_pricing(monkeypatch, GOOD_STATE, price=1.0)
-    assert ob.get_lp_price(None, make_pool(min_price=1_500_000, max_price=2_500_000), amm_app_id=1) == 2_000_000
+    assert ob.get_lp_price(None, make_pool(min_price=1_500_000, max_price=2_500_000), make_cfg()) == 2_000_000
+
+
+def test_get_lp_price_blocked_by_compx_divergence(monkeypatch):
+    _stub_pricing(monkeypatch, GOOD_STATE, price=1.0)
+    monkeypatch.setattr(ob, "compx_cross_check", lambda *a, **k: False)
+    pool = make_pool(compx_check_asset_id=111)
+    assert ob.get_lp_price(None, pool, make_cfg(compx_oracle_app_id=1)) is None
 
 
 # ── update_pool orchestration (fail-stale gate + asymmetric divergence) ───────────
@@ -216,7 +351,7 @@ def _capture_posts(monkeypatch):
 
 
 def _run(pool, twap):
-    ob.update_pool(None, 1, 1, pool, twap, "sk", "addr", dry_run=True)
+    ob.update_pool(None, make_cfg(), pool, twap, "sk", "addr", dry_run=True)
 
 
 def test_update_pool_fail_stale_below_min_readings(monkeypatch, tmp_path):
@@ -279,7 +414,7 @@ def test_load_config_missing_file_exits(tmp_path):
         ob.load_config(tmp_path / "nope.json")
 
 
-def test_load_config_zero_oracle_exits(tmp_path, monkeypatch):
+def test_load_config_no_pools_exits(tmp_path, monkeypatch):
     monkeypatch.delenv("ORACLE_APP_ID", raising=False)
     p = tmp_path / "c.json"
     p.write_text(json.dumps({"oracle_app_id": 0, "pools": []}))
@@ -292,9 +427,16 @@ def test_load_config_happy(tmp_path):
     p.write_text(json.dumps({
         "oracle_app_id": 555,
         "amm_validator_app_id": 1002541853,
+        "usdc_asa_id": 31566704,
+        "compx_oracle_app_id": 3307588794,
+        "asset_decimals": {"0": 6, "3081853135": 5},
+        "reference_pools": {"0": {"pool_address": "X", "quote_asset_id": 31566704}},
         "pools": [{"pool_id": 1, "pool_address": "X", "asset_a_id": 1,
                    "asset_a_decimals": 6, "asset_b_id": 0, "asset_b_decimals": 6}],
     }))
-    oracle_app_id, amm_app_id, pools = ob.load_config(p)
-    assert oracle_app_id == 555 and amm_app_id == 1002541853
-    assert len(pools) == 1 and pools[0].pool_id == 1
+    cfg = ob.load_config(p)
+    assert cfg.oracle_app_id == 555 and cfg.amm_app_id == 1002541853
+    assert cfg.usdc_asa_id == 31566704 and cfg.compx_oracle_app_id == 3307588794
+    assert cfg.asset_decimals == {0: 6, 3081853135: 5}
+    assert cfg.reference_pools[0] == {"pool_address": "X", "quote_asset_id": 31566704}
+    assert len(cfg.pools) == 1 and cfg.pools[0].pool_id == 1
