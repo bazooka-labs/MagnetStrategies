@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, pct, formatUsd } from "@/lib/magnetfi";
 import { makeAlgorand, optIn, mintMusd, redeemMusd } from "@/lib/magnetfiClient";
-import { getBalances, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type Balances } from "@/lib/magnetfiReads";
+import { getBalances, getProtocolStats, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type Balances } from "@/lib/magnetfiReads";
 import { Panel, PrimaryButton, NotLiveNote } from "./shared";
 
 type Mode = "mint" | "redeem";
@@ -16,6 +16,7 @@ export function MusdTab() {
   const [mode, setMode] = useState<Mode>("mint");
   const [amount, setAmount] = useState("1000");
   const [bal, setBal] = useState<Balances | null>(null);
+  const [psmUsdc, setPsmUsdc] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const algorand = useMemo(
@@ -23,7 +24,9 @@ export function MusdTab() {
     [algodClient, transactionSigner]);
 
   const refresh = useCallback(() => {
-    if (PROTOCOL_LIVE && algodClient && address) getBalances(algodClient, address).then(setBal).catch(() => {});
+    if (!PROTOCOL_LIVE || !algodClient) return;
+    if (address) getBalances(algodClient, address).then(setBal).catch(() => {});
+    getProtocolStats(algodClient).then((s) => setPsmUsdc(s.psmUsdc)).catch(() => {});
   }, [algodClient, address]);
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -37,12 +40,15 @@ export function MusdTab() {
     if (!algorand || !address) return;
     setBusy(true);
     try {
+      // Fetch balances if not loaded yet so a required opt-in is never skipped (H-2).
+      let b = bal;
+      if (!b && algodClient) b = await getBalances(algodClient, address);
       if (mode === "mint") {
-        if (bal && !bal.optedMusd) { await optIn(algorand, address, MUSD_ID); toast.success("Opted into mUSD"); }
+        if (b && !b.optedMusd) { await optIn(algorand, address, MUSD_ID); toast.success("Opted into mUSD"); }
         await mintMusd(algorand, address, amt);
         toast.success(`Minted ${formatUsd(out)} mUSD`);
       } else {
-        if (bal && !bal.optedUsdc) { await optIn(algorand, address, USDC_ID); toast.success("Opted into USDC"); }
+        if (b && !b.optedUsdc) { await optIn(algorand, address, USDC_ID); toast.success("Opted into USDC"); }
         await redeemMusd(algorand, address, amt);
         toast.success(`Redeemed for ${formatUsd(out)} USDC`);
       }
@@ -55,6 +61,8 @@ export function MusdTab() {
 
   const insufficient = !!bal && PROTOCOL_LIVE &&
     (mode === "mint" ? bal.usdc < amt : bal.musd < amt);
+  // Redeem cannot exceed the PSM's USDC reserve (M-1).
+  const lowReserve = mode === "redeem" && psmUsdc !== null && amt > psmUsdc;
 
   return (
     <div className="grid gap-8 lg:grid-cols-5">
@@ -107,11 +115,12 @@ export function MusdTab() {
           </div>
 
           <div className="mt-5">
-            <PrimaryButton onClick={run} disabled={!PROTOCOL_LIVE || !isConnected || busy || amt <= 0 || insufficient}>
+            <PrimaryButton onClick={run} disabled={!PROTOCOL_LIVE || !isConnected || busy || amt <= 0 || insufficient || lowReserve}>
               {busy ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…</span>
                 : !isConnected ? "Connect wallet"
                 : !PROTOCOL_LIVE ? "Launching on mainnet soon"
                 : insufficient ? `Insufficient ${fromAsset}`
+                : lowReserve ? "Exceeds PSM reserve"
                 : mode === "mint" ? "Mint mUSD" : "Redeem mUSD"}
             </PrimaryButton>
             {!PROTOCOL_LIVE && <NotLiveNote />}

@@ -2,8 +2,6 @@
 // LP-collateral vaults + mUSD stablecoin + PSM. Separate from the v1 lending
 // constants in constants.ts (still used by the DAO pages).
 
-export const MAGNETFI_NETWORK: "mainnet" | "testnet" = "mainnet";
-
 export const MUSD = {
   name: "Magnet USD",
   ticker: "mUSD",

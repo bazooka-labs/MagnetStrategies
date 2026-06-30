@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { MAGNETFI_APPS, MUSD_ASA_ID } from "@/lib/magnetfi";
-import { USDC_ASA_ID_MAINNET } from "@/lib/magnetfiDeploy";
+import { ACTIVE } from "@/lib/magnetfi";
 import * as ops from "@/lib/magnetfiOps";
 import { Panel } from "../shared";
 
@@ -16,11 +15,11 @@ type Cfg = { oracle: string; psm: string; vault: string; musd: string; usdc: str
 
 function loadCfg(): Cfg {
   const base: Cfg = {
-    oracle: MAGNETFI_APPS.oracle ? String(MAGNETFI_APPS.oracle) : "",
-    psm: MAGNETFI_APPS.psm ? String(MAGNETFI_APPS.psm) : "",
-    vault: MAGNETFI_APPS.vault ? String(MAGNETFI_APPS.vault) : "",
-    musd: MUSD_ASA_ID ? String(MUSD_ASA_ID) : "",
-    usdc: String(USDC_ASA_ID_MAINNET),
+    oracle: ACTIVE.oracle ? String(ACTIVE.oracle) : "",
+    psm: ACTIVE.psm ? String(ACTIVE.psm) : "",
+    vault: ACTIVE.vault ? String(ACTIVE.vault) : "",
+    musd: ACTIVE.musd ? String(ACTIVE.musd) : "",
+    usdc: ACTIVE.usdc ? String(ACTIVE.usdc) : "",
   };
   if (typeof window === "undefined") return base;
   try {

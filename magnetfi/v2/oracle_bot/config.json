@@ -20,6 +20,12 @@
     "3081853135": { "pool_address": "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI", "quote_asset_id": 2537013734 }
   },
 
+  "asset_price_bounds": {
+    "0":          [0.02, 0.50],
+    "2537013734": [0.02, 0.55],
+    "3081853135": [0.02, 1.00]
+  },
+
   "pools": [
     {
       "pool_id": 3163770927,
@@ -29,7 +35,7 @@
       "asset_b_id": 2537013734,
       "asset_b_decimals": 6,
       "min_price": 400000,
-      "max_price": 1200000,
+      "max_price": 900000,
       "compx_check_asset_id": 3081853135,
       "label": "U/tALGO"
     }

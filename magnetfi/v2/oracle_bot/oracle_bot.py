@@ -62,6 +62,8 @@ POLL_INTERVAL     = 300     # seconds between updates (5 minutes)
 DIVERGENCE_LIMIT  = 0.15    # 15% max spot-vs-TWAP spread before skip
 LP_DECIMALS       = 6       # Tinyman LP tokens have 6 decimal places
 PRICE_SCALE       = 1_000_000   # on-chain price representation: 1.00 = 1_000_000
+MAX_TWAP_AGE        = 1_800 # discard TWAP readings older than this (s) — never average across a downtime gap (F7)
+UNVERIFIED_MAX_DROP = 0.10  # when CompX can't verify, only post flat / declines up to this fraction (F1/F5)
 
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
@@ -113,8 +115,13 @@ class TwapState:
     def add(self, pool_id: int, ts: int, price: int, window: int) -> None:
         history = self.history.setdefault(pool_id, [])
         history.append((ts, price))
+        # Drop readings older than MAX_TWAP_AGE so we never time-weight across a
+        # downtime gap (F7); with MIN_TWAP_READINGS this fails stale instead.
+        cutoff = ts - MAX_TWAP_AGE
+        history = [(t, p) for (t, p) in history if t >= cutoff]
         if len(history) > window:
-            self.history[pool_id] = history[-window:]
+            history = history[-window:]
+        self.history[pool_id] = history
         self._save()
 
     def count(self, pool_id: int) -> int:
@@ -167,8 +174,8 @@ class BotConfig:
     """Top-level bot configuration loaded from config.json."""
     __slots__ = (
         "oracle_app_id", "amm_app_id", "usdc_asa_id", "asset_decimals",
-        "reference_pools", "compx_oracle_app_id", "compx_divergence_limit",
-        "compx_max_age", "pools",
+        "reference_pools", "asset_price_bounds", "compx_oracle_app_id",
+        "compx_divergence_limit", "compx_max_age", "pools",
     )
 
     def __init__(self, raw: dict) -> None:
@@ -177,6 +184,10 @@ class BotConfig:
         self.usdc_asa_id = int(raw.get("usdc_asa_id", 31566704))
         # asset_id → decimals
         self.asset_decimals = {int(k): int(v) for k, v in raw.get("asset_decimals", {}).items()}
+        # asset_id → (min_usdc, max_usdc) plausibility bounds for DERIVED prices (F3)
+        self.asset_price_bounds = {
+            int(k): (float(v[0]), float(v[1])) for k, v in raw.get("asset_price_bounds", {}).items()
+        }
         # asset_id → {"pool_address": str, "quote_asset_id": int}
         self.reference_pools = {
             int(k): {"pool_address": str(v["pool_address"]),
@@ -294,19 +305,30 @@ def derive_asset_price_usdc(
     q_dec = cfg.asset_decimals[quote_id]
     ratio = (quote_res / 10 ** q_dec) / (asset_res / 10 ** a_dec)   # price in quote units
     price = ratio * derive_asset_price_usdc(client, quote_id, cfg, memo)
+    # Per-asset absolute plausibility bound (F3): a distorted reference-pool read
+    # is rejected here instead of silently propagating into the composite LP price.
+    bounds = cfg.asset_price_bounds.get(asset_id)
+    if bounds and not (bounds[0] <= price <= bounds[1]):
+        raise ValueError(f"derived price for asset {asset_id} = {price:.6f} outside sanity bounds {bounds}")
     memo[asset_id] = price
     return price
 
 
 def compute_lp_price(pool: PoolConfig, pool_state: dict[str, int], price_a: float, price_b: float) -> int | None:
     """Compute LP token price in USDC, scaled × 1_000_000. None if pool state invalid."""
-    reserve_a = pool_state.get("asset_1_reserves", 0)
-    reserve_b = pool_state.get("asset_2_reserves", 0)
-    lp_total  = pool_state.get("issued_pool_tokens", 0)
-
+    lp_total = pool_state.get("issued_pool_tokens", 0)
     if lp_total == 0:
         log.warning(f"[{pool.label}] zero LP supply — skipping")
         return None
+
+    # Map reserves by asset id, not position (F4) — correctness no longer depends on
+    # the config ordering matching the pool's on-chain asset_1/asset_2 ordering.
+    try:
+        reserve_a, reserve_b = _pool_reserves(pool_state, pool.asset_a_id, pool.asset_b_id)
+    except ValueError as e:
+        log.warning(f"[{pool.label}] {e} — skipping")
+        return None
+
     if reserve_a == 0 and reserve_b == 0:
         log.warning(f"[{pool.label}] zero reserves — skipping")
         return None
@@ -339,6 +361,11 @@ def read_compx_price(client: algod.AlgodClient, oracle_app_id: int, asset_id: in
         raw = base64.b64decode(box["value"])
         if len(raw) < 24:
             return None
+        # Verify the box's embedded assetId matches what we asked for (F6) — never
+        # trust a price for the wrong/garbage asset as a valid cross-check.
+        if int.from_bytes(raw[0:8], "big") != int(asset_id):
+            log.warning(f"CompX box assetId mismatch for {asset_id}; ignoring cross-check value")
+            return None
         price = int.from_bytes(raw[8:16], "big")
         updated = int.from_bytes(raw[16:24], "big")
         return price / PRICE_SCALE, updated
@@ -348,45 +375,50 @@ def read_compx_price(client: algod.AlgodClient, oracle_app_id: int, asset_id: in
 
 
 def compx_cross_check(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
-                      derived_usdc: float) -> bool:
+                      derived_usdc: float) -> str:
     """
     Cross-check our on-chain-derived price of the pool's volatile asset against
-    CompX's independent oracle. Returns True to proceed, False to refuse posting.
+    CompX's independent oracle. Returns one of:
+      "ok"         — CompX fresh and agrees within the divergence limit
+      "diverged"   — CompX fresh but disagrees beyond the limit (hard stop)
+      "unverified" — CompX unavailable / stale / non-positive (cannot confirm)
 
-    Policy: a genuine *disagreement* (both fresh, but diverged) is a hard stop
-    (fail-stale, P19-02). CompX merely being unavailable/stale is a soft warning
-    — we don't couple our liveness to CompX's uptime.
+    The caller treats "diverged" as a hard refuse, and "unverified" as a reason to
+    only allow flat / small-decline posts (the strong guard is off — see update_pool).
+    A pool with no CompX check configured returns "ok" (relies on TWAP + anchor only).
     """
     if not pool.compx_check_asset_id or not cfg.compx_oracle_app_id:
-        return True
+        return "ok"
     cx = read_compx_price(client, cfg.compx_oracle_app_id, pool.compx_check_asset_id)
     if cx is None:
-        log.warning(f"[{pool.label}] CompX cross-check unavailable — proceeding on on-chain derivation alone")
-        return True
+        log.warning(f"[{pool.label}] CompX cross-check unavailable")
+        return "unverified"
     cx_price, cx_updated = cx
     age = int(time.time()) - cx_updated
     if age > cfg.compx_max_age:
-        log.warning(f"[{pool.label}] CompX price stale ({age}s > {cfg.compx_max_age}s) — proceeding without cross-check")
-        return True
+        log.warning(f"[{pool.label}] CompX price stale ({age}s > {cfg.compx_max_age}s)")
+        return "unverified"
     if cx_price <= 0:
-        log.warning(f"[{pool.label}] CompX price ≤ 0 — proceeding without cross-check")
-        return True
+        log.warning(f"[{pool.label}] CompX price ≤ 0")
+        return "unverified"
     divergence = abs(derived_usdc - cx_price) / cx_price
     if divergence > cfg.compx_divergence_limit:
         log.error(
             f"[{pool.label}] DIVERGENCE: derived ${derived_usdc:.6f} vs CompX ${cx_price:.6f} "
             f"= {divergence:.2%} > {cfg.compx_divergence_limit:.0%}; refusing to post (fail-stale)"
         )
-        return False
+        return "diverged"
     log.info(f"[{pool.label}] CompX cross-check OK: derived ${derived_usdc:.6f} vs CompX ${cx_price:.6f} (Δ{divergence:.2%})")
-    return True
+    return "ok"
 
 
 # ── full price pipeline for one pool ────────────────────────────────────────────
 
-def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) -> int | None:
+def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) -> tuple[int, bool] | None:
     """Read LP pool state, derive underlyings on-chain, compute LP price, apply sanity
-    bounds + CompX cross-check. Returns the scaled price or None if it cannot price safely."""
+    bounds + CompX cross-check. Returns (scaled_price, compx_verified), or None if it
+    cannot price safely (incl. a fresh CompX divergence). compx_verified=False means
+    CompX could not confirm this round — the caller then restricts to flat/small-decline posts."""
     try:
         pool_state = fetch_pool_state(client, pool.pool_address, cfg.amm_app_id)
     except Exception as e:
@@ -426,22 +458,29 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) ->
         return None
 
     # Second source: cross-check the volatile underlying against CompX's oracle.
-    check_price = memo.get(pool.compx_check_asset_id)
-    if check_price is None and pool.compx_check_asset_id:
-        try:
-            check_price = derive_asset_price_usdc(client, pool.compx_check_asset_id, cfg, memo)
-        except Exception:
-            check_price = None
-    if check_price is not None and not compx_cross_check(client, cfg, pool, check_price):
-        return None
+    compx_verified = True
+    if pool.compx_check_asset_id and cfg.compx_oracle_app_id:
+        check_price = memo.get(pool.compx_check_asset_id)
+        if check_price is None:
+            try:
+                check_price = derive_asset_price_usdc(client, pool.compx_check_asset_id, cfg, memo)
+            except Exception:
+                check_price = None
+        if check_price is None:
+            compx_verified = False
+        else:
+            status = compx_cross_check(client, cfg, pool, check_price)
+            if status == "diverged":
+                return None
+            compx_verified = (status == "ok")
 
     log.info(
         f"[{pool.label}] reserve_a={pool_state.get('asset_1_reserves')} "
         f"reserve_b={pool_state.get('asset_2_reserves')} "
         f"issued_lp={pool_state.get('issued_pool_tokens')} "
-        f"price_a={price_a:.6f} price_b={price_b:.6f} raw_price={price}"
+        f"price_a={price_a:.6f} price_b={price_b:.6f} raw_price={price} compx_verified={compx_verified}"
     )
-    return price
+    return price, compx_verified
 
 
 # ── on-chain oracle read ──────────────────────────────────────────────────────
@@ -502,10 +541,11 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
     """Run the full price pipeline for one pool and post to oracle if valid."""
     log.info(f"[{pool.label}] computing price ...")
 
-    spot_price = get_lp_price(client, pool, cfg)
-    if spot_price is None:
+    result = get_lp_price(client, pool, cfg)
+    if result is None:
         log.warning(f"[{pool.label}] could not compute price — skipping update")
         return
+    spot_price, compx_verified = result
 
     now = int(time.time())
     twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW)
@@ -537,6 +577,21 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
     if onchain > 0:
         pct_change = abs(final_price - onchain) / onchain
         log.info(f"[{pool.label}] on-chain={onchain} → new={final_price} (Δ{pct_change:+.2%})")
+
+    # F1/F5: when CompX could not verify this round, the strong divergence guard is OFF —
+    # only allow flat / small declines, never an increase or a large drop (fail-stale).
+    if not compx_verified:
+        if onchain <= 0:
+            log.warning(f"[{pool.label}] CompX unverified and no prior on-chain price — holding (fail-stale)")
+            return
+        if final_price > onchain:
+            log.warning(f"[{pool.label}] CompX unverified; would raise {onchain}→{final_price} — refusing (fail-stale)")
+            return
+        drop = (onchain - final_price) / onchain
+        if drop > UNVERIFIED_MAX_DROP:
+            log.warning(f"[{pool.label}] CompX unverified; would drop {drop:.1%} (> {UNVERIFIED_MAX_DROP:.0%}) — refusing (fail-stale)")
+            return
+        log.info(f"[{pool.label}] CompX unverified — posting flat/small decline only")
 
     if not post_price(client, cfg.oracle_app_id, bot_sk, bot_address, pool.pool_id, final_price, dry_run):
         log.error(f"[{pool.label}] price post failed")

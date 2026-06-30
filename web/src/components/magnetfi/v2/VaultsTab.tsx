@@ -69,8 +69,12 @@ export function VaultsTab() {
     if (!algorand || !address) return;
     setBusy(id);
     try {
-      if (optAsset && bal && !bal.optedMusd && optAsset === MUSD_ID) {
-        await optIn(algorand, address, MUSD_ID); toast.success("Opted into mUSD");
+      // Ensure mUSD opt-in before any action that can RECEIVE mUSD (open w/ borrow,
+      // borrow more). Fetch balances if not loaded yet so a required opt-in is never skipped.
+      if (optAsset === MUSD_ID) {
+        let b = bal;
+        if (!b && algodClient) b = await getBalances(algodClient, address);
+        if (b && !b.optedMusd) { await optIn(algorand, address, MUSD_ID); toast.success("Opted into mUSD"); }
       }
       await fn();
       toast.success("Done");
@@ -87,14 +91,20 @@ export function VaultsTab() {
   const posDebt = pos ? pos.musdBorrowed + pos.accruedInterest : 0;
   const posHf = pos ? healthFactor(posValue, posDebt, POOL.liqThresholdBps) : Infinity;
 
-  function ManageAction({ id, label, unit, onRun }: { id: string; label: string; unit: string; onRun: (v: number) => Promise<void> }) {
+  function ManageAction({ id, label, unit, onRun, disabled, max }: {
+    id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
+    disabled?: boolean; max?: number;
+  }) {
     const v = m[id] ?? "";
+    const num = Number(v) || 0;
+    const amount = max !== undefined ? Math.min(num, max) : num;   // clamp (H-1)
     return (
       <div className="flex items-center gap-2">
-        <input value={v} onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
-          placeholder={`${label} (${unit})`}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white outline-none focus:border-magnet-500/50" />
-        <button onClick={() => run(id, () => onRun(Number(v) || 0), MUSD_ID)} disabled={busy !== null || !(Number(v) > 0)}
+        <input value={v} disabled={disabled}
+          onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
+          placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
+          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
+        <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
           className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
           {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
         </button>
@@ -157,7 +167,7 @@ export function VaultsTab() {
           )}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <ManageAction id="pay" label="Pay interest" unit="mUSD" onRun={(v) => payInterest(algorand!, address!, v)} />
-            <ManageAction id="repay" label="Repay principal" unit="mUSD" onRun={(v) => repayPrincipal(algorand!, address!, v)} />
+            <ManageAction id="repay" label="Repay principal" unit="mUSD" disabled={pos.accruedInterest > 0} max={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} />
             <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v)} />
             <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v)} />
           </div>

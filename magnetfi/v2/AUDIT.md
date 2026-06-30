@@ -1049,3 +1049,29 @@ The configured price feed (Vestige `api.vestigelabs.io`) was **dead** — the do
 
 ### Still open (operational, pre-mainnet)
 Set the mainnet `oracle_app_id` + bot wallet at deploy time; bot uptime alerting + redundant instances (AUD-004).
+
+---
+
+## Pass 26 — Final Pre-Mainnet Audit (3 fresh independent agents) + Hardening
+
+Ran three independent fresh-context adversarial audits before mainnet: (1) contracts, (2) oracle bot + manipulation economics, (3) web/integration. **Net: zero open Critical/High after fixes.**
+
+### Contracts — no open Critical/High; high-risk mechanisms re-verified clean
+Independent re-derivation confirmed access control, WideRatio/overflow, state-2 guards + all 4 settle end-states, the circulating ≤ reserve invariant across every path, group-index bounds, liquidation tier math, oracle anchor/freshness, and two-role rotation/distinctness/timelock. Also confirmed `settle_health_liquidation` reads its mUSD transfer at index+1 (matches the web builder — web C-1 resolved correct).
+- **F-1 (Low, deferred):** tier-boundary comparisons use a raw uint64 multiply that overflows only at ~$205B collateral in a single vault and **fails closed**. Optional WideRatio tidy; left for now to avoid recompiling/redeploying audited bytecode for an implausible, fail-closed edge.
+
+### Web / integration — no fund-loss; 13 flows verified correct; client fixes applied
+- **H-1:** "Repay principal" is now disabled while accrued interest > 0 and the amount is clamped to principal (was an on-chain revert).
+- **H-2:** mUSD/USDC opt-in before borrow/mint/redeem is now robust — balances are fetched if not yet loaded so a required opt-in is never skipped.
+- **M-3:** OperationsPanel app + asset IDs default from `ACTIVE` (network-aware), not mainnet constants. **M-1:** redeem capped at PSM USDC reserve. **L-1:** removed dead `MAGNETFI_NETWORK` constant.
+
+### Oracle bot economics — substantive track; guard stack hardened
+Decimal/ratio math verified correct against live mainnet reserves. Economics: with CompX fresh, the 5% divergence check blocks manipulation at ~5% (before TWAP/anchor); at today's ~$16k collateral-pool TVL an over-borrow attack is **infeasible** (no flash loans; attacker can't pledge enough). Hardening before scaling past ~$100–200k. Fixes applied (bot tests 42 → 50; mainnet dry-run re-verified, CompX Δ0.16%):
+- **F1/F5 (High):** CompX stale/unavailable no longer silently proceeds — when CompX can't verify, the bot refuses any price increase and any drop > 10% (posts only flat/small declines). Closes the "DoS CompX to disable the only binding guard" vector.
+- **F6:** `read_compx_price` verifies the box's embedded assetId before trusting the value.
+- **F4:** `compute_lp_price` maps reserves by asset id (order-agnostic), not position.
+- **F3:** per-asset plausibility bounds (`asset_price_bounds`) reject a distorted reference read before it reaches the LP price.
+- **F7:** TWAP discards readings older than `MAX_TWAP_AGE` (no averaging across a downtime gap). **F8:** tightened the absolute LP sanity ceiling (1.2 → 0.9).
+
+### Deferred to before scaling TVL (not launch-blocking)
+**F2** (U priced circularly from the thin collateral pool): keep the initial ceiling small + LTV conservative; add a deeper/second independent U venue before raising TVL. The **F-1** contract tidy. The **external third-party audit**. **AUD-004** bot uptime/redundancy/alerting. Launch posture: a small PSM-seeded ceiling bounds residual risk — the audit quantified the safe envelope (< ~$100k collateral-pool TVL).
