@@ -208,6 +208,13 @@ def load_config(path: Path) -> BotConfig:
     if not cfg.pools:
         log.error("No pools configured in config.json")
         sys.exit(1)
+    # Low-1 (Pass 27): every on-chain-priced asset should carry a plausibility bound —
+    # warn loudly if one is missing so a future pool can't silently ship fail-open.
+    priced = set(cfg.reference_pools) | {p.compx_check_asset_id for p in cfg.pools if p.compx_check_asset_id}
+    for aid in sorted(priced):
+        if aid != cfg.usdc_asa_id and aid not in cfg.asset_price_bounds:
+            log.warning(f"asset {aid} is priced on-chain but has no asset_price_bounds entry "
+                        f"(fail-open for that layer) — add one to config.json")
     return cfg
 
 

@@ -276,6 +276,8 @@ Order matters — do not skip steps or reorder.
 - Existing positions continue accruing interest
 - Repayments, interest payments, and collateral additions remain open (oracle not required for these)
 - Action: restart bot immediately; if bot infrastructure is compromised, deploy replacement with new wallet and call `set_authorized_updater()`
+- **Post-restart freshness gap (Pass 26/27):** after a >30-min outage the bot needs ~3 fresh readings (~15 min at the 5-min poll) to refill the TWAP window before it posts again; borrows and liquidations stay blocked during that window. Fail-safe, but liquidators must wait for the first post after recovery.
+- **CompX second-source monitoring:** the bot cross-checks $U against CompX's Flux oracle (`3307588794`). If CompX goes stale/unavailable, the bot restricts to flat / ≤10%-decline posts and refuses any increase — a *bounded* fail-stale, hard-capped at −25% by the on-chain anchor. Monitor CompX freshness and re-anchor discipline, and run a redundant bot instance before scaling TVL (AUD-004).
 
 **PSM reserve critically low:**
 - If PSM USDC balance approaches circulating mUSD, vault ceiling approaches zero

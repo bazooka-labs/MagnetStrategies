@@ -532,3 +532,18 @@ def test_load_config_happy(tmp_path):
     assert cfg.asset_price_bounds == {3081853135: (0.02, 1.0)}
     assert cfg.reference_pools[0] == {"pool_address": "X", "quote_asset_id": 31566704}
     assert len(cfg.pools) == 1 and cfg.pools[0].pool_id == 1
+
+
+def test_load_config_warns_on_missing_price_bound(tmp_path, caplog):
+    import logging
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({
+        "oracle_app_id": 555,
+        "reference_pools": {"2537013734": {"pool_address": "X", "quote_asset_id": 0}},
+        "asset_price_bounds": {},   # 2537013734 is priced but has no bound
+        "pools": [{"pool_id": 1, "pool_address": "X", "asset_a_id": 1,
+                   "asset_a_decimals": 6, "asset_b_id": 0, "asset_b_decimals": 6}],
+    }))
+    with caplog.at_level(logging.WARNING):
+        ob.load_config(p)
+    assert any("asset_price_bounds" in r.message and "2537013734" in r.message for r in caplog.records)

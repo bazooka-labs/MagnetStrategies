@@ -1075,3 +1075,17 @@ Decimal/ratio math verified correct against live mainnet reserves. Economics: wi
 
 ### Deferred to before scaling TVL (not launch-blocking)
 **F2** (U priced circularly from the thin collateral pool): keep the initial ceiling small + LTV conservative; add a deeper/second independent U venue before raising TVL. The **F-1** contract tidy. The **external third-party audit**. **AUD-004** bot uptime/redundancy/alerting. Launch posture: a small PSM-seeded ceiling bounds residual risk — the audit quantified the safe envelope (< ~$100k collateral-pool TVL).
+
+---
+
+## Pass 27 — Final Holistic Pre-Launch Review (fresh agent, full stack)
+
+One fresh-context agent reviewed the **entire stack together** (contracts + oracle bot + web + all docs), focused on Pass 26 regressions and cross-layer (contract ↔ bot ↔ web) vectors, cross-checked against live mainnet state.
+
+**Verdict: GO for mainnet with a small initial ceiling. No Critical/High, no regression, no cross-layer exploit; zero must-fix.**
+
+Independently re-verified clean: the Pass 26 tuple return + directional CompX gate (no hole — `onchain<=0` holds, any increase or >10% drop refused when unverified), TWAP age-trim (never empties history; no divide-by-zero; composes with the 30-min on-chain freshness guard), order-agnostic `compute_lp_price` + the wrong-`pool_address` id guard, `read_compx_price` assetId verification, the `settle_health_liquidation` group index (`+1`, matched by `magnetfiOps` against the **real** vault contract, not just the spec), the web repay/opt-in guards (backed by contract-side `accrued_interest==0` / `repay<=principal` asserts), and CompX's live $U feed on-chain. Docs match code.
+
+Findings — Low/Info only, all fail-safe:
+- **Low-1 🟢 fixed:** `load_config` now warns if an on-chain-priced asset lacks an `asset_price_bounds` entry (prevents a future pool shipping fail-open for that layer). Test added; bot suite 50 → 51.
+- **Low-2 / Info (operational, documented in ADMIN.md):** CompX-uptime monitoring + re-anchor discipline; the ~15-min post-restart oracle-freshness gap (borrows/liquidations blocked until the TWAP window refills); redundant bot instance before scaling (AUD-004).
