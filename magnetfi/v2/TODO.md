@@ -56,7 +56,7 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - [ ] **Bot redundancy & alerting (AUD-004).** Run redundant bot instances and uptime/staleness alerting so the oracle doesn't go stale on a single-host failure. (Oracle staleness fails safe — blocks borrows/liquidations — but is still an availability hit.)
 - [ ] **Surplus-LP custody on liquidation (P23-01).** `trigger_full_liquidation` force-pushes surplus LP to the borrower; a borrower who opted out of the LP ASA can thereby delay (not prevent) a surplus liquidation. Bounded/non-economic (see AUDIT.md Pass 23). Optional future hardening: custody surplus for separate claim instead of force-pushing.
 - [ ] **Multi-vault support.** PSM authorizes a single vault app id. If a second vault contract is ever deployed, extend the registration to a list.
-- [ ] **PSM idle-reserve yield.** USDC held in the PSM earns nothing; a future version could deploy idle reserves into low-risk yield. Out of v2 scope.
+- [ ] **PSM idle-reserve yield (productive reserves).** Deploy the idle portion of PSM USDC into low-risk **on-chain** yield (e.g. CompX USDC market `3491050310`, or tokenized T-bills), keeping a liquidity buffer + a timelocked venue whitelist, and fold the recoverable position value into the invariant. Yield routes to reserves / treasury ($U buybacks) / mUSD holders. Full design + rationale (and why off-chain/custodial is rejected) in **[PSM.md → Future — Productive Reserves](./PSM.md#future--productive-reserves-deferred-post-launch)**. Post-launch, post-scale, needs a dedicated audit. Out of v2 scope.
 
 ---
 

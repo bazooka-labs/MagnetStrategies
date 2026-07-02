@@ -239,8 +239,47 @@ The only scenario requiring admin attention is growing the vault ceiling intenti
 
 **USDC stability:** mUSD is pegged to USDC. A severe USDC de-peg propagates to mUSD proportionally. Accepted assumption shared by the majority of DeFi protocols.
 
-**PSM USDC is non-yielding:** USDC held in PSM earns nothing passively. Revenue comes only from redemption fees routed to treasury. Future versions could deploy idle PSM USDC into low-risk yield strategies — not v2 scope.
+**PSM USDC is non-yielding:** USDC held in PSM earns nothing passively. Revenue comes only from redemption fees routed to treasury. Deploying idle reserves into low-risk yield is a deferred v-next item — see **[Future — Productive Reserves](#future--productive-reserves-deferred-post-launch)** below. Not v2 scope.
 
 **Single vault contract:** `issue_musd()` and `receive_musd()` are gated to one registered vault app ID (set via the timelocked `propose_vault_contract`/`confirm_vault_contract` flow). If a second vault contract is deployed, the registration would need to extend to a list.
 
 **Redemption fee is admin-adjustable:** 1% is the starting fee. Admin can reduce to 0% during bootstrapping to minimize friction, or adjust upward. On-chain cap of 5% prevents the fee from becoming a peg-maintenance barrier.
+
+---
+
+## Future — Productive Reserves (deferred, post-launch)
+
+At scale, the PSM's USDC reserve becomes a large pool of idle capital. Putting it to work (earning yield on the portion that isn't actively being redeemed) is a natural v-next direction — but it must never weaken what the PSM exists to provide. This section captures the design intent so it can be built safely later. **Not v2 scope; do not implement before real TVL + a dedicated audit.**
+
+### The non-negotiable principle
+Any yield strategy must preserve both:
+1. **Instant 1:1 redeemability** — a redemption can never fail for lack of liquidity.
+2. **The core invariant** — `circulating mUSD ≤ recoverable reserve value` at all times.
+
+Reserve mismanagement is the most common way stablecoins die. This is worth doing, but carefully and late.
+
+### On-chain yield only — not custodial/off-chain
+Moving USDC to a centralized venue (e.g. a Coinbase rewards balance) is explicitly **not** the intended path:
+- It reintroduces the counterparty/custody risk mUSD is designed to avoid (insolvency, account freezes, withdrawal halts — USDC itself briefly de-pegged in 2023 when reserves were stuck at a bank).
+- The contract **cannot verify** off-chain balances, so the on-chain invariant degrades to "trust the admin's accounting + trust the custodian." mUSD stops being *verifiably* backed.
+- Withdrawals aren't atomic; a redemption spike can outrun them.
+- (A CEX "USDC rewards" APY is counterparty credit risk, not staking.)
+
+**On-chain venues keep the guarantee intact** — the contract can read the deployed position's redeemable value and fold it into the invariant. Candidate venues:
+- **CompX USDC lending market** (mainnet app `3491050310`) — already in the Magnet ecosystem, on-chain, composable.
+- Tokenized T-bill / RWA products on Algorand (e.g. Folks Finance), low-risk and yield-bearing.
+
+### Safe design sketch
+1. **Liquidity buffer** — keep e.g. 20–30% of reserves (sized to expected redemption flow) always on-chain and instantly redeemable in the PSM.
+2. **Deploy only the excess** above the buffer into a *whitelisted, low-risk* on-chain venue.
+3. **Redefine the invariant** to `circulating mUSD ≤ (on-chain USDC) + (recoverable value of the deployed position)` — readable on-chain for an on-chain venue (and the reason off-chain doesn't work).
+4. **48h timelock + guardian veto** on enabling/changing a yield venue — reuse the exact pattern already used for the oracle/vault repoints, so this is not a rug vector.
+5. **Auto-unwind on redemption pressure** — if the on-chain buffer is drawn down, a redemption should be able to pull from the strategy (or the strategy is sized so the buffer always covers realistic flow).
+
+### Yield routing (all serve the Magnet Strategies goal)
+- **Compound into reserves** — grows the vault ceiling + overcollateralization.
+- **Route to treasury** — funds $U buybacks (directly advances the token's value mandate).
+- **Pass to mUSD holders** — a yield-bearing stablecoin (sDAI-style), a strong adoption narrative.
+
+### Sequencing
+Post-launch, post-scale (idle USDC is trivial at a small launch ceiling), and post- a **dedicated audit of the yield module** — it's meaningful new attack surface. At launch the plain 1:1 reserve is the right call: maximum trust while mUSD earns its reputation.
