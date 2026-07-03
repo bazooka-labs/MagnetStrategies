@@ -42,7 +42,7 @@ export type Deployment = {
 };
 
 const DEPLOYMENTS: Record<"mainnet" | "testnet", Deployment> = {
-  mainnet: { oracle: 0, psm: 0, vault: 0, musd: 3615600399, usdc: 31566704, lpAsaId: 0, poolId: 0 },
+  mainnet: { oracle: 0, psm: 0, vault: 0, musd: 3615600399, usdc: 31566704, lpAsaId: 3163770927, poolId: 3163770927 },
   testnet: {
     oracle: 765096480, psm: 765096481, vault: 765096491,
     musd: 765095889, usdc: 765095890, lpAsaId: 765095900, poolId: 765095900,
