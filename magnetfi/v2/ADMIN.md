@@ -106,6 +106,16 @@ Separate hot wallet authorized only to post LP prices. Separate from both admin 
 2. Call `withdraw_usdc(amount)` where `amount ≤ excess`
 3. Verify vault ceiling after withdrawal; alert if it drops below existing borrow demand
 
+**Productive reserves (v3) — new admin actions (see [PSM.md](./PSM.md#productive-reserves-v3)):**
+| Action | Method | Notes |
+|---|---|---|
+| Deploy reserve to a venue | `deploy(adapter, amount)` | Routes idle USDC to a whitelisted adapter (Folks first); contract refuses to breach the liquidity buffer / per-venue cap |
+| Recall reserve | `recall(adapter, amount)` | Pulls USDC back to the on-chain buffer |
+| Harvest yield | `harvest(adapter)` | Sweeps accrued yield to treasury |
+| Add / remove an adapter | `propose_adapter` → 48h → `confirm_adapter` / `cancel_adapter` | Timelocked + guardian-vetoable; ≤5 adapters; manages the strategy portfolio without a migration |
+
+Monitoring adds: buffer coverage (on-chain USDC vs expected redemption flow), per-adapter recoverable value + venue health, and total-deployed ≤ reserve − buffer.
+
 ---
 
 ### Vault Contract

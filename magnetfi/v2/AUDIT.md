@@ -1089,3 +1089,11 @@ Independently re-verified clean: the Pass 26 tuple return + directional CompX ga
 Findings — Low/Info only, all fail-safe:
 - **Low-1 🟢 fixed:** `load_config` now warns if an on-chain-priced asset lacks an `asset_price_bounds` entry (prevents a future pool shipping fail-open for that layer). Test added; bot suite 50 → 51.
 - **Low-2 / Info (operational, documented in ADMIN.md):** CompX-uptime monitoring + re-anchor discipline; the ~15-min post-restart oracle-freshness gap (borrows/liquidations blocked until the TWAP window refills); redundant bot instance before scaling (AUD-004).
+
+---
+
+## Forward — v3 Productive Reserves (NOT YET AUDITED)
+
+Passes 1–27 cover the **v2 core** (Oracle / PSM / Vault) as built. The **mainnet launch build is v3** = v2 core + a **yield-bearing PSM** (Productive Reserves — see [PSM.md](./PSM.md#productive-reserves-v3)): an adapter pattern (≤5 vetted, timelocked, immutable adapters; Folks Finance first), a **redefined core invariant** (`circulating ≤ on-chain USDC + Σ recoverable strategy value`), a liquidity buffer, per-venue exposure caps, and a recall-under-stress path.
+
+This is **meaningful new attack surface on the contract that holds the reserve** and is **not covered by the passes above.** It requires its own **dedicated fresh audit before mainnet** — the redefined invariant is the highest-risk change (it changes what backs the dollar) and the recall-under-stress path is the classic stablecoin failure point. Treat none of v3 as audited until that pass is done and logged here.

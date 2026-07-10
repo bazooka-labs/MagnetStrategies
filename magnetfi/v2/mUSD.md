@@ -21,6 +21,11 @@ This invariant is enforced at the contract level:
 
 The peg is mathematically guaranteed as long as the PSM holds sufficient USDC. There is no algorithmic mechanism that can fail — it is a bookkeeping constraint.
 
+**Under Productive Reserves (v3):** the reserve exists in two forms and the invariant counts both —
+> **Circulating mUSD ≤ on-chain USDC + Σ recoverable value of deployed strategy positions.**
+
+mUSD remains **USDC-backed** (idle USDC + a recoverable Folks/etc. position, e.g. `fUSDC`) and fully redeemable; the deployed portion still backs the dollar. LP collateral is *not* mUSD's backing — it secures the loans. See [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3).
+
 ---
 
 ## ASA Parameters

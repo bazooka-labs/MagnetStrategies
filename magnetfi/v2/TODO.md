@@ -11,7 +11,8 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - ✅ **mUSD ASA on mainnet:** `3615600399`.
 - ✅ **Full UI built** — `/magnetfi` app (Overview / CompX Markets / LP Vaults / mUSD) + gated Admin panel (Create mUSD, testnet asset factory, deploy wizard, operations console). Borrower tabs wired to live on-chain data + transactions.
 - ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
-- ⬜ **Mainnet deploy** — pending guardian address + U/tALGO pool/LP IDs + a fresh oracle bot run.
+- ⏸️ **Mainnet deploy PAUSED (deliberate).** Building **v3 productive reserves** (yield-bearing PSM) *before* launch — the immutable + locked-reserve design + no forced loan repayment make retrofitting yield impossible once loans exist. Launch params otherwise gathered: guardian `TM6N…`, bot `AGAI…`, treasury `VM2J…`, U/tALGO pool/LP `3163770927`, $1,000 ceiling.
+- 🔨 **v3 productive reserves** — adapter-based yield-bearing PSM (Folks Finance first; ≤5 vetted, timelocked adapters). Design: [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3). **Gates mainnet; requires a dedicated fresh audit + legal counsel.**
 
 ---
 
@@ -56,7 +57,7 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - [ ] **Bot redundancy & alerting (AUD-004).** Run redundant bot instances and uptime/staleness alerting so the oracle doesn't go stale on a single-host failure. (Oracle staleness fails safe — blocks borrows/liquidations — but is still an availability hit.)
 - [ ] **Surplus-LP custody on liquidation (P23-01).** `trigger_full_liquidation` force-pushes surplus LP to the borrower; a borrower who opted out of the LP ASA can thereby delay (not prevent) a surplus liquidation. Bounded/non-economic (see AUDIT.md Pass 23). Optional future hardening: custody surplus for separate claim instead of force-pushing.
 - [ ] **Multi-vault support.** PSM authorizes a single vault app id. If a second vault contract is ever deployed, extend the registration to a list.
-- [ ] **PSM idle-reserve yield (productive reserves).** Deploy the idle portion of PSM USDC into low-risk **on-chain** yield (e.g. CompX USDC market `3491050310`, or tokenized T-bills), keeping a liquidity buffer + a timelocked venue whitelist, and fold the recoverable position value into the invariant. Yield routes to reserves / treasury ($U buybacks) / mUSD holders. Full design + rationale (and why off-chain/custodial is rejected) in **[PSM.md → Future — Productive Reserves](./PSM.md#future--productive-reserves-deferred-post-launch)**. Post-launch, post-scale, needs a dedicated audit. Out of v2 scope.
+- [ ] **PSM productive reserves — PROMOTED to the v3 launch build** (no longer deferred; now *gates* mainnet). Yield-bearing PSM via the **adapter pattern** (≤5 vetted, timelocked adapters; **Folks Finance first**; redefined invariant + liquidity buffer + per-venue exposure caps; yield → treasury/$U, **never holders** per GENIUS Act). Full design + rationale (and why off-chain/custodial is rejected) in **[PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3)**. Needs a dedicated fresh audit + legal counsel before mainnet.
 
 ---
 

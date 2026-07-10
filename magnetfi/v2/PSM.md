@@ -239,7 +239,7 @@ The only scenario requiring admin attention is growing the vault ceiling intenti
 
 **USDC stability:** mUSD is pegged to USDC. A severe USDC de-peg propagates to mUSD proportionally. Accepted assumption shared by the majority of DeFi protocols.
 
-**PSM USDC is non-yielding:** USDC held in PSM earns nothing passively. Revenue comes only from redemption fees routed to treasury. Deploying idle reserves into low-risk yield is a deferred v-next item — see **[Future — Productive Reserves](#future--productive-reserves-deferred-post-launch)** below. Not v2 scope.
+**PSM USDC yield:** the v2 *core* PSM holds USDC idle (revenue only from redemption fees). The **launch build (v3)** adds **productive reserves** — deploying idle reserves into low-risk on-chain yield via vetted adapters (Folks first) while keeping mUSD fully redeemable — see **[Productive Reserves (v3)](#productive-reserves-v3)** below.
 
 **Single vault contract:** `issue_musd()` and `receive_musd()` are gated to one registered vault app ID (set via the timelocked `propose_vault_contract`/`confirm_vault_contract` flow). If a second vault contract is deployed, the registration would need to extend to a list.
 
@@ -247,39 +247,76 @@ The only scenario requiring admin attention is growing the vault ceiling intenti
 
 ---
 
-## Future — Productive Reserves (deferred, post-launch)
+## Productive Reserves (v3)
 
-At scale, the PSM's USDC reserve becomes a large pool of idle capital. Putting it to work (earning yield on the portion that isn't actively being redeemed) is a natural v-next direction — but it must never weaken what the PSM exists to provide. This section captures the design intent so it can be built safely later. **Not v2 scope; do not implement before real TVL + a dedicated audit.**
+> **Status: DESIGN — building before mainnet, not yet implemented.** This is the launch architecture (v3 = the v2 core + a yield-bearing PSM). It is documented here as the authoritative spec to build and audit against. Nothing in this section is live.
+
+The PSM's USDC reserve is idle capital. Putting the portion that isn't actively being redeemed to work — earning low-risk on-chain yield — is what makes issuing our own stablecoin *economically* worthwhile (otherwise mUSD ≈ direct USDC lending + a ~1% swap fee, which doesn't justify the added contracts + regulatory surface). This is deliberately built **before** launch, not retrofitted, for a hard structural reason (below).
+
+### Why this is built into v3, not added later
+The v2 contracts are **immutable** (no `UpdateApplication` path — correct for a reserve contract) and the reserve backing circulating mUSD is **locked** (`withdraw_usdc` is capped at the excess above circulating). Combined with **interest-only, no-maturity loans** (no forced repayment — a healthy borrower can hold a position open indefinitely), there is **no clean way to migrate the reserve to new contracts after launch**: you'd be at the mercy of borrowers repaying, an open-ended wind-down. Therefore the yield capability must exist from the first mainnet deploy. (This is the whole reason the mainnet rollout was paused.)
 
 ### The non-negotiable principle
-Any yield strategy must preserve both:
+Any yield strategy must preserve both, or it doesn't ship:
 1. **Instant 1:1 redeemability** — a redemption can never fail for lack of liquidity.
 2. **The core invariant** — `circulating mUSD ≤ recoverable reserve value` at all times.
 
-Reserve mismanagement is the most common way stablecoins die. This is worth doing, but carefully and late.
+Reserve mismanagement is the most common way stablecoins die. The yield is a *bonus on top*, never load-bearing for the peg.
 
-### On-chain yield only — not custodial/off-chain
-Moving USDC to a centralized venue (e.g. a Coinbase rewards balance) is explicitly **not** the intended path:
-- It reintroduces the counterparty/custody risk mUSD is designed to avoid (insolvency, account freezes, withdrawal halts — USDC itself briefly de-pegged in 2023 when reserves were stuck at a bank).
-- The contract **cannot verify** off-chain balances, so the on-chain invariant degrades to "trust the admin's accounting + trust the custodian." mUSD stops being *verifiably* backed.
-- Withdrawals aren't atomic; a redemption spike can outrun them.
-- (A CEX "USDC rewards" APY is counterparty credit risk, not staking.)
+### What backs mUSD (unchanged in substance)
+mUSD stays **USDC-backed** — the reserve just exists in two forms, both counted: idle **USDC** + the **recoverable value of deployed positions** (e.g. Folks `fUSDC`). LP collateral is *not* mUSD's backing — it secures the loans (borrower repayment) and is returned to borrowers; it protects the reserve, it doesn't back the dollar. Public wording: *"backed by USDC reserves, a portion of which may be deployed into low-risk on-chain lending while remaining fully redeemable."* Keep it **USDC-backed**, not "collateral-backed."
 
-**On-chain venues keep the guarantee intact** — the contract can read the deployed position's redeemable value and fold it into the invariant. Candidate venues:
-- **CompX USDC lending market** (mainnet app `3491050310`) — already in the Magnet ecosystem, on-chain, composable.
-- Tokenized T-bill / RWA products on Algorand (e.g. Folks Finance), low-risk and yield-bearing.
+### Economic rationale — capital does double duty
+Because a vault borrow issues mUSD **without removing USDC** from the PSM, the reserve backing borrowed mUSD sits idle in the PSM and can be deployed for yield **while it backs the circulating mUSD**. So the same seeded capital earns **loan interest (~8%) + reserve yield (~5–10%) simultaneously** — even with zero public adoption. This is the bank/Circle model (earn on reserves while they back redeemable liabilities), done on-chain and provably. Stacked returns come with stacked risk (venue + borrower default on the same base), which is why deployment stays fractional and diversified.
 
-### Safe design sketch
-1. **Liquidity buffer** — keep e.g. 20–30% of reserves (sized to expected redemption flow) always on-chain and instantly redeemable in the PSM.
-2. **Deploy only the excess** above the buffer into a *whitelisted, low-risk* on-chain venue.
-3. **Redefine the invariant** to `circulating mUSD ≤ (on-chain USDC) + (recoverable value of the deployed position)` — readable on-chain for an on-chain venue (and the reason off-chain doesn't work).
-4. **48h timelock + guardian veto** on enabling/changing a yield venue — reuse the exact pattern already used for the oracle/vault repoints, so this is not a rug vector.
-5. **Auto-unwind on redemption pressure** — if the on-chain buffer is drawn down, a redemption should be able to pull from the strategy (or the strategy is sized so the buffer always covers realistic flow).
+---
 
-### Yield routing (all serve the Magnet Strategies goal)
-- **Compound into reserves** — grows the vault ceiling + overcollateralization.
-- **Route to treasury** — funds $U buybacks (directly advances the token's value mandate).
-- **Pass to mUSD holders** — a yield-bearing stablecoin (sDAI-style), a strong adoption narrative.
+### Architecture — adapter pattern (PSM ↔ vetted adapters)
 
-### Sequencing
-Post-launch, post-scale (idle USDC is trivial at a small launch ceiling), and post- a **dedicated audit of the yield module** — it's meaningful new attack surface. At launch the plain 1:1 reserve is the right call: maximum trust while mUSD earns its reputation.
+The PSM **never makes arbitrary external calls.** Venue-specific logic lives in small, immutable, separately-audited **adapter contracts**; the PSM talks to them through one fixed, minimal interface.
+
+- **PSM core (immutable, venue-agnostic):** knows only `deposit(amount)`, `withdraw(amount)`, `recoverable_value()`. Holds a **whitelist of ≤ 5 adapters**, enforces the buffer / caps / invariant, and lets the admin deploy/recall to whitelisted adapters. Never calls a non-whitelisted app.
+- **Adapter (immutable, one per venue):** hardcodes exactly one venue's integration (deposit/withdraw + read exchange rate), holds that venue's receipt token (e.g. `fUSDC`), and reports its recoverable USDC value. A bad adapter can only affect funds deployed *to it*.
+- **Adapter management (add / remove):** via the **existing 48h-timelock + guardian-veto** pattern (propose → wait 48h → confirm; guardian can cancel). Adding a venue = deploy a new adapter + timelock-whitelist it. Removing = recall fully, then de-whitelist. **No PSM change, no migration, ever.** This is the "manage which adapters are in the strategy portfolio" capability.
+- **Hardcap: 5 adapters** — a compile-time constant. Bounds state, the invariant loop, and audit surface. Diversifying across venues (e.g. 5k Folks / 3k T-bills / 2k CompX) limits single-venue concentration; each adapter carries an on-chain exposure cap.
+
+**Build scope: ship with ONE adapter — Folks Finance — only.** The multi-adapter framework (up to 5) is built in, but only the Folks adapter is deployed/whitelisted at launch. Others (tokenized T-bills, CompX once it has real usage/maturity) plug in later with zero core change.
+
+### Redefined invariant
+```
+circulating mUSD  ≤  on-chain USDC  +  Σ adapterᵢ.recoverable_value()      (i = 1..N, N ≤ 5)
+```
+- Read **live** on `deploy` and on new issuance (vault borrow / PSM mint) — the actions that could break it.
+- **Redemptions do not need the sum:** paying a redemption from the on-chain buffer reduces both `circulating` and `on-chain USDC` equally, which *preserves* the inequality automatically. So the bounded loop only runs on the less-frequent paths.
+
+### Guardrails
+1. **Liquidity buffer** — a minimum fraction of reserves (e.g. 20–30%, sized to expected redemption flow **and** to Folks' withdrawal liquidity — recall is *not* guaranteed instant) stays as on-chain USDC. Redemptions are paid from the buffer; strategies are the backstop.
+2. **Per-venue exposure cap** — no single adapter may hold more than X% of deployed reserves. Enforced on-chain, so diversification is a contract guarantee, not admin discipline.
+3. **Total-deployed cap** — `Σ deployed ≤ reserve − buffer`. The contract refuses any `deploy` that would breach the buffer, exactly like `withdraw_usdc` refuses to drop below circulating today.
+
+### Admin flows (all admin-triggered, via the ops panel)
+- **`deploy(adapter, amount)`** — routes `amount` USDC from the PSM to a whitelisted adapter (inner txn: PSM → adapter → venue). Asserts buffer/cap/invariant hold after. Funds move escrow-to-escrow; **never through the admin wallet.**
+- **`recall(adapter, amount)`** — pulls USDC back from a venue into the PSM buffer.
+- **`harvest(adapter)`** — sweeps accrued yield (position value above deployed principal) to **treasury**.
+- **Recall-under-stress:** if the buffer is ever drawn below a redemption, recall walks whitelisted adapters in order, **skipping any temporarily-illiquid venue** rather than reverting/locking. The buffer is sized so this is a rare backstop, not a hot path — the recall path is the single most safety-critical piece and gets the most scrutiny.
+
+### Custody note
+The receipt token (`fUSDC`) is held by the **adapter contract account**, not any wallet. The PSM already has an admin-gated `opt_in_asset` (Pass 16), so ASA custody is mechanically supported; adapters opt into their own receipt ASA. Funds only ever flow PSM ↔ adapter ↔ venue — all smart-contract escrows.
+
+### On-chain only — not custodial/off-chain
+A centralized venue (e.g. a Coinbase rewards balance) is explicitly rejected: the contract can't verify off-chain balances (the invariant degrades to "trust the custodian"), it reintroduces the counterparty risk mUSD avoids (USDC itself briefly de-pegged in 2023 when reserves were stuck at a bank), and withdrawals aren't atomic. On-chain venues let the contract read the position's recoverable value and keep the invariant honest.
+
+### Venues
+- **Folks Finance USDC market — venue #1 (launch).** Most battle-tested Algorand money market; deposit USDC → `fUSDC`. Conservative, audited.
+- **Tokenized T-bills / RWA** — lowest fundamental risk (Circle/Tether model) *if* a liquid, contract-custody-compatible Algorand product exists (often KYC/permissioned — verify). Aspirational venue #2.
+- **CompX USDC market** (`3491050310`) — in-ecosystem, on-chain, but ~0 usage today; add only once it has real depth/maturity.
+- **Deliberately excluded:** ALGO governance/consensus staking, liquid staking (tALGO), DEX LPing — all carry price/IL risk, inappropriate for a USD-denominated reserve.
+
+### Yield routing
+Yield routes to **treasury** (→ $U buybacks) or compounds into reserves. **Do NOT route yield to mUSD holders** — the GENIUS Act prohibits payment-stablecoin issuers from paying yield to holders (see the regulatory note below). Treasury/$U routing is the defensible path.
+
+### Regulatory
+A yield-earning reserve raises the regulatory stakes, not lowers them. Yield to **treasury**, never holders. This needs **legal counsel before mainnet** (entity, US-person access / geofencing, review of the yield mechanism). The v3 build window is the time to close this out in parallel.
+
+### Build + audit sequencing
+v3 (Folks adapter + the redefined invariant + buffer/caps + recall path + adapter-whitelist timelock) is **meaningful new attack surface on the contract that holds the reserve** and requires its own **dedicated fresh audit** — not a re-run of the v2 passes. The redefined invariant is the highest-risk change (it changes what backs the dollar), so it gets the most scrutiny. Launch posture is otherwise unchanged: small ceiling, conservative deployment fraction, Folks-only.

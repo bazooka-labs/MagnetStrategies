@@ -64,6 +64,7 @@ The PSM is a protocol-owned fixed-rate swap module. It is not an AMM.
 - Vault ceiling grows via admin USDC deposits and vault repayments; PSM swaps are self-balancing
 - Admin-only: add or withdraw USDC from PSM (withdraw guard: cannot drop below outstanding mUSD)
 - No external LPs; all reserves are protocol-owned
+- **Productive reserves (v3, in build):** the launch PSM deploys idle reserves into low-risk **on-chain** yield (Folks Finance first) via vetted, timelocked adapters while keeping mUSD fully redeemable — capital does double duty (loan interest + reserve yield). See [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3).
 
 ---
 
@@ -200,7 +201,8 @@ MagnetFi v2 has five revenue streams across two categories — automatic and adm
 | mUSD ASA | ✅ Live on mainnet — ASA `3615600399` |
 | Admin UI + borrower app | ✅ Built — `/magnetfi` (deploy wizard, ops console, live borrower tabs) |
 | Testnet deployment | ✅ Complete — full deploy rehearsal (Oracle `765096480` / PSM `765096481` / Vault `765096491`) |
-| Mainnet deployment | ⬜ Pending — guardian address + U/tALGO pool/LP IDs + oracle bot run |
+| **Productive Reserves (v3)** | 🔨 **In build — launch is gated on this.** Yield-bearing PSM: adapter pattern (≤5 vetted, timelocked adapters), Folks Finance first, redefined invariant + buffer + per-venue caps. Needs a dedicated audit. See [PSM.md](./PSM.md#productive-reserves-v3). |
+| Mainnet deployment | ⏸️ **Paused** for the v3 productive-reserves build + audit + legal counsel. Launch params otherwise gathered (guardian `TM6N…`, bot `AGAI…`, treasury `VM2J…`, $1,000 ceiling). |
 
 ---
 
