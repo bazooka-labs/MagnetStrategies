@@ -293,6 +293,13 @@ backing_from_venueᵢ = min(deployed_principalᵢ, recoverable_valueᵢ)
 ```
 You never count *above* what you deposited (so a venue that misreports an inflated value can't fool the peg), and you drop *below* principal the instant a venue loses value (so a loss can't be masked). Yield is a bonus you harvest, not backing you rely on.
 
+### Reading `recoverable_value` (how a venue position is quantified)
+For Folks, `recoverable_value = fUSDC_balance × Folks_deposit_index` — the adapter reads its own fUSDC balance (its ASA balance) and the pool's on-chain deposit index (USDC-per-fUSDC), referencing the Folks app. That index is a **monotonic lending rate, not an AMM spot price**, so it is **not flash-manipulable** (a stale read is slightly *low* = conservative). Concretely, because backing counts `min(deployed_principal, recoverable_value)`:
+- **Normal case** (no loss): the term equals `deployed_principal` — a **known constant from the receipt** — so the peg's backing does *not* depend on trusting a live venue mark at all.
+- The index read only serves to **detect a loss** (`recoverable < principal`) and write the backing down. Thanks to `min()`, an index read that's too *high* (bug/misreport) **cannot over-count backing** (it's capped at principal); only a too-*low* read has effect, which is safe.
+- **Ground truth is confirmed on `recall`** — what actually lands back in the PSM is the real value; any shortfall crystallizes into `reserve_deficit`.
+- **Caveat:** the index is Folks' *accounting* value; it could overstate withdrawable value if Folks itself is impaired (bad debt) — the residual venue risk handled by `min()` + fractional deployment + the deficit mechanism. The exact Folks app id / index state key / scaling must be **verified against Folks' live contracts** when the adapter is built — that venue-specific knowledge is *why* the adapter is its own small, separately-audited contract.
+
 ### Redefined invariant
 ```
 circulating mUSD  ≤  on-chain USDC  +  Σ min(deployed_principalᵢ, recoverable_valueᵢ)   (i = 1..N, N ≤ 5)
@@ -341,6 +348,21 @@ Yield routes to **treasury** (→ $U buybacks) or compounds into reserves. **Do 
 
 ### Regulatory
 A yield-earning reserve raises the regulatory stakes, not lowers them. Yield to **treasury**, never holders. This needs **legal counsel before mainnet** (entity, US-person access / geofencing, review of the yield mechanism). The v3 build window is the time to close this out in parallel.
+
+### Method map — v3 is PSM-only (resolves design-review H-4)
+v3 modifies the **PSM only**; the **Vault / LP Oracle / Liquidation contracts are untouched** (they keep their v2 audit passes). The vault points at the new v3 PSM at deploy. Fresh-audit scope = the v3 PSM + the Folks adapter.
+
+| Method | v3 status |
+|---|---|
+| `redeem_musd` | **Unchanged** — its `psm_usdc_balance ≥ amount` guard *is* buffer-primary (reverts if the buffer can't cover — the accepted H-2 tail-risk) |
+| `mint_musd` | **Unchanged** — self-balancing; the redefined invariant holds automatically |
+| `issue_musd` | **Modified** — checks the redefined backing `on-chain USDC + Σ min(principal, recoverable)`; frozen while `reserve_deficit > 0` |
+| `withdraw_usdc` | **Modified** — buffer-aware: `amount ≤ min(on-chain USDC − buffer, total_backing − circulating)` |
+| `deploy` / `recall` / `harvest` | **New** — see Admin flows (principal ↔ reserve, yield ↔ treasury) |
+| `propose/confirm/cancel_adapter` | **New** — ≤5-adapter whitelist via the existing 48h timelock + guardian veto |
+| `restore` (+ `reserve_deficit`, `deployed_principal`) | **New** — deficit accounting + position receipts |
+
+**Compute nuance:** at launch (Folks-only, one adapter) `issue_musd` reads the one venue live — trivial. At 5 adapters, cache a per-adapter *marked value* (updated on deploy/recall/harvest/revalue) so the borrow hot-path reads PSM-internal state, not all venues live — a scale-time optimization, not a launch blocker (safety already rests on known principal via `min()`).
 
 ### Build + audit sequencing
 v3 (Folks adapter + the redefined invariant + buffer/caps + recall path + adapter-whitelist timelock) is **meaningful new attack surface on the contract that holds the reserve** and requires its own **dedicated fresh audit** — not a re-run of the v2 passes. The redefined invariant is the highest-risk change (it changes what backs the dollar), so it gets the most scrutiny. Launch posture is otherwise unchanged: small ceiling, conservative deployment fraction, Folks-only.
