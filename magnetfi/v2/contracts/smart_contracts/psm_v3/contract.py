@@ -211,7 +211,8 @@ class PSMv3(
         ids = self.adapter_ids.value.copy()
         result = UInt64(MAX_ADAPTERS)
         for i in urange(MAX_ADAPTERS):
-            if ids[i].native == adapter_app_id:
+            # Guard the 0 sentinel so a 0 query never matches an empty slot (L-3).
+            if adapter_app_id != UInt64(0) and ids[i].native == adapter_app_id:
                 result = i
         return result
 
@@ -427,6 +428,10 @@ class PSMv3(
         """
         assert amount > UInt64(0), "amount must be > 0"
         self._assert_vault_caller()
+        # v3: pause now halts new borrow issuance too (v2 left it open) — a single fast lever
+        # for the guardian to stop all new backing exposure in an incident (INFO-1). Redeem
+        # stays open, so users can always exit.
+        assert self.paused.value == UInt64(0), "issuance paused"
         assert self.reserve_deficit.value == UInt64(0), "issuance frozen — reserve deficit"
         assert not self._any_impaired(), "issuance frozen — adapter impaired"
 
@@ -629,8 +634,13 @@ class PSMv3(
           is written off to reserve_deficit — crystallizing the loss for the admin to restore —
           then the slot is freed. Once removed, _any_impaired() clears and, after restore,
           issuance re-enables.
+          OPERATOR NOTE (L-2): the write-off crystallizes the FULL remaining principal and the
+          adapter is de-whitelisted immutably. If the venue still RESPONDS, `strategy_recall`
+          everything recoverable FIRST (smaller deficit, no orphaned value); use this hatch only
+          for a genuinely dead/withdrawal-halted venue.
         """
         self._assert_admin()
+        assert adapter_app_id != UInt64(0), "invalid adapter app id"
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "not whitelisted"
 
@@ -656,6 +666,7 @@ class PSMv3(
         invariant holds. Frozen while paused, in deficit, or any adapter is impaired.
         """
         self._assert_admin()
+        assert adapter_app_id != UInt64(0), "invalid adapter app id"
         assert amount > UInt64(0), "amount must be > 0"
         assert self.paused.value == UInt64(0), "deploy paused"
         assert self.reserve_deficit.value == UInt64(0), "deploy frozen — reserve deficit"
@@ -701,6 +712,7 @@ class PSMv3(
         Allowed during pause/deficit — recall only brings funds home.
         """
         self._assert_admin()
+        assert adapter_app_id != UInt64(0), "invalid adapter app id"
         assert amount > UInt64(0), "amount must be > 0"
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
@@ -730,21 +742,34 @@ class PSMv3(
     @arc4.abimethod
     def strategy_harvest(self, adapter_app_id: UInt64) -> None:
         """
-        Sweep only realized yield (recoverable − principal) to treasury. Self-verifying (F-1):
-        routes only what actually withdraws, then asserts recoverable ≥ principal AFTER the
-        sweep — so a too-high venue mark can never pull principal out (the assert reverts the
-        whole transaction, including the treasury transfer). Halted while paused or in deficit
-        (F-7); skips impaired venues.
+        Sweep only realized yield (recoverable − principal) to treasury. Trust-minimized on the
+        buffer: the payout is the on-chain USDC actually received this tx, capped at the computed
+        yield — so an adapter can never pull the PSM's own buffer to treasury (only funds it
+        holds), and any over-return simply stays as backing.
+
+        RESIDUAL VENUE RISK — ACCEPTED (H-1): the sweep bound (`recoverable_before`) and the
+        post-sweep `recoverable ≥ principal` self-check both read the adapter's OWN
+        recoverable_value(). A whitelisted adapter that lies self-consistently could route its
+        own deployed principal to treasury and leave phantom backing — bounded to funds deployed
+        to THAT adapter, and later revealed as a deficit on recall. This is the same irreducible
+        venue trust as min() (see PSM.md): harvest safety REQUIRES recoverable_value() to be a
+        non-manipulable on-chain read. That is the #1 gate of every adapter's dedicated audit —
+        the Folks adapter reads fUSDC_balance × index from real on-chain state it cannot fake, so
+        sending principal out drops its real balance and the self-check fires.
+
+        Halted while paused, in deficit, or while ANY adapter is impaired (F-7 / INFO-2).
         """
         self._assert_admin()
+        assert adapter_app_id != UInt64(0), "invalid adapter app id"
         assert self.paused.value == UInt64(0), "harvest paused"
         assert self.reserve_deficit.value == UInt64(0), "harvest frozen — reserve deficit"
+        # Freeze ALL harvest while ANY adapter is impaired (INFO-2, consistent with deploy):
+        # don't sweep yield out of the buffer while a loss may be brewing elsewhere.
+        assert not self._any_impaired(), "harvest frozen — adapter impaired"
         assert self.treasury_address.value != Global.zero_address, "treasury not set"
 
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
-        flags = self.adapter_impaired.value.copy()
-        assert flags[slot].native == UInt64(0), "adapter impaired"
 
         principal = self._principal_at(slot)
         recoverable_before = self._adapter_recoverable(adapter_app_id)
@@ -788,6 +813,7 @@ class PSMv3(
         (flag=0) re-opens issuance, so it is guardian-only, mirroring `unpause`: a compromised
         hot key must not be able to lift a lockdown and issue against a bad venue (L-1).
         """
+        assert adapter_app_id != UInt64(0), "invalid adapter app id"
         assert flag <= UInt64(1), "flag must be 0 or 1"
         if flag == UInt64(0):
             self._assert_guardian()
