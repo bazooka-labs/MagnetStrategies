@@ -24,9 +24,11 @@ TIMELOCK_DELAY = 172_800  # 48 × 3600
 # Max whitelisted yield adapters (compile-time bound on state + the invariant loop).
 MAX_ADAPTERS = 5
 
-# Dust tolerance (µUSDC). A recall shortfall at or below this is treated as entry-rounding
-# noise (fUSDC mint rounds down) and does NOT crystallize a reserve deficit (F-3/F-4).
-DUST_EPSILON = 10_000  # 0.01 USDC
+# Dust tolerance (µUSDC). Recall now measures recovered USDC by on-chain balance delta
+# (exact — see strategy_recall), so ε only absorbs fUSDC entry-rounding (mint rounds down),
+# never a real loss. Kept small so it can't be gamed across many sub-ε recalls (M-2).
+# Finalize against Folks' index scaling when the FolksAdapter is built (Phase 3).
+DUST_EPSILON = 1_000  # 0.001 USDC
 
 # Fixed-length parallel arrays for the adapter registry (one slot per adapter, 0 = empty).
 AdapterArray = arc4.StaticArray[arc4.UInt64, typing.Literal[5]]
@@ -269,6 +271,8 @@ class PSMv3(
     @subroutine
     def _adapter_recoverable(self, adapter_app_id: UInt64) -> UInt64:
         """Read a venue position's recoverable USDC value via the adapter interface."""
+        _addr, exists = op.AppParamsGet.app_address(adapter_app_id)
+        assert exists, "adapter app not found"  # cleaner revert than a bare cross-app failure (I-4)
         result, _txn = arc4.abi_call[arc4.UInt64](
             "recoverable_value()uint64",
             app_id=adapter_app_id,
@@ -616,14 +620,30 @@ class PSMv3(
     @arc4.abimethod
     def remove_adapter(self, adapter_app_id: UInt64) -> None:
         """
-        De-whitelist an adapter. Requires it be fully wound down — no principal receipt and
-        zero recoverable value — so funds can never be orphaned in a removed venue.
+        De-whitelist an adapter.
+        - HEALTHY adapter: must be fully wound down — no principal receipt AND zero recoverable
+          value — so funds can never be orphaned in a removed venue.
+        - IMPAIRED adapter (escape hatch, H-1): removable WITHOUT calling recoverable_value()
+          (which may revert if the venue app is dead/broken), so a stuck adapter can never
+          permanently brick issuance via the impairment freeze. Any residual principal receipt
+          is written off to reserve_deficit — crystallizing the loss for the admin to restore —
+          then the slot is freed. Once removed, _any_impaired() clears and, after restore,
+          issuance re-enables.
         """
         self._assert_admin()
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "not whitelisted"
-        assert self._principal_at(slot) == UInt64(0), "recall principal first"
-        assert self._adapter_recoverable(adapter_app_id) == UInt64(0), "adapter still holds value"
+
+        flags = self.adapter_impaired.value.copy()
+        if flags[slot].native == UInt64(0):
+            # Healthy path: must be provably empty (safe to call the live adapter).
+            assert self._principal_at(slot) == UInt64(0), "recall principal first"
+            assert self._adapter_recoverable(adapter_app_id) == UInt64(0), "adapter still holds value"
+        else:
+            # Impaired escape hatch: never call the adapter; write off any residual principal.
+            remaining = self._principal_at(slot)
+            if remaining > UInt64(0):
+                self.reserve_deficit.value = self.reserve_deficit.value + remaining
         self._set_slot(slot, UInt64(0), UInt64(0), UInt64(0))
 
     # ── strategy operations (v3) ────────────────────────────────────────────────
@@ -685,12 +705,18 @@ class PSMv3(
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
 
-        recovered, _txn = arc4.abi_call[arc4.UInt64](
+        # Measure USDC actually returned by the on-chain balance delta, NOT the adapter's
+        # reported return value (M-1): a lying/buggy adapter could otherwise return `amount`
+        # while sending nothing, hiding a realized loss so no deficit crystallizes. Reentrancy
+        # is impossible (AVM forbids the PSM twice on the stack), so nothing else can move the
+        # PSM's USDC between these two reads — the delta is exactly what the adapter sent.
+        bal_before = self._psm_usdc_balance()
+        _reported, _txn = arc4.abi_call[arc4.UInt64](
             "pool_withdraw(uint64)uint64",
             amount,
             app_id=adapter_app_id,
         )
-        recovered_usdc = recovered.native
+        recovered_usdc = self._psm_usdc_balance() - bal_before
 
         principal = self._principal_at(slot)
         retired = principal if principal <= amount else amount
@@ -725,12 +751,20 @@ class PSMv3(
         assert recoverable_before > principal, "no yield to harvest"
         yield_amt = recoverable_before - principal
 
-        recovered, _txn = arc4.abi_call[arc4.UInt64](
+        # Trust ONLY the on-chain USDC actually received, never the adapter's reported return
+        # (H-2): a malicious adapter could otherwise report a huge `realized` and drain the PSM
+        # buffer to treasury out of the PSM's own balance (funds NOT deployed to it).
+        bal_before = self._psm_usdc_balance()
+        _reported, _txn = arc4.abi_call[arc4.UInt64](
             "pool_withdraw(uint64)uint64",
             yield_amt,
             app_id=adapter_app_id,
         )
-        realized = recovered.native
+        received = self._psm_usdc_balance() - bal_before
+        # Sweep only realized yield: never more than what actually arrived, never more than the
+        # computed yield (so an over-returning adapter can't push principal out to treasury —
+        # any excess simply stays in the PSM buffer as backing).
+        realized = received if received <= yield_amt else yield_amt
         assert realized > UInt64(0), "nothing realized"
 
         itxn.AssetTransfer(
@@ -740,7 +774,7 @@ class PSMv3(
             fee=0,
         ).submit()
 
-        # Self-verify: principal must remain fully recoverable after the sweep.
+        # Defense-in-depth self-verify: principal must remain fully recoverable after the sweep.
         assert self._adapter_recoverable(adapter_app_id) >= principal, "harvest would impair principal"
 
     @arc4.abimethod
@@ -748,10 +782,17 @@ class PSMv3(
         """
         Manually mark/unmark an adapter impaired (F-6). Applies to a value loss OR a withdrawal
         halt (a venue whose index still reads healthy but won't return funds). While marked, the
-        venue counts 0 backing and issuance/deploy are frozen. Admin or guardian (safety brake).
+        venue counts 0 backing and issuance/deploy are frozen.
+
+        Setting impaired (flag=1) is a safety brake — either role may pull it fast. Clearing it
+        (flag=0) re-opens issuance, so it is guardian-only, mirroring `unpause`: a compromised
+        hot key must not be able to lift a lockdown and issue against a bad venue (L-1).
         """
-        self._assert_admin_or_guardian()
         assert flag <= UInt64(1), "flag must be 0 or 1"
+        if flag == UInt64(0):
+            self._assert_guardian()
+        else:
+            self._assert_admin_or_guardian()
         slot = self._find_adapter_slot(adapter_app_id)
         assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
         flags = self.adapter_impaired.value.copy()
