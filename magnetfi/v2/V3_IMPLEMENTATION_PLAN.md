@@ -13,7 +13,10 @@ Build roadmap for v3 = the v2 core + a **yield-bearing PSM**. The design is froz
 
 ## Phase 0 — Groundwork (before contract code)
 
-- **0.1 Verify Folks Finance's on-chain layout (blocks the adapter).** Confirm on mainnet: the USDC lending pool app id(s), the deposit + withdraw ABI methods, the `fUSDC` ASA id, the exact **deposit-index** state key + its scaling/decimals, and how to read **available withdrawal liquidity**. Capture in a short `FolksAdapter` integration note. *(Can be done now via algod reads.)*
+- **0.1 Verify Folks Finance's on-chain layout (blocks the adapter).** ✅ *On-chain verification done; SDK-level extraction remains.*
+  - **Target venue: Folks Finance v2 *native* USDC pool — app `971372237`; receipt fUSDC `971384592`** ("Folks V2 USDC (fUSDC)", 6 dp, created by the pool account). Chosen over the newer **xChain** USDC pool (`3184324594`) because v2 is deep + battle-tested: **~$826k USDC** held vs **~$7.7k** in xChain → far better recall liquidity, and a simple fToken model.
+  - **Valuation:** pool state is packed byte-array globals (Folks' layout); the deposit-interest index is in a packed field (`i`, 56 bytes). `recoverable_value = fUSDC_balance × deposit_interest_index / SCALE` (Folks fixed-point index, ~1e14).
+  - **Still to extract from Folks' authoritative source (`folks-finance-js-sdk`) at adapter-build time — this *is* the venue-specific logic the FolksAdapter encapsulates and its dedicated audit verifies:** (a) exact byte offset + scaling of the deposit-interest index within the pool state; (b) the deposit/withdraw ABI (method names, args, group shape — deposit = send USDC + app call → receive fUSDC; withdraw = send fUSDC + app call → receive USDC); (c) reading available withdrawal liquidity (the pool account's on-chain USDC balance is a first-order proxy).
 - **0.2 Decide parameters** (see table below) — buffer / max-deployment fraction, per-venue cap, total-deployed cap, dust `ε`, max-staleness (multi-adapter only), and whether to timelock `set_treasury` (F-7).
 - **0.3 Engage legal counsel (parallel track, start now):** entity, US-person access / geofencing, and review of the yield-to-treasury mechanism (GENIUS Act — no yield to holders).
 
