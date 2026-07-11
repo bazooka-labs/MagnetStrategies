@@ -282,23 +282,47 @@ The PSM **never makes arbitrary external calls.** Venue-specific logic lives in 
 
 **Build scope: ship with ONE adapter — Folks Finance — only.** The multi-adapter framework (up to 5) is built in, but only the Folks adapter is deployed/whitelisted at launch. Others (tokenized T-bills, CompX once it has real usage/maturity) plug in later with zero core change.
 
+### Position accounting — principal vs. yield (resolves design-review H-1)
+The contract records **`deployed_principal[adapter]`** — a *receipt* of exactly how much USDC was sent to each venue (up on `deploy`, down on `recall`). This separates two things that must never be confused:
+- **Principal** = reserve. It backs mUSD. On recall it returns to the PSM buffer, never distributed.
+- **Yield** = `recoverable_value − deployed_principal` (when positive) = revenue. Only *this* is harvestable to treasury; it is **never counted as backing.**
+
+**Conservative valuation** — each venue is counted in the invariant at:
+```
+backing_from_venueᵢ = min(deployed_principalᵢ, recoverable_valueᵢ)
+```
+You never count *above* what you deposited (so a venue that misreports an inflated value can't fool the peg), and you drop *below* principal the instant a venue loses value (so a loss can't be masked). Yield is a bonus you harvest, not backing you rely on.
+
 ### Redefined invariant
 ```
-circulating mUSD  ≤  on-chain USDC  +  Σ adapterᵢ.recoverable_value()      (i = 1..N, N ≤ 5)
+circulating mUSD  ≤  on-chain USDC  +  Σ min(deployed_principalᵢ, recoverable_valueᵢ)   (i = 1..N, N ≤ 5)
 ```
-- Read **live** on `deploy` and on new issuance (vault borrow / PSM mint) — the actions that could break it.
-- **Redemptions do not need the sum:** paying a redemption from the on-chain buffer reduces both `circulating` and `on-chain USDC` equally, which *preserves* the inequality automatically. So the bounded loop only runs on the less-frequent paths.
+- Checked on **new issuance** (vault borrow / PSM mint) and on **`deploy`** — the actions that could break it. The `min()` bounds how far the invariant trusts a venue's reported value.
+- **Redemptions do not evaluate the sum:** a redemption pays from the on-chain buffer and lowers both `circulating` and `on-chain USDC` equally, *preserving* the inequality automatically. The bounded loop only runs on the less-frequent paths.
 
 ### Guardrails
-1. **Liquidity buffer** — a minimum fraction of reserves (e.g. 20–30%, sized to expected redemption flow **and** to Folks' withdrawal liquidity — recall is *not* guaranteed instant) stays as on-chain USDC. Redemptions are paid from the buffer; strategies are the backstop.
-2. **Per-venue exposure cap** — no single adapter may hold more than X% of deployed reserves. Enforced on-chain, so diversification is a contract guarantee, not admin discipline.
-3. **Total-deployed cap** — `Σ deployed ≤ reserve − buffer`. The contract refuses any `deploy` that would breach the buffer, exactly like `withdraw_usdc` refuses to drop below circulating today.
+1. **Liquidity buffer** — a minimum fraction of reserves stays as on-chain USDC, sized to expected redemption flow **and** to the venue's withdrawal liquidity (recall is *not* guaranteed instant). Start conservative: deploy only ~20–40%, keep the majority liquid.
+2. **Per-venue exposure cap** — no single adapter may hold more than X% of deployed reserves (on `deployed_principal`). Diversification is a contract guarantee, not admin discipline.
+3. **Total-deployed cap** — `Σ deployed_principal ≤ reserve − buffer`. The contract refuses any `deploy` that would breach the buffer.
 
-### Admin flows (all admin-triggered, via the ops panel)
-- **`deploy(adapter, amount)`** — routes `amount` USDC from the PSM to a whitelisted adapter (inner txn: PSM → adapter → venue). Asserts buffer/cap/invariant hold after. Funds move escrow-to-escrow; **never through the admin wallet.**
-- **`recall(adapter, amount)`** — pulls USDC back from a venue into the PSM buffer.
-- **`harvest(adapter)`** — sweeps accrued yield (position value above deployed principal) to **treasury**.
-- **Recall-under-stress:** if the buffer is ever drawn below a redemption, recall walks whitelisted adapters in order, **skipping any temporarily-illiquid venue** rather than reverting/locking. The buffer is sized so this is a rare backstop, not a hot path — the recall path is the single most safety-critical piece and gets the most scrutiny.
+### Admin flows (admin-triggered; funds move escrow-to-escrow, never through the admin wallet)
+- **`deploy(adapter, amount)`** — routes `amount` USDC PSM → adapter → venue; `deployed_principal[adapter] += amount`; asserts buffer/cap/invariant hold after.
+- **`recall(adapter, amount)`** — withdraws USDC from the venue back into the PSM buffer (**principal → reserve**); reduces `deployed_principal`. **Admin-directed and per-venue** — the admin chooses which venue and how much; there is **no automatic multi-venue "walk-and-skip" loop** (resolves H-3: on Algorand a failed inner txn reverts the whole transaction, so "attempt-and-skip" isn't atomically possible — recall targets one chosen venue).
+- **`harvest(adapter)`** — sweeps only the **yield** (`recoverable_value − deployed_principal`, if positive) to **treasury**. Separate from `recall`, so topping up the buffer never forces a yield sweep.
+
+### Redemption liquidity (resolves H-2)
+Redemptions are **buffer-primary**: `redeem_musd` pays from on-chain USDC only, and the **redeem path stays unchanged from v2** — no new inner-transaction logic on the most safety-critical method. The design relies on **conservative deployment** so the buffer realistically always covers redemption flow; the admin **operationally recalls** from a venue to top it back up when it runs low.
+
+**Solvency vs. liquidity — the accepted tail risk:** the protocol can be fully *solvent* (backing ≥ circulating) yet temporarily *illiquid* (not enough on-chain USDC right now) if most reserves are deployed and a redemption wave drains the buffer. Then a redemption **reverts** ("insufficient liquid reserve — retry shortly") until the admin recalls — a **delay, not a loss.** This is irreducible for *any* yield-deployed reserve (even atomic recall fails if the venue itself is illiquid), so it is *bounded* — by deploying only a fraction and keeping a large buffer — not engineered away.
+
+### Reserve deficit & venue loss (resolves M-2)
+If a venue *loses* value, the design fails safe and stays transparent:
+- **Paper (unrealized) loss** — the `min(principal, recoverable)` valuation immediately lowers counted backing, which **automatically blocks new issuance and new deploys** (the invariant), before any recall.
+- **Realized loss** — when a recall returns *less than* principal (or the admin marks a venue impaired), the crystallized shortfall is recorded in a **`reserve_deficit`** counter (`+= principal − recovered`). Nothing routes to treasury on a loss (never underflow). This is the "outstanding amount" the protocol owes itself to be whole.
+- **While `reserve_deficit > 0`:** issuance and new deploys stay frozen; the ops panel shows *"Reserve deficit: $X — restore to re-enable."* The counter is on-chain (public), so the app can surface a **backing ratio** ("100%" / "99.4% — restoration in progress") — transparent by default, but framed calmly (a loud "under-backed" banner can itself trigger a run).
+- **Restore** — the admin deposits USDC to pay down `reserve_deficit`; at zero, full 1:1 backing is restored and issuance re-enables.
+- **Redemptions stay 1:1** throughout — **no socialized haircuts** (complex, they signal weakness, and are unnecessary when deployment is conservative). Honest note: 1:1 redemptions during a deficit are first-come-first-served, which is exactly why deployment is fractional and the deficit is covered fast.
+- **Honest limitation:** the contract can *track* the deficit and *freeze* issuance until it clears, but it **cannot force** the admin to deposit (no contract can conjure USDC from a wallet). "Making the PSM whole" is an **operational/reputational commitment** enforced indirectly by the issuance freeze + reputation — standard for every reserve-backed stablecoin. What keeps it safe: fractional deployment into a vetted venue makes any loss small enough to always be treasury-coverable.
 
 ### Custody note
 The receipt token (`fUSDC`) is held by the **adapter contract account**, not any wallet. The PSM already has an admin-gated `opt_in_asset` (Pass 16), so ASA custody is mechanically supported; adapters opt into their own receipt ASA. Funds only ever flow PSM ↔ adapter ↔ venue — all smart-contract escrows.
