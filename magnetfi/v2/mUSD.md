@@ -15,7 +15,7 @@ mUSD is not an algorithmic stablecoin. Every mUSD in circulation is backed by at
 "Circulating mUSD" = total mUSD supply minus the mUSD held by the PSM contract (unissued reserve).
 
 This invariant is enforced at the contract level:
-- The vault checks available headroom before minting (`available = psm.usdc_balance − circulating`)
+- The vault delegates the ceiling check to `PSM.issue_musd` (the vault itself only checks LTV) — so the invariant has a single on-chain enforcement point
 - The PSM checks this guard before issuing mUSD to vault users
 - The admin cannot withdraw PSM USDC below circulating mUSD
 
