@@ -12,7 +12,7 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - ✅ **Full UI built** — `/magnetfi` app (Overview / CompX Markets / LP Vaults / mUSD) + gated Admin panel (Create mUSD, testnet asset factory, deploy wizard, operations console). Borrower tabs wired to live on-chain data + transactions.
 - ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
 - ⏸️ **Mainnet deploy PAUSED (deliberate).** Building **v3 productive reserves** (yield-bearing PSM) *before* launch — the immutable + locked-reserve design + no forced loan repayment make retrofitting yield impossible once loans exist. Launch params otherwise gathered: guardian `TM6N…`, bot `AGAI…`, treasury `VM2J…`, U/tALGO pool/LP `3163770927`, $1,000 ceiling.
-- 🔨 **v3 productive reserves** — adapter-based yield-bearing PSM (Folks Finance first; ≤5 vetted, timelocked adapters). Design: [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3). **Gates mainnet; requires a dedicated fresh audit + legal counsel.**
+- 🔨 **v3 productive reserves** — adapter-based yield-bearing PSM (Folks Finance first; ≤5 vetted, timelocked adapters). Design: [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3) (design-complete). Build roadmap: [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md). **Gates mainnet; requires a dedicated fresh audit + legal counsel.**
 
 ---
 
