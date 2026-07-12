@@ -68,7 +68,18 @@ Folks packs the pool's interest data in global-state **byte key `"i"`** (0x69, a
 "now". Optional before a read (stored is already conservative) but recommended before a withdraw so
 `received_amount` matches the live index.
 
+## Static cross-check vs. the SDK (done — no funds)
+Traced the adapter's inner groups against the SDK builders `prepareDepositIntoPool` /
+`prepareWithdrawFromPool`. **Encoding matches exactly** — arg order, types, references, and the
+axfer receivers (USDC→pool on deposit, fUSDC→pool on withdraw) all line up. This rules out the most
+likely untested-adapter bug class (a transposed/mis-typed arg). Residual risk is therefore purely
+runtime (see below), which is what the testnet rehearsal validates.
+
+**Testnet Folks ids** (for the dress rehearsal — same adapter, create-time params):
+pool `147170678`, pool-manager `147157634`, USDC `67395862`, fUSDC `147171826`.
+
 ## Open items to confirm on mainnet-fork / testnet (Phase 3.2)
+0. **Encoding: CLEARED** by the static SDK cross-check above.
 1. **Withdraw fUSDC↔received_amount + rounding + excess-refund** behavior (does the pool refund
    unused fUSDC, or must `received_amount` exactly equal `fUSDC_sent × index/1e14`?).
 2. **Fee budget** across the deposit/withdraw inner groups (SDK uses fee=5000 on withdraw).
