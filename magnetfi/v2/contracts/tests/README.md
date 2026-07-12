@@ -40,6 +40,11 @@ Reset LocalNet between long sessions if round counts grow very large:
 | `test_oracle.py` | updater auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness blocks borrow |
 | `test_attacks_authz.py` | **cross-contract bypass** (direct `issue_musd`/`receive_musd` rejected — the unlimited-mint guard), full admin-only sweep across all 3 contracts, borrower can't self-liquidate, guardian/bot least-privilege |
 | `test_attacks_logic.py` | group manipulation (MBR underpay/wrong-receiver, wrong/zero LP, standalone call, mint amount-mismatch/wrong-receiver, double-mint one deposit, repay/pay mis-routing), state-machine abuse (state-2 blocks borrower ops, overdue blocks borrow), liquidation correctness (no healthy liq, no tier over-seizure, no double liq, invalid tier, micro timing, settle over-counter / healthy), dust/zero guards, bounded opt-out griefing |
+| `test_productive_reserves.py` | **v3 PSM (PSMv3)** vs a controllable MockAdapter + MockVault: deploy/recall round-trip, harvest yield→treasury, `min()` valuation + paper-loss ceiling, inflated-mark can't over-issue, **H-2** (harvest can't drain the buffer — reported return ignored, balance-delta), **M-1** (recall crystallizes a hidden loss despite a lying adapter), realized-loss deficit freeze + `restore`, **H-1** (impaired dead-adapter escape hatch removes + writes off), **L-1** (guardian-only un-impair), buffer floor + per-venue cap, withdraw frozen during deficit, adapter whitelist 48h timelock + guardian veto, remove-requires-empty, and mint/redeem unchanged under v3 |
+
+**v3 compile prereq:** also compile the v3 contracts —
+`.venv/bin/python3.12 -m puyapy smart_contracts/psm_v3/contract.py smart_contracts/mock_adapter/contract.py smart_contracts/mock_vault/contract.py`
+(post-rename the venv wrappers have stale shebangs; invoke puyapy via `python3.12 -m`).
 
 ## Harness notes
 

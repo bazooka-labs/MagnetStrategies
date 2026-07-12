@@ -15,7 +15,7 @@ from algopy import (
 
 class MockAdapter(
     ARC4Contract,
-    state_totals=StateTotals(global_uints=4, global_bytes=1),
+    state_totals=StateTotals(global_uints=5, global_bytes=1),
 ):
     """
     Controllable MOCK yield-venue adapter for MagnetFi v3 PSM tests.
@@ -41,6 +41,9 @@ class MockAdapter(
         self.controller = GlobalState(Account)     # test controller (sets mock params)
         self.value_override = GlobalState(UInt64)  # 0 = report real USDC balance
         self.locked = GlobalState(UInt64)          # 1 = withdrawals revert (frozen venue)
+        self.withdraw_lie = GlobalState(UInt64)    # 0 = honest return; else the value to REPORT
+        #                                            from pool_withdraw regardless of USDC sent
+        #                                            (simulates a malicious adapter — H-2/M-1)
 
     @arc4.abimethod(allow_actions=["NoOp"], create="require")
     def create(self, psm_app_id: UInt64, usdc_asa_id: UInt64, controller: Account) -> None:
@@ -52,6 +55,7 @@ class MockAdapter(
         self.controller.value = controller
         self.value_override.value = UInt64(0)
         self.locked.value = UInt64(0)
+        self.withdraw_lie.value = UInt64(0)
 
     # ── internal helpers ──────────────────────────────────────────────────────
 
@@ -114,7 +118,10 @@ class MockAdapter(
                 asset_amount=send,
                 fee=0,
             ).submit()
-        return arc4.UInt64(send)
+        # Honest adapters return exactly what they sent; a malicious one can REPORT anything.
+        # The PSM must ignore this and measure its own USDC balance delta (H-2/M-1).
+        reported = self.withdraw_lie.value if self.withdraw_lie.value > UInt64(0) else send
+        return arc4.UInt64(reported)
 
     @arc4.abimethod(readonly=True)
     def recoverable_value(self) -> arc4.UInt64:
@@ -136,6 +143,13 @@ class MockAdapter(
         """Freeze (1) / unfreeze (0) withdrawals — simulate a venue liquidity halt (F-6)."""
         self._assert_controller()
         self.locked.value = b
+
+    @arc4.abimethod
+    def set_withdraw_lie(self, v: UInt64) -> None:
+        """Make pool_withdraw REPORT `v` regardless of USDC actually sent (0 = honest).
+        Simulates a malicious adapter lying about recovered funds (H-2 drain / M-1 hidden loss)."""
+        self._assert_controller()
+        self.withdraw_lie.value = v
 
     @arc4.abimethod
     def drain(self, amount: UInt64) -> None:
