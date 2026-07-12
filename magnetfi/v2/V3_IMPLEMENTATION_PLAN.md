@@ -20,7 +20,9 @@ Build roadmap for v3 = the v2 core + a **yield-bearing PSM**. The design is froz
 - **0.2 Decide parameters** (see table below) — buffer / max-deployment fraction, per-venue cap, total-deployed cap, dust `ε`, max-staleness (multi-adapter only), and whether to timelock `set_treasury` (F-7).
 - **0.3 Engage legal counsel (parallel track, start now):** entity, US-person access / geofencing, and review of the yield-to-treasury mechanism (GENIUS Act — no yield to holders).
 
-## Phase 1 — v3 PSM contract (venue-agnostic)
+## Phase 1 — v3 PSM contract (venue-agnostic) ✅ BUILT
+
+> **Done.** `contracts/smart_contracts/psm_v3/contract.py` (`PSMv3`, 33 methods, compiles clean on puyapy 5.8.1). Two fresh-agent code-audit passes run against it; findings H-2/M-1/H-1/L-1/M-2 fixed, H-1-harvest residual accepted + documented (harvest safety rests on a non-manipulable `recoverable_value()` — the #1 adapter-audit gate). Still gated on the dedicated professional audit + counsel before mainnet.
 
 Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 PSM. Immutable (no `UpdateApplication`), as v2.
 
@@ -37,7 +39,10 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 - **1.8 Guardrails:** buffer floor at deploy-time, per-venue cap, `on-chain after deploy ≥ buffer` total cap (F-8).
 - **Unchanged (assert in tests):** `mint_musd`, `redeem_musd`, `receive_musd`.
 
-## Phase 2 — Mock adapter + full test suite (deterministic)
+## Phase 2 — Mock adapter + full test suite (deterministic) ✅ BUILT
+
+> **Done.** `MockAdapter` (with yield/loss/freeze/withdraw-lie knobs) + `MockVault` + `tests/test_productive_reserves.py` — 16 LocalNet tests, all green; full suite 83 passed (67 v2 + 16 v3), no regressions. Every audit finding (H-2/M-1/H-1/L-1) is a named regression test.
+
 
 - **2.1 `MockAdapter`** with knobs: set value, set liquidity (to freeze withdrawals), force partial recovery, force zero. Lets us drive every loss path on demand.
 - **2.2 LocalNet tests:** deploy/recall/harvest happy paths; `min()` valuation; issuance freeze on paper / realized / partial-lossy loss / venue-to-zero; deficit crystallization + `restore`; `withdraw_usdc` frozen during deficit; **harvest rejects inflated yield** (F-1); dust tolerance (no spurious deficit on entry rounding, F-3); buffer/cap enforcement; adapter whitelist timelock + guardian cancel + removal-requires-empty; `mint`/`redeem`/`receive` unchanged.
