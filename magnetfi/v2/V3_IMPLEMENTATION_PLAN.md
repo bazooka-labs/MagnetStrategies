@@ -48,7 +48,10 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 - **2.2 LocalNet tests:** deploy/recall/harvest happy paths; `min()` valuation; issuance freeze on paper / realized / partial-lossy loss / venue-to-zero; deficit crystallization + `restore`; `withdraw_usdc` frozen during deficit; **harvest rejects inflated yield** (F-1); dust tolerance (no spurious deficit on entry rounding, F-3); buffer/cap enforcement; adapter whitelist timelock + guardian cancel + removal-requires-empty; `mint`/`redeem`/`receive` unchanged.
 - **2.3 Adversarial regression tests = the F-1–F-8 scenarios**, each as a named test.
 
-## Phase 3 — Folks adapter + integration
+## Phase 3 — Folks adapter + integration  🔨 3.1 BUILT / 3.2 pending live test
+
+> **3.1 done.** Folks v2 USDC-pool interface fully reverse-engineered + **live-verified** (pool `971372237`, manager `971350278`, USDC `31566704`, fUSDC `971384592`; `depositInterestIndex` 14dp at byte 40 of pool key `"i"`, confirmed ≈1.226e14 on-chain; deposit/withdraw ABI group shapes). `FolksAdapter` written to spec (`FOLKS_ADAPTER.md`), compiles clean, same interface selectors as the mock. **3.2 (integration) blocked on a non-LocalNet venue** — Folks isn't on LocalNet; needs a mainnet-fork/testnet deposit→read→harvest→recall cycle + dedicated audit before whitelisting.
+
 
 - **3.1 `FolksAdapter`** to the verified 0.1 layout; immutable; opts into `fUSDC`.
 - **3.2 Integration test** against real Folks (testnet if it exists there, else a mainnet-fork / careful dry-run): deposit → `fUSDC` → read `recoverable` (matches Folks) → harvest → recall; verify withdrawal-liquidity handling.
