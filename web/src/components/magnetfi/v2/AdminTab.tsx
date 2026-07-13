@@ -8,6 +8,7 @@ import { CreateMusd } from "./admin/CreateMusd";
 import { CreateTestAssets } from "./admin/CreateTestAssets";
 import { DeployWizard } from "./admin/DeployWizard";
 import { OperationsPanel } from "./admin/OperationsPanel";
+import { StrategyPanel } from "./admin/StrategyPanel";
 
 function NotAuthorized() {
   return (
@@ -86,6 +87,14 @@ export function AdminTab() {
           Operations
         </h3>
         <OperationsPanel />
+      </section>
+
+      {/* Productive Reserves (v3) */}
+      <section>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Productive Reserves
+        </h3>
+        <StrategyPanel />
       </section>
     </div>
   );

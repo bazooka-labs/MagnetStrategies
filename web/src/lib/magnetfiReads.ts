@@ -120,8 +120,8 @@ export type StrategyStats = {
 };
 
 /** Full productive-reserves view: backing ratio, deficit, and each adapter's live position. */
-export async function getStrategyStats(algod: algosdk.Algodv2): Promise<StrategyStats> {
-  const psmApp = await algod.getApplicationByID(ACTIVE.psm).do();
+export async function getStrategyStats(algod: algosdk.Algodv2, psmId: number = ACTIVE.psm): Promise<StrategyStats> {
+  const psmApp = await algod.getApplicationByID(psmId).do();
   const deficit = globalUint(psmApp, Buffer.from("reserve_deficit")) ?? 0;
   const bufferBps = globalUint(psmApp, Buffer.from("buffer_bps")) ?? 0;
   const venueCapBps = globalUint(psmApp, Buffer.from("max_venue_bps")) ?? 0;
@@ -131,7 +131,7 @@ export async function getStrategyStats(algod: algosdk.Algodv2): Promise<Strategy
 
   const asset = await algod.getAssetByID(ACTIVE.musd).do();
   const total = BigInt(asset.params.total);
-  const psmAcct = await algod.accountInformation(appAddr(ACTIVE.psm)).do();
+  const psmAcct = await algod.accountInformation(appAddr(psmId)).do();
   const psmHeld = new Map((psmAcct.assets ?? []).map((x) => [Number(x.assetId), BigInt(x.amount)]));
   const onChainUsdc = psmHeld.get(ACTIVE.usdc) ?? BigInt(0);
   const circulating = total - (psmHeld.get(ACTIVE.musd) ?? BigInt(0));

@@ -37,7 +37,7 @@ function loadCfg(): Cfg {
 
 type Field = { key: string; label: string; placeholder?: string };
 
-function ActionForm({
+export function ActionForm({
   title, desc, fields, button, tone = "default", onRun,
 }: {
   title: string; desc: string; fields: Field[]; button: string;
@@ -94,7 +94,7 @@ function ActionForm({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h4>
