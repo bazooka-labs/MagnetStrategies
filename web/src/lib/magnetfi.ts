@@ -51,6 +51,15 @@ const DEPLOYMENTS: Record<"mainnet" | "testnet", Deployment> = {
 
 export const ACTIVE: Deployment = DEPLOYMENTS[_NET];
 
+// Folks Finance v2 USDC lending pool — the launch yield venue. Ids verified against live
+// state + the algorand-js-sdk (see FOLKS_ADAPTER.md). Used to deploy the FolksAdapter.
+export type FolksVenue = { pool: number; manager: number; usdc: number; fusdc: number };
+const FOLKS: Record<"mainnet" | "testnet", FolksVenue> = {
+  mainnet: { pool: 971372237, manager: 971350278, usdc: 31566704, fusdc: 971384592 },
+  testnet: { pool: 147170678, manager: 147157634, usdc: 67395862, fusdc: 147171826 },
+};
+export const ACTIVE_FOLKS: FolksVenue = FOLKS[_NET];
+
 // True once the core vault contract is deployed for the active network.
 export const PROTOCOL_LIVE = ACTIVE.vault !== 0;
 

@@ -13,12 +13,13 @@ export const USDC_ASA_ID_MAINNET = 31566704; // mainnet USDC (default for the wi
 const SEED_MUSD_BASE = BigInt("500000000000000"); // 500M × 1e6 — full reserve
 const MAX_FEE = microAlgo(50_000); // ceiling for inner-fee coverage
 
-type Which = "oracle" | "psm" | "vault" | "psmv3";
+type Which = "oracle" | "psm" | "vault" | "psmv3" | "folksadapter";
 const SPEC_URL: Record<Which, string> = {
   oracle: "/contracts/LPOracle.arc56.json",
   psm: "/contracts/PSM.arc56.json",
   vault: "/contracts/Vault.arc56.json",
   psmv3: "/contracts/PSMv3.arc56.json",
+  folksadapter: "/contracts/FolksAdapter.arc56.json",
 };
 
 const specCache: Partial<Record<Which, string>> = {};
@@ -82,6 +83,33 @@ export async function deployVault(
     args: [psmId, oracleId, BigInt(musdAsaId), BigInt(usdcAsaId), guardian],
   });
   return c.appId;
+}
+
+// ── v3: Folks yield adapter — deploy + initialize (fund + opt into USDC / fUSDC) ──
+
+export async function deployFolksAdapter(
+  algorand: AlgorandClient, sender: string,
+  psmId: bigint, usdc: number, fusdc: number, pool: number, manager: number,
+): Promise<bigint> {
+  const f = await factory(algorand, "folksadapter", sender);
+  const { appClient: c } = await f.send.create({
+    method: "create",
+    args: [psmId, BigInt(usdc), BigInt(fusdc), BigInt(pool), BigInt(manager), sender],
+  });
+  return c.appId;
+}
+
+/** Fund the adapter account + opt it into USDC and fUSDC (one atomic group). Admin only. */
+export async function initFolksAdapter(
+  algorand: AlgorandClient, sender: string, adapterId: bigint, usdc: number, fusdc: number,
+): Promise<void> {
+  const c = await appClient(algorand, "folksadapter", adapterId, sender);
+  await algorand
+    .newGroup()
+    .addPayment({ sender, receiver: appAddr(adapterId), amount: algo(1) })
+    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(usdc)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(fusdc)], maxFee: MAX_FEE }))
+    .send(SEND_OPTS);
 }
 
 // ── 4: fund the app accounts for min-balance + opt-in costs ──

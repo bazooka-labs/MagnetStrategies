@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import type { AlgorandClient } from "@algorandfoundation/algokit-utils";
 import { useWallet } from "@/hooks/useWallet";
-import { ACTIVE } from "@/lib/magnetfi";
+import { ACTIVE, ACTIVE_FOLKS } from "@/lib/magnetfi";
 import * as ops from "@/lib/magnetfiOps";
+import { deployFolksAdapter, initFolksAdapter } from "@/lib/magnetfiDeploy";
 import { getStrategyStats, type StrategyStats } from "@/lib/magnetfiReads";
 import { Panel } from "../shared";
 import { ActionForm, Section } from "./OperationsPanel";
+
+const LS_ADAPTER = "magnetfi_folks_adapter_v1";
 
 const usd = (n: number, dp = 2) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 
@@ -77,6 +82,65 @@ function StatsHeader({ s }: { s: StrategyStats }) {
         </div>
       )}
     </Panel>
+  );
+}
+
+function DeployAdapterCard({ algorand, sender, psmId }: { algorand: AlgorandClient; sender: string; psmId: string }) {
+  const [f, setF] = useState({
+    pool: String(ACTIVE_FOLKS.pool), manager: String(ACTIVE_FOLKS.manager),
+    usdc: String(ACTIVE_FOLKS.usdc), fusdc: String(ACTIVE_FOLKS.fusdc),
+  });
+  const [busy, setBusy] = useState(false);
+  const [deployed, setDeployed] = useState<string | null>(
+    typeof window !== "undefined" ? localStorage.getItem(LS_ADAPTER) : null,
+  );
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const id = await deployFolksAdapter(
+        algorand, sender, BigInt(psmId), Number(f.usdc), Number(f.fusdc), Number(f.pool), Number(f.manager));
+      await initFolksAdapter(algorand, sender, id, Number(f.usdc), Number(f.fusdc));
+      const s = id.toString();
+      setDeployed(s);
+      localStorage.setItem(LS_ADAPTER, s);
+      toast.success(`Folks adapter deployed + initialized — app ${s}`);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Deploy failed";
+      toast.error(m.includes("rejected") ? "Signing cancelled" : m.slice(0, 140));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+      <p className="text-sm font-medium text-white">Deploy &amp; initialize Folks adapter</p>
+      <p className="mt-0.5 text-xs text-gray-500">
+        Creates the FolksAdapter, funds it (~1 ALGO), and opts it into USDC + fUSDC. Then whitelist its
+        app ID via “Propose adapter” below (48h timelock). Verify the Folks IDs before deploying.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {([["pool", "Folks pool app"], ["manager", "Pool manager app"], ["usdc", "USDC ASA"], ["fusdc", "fUSDC ASA"]] as const).map(([k, label]) => (
+          <div key={k}>
+            <label className="mb-1 block text-[11px] text-gray-500">{label}</label>
+            <input value={f[k]} onChange={(e) => set(k, e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-xs text-white outline-none focus:border-magnet-500/50" />
+          </div>
+        ))}
+      </div>
+      <button onClick={run} disabled={busy || !psmId}
+        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30">
+        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        Deploy &amp; initialize adapter
+      </button>
+      {deployed && (
+        <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
+          Adapter app ID: <span className="font-mono font-semibold">{deployed}</span> — paste into “Propose adapter” below.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -162,6 +226,11 @@ export function StrategyPanel() {
               fields={[{ key: "ad", label: "Adapter app ID" }]} button="Harvest"
               onRun={(v) => ops.strategyHarvest(a(), me(), psm(), BigInt(v.ad))} />
           </Section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Folks adapter — deploy</h4>
+            <DeployAdapterCard algorand={a()} sender={me()} psmId={psmId} />
+          </section>
 
           <Section title="Adapter whitelist — 48h timelock + guardian veto">
             <ActionForm title="Propose adapter" desc="Queue whitelisting a yield adapter. Takes effect after 48h."
