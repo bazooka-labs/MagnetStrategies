@@ -72,7 +72,7 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 
 - **5.1 Dedicated fresh code audit** of the v3 PSM + Folks adapter (a *new* pass, not a re-run of v2).
 - **5.2 Legal counsel sign-off.**
-- **5.3 Testnet rehearsal:** full deploy + a deploy→harvest→recall cycle + a *simulated loss → deficit → restore* drill (via a mock adapter on testnet).
+- **5.3 Testnet rehearsal:** ✅ **done.** Deploy→recall proven against live Folks (`test_psm_folks_testnet.py`); loss→deficit→freeze→restore→unfreeze proven against the real PSMv3 on testnet (`test_psm_deficit_testnet.py` — deficit crystallized to exactly 50000 despite an adapter's lie; deploy+withdraw froze; restore re-enabled). Harvest-with-real-yield still only LocalNet (needs time to accrue). Audit handoff: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
 - **5.4 Mainnet deploy:** small ceiling, **conservative deployment fraction**, Folks-only.
 
 ---
