@@ -852,3 +852,10 @@ class PSMv3(
             asset_amount=0,
             fee=0,
         ).submit()
+
+    @arc4.abimethod
+    def noop(self) -> None:
+        """No-op. Pads a transaction group with extra foreign-reference slots so resource-heavy
+        adapter/Folks paths (strategy_deploy / recall / harvest, and vault borrows that live-read
+        an adapter) fit within the per-app-call reference limit. State-free and unprivileged —
+        it can only ever consume opcode budget / a reference slot. (Validated need: testnet.)"""

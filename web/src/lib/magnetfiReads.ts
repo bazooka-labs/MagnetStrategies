@@ -80,6 +80,98 @@ export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string)
   }
 }
 
+// ── PSM v3 — Productive Reserves reads ────────────────────────────────────────────
+
+const ONE_14_DP = BigInt(100000000000000);
+const FOLKS_INDEX_OFFSET = 40; // byte offset of depositInterestIndex in pool global key "i"
+
+function globalBytesVal(app: algosdk.modelsv2.Application, keyBytes: Uint8Array): Uint8Array | undefined {
+  const target = Buffer.from(keyBytes).toString("base64");
+  for (const kv of app.params.globalState ?? []) {
+    const k = typeof kv.key === "string" ? kv.key : Buffer.from(kv.key).toString("base64");
+    if (k === target && kv.value.type === 1) {
+      return typeof kv.value.bytes === "string" ? new Uint8Array(Buffer.from(kv.value.bytes, "base64")) : kv.value.bytes;
+    }
+  }
+  return undefined;
+}
+
+function unpack5(raw: Uint8Array | undefined): bigint[] {
+  if (!raw || raw.length < 40) return [BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
+  const v = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  return [0, 1, 2, 3, 4].map((i) => v.getBigUint64(i * 8));
+}
+
+async function folksDepositIndex(algod: algosdk.Algodv2, poolAppId: number): Promise<bigint> {
+  const pool = await algod.getApplicationByID(poolAppId).do();
+  const raw = globalBytesVal(pool, new Uint8Array([0x69])); // key "i"
+  if (!raw || raw.length < FOLKS_INDEX_OFFSET + 8) return BigInt(0);
+  return new DataView(raw.buffer, raw.byteOffset, raw.byteLength).getBigUint64(FOLKS_INDEX_OFFSET);
+}
+
+export type AdapterPosition = {
+  appId: number; principal: number; recoverable: number; yield: number; impaired: boolean;
+};
+
+export type StrategyStats = {
+  onChainUsdc: number; deployedBacking: number; totalBacking: number;
+  circulating: number; backingRatio: number; deficit: number;
+  bufferBps: number; venueCapBps: number; adapters: AdapterPosition[];
+};
+
+/** Full productive-reserves view: backing ratio, deficit, and each adapter's live position. */
+export async function getStrategyStats(algod: algosdk.Algodv2): Promise<StrategyStats> {
+  const psmApp = await algod.getApplicationByID(ACTIVE.psm).do();
+  const deficit = globalUint(psmApp, Buffer.from("reserve_deficit")) ?? 0;
+  const bufferBps = globalUint(psmApp, Buffer.from("buffer_bps")) ?? 0;
+  const venueCapBps = globalUint(psmApp, Buffer.from("max_venue_bps")) ?? 0;
+  const ids = unpack5(globalBytesVal(psmApp, Buffer.from("adapter_ids")));
+  const principals = unpack5(globalBytesVal(psmApp, Buffer.from("deployed_principal")));
+  const impaired = unpack5(globalBytesVal(psmApp, Buffer.from("adapter_impaired")));
+
+  const asset = await algod.getAssetByID(ACTIVE.musd).do();
+  const total = BigInt(asset.params.total);
+  const psmAcct = await algod.accountInformation(appAddr(ACTIVE.psm)).do();
+  const psmHeld = new Map((psmAcct.assets ?? []).map((x) => [Number(x.assetId), BigInt(x.amount)]));
+  const onChainUsdc = psmHeld.get(ACTIVE.usdc) ?? BigInt(0);
+  const circulating = total - (psmHeld.get(ACTIVE.musd) ?? BigInt(0));
+
+  const adapters: AdapterPosition[] = [];
+  let deployedBacking = BigInt(0);
+  for (let i = 0; i < 5; i++) {
+    const appId = Number(ids[i]);
+    if (appId === 0) continue;
+    const principal = principals[i];
+    const isImp = impaired[i] === BigInt(1);
+    let recoverable = BigInt(0);
+    try {
+      const adApp = await algod.getApplicationByID(appId).do();
+      const fusdcId = globalUint(adApp, Buffer.from("fusdc_asa_id")) ?? 0;
+      const poolId = globalUint(adApp, Buffer.from("pool_app_id")) ?? 0;
+      const adAcct = await algod.accountInformation(appAddr(appId)).do();
+      const fusdcBal = BigInt((adAcct.assets ?? []).find((x) => Number(x.assetId) === fusdcId)?.amount ?? 0);
+      const idx = poolId ? await folksDepositIndex(algod, poolId) : BigInt(0);
+      recoverable = (fusdcBal * idx) / ONE_14_DP;
+    } catch {
+      /* adapter/pool unreadable — leave recoverable 0 */
+    }
+    const y = recoverable > principal ? recoverable - principal : BigInt(0);
+    adapters.push({
+      appId, principal: fromBase(principal), recoverable: fromBase(recoverable),
+      yield: fromBase(y), impaired: isImp,
+    });
+    if (!isImp) deployedBacking += principal < recoverable ? principal : recoverable;
+  }
+
+  const totalBacking = onChainUsdc + deployedBacking;
+  const backingRatio = circulating > BigInt(0) ? Number(totalBacking) / Number(circulating) : 1;
+  return {
+    onChainUsdc: fromBase(onChainUsdc), deployedBacking: fromBase(deployedBacking),
+    totalBacking: fromBase(totalBacking), circulating: fromBase(circulating),
+    backingRatio, deficit: fromBase(deficit), bufferBps, venueCapBps, adapters,
+  };
+}
+
 export type Balances = {
   algo: number; musd: number; usdc: number; lp: number;
   optedMusd: boolean; optedUsdc: boolean; optedLp: boolean;

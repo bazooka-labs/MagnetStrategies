@@ -8,12 +8,18 @@ import { AlgorandClient, microAlgo } from "@algorandfoundation/algokit-utils";
 const MAX_FEE = microAlgo(50_000);
 const SEND_OPTS = { coverAppCallInnerTransactionFees: true, populateAppCallResources: true };
 
-type Which = "oracle" | "psm" | "vault";
+type Which = "oracle" | "psm" | "vault" | "psmv3";
 const SPEC_URL: Record<Which, string> = {
   oracle: "/contracts/LPOracle.arc56.json",
   psm: "/contracts/PSM.arc56.json",
   vault: "/contracts/Vault.arc56.json",
+  psmv3: "/contracts/PSMv3.arc56.json",
 };
+
+// Folks operations exceed a single app call's foreign-reference limit, so strategy calls are
+// padded with PSMv3.noop app calls to spread references (validated need — testnet). Higher fee
+// covers the deeper inner-txn tree.
+const STRATEGY_MAX_FEE = microAlgo(300_000);
 
 const specCache: Partial<Record<Which, string>> = {};
 async function loadSpec(which: Which): Promise<string> {
@@ -138,6 +144,73 @@ export const confirmVaultContract = (al: AlgorandClient, s: string, psm: bigint)
   call(al, "psm", psm, s, "confirm_vault_contract", []);
 export const cancelVaultContract = (al: AlgorandClient, s: string, psm: bigint) =>
   call(al, "psm", psm, s, "cancel_pending_vault_contract", []);
+
+// ── PSM v3 — Productive Reserves (strategy adapters) ──────────────────────────────
+// Pad a Folks-touching call with `fillers` PSMv3.noop app calls for reference capacity.
+async function paddedCall(
+  al: AlgorandClient, psm: bigint, sender: string,
+  method: string, args: (string | bigint)[], fillers = 4,
+): Promise<void> {
+  const c = await client(al, "psmv3", psm, sender);
+  let grp = al.newGroup().addAppCallMethodCall(
+    await c.params.call({ method, args, maxFee: STRATEGY_MAX_FEE }));
+  for (let i = 0; i < fillers; i++) {
+    grp = grp.addAppCallMethodCall(await c.params.call({
+      method: "noop", args: [], maxFee: STRATEGY_MAX_FEE,
+      note: new TextEncoder().encode(`pad-${i}-${Date.now()}-${Math.random()}`),
+    }));
+  }
+  await grp.send(SEND_OPTS);
+}
+
+// Strategy ops (principal ↔ reserve, yield ↔ treasury). Amounts are USDC base units.
+export const strategyDeploy = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint, usdcBase: bigint) =>
+  paddedCall(al, psm, s, "strategy_deploy", [adapterId, usdcBase]);
+export const strategyRecall = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint, usdcBase: bigint) =>
+  paddedCall(al, psm, s, "strategy_recall", [adapterId, usdcBase]);
+export const strategyHarvest = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint) =>
+  paddedCall(al, psm, s, "strategy_harvest", [adapterId]);
+
+// Adapter whitelist — 48h timelock + guardian veto (propose/confirm/cancel don't touch Folks).
+export const proposeAdapter = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint) =>
+  call(al, "psmv3", psm, s, "propose_adapter", [adapterId]);
+export const confirmAdapter = (al: AlgorandClient, s: string, psm: bigint) =>
+  call(al, "psmv3", psm, s, "confirm_adapter", []);
+export const cancelAdapter = (al: AlgorandClient, s: string, psm: bigint) =>
+  call(al, "psmv3", psm, s, "cancel_pending_adapter", []);
+// remove_adapter live-reads the adapter's recoverable_value (healthy path) → pad.
+export const removeAdapter = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint) =>
+  paddedCall(al, psm, s, "remove_adapter", [adapterId]);
+
+// Impairment — set (flag=1) admin or guardian; clear (flag=0) guardian-only (enforced on-chain).
+export const markImpaired = (al: AlgorandClient, s: string, psm: bigint, adapterId: bigint, flag: bigint) =>
+  call(al, "psmv3", psm, s, "mark_impaired", [adapterId, flag]);
+
+// Reserve deficit — restore pays it down with a real USDC deposit (atomic: transfer + appcall).
+export async function restore(
+  al: AlgorandClient, s: string, psm: bigint, usdcBase: bigint, usdcAsaId: number,
+): Promise<void> {
+  const pc = await client(al, "psmv3", psm, s);
+  await al
+    .newGroup()
+    .addAssetTransfer({ sender: s, receiver: appAddr(psm), assetId: BigInt(usdcAsaId), amount: usdcBase })
+    .addAppCallMethodCall(await pc.params.call({ method: "restore", args: [usdcBase], maxFee: MAX_FEE }))
+    .send(SEND_OPTS);
+}
+
+// Guardrails (fractions of total reserve, bps).
+export const setBufferBps = (al: AlgorandClient, s: string, psm: bigint, bps: bigint) =>
+  call(al, "psmv3", psm, s, "set_buffer_bps", [bps]);
+export const setVenueCapBps = (al: AlgorandClient, s: string, psm: bigint, bps: bigint) =>
+  call(al, "psmv3", psm, s, "set_venue_cap_bps", [bps]);
+
+// Treasury — initial set uses setTreasury (above, shared selector); later changes are timelocked.
+export const proposeTreasury = (al: AlgorandClient, s: string, psm: bigint, treasury: string) =>
+  call(al, "psmv3", psm, s, "propose_treasury", [treasury]);
+export const confirmTreasury = (al: AlgorandClient, s: string, psm: bigint) =>
+  call(al, "psmv3", psm, s, "confirm_treasury", []);
+export const cancelTreasury = (al: AlgorandClient, s: string, psm: bigint) =>
+  call(al, "psmv3", psm, s, "cancel_pending_treasury", []);
 
 // ── Governance: role rotation (2-step) ───────────────────────────────────────────
 export const proposeAdmin = (al: AlgorandClient, s: string, which: Which, appId: bigint, newAdmin: string) =>
