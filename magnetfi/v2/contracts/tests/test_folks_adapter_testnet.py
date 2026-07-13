@@ -72,8 +72,7 @@ def _pool_deposit_index(algod, pool_app: int) -> int:
 def test_folks_adapter_full_cycle():
     algorand = AlgorandClient.testnet()
     algorand.set_suggested_params_cache_timeout(0)
-    acct = algorand.account.from_mnemonic(MNEMONIC)
-    algorand.set_default_signer(acct.signer)
+    acct = algorand.account.from_mnemonic(mnemonic=MNEMONIC)
     algod = algorand.client.algod
 
     def bal(address: str, asset_id: int) -> int:
@@ -86,6 +85,20 @@ def test_folks_adapter_full_cycle():
         return client.send.call(AppClientMethodCallParams(
             method=method, args=args, sender=acct.address, signer=acct.signer,
             max_fee=_MAX_FEE, note=os.urandom(8)), send_params=_SP)
+
+    def mc(client, method: str, args: list):
+        return client.params.call(AppClientMethodCallParams(
+            method=method, args=args, sender=acct.address, signer=acct.signer,
+            max_fee=_MAX_FEE, note=os.urandom(8)))
+
+    def call_grouped(client, method: str, args: list, fillers: int = 3):
+        """Send a method call plus `fillers` no-op app calls so populate_app_call_resources has
+        enough foreign-reference slots for resource-heavy Folks inner calls."""
+        grp = algorand.new_group()
+        grp.add_app_call_method_call(mc(client, method, args))
+        for _ in range(fillers):
+            grp.add_app_call_method_call(mc(psm, "noop", []))
+        return grp.send(_SP)
 
     # ── preflight ──────────────────────────────────────────────────────────────
     wallet_usdc = bal(acct.address, USDC)
@@ -123,7 +136,7 @@ def test_folks_adapter_full_cycle():
     # ── deposit into real Folks ─────────────────────────────────────────────────
     algorand.send.asset_transfer(AssetTransferParams(
         sender=acct.address, receiver=psm.app_address, asset_id=USDC, amount=DEPOSIT))
-    call(psm, "fund_and_deposit", [adapter.app_id, USDC, DEPOSIT])
+    call_grouped(psm, "fund_and_deposit", [adapter.app_id, USDC, DEPOSIT])
 
     fusdc_bal = bal(adapter.app_address, FUSDC)
     index = _pool_deposit_index(algod, POOL)
@@ -140,7 +153,7 @@ def test_folks_adapter_full_cycle():
 
     # ── withdraw back to the PSM ─────────────────────────────────────────────────
     psm_usdc_before = bal(psm.app_address, USDC)
-    call(psm, "do_withdraw", [adapter.app_id, DEPOSIT])
+    call_grouped(psm, "do_withdraw", [adapter.app_id, DEPOSIT])
     psm_usdc_after = bal(psm.app_address, USDC)
     got = psm_usdc_after - psm_usdc_before
     print(f"[withdraw] USDC returned to PSM: {got}  (requested {DEPOSIT})")

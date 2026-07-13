@@ -78,8 +78,29 @@ runtime (see below), which is what the testnet rehearsal validates.
 **Testnet Folks ids** (for the dress rehearsal — same adapter, create-time params):
 pool `147170678`, pool-manager `147157634`, USDC `67395862`, fUSDC `147171826`.
 
-## Open items to confirm on mainnet-fork / testnet (Phase 3.2)
-0. **Encoding: CLEARED** by the static SDK cross-check above.
+## ✅ Testnet integration — VALIDATED (Phase 3.2, live Folks testnet)
+`tests/test_folks_adapter_testnet.py` ran the full cycle against the real Folks v2 testnet USDC
+pool. Result:
+- **deposit** 0.5 USDC → **418,636 fUSDC** at live index **1.194354** (`119435445945745`);
+- **`recoverable_value()` = 499,999 µUSDC — matches `fUSDC × index / 1e14` from live pool state
+  exactly** (the byte-40 index read is correct on-chain);
+- entry rounding = **1 µUSDC** (500,000 → 499,999), well within ε;
+- **withdraw** requested 500,000 → **499,999 returned to the PSM**; no rounding/refund revert.
+
+All three prior unknowns cleared: fee budget OK, withdraw `received=floor(fUSDC×index/1e14)`
+accepted, receiver routing to the PSM works.
+
+**Key learning for the PSMv3 integration (Phase 4):** Folks ops are **resource-heavy** — a single
+app call's 8 foreign-reference slots are not enough for the deposit/withdraw inner-call tree. The
+test needed **filler app calls** in the group (`MockPsm.noop`) so `populate_app_call_resources`
+could spread references. The frontend must likewise pad the group (extra app calls / explicit
+references) whenever `strategy_deploy` / `strategy_recall` / `strategy_harvest` — or a vault borrow,
+since `issue_musd` live-reads the adapter — touches the Folks adapter.
+
+## Open items — remaining (before mainnet)
+0. **Encoding: CLEARED** (static SDK cross-check). **Deposit/withdraw/read: VALIDATED** on testnet.
+- **Dedicated audit** of the FolksAdapter (the venue-specific contract) before whitelisting.
+- **Mainnet canary**: tiny deploy on mainnet Folks, then scale within the buffer/cap.
 1. **Withdraw fUSDC↔received_amount + rounding + excess-refund** behavior (does the pool refund
    unused fUSDC, or must `received_amount` exactly equal `fUSDC_sent × index/1e14`?).
 2. **Fee budget** across the deposit/withdraw inner groups (SDK uses fee=5000 on withdraw).

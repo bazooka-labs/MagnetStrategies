@@ -59,6 +59,11 @@ class MockPsm(ARC4Contract):
         arc4.abi_call("pool_deposit(uint64)void", amount, app_id=adapter_app_id, fee=0)
 
     @arc4.abimethod
+    def noop(self) -> None:
+        """Filler app call — adds foreign-reference capacity to a group for resource-heavy
+        Folks operations (each app call carries up to 8 refs)."""
+
+    @arc4.abimethod
     def do_withdraw(self, adapter_app_id: UInt64, amount: UInt64) -> arc4.UInt64:
         self._assert_admin()
         result, _txn = arc4.abi_call[arc4.UInt64](
