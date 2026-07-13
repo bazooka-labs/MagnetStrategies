@@ -59,7 +59,10 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 - **3.2 Integration test** against real Folks (testnet if it exists there, else a mainnet-fork / careful dry-run): deposit → `fUSDC` → read `recoverable` (matches Folks) → harvest → recall; verify withdrawal-liquidity handling.
 - **3.3** Whitelist the Folks adapter via the timelock in the deploy sequence.
 
-## Phase 4 — Frontend
+## Phase 4 — Frontend  ✅ BUILT
+
+> **Done.** Admin **StrategyPanel** (live backing ratio + deficit + per-adapter positions, refreshed 15s; deploy/recall/harvest, adapter whitelist timelock, restore, mark/clear impaired, buffer/cap, timelocked treasury) — all Folks-touching calls padded with `PSMv3.noop` fillers. `getStrategyStats` computes each adapter's recoverable from `fUSDC × live Folks index / 1e14`. Deploy wizard now deploys **PSMv3**. Borrow flow (`openVault` w/ borrow, `borrowMore`) auto-pads once an adapter is whitelisted (`hasActiveAdapter` gate; no overhead pre-whitelist / on v2). Whole app typechecks clean.
+
 
 - **4.1 Ops panel:** `deploy` / `recall` / `harvest`; adapter add/remove (propose/confirm/cancel); `reserve_deficit` + `restore`; per-adapter position + **backing ratio** (calm framing).
 - **4.2 Reads:** strategy positions, backing ratio, deficit; surface backing ratio on the overview (transparent, not alarmist).

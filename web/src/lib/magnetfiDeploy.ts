@@ -13,11 +13,12 @@ export const USDC_ASA_ID_MAINNET = 31566704; // mainnet USDC (default for the wi
 const SEED_MUSD_BASE = BigInt("500000000000000"); // 500M × 1e6 — full reserve
 const MAX_FEE = microAlgo(50_000); // ceiling for inner-fee coverage
 
-type Which = "oracle" | "psm" | "vault";
+type Which = "oracle" | "psm" | "vault" | "psmv3";
 const SPEC_URL: Record<Which, string> = {
   oracle: "/contracts/LPOracle.arc56.json",
   psm: "/contracts/PSM.arc56.json",
   vault: "/contracts/Vault.arc56.json",
+  psmv3: "/contracts/PSMv3.arc56.json",
 };
 
 const specCache: Partial<Record<Which, string>> = {};
@@ -58,10 +59,12 @@ export async function deployOracle(algorand: AlgorandClient, sender: string, gua
   return c.appId;
 }
 
+// Deploys the v3 (Productive Reserves) PSM — the launch PSM. Same deploy signature as v2
+// (musd, usdc, guardian); buffer/cap default in-contract (70% / 100%).
 export async function deployPsm(
   algorand: AlgorandClient, sender: string, guardian: string, musdAsaId: number, usdcAsaId: number,
 ): Promise<bigint> {
-  const f = await factory(algorand, "psm", sender);
+  const f = await factory(algorand, "psmv3", sender);
   const { appClient: c } = await f.send.create({
     method: "deploy",
     args: [BigInt(musdAsaId), BigInt(usdcAsaId), guardian],
@@ -114,7 +117,7 @@ export async function configPsm(
   algorand: AlgorandClient, sender: string, psmId: bigint, treasury: string,
   musdAsaId: number, usdcAsaId: number,
 ): Promise<void> {
-  const c = await appClient(algorand, "psm", psmId, sender);
+  const c = await appClient(algorand, "psmv3", psmId, sender);
   await algorand
     .newGroup()
     .addAppCallMethodCall(await c.params.call({ method: "opt_in_asset", args: [BigInt(musdAsaId)], maxFee: MAX_FEE }))

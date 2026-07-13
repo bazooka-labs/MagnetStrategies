@@ -119,6 +119,17 @@ export type StrategyStats = {
   bufferBps: number; venueCapBps: number; adapters: AdapterPosition[];
 };
 
+/** True if the PSM has ≥1 whitelisted adapter — borrows then live-read it, so their group needs
+ *  reference-slot padding. Returns false for a v2 PSM (no adapter_ids key) or on any read error. */
+export async function hasActiveAdapter(algod: algosdk.Algodv2, psmId: number = ACTIVE.psm): Promise<boolean> {
+  try {
+    const app = await algod.getApplicationByID(psmId).do();
+    return unpack5(globalBytesVal(app, Buffer.from("adapter_ids"))).some((x) => x !== BigInt(0));
+  } catch {
+    return false;
+  }
+}
+
 /** Full productive-reserves view: backing ratio, deficit, and each adapter's live position. */
 export async function getStrategyStats(algod: algosdk.Algodv2, psmId: number = ACTIVE.psm): Promise<StrategyStats> {
   const psmApp = await algod.getApplicationByID(psmId).do();

@@ -130,7 +130,7 @@ export function DeployWizard() {
       },
     },
     {
-      id: "deploy_psm", label: "Deploy PSM", desc: "Creates the PSM with mUSD, USDC, and the guardian.",
+      id: "deploy_psm", label: "Deploy PSM (v3 — Productive Reserves)", desc: "Creates the yield-bearing PSM with mUSD, USDC, and the guardian. Whitelist a yield adapter later from the Productive Reserves panel.",
       done: !!ids.psm, ready: inputsValid && !ids.psm,
       action: async () => {
         const id = await deployPsm(a(), me(), inputs.guardian, musd(), usdc());
