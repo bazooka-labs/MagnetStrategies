@@ -14,3 +14,8 @@ twap_state.json
 contracts/.venv/
 contracts/build/
 .vercel
+
+# secrets / throwaway keys (never commit — see SECURITY.md)
+.env.*
+*.mnemonic
+tests/.env.testnet

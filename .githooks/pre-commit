@@ -1,0 +1,17 @@
+#!/bin/sh
+# MagnetStrategies pre-commit secret scan.
+# Enable once per clone with:  git config core.hooksPath .githooks
+# Blocks commits that stage an Algorand mnemonic or other credential.
+# Bypass (use only with intent): git commit --no-verify
+
+root=$(git rev-parse --show-toplevel)
+
+# Prefer a python that has algosdk (checksum-validates mnemonics = no false positives).
+PY=python3
+for cand in \
+  "$root/magnetfi/v2/contracts/.venv-test/bin/python" \
+  "$root/magnetfi/v2/contracts/.venv/bin/python3.12"; do
+  if [ -x "$cand" ]; then PY="$cand"; break; fi
+done
+
+exec "$PY" "$root/scripts/scan_secrets.py" --staged
