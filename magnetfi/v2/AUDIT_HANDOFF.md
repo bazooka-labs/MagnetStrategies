@@ -152,10 +152,15 @@ MagnetFi is *composed on top of* two external protocols it does not control:
 
 ### 8.5 Under-scrutinized — pre-mainnet verification tasks (candid)
 
-1. **First-depositor / share-inflation rounding (ERC-4626 class).** The first fUSDC mint on a fresh
-   position: a 1-µUSDC deposit could round shares oddly. Low likelihood (Folks is a mature pool with
-   deep existing liquidity, not a fresh vault) but **not yet proven** — worth a small-deposit test on
-   Folks testnet.
+1. **First-depositor / share-inflation rounding (ERC-4626 class).** ✅ **VERIFIED on Folks testnet**
+   (`test_folks_rounding_testnet.py`). Across deposits of 1–1000 µUSDC at pool index 1.194999:
+   `recoverable` **never exceeded** the deposit (no `min()` over-count) and every entry-rounding loss
+   was **≤ 1 µUSDC, always conservative** (favours the protocol), well within ε (1000). Boundary
+   finding: a deposit below the index ratio (< ~2 µUSDC here) mints **0 fUSDC** — that dust is
+   donated to the pool, but the direction stays safe (`recoverable = 0 ≤ principal`; on recall the
+   sub-ε shortfall crystallizes no deficit). **Operational rule: never `strategy_deploy` dust
+   amounts** — irrelevant in practice (the PSM deploys thousands of USDC). Folks is a mature, deep
+   pool (not an empty vault), so the classic first-depositor inflation attack does not apply.
 2. **Liquidation liveness under a fast multi-vault cascade.** Logic is tested; *operational* speed at
    scale (many positions underwater within the ±25% window) is not.
 3. **Self-referential U pricing (8.3)** — bounded by math, but flagged for explicit auditor review.
