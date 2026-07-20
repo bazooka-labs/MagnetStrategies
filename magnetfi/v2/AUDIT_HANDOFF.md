@@ -104,7 +104,63 @@ AVM has no try/catch). The mitigation is architectural:
 - **Regulatory (separate track):** yield routes to treasury, never to holders (GENIUS Act). Legal
   counsel sign-off is a launch gate.
 
-## 8. Build & test
+## 8. Threat model — attack classes considered
+
+What we explicitly defended against, *how*, and (candidly) what is under-scrutinized. Cross-checked
+against known DeFi exploit classes, including the **Tinyman Jan-2022 hack** (~$3M) — Algorand-native,
+so directly relevant.
+
+### 8.1 Defended (verified in code)
+
+| Attack class | Real-world precedent | Our defense |
+|---|---|---|
+| **Oracle price manipulation** to over-value collateral → over-borrow → default (bad debt) | Mango, Cream | Layered: LP-token valuation (pumping U removes it from reserves), **~25-min TWAP** (5 readings), **asymmetric upward-spike block** (15% spot-vs-TWAP — aimed at inflation specifically), **CompX Flux cross-check** (refuse to post on divergence), **±50% vs prior**, **±25% anchor band** (hard cap on cumulative drift), freshness gating. **Quantified bound below (8.3).** |
+| **Unvalidated asset in a group transfer** (receive the wrong/same asset) | **Tinyman 2022** | Every inbound transfer asserts `xfer_asset` + `asset_receiver`; every outbound `itxn` hardcodes a stored, validated ASA id. No caller-chosen multi-asset payout exists. See 8.2. |
+| **Reentrancy** | The DAO, Cream | AVM forbids an app appearing twice in one call stack; all read-modify-write across an `abi_call` is safe. Confirmed in both audit passes. |
+| **Lying/compromised yield venue** (inflated value, hidden loss, principal drain) | Euler, composability failures | `min(principal, recoverable)` valuation, **on-chain balance-delta accounting** (H-2/M-1 — never trust the adapter's reported return), deficit/impairment freeze, 48h adapter whitelist, fractional deployment. |
+| **Bad-debt / liquidation failure** | Venus | Over-collateralization (60% LTV / 75% liq threshold), liquidation tiers, the anchor+LTV margin (8.3). |
+| **Privileged-key abuse** | many | Two-role hot/cold model, 48h timelocks + guardian veto on all catastrophic repoints, guardian-only unpause + impairment-clear, treasury change timelocked. |
+
+### 8.2 The Tinyman 2022 lesson, specifically
+
+Root cause: Tinyman v1's `burn` let the attacker pass the **same asset id for both outputs**, so a
+redeem paid `goBTC + goBTC` instead of `goBTC + ALGO`, draining the high-value side. The lesson —
+*on Algorand, asset-id validation is never implicit; assert it explicitly.* We do: MagnetFi is **not
+an AMM** (no multi-asset burn/redeem where the caller picks outputs), and every asset movement is
+asset-id-checked. **This specific bug class cannot occur here.** What we *do* inherit from Tinyman is
+composability risk (8.4) — we consume its pools, we don't run its logic.
+
+### 8.3 The manipulation bound (why 60% LTV + ±25% anchor is safe)
+
+The `±25%` anchor caps how far the reported price can be inflated; combined with 60% LTV:
+`max borrow = 0.60 × 1.25 × V = 0.75 V` (V = true collateral value). Debt of 0.75 V against real
+collateral V sits right at the **75% liquidation threshold** → liquidators seize collateral that
+still covers the debt. **No PSM bad debt even at the anchor ceiling.** These two params were chosen
+to close exactly this gap; keep LTV ≤ 60% and re-anchor only to genuine sustained moves. Note also
+the **self-referential loop** (U is priced *from* the U/tALGO pool, whose LP is the collateral) — the
+anchor+LTV math bounds it, but it is unusual and an auditor should look at it explicitly.
+
+### 8.4 Composability / dependency risk — accepted + mitigated (not eliminable)
+
+MagnetFi is *composed on top of* two external protocols it does not control:
+- **Tinyman** — the U/tALGO LP is the collateral and the price source. A catastrophic Tinyman failure
+  would corrupt reserves/LP value. Mitigation: TWAP + ±25% anchor + CompX cross-check + guardian pause
+  + fractional exposure — but a total AMM failure is inherited risk, not engineered away. (This is why
+  the deepest-liquidity pool, U/tALGO, is the launch collateral.)
+- **Folks** — the yield venue holding deployed reserve principal. The *entire* v3 productive-reserves
+  risk model exists for this: `min()` valuation, balance-delta, fractional deployment, deficit freeze.
+
+### 8.5 Under-scrutinized — pre-mainnet verification tasks (candid)
+
+1. **First-depositor / share-inflation rounding (ERC-4626 class).** The first fUSDC mint on a fresh
+   position: a 1-µUSDC deposit could round shares oddly. Low likelihood (Folks is a mature pool with
+   deep existing liquidity, not a fresh vault) but **not yet proven** — worth a small-deposit test on
+   Folks testnet.
+2. **Liquidation liveness under a fast multi-vault cascade.** Logic is tested; *operational* speed at
+   scale (many positions underwater within the ±25% window) is not.
+3. **Self-referential U pricing (8.3)** — bounded by math, but flagged for explicit auditor review.
+
+## 9. Build & test
 
 ```
 cd contracts
