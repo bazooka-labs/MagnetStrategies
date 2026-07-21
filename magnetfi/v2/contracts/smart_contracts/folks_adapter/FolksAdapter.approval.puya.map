@@ -1,0 +1,3970 @@
+{
+  "version": 3,
+  "sources": [
+    "contract.py"
+  ],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAyBA;;AAAA;AAAA;AAAA;;AAAA;;;AAAA;;;;;;;;;;;;;;;;;;;;;;AAAA;;;AAAA;;;;;;;;;;AAAA;AAAA;;;;;;AAAA;;;AAAA;;;;AAAA;AAgCK;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAUG;;AAAA;AACA;;AAAA;AACA;;AAAA;AACO;;AAAA;;AAAA;AAAP;AACA;;AAAA;AACA;;AAAA;AACO;AAAS;;AAAT;AAAP;AACA;;AAAA;;AAAA;AACA;AAAA;;AAAA;AACA;AAAA;;AAAA;AACA;AAAA;;AAAA;AACA;;AAAA;;AAAA;AACA;;AAAA;AAAA;AAtBH;AAAA;AAyEA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AA9BU;;AAAc;AAAA;;AAAA;AAAA;AAAd;AAAP;AAkCA;AAAA;AACA;AAEmB;;AACF;;;;;;;AAHjB;;;AAIQ;;;AAJR;AALH;AAAA;AAaA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAIG;;;AAlCI;;AAAoC;AAAA;AAAA;AAAA;AAD1B;;AAGd;AAiCO;;AAAA;AAAP;AACY;;;AACZ;AAGmB;AAAA;AAAA;AAAA;;;;;;;;;;;AADf;;;AAIQ;;;AANZ;AAQI;;AAGY;AAAA;;AAAA;AAAA;AADN;AAAA;AAAA;AAAA;AAEC;AAAA;AAAA;AAAA;;;;;;;;;;;;;AAZX;;;;;;;;AAQI;;;AACA;;;;;AACA;;;AACA;;;AAXJ;;;;AAaQ;;;AAbR;AAAA;;AAAA;AAAA;;;AAAA;;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAPH;AAAA;AAuBA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAIG;;;AAEA;AAEgB;AAAA;;AAAA;AAAA;AACL;AAAA;AAAA;AAAA;;;;;AAHX;;;;;;;;AAEI;;;AAFJ;;;;AAIQ;;;AAJR;AAMQ;;;AACI;;;AApDA;;AAuDsB;;AAvDtB;AACL;;AAAA;AAuDmB;AAAA;;AAAA;AAAV;AAAA;AAAA;;AAxDJ;AAAA;;AAAA;AA0DsC;;AAzD3C;AAAA;AA2DJ;;;AAAA;AAAA;;;AACC;AAGmB;AAAA;AAAA;AAAA;AACI;;;;;;;;;;;AAFnB;;;AAIQ;;;AANZ;AAQI;AAAA;AACA;;;AAGY;AAAA;;AAAA;AAAA;AAFN;AAAA;AAAA;AAAA;AACA;AAAA;AAAA;AAAA;AAEC;AAAA;AAAA;AAAA;;;;;;;;;;;;AAbX;;;;;;;;;;AASI;;;AACA;;;;;AACA;;;AACA;;;AAZJ;;;;AAcQ;;;AAdR;AAAA;;AAAA;AAAA;;;AAAA;;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAgBG;AAAA;AAtCV;;AAAA;AAAA;AAAA;AAAA;AAAA;AA4CuC;;;AAAuB;;;AAnF/C;AAmFsE;;AAlF3E;AAkFA;AAJV;;AAAA;AAAA;AAAA;AAAA;AAAA;AA1H8C;AAAA;;AAAA;AAAA;AAA5B;;AACf;AACA;AAI2C;AAAA;AAAA;AAAA;AAA5B;;AACf;AACA;AAIO;;AAAc;;;AAAd;AAAP;;AASI;;AAAoC;AAAA;AAAA;AAAA;AAD1B;;AAGd;AACA;AAawC;AAAA;AAAA;AAAA;AAAwB;;;AAAlD;AACd;AAC8B;;AAAvB;AAAP",
+  "op_pc_offset": 0,
+  "pc_events": {
+    "1": {
+      "subroutine": "algopy.arc4.ARC4Contract.approval_program",
+      "params": {},
+      "block": "main",
+      "stack_in": [],
+      "op": "intcblock 0 8 1 4 100000000000000"
+    },
+    "14": {
+      "op": "bytecblock 0x01 \"pool_app_id\" \"fusdc_asa_id\" \"usdc_asa_id\" \"pool_manager_app_id\" 0x151f7c75 \"psm_app_id\" \"admin\""
+    },
+    "97": {
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "99": {
+      "op": "!",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "100": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "101": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "103": {
+      "op": "bz main_create_NoOp@10",
+      "stack_out": []
+    },
+    "106": {
+      "op": "pushbytess 0xe3cdef3b 0x77e93bad 0x5a44ecb5 0x559bb911 // method \"opt_in_asset(uint64)void\", method \"pool_deposit(uint64)void\", method \"pool_withdraw(uint64)uint64\", method \"recoverable_value()uint64\"",
+      "defined_out": [
+        "Method(opt_in_asset(uint64)void)",
+        "Method(pool_deposit(uint64)void)",
+        "Method(pool_withdraw(uint64)uint64)",
+        "Method(recoverable_value()uint64)"
+      ],
+      "stack_out": [
+        "Method(opt_in_asset(uint64)void)",
+        "Method(pool_deposit(uint64)void)",
+        "Method(pool_withdraw(uint64)uint64)",
+        "Method(recoverable_value()uint64)"
+      ]
+    },
+    "128": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(opt_in_asset(uint64)void)",
+        "Method(pool_deposit(uint64)void)",
+        "Method(pool_withdraw(uint64)uint64)",
+        "Method(recoverable_value()uint64)",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "Method(opt_in_asset(uint64)void)",
+        "Method(pool_deposit(uint64)void)",
+        "Method(pool_withdraw(uint64)uint64)",
+        "Method(recoverable_value()uint64)",
+        "tmp%4#0"
+      ]
+    },
+    "131": {
+      "op": "match opt_in_asset pool_deposit pool_withdraw recoverable_value",
+      "stack_out": []
+    },
+    "141": {
+      "op": "err"
+    },
+    "142": {
+      "block": "main_create_NoOp@10",
+      "stack_in": [],
+      "op": "pushbytes 0x48d3db34 // method \"create(uint64,uint64,uint64,uint64,uint64,address)void\"",
+      "defined_out": [
+        "Method(create(uint64,uint64,uint64,uint64,uint64,address)void)"
+      ],
+      "stack_out": [
+        "Method(create(uint64,uint64,uint64,uint64,uint64,address)void)"
+      ]
+    },
+    "148": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(create(uint64,uint64,uint64,uint64,uint64,address)void)",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "Method(create(uint64,uint64,uint64,uint64,uint64,address)void)",
+        "tmp%5#0"
+      ]
+    },
+    "151": {
+      "op": "match create",
+      "stack_out": []
+    },
+    "155": {
+      "op": "err"
+    },
+    "156": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter.create[routing]",
+      "params": {},
+      "block": "create",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "159": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "160": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "161": {
+      "op": "intc_1 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "162": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "163": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "164": {
+      "op": "btoi",
+      "defined_out": [
+        "psm_app_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0"
+      ]
+    },
+    "165": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "psm_app_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "168": {
+      "op": "dup",
+      "defined_out": [
+        "psm_app_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "169": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "psm_app_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "170": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "171": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "psm_app_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "172": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "173": {
+      "op": "btoi",
+      "defined_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ]
+    },
+    "174": {
+      "op": "txna ApplicationArgs 3",
+      "defined_out": [
+        "psm_app_id#0",
+        "tmp%4#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0"
+      ]
+    },
+    "177": {
+      "op": "dup",
+      "defined_out": [
+        "psm_app_id#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)"
+      ]
+    },
+    "178": {
+      "op": "len",
+      "defined_out": [
+        "len%2#0",
+        "psm_app_id#0",
+        "tmp%4#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0",
+        "len%2#0"
+      ]
+    },
+    "179": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0",
+        "len%2#0",
+        "8"
+      ]
+    },
+    "180": {
+      "op": "==",
+      "defined_out": [
+        "eq%2#0",
+        "psm_app_id#0",
+        "tmp%4#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0",
+        "eq%2#0"
+      ]
+    },
+    "181": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "tmp%4#0"
+      ]
+    },
+    "182": {
+      "op": "btoi",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0"
+      ]
+    },
+    "183": {
+      "op": "txna ApplicationArgs 4",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "psm_app_id#0",
+        "tmp%6#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0"
+      ]
+    },
+    "186": {
+      "op": "dup",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "psm_app_id#0",
+        "tmp%6#0",
+        "tmp%6#0 (copy)",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0",
+        "tmp%6#0 (copy)"
+      ]
+    },
+    "187": {
+      "op": "len",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "len%3#0",
+        "psm_app_id#0",
+        "tmp%6#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0",
+        "len%3#0"
+      ]
+    },
+    "188": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0",
+        "len%3#0",
+        "8"
+      ]
+    },
+    "189": {
+      "op": "==",
+      "defined_out": [
+        "eq%3#0",
+        "fusdc_asa_id#0",
+        "psm_app_id#0",
+        "tmp%6#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0",
+        "eq%3#0"
+      ]
+    },
+    "190": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "tmp%6#0"
+      ]
+    },
+    "191": {
+      "op": "btoi",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0"
+      ]
+    },
+    "192": {
+      "op": "txna ApplicationArgs 5",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "psm_app_id#0",
+        "tmp%8#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0"
+      ]
+    },
+    "195": {
+      "op": "dup",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "psm_app_id#0",
+        "tmp%8#0",
+        "tmp%8#0 (copy)",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0",
+        "tmp%8#0 (copy)"
+      ]
+    },
+    "196": {
+      "op": "len",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "len%4#0",
+        "pool_app_id#0",
+        "psm_app_id#0",
+        "tmp%8#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0",
+        "len%4#0"
+      ]
+    },
+    "197": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0",
+        "len%4#0",
+        "8"
+      ]
+    },
+    "198": {
+      "op": "==",
+      "defined_out": [
+        "eq%4#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "psm_app_id#0",
+        "tmp%8#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0",
+        "eq%4#0"
+      ]
+    },
+    "199": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "tmp%8#0"
+      ]
+    },
+    "200": {
+      "op": "btoi",
+      "defined_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0"
+      ]
+    },
+    "201": {
+      "op": "txna ApplicationArgs 6",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "204": {
+      "op": "dup",
+      "defined_out": [
+        "admin#0",
+        "admin#0 (copy)",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "admin#0 (copy)"
+      ]
+    },
+    "205": {
+      "op": "len",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "len%5#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "len%5#0"
+      ]
+    },
+    "206": {
+      "op": "pushint 32",
+      "defined_out": [
+        "32",
+        "admin#0",
+        "fusdc_asa_id#0",
+        "len%5#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "len%5#0",
+        "32"
+      ]
+    },
+    "208": {
+      "op": "==",
+      "defined_out": [
+        "admin#0",
+        "eq%5#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "eq%5#0"
+      ]
+    },
+    "209": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "210": {
+      "op": "dig 5",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "psm_app_id#0 (copy)",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "psm_app_id#0 (copy)"
+      ]
+    },
+    "212": {
+      "error": "psm_app_id required",
+      "op": "assert // psm_app_id required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "213": {
+      "op": "dig 4",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "usdc_asa_id#0 (copy)"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "usdc_asa_id#0 (copy)"
+      ]
+    },
+    "215": {
+      "error": "usdc required",
+      "op": "assert // usdc required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "216": {
+      "op": "dig 3",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "fusdc_asa_id#0 (copy)",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "fusdc_asa_id#0 (copy)"
+      ]
+    },
+    "218": {
+      "error": "fusdc required",
+      "op": "assert // fusdc required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "219": {
+      "op": "dig 4",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "usdc_asa_id#0 (copy)"
+      ]
+    },
+    "221": {
+      "op": "dig 4",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "usdc_asa_id#0 (copy)",
+        "fusdc_asa_id#0 (copy)"
+      ]
+    },
+    "223": {
+      "op": "!=",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "tmp%3#1",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "tmp%3#1"
+      ]
+    },
+    "224": {
+      "error": "usdc and fusdc must differ",
+      "op": "assert // usdc and fusdc must differ",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "225": {
+      "op": "dig 2",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_app_id#0 (copy)",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "pool_app_id#0 (copy)"
+      ]
+    },
+    "227": {
+      "error": "pool required",
+      "op": "assert // pool required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "228": {
+      "op": "dig 1",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "pool_manager_app_id#0 (copy)",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "pool_manager_app_id#0 (copy)"
+      ]
+    },
+    "230": {
+      "error": "pool_manager required",
+      "op": "assert // pool_manager required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "231": {
+      "op": "dup"
+    },
+    "232": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "admin#0",
+        "admin#0 (copy)",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "tmp%6#1",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "admin#0 (copy)",
+        "tmp%6#1"
+      ]
+    },
+    "234": {
+      "op": "!=",
+      "defined_out": [
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "tmp%7#1",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "tmp%7#1"
+      ]
+    },
+    "235": {
+      "error": "admin required",
+      "op": "assert // admin required",
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "236": {
+      "op": "bytec 6 // \"psm_app_id\"",
+      "defined_out": [
+        "\"psm_app_id\"",
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "psm_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "psm_app_id#0",
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"psm_app_id\""
+      ]
+    },
+    "238": {
+      "op": "uncover 6",
+      "stack_out": [
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"psm_app_id\"",
+        "psm_app_id#0"
+      ]
+    },
+    "240": {
+      "op": "app_global_put",
+      "stack_out": [
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "241": {
+      "op": "bytec_3 // \"usdc_asa_id\"",
+      "defined_out": [
+        "\"usdc_asa_id\"",
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "usdc_asa_id#0"
+      ],
+      "stack_out": [
+        "usdc_asa_id#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"usdc_asa_id\""
+      ]
+    },
+    "242": {
+      "op": "uncover 5",
+      "stack_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"usdc_asa_id\"",
+        "usdc_asa_id#0"
+      ]
+    },
+    "244": {
+      "op": "app_global_put",
+      "stack_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "245": {
+      "op": "bytec_2 // \"fusdc_asa_id\"",
+      "defined_out": [
+        "\"fusdc_asa_id\"",
+        "admin#0",
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0"
+      ],
+      "stack_out": [
+        "fusdc_asa_id#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"fusdc_asa_id\""
+      ]
+    },
+    "246": {
+      "op": "uncover 4",
+      "stack_out": [
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"fusdc_asa_id\"",
+        "fusdc_asa_id#0"
+      ]
+    },
+    "248": {
+      "op": "app_global_put",
+      "stack_out": [
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "249": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "defined_out": [
+        "\"pool_app_id\"",
+        "admin#0",
+        "pool_app_id#0",
+        "pool_manager_app_id#0"
+      ],
+      "stack_out": [
+        "pool_app_id#0",
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"pool_app_id\""
+      ]
+    },
+    "250": {
+      "op": "uncover 3",
+      "stack_out": [
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"pool_app_id\"",
+        "pool_app_id#0"
+      ]
+    },
+    "252": {
+      "op": "app_global_put",
+      "stack_out": [
+        "pool_manager_app_id#0",
+        "admin#0"
+      ]
+    },
+    "253": {
+      "op": "bytec 4 // \"pool_manager_app_id\"",
+      "defined_out": [
+        "\"pool_manager_app_id\"",
+        "admin#0",
+        "pool_manager_app_id#0"
+      ],
+      "stack_out": [
+        "pool_manager_app_id#0",
+        "admin#0",
+        "\"pool_manager_app_id\""
+      ]
+    },
+    "255": {
+      "op": "uncover 2",
+      "stack_out": [
+        "admin#0",
+        "\"pool_manager_app_id\"",
+        "pool_manager_app_id#0"
+      ]
+    },
+    "257": {
+      "op": "app_global_put",
+      "stack_out": [
+        "admin#0"
+      ]
+    },
+    "258": {
+      "op": "bytec 7 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "admin#0"
+      ],
+      "stack_out": [
+        "admin#0",
+        "\"admin\""
+      ]
+    },
+    "260": {
+      "op": "swap",
+      "stack_out": [
+        "\"admin\"",
+        "admin#0"
+      ]
+    },
+    "261": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "262": {
+      "op": "intc_2 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "263": {
+      "op": "return",
+      "stack_out": []
+    },
+    "264": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter.opt_in_asset[routing]",
+      "params": {},
+      "block": "opt_in_asset",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "267": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "268": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "269": {
+      "op": "intc_1 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "270": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "271": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "272": {
+      "op": "btoi",
+      "defined_out": [
+        "asa_id#0"
+      ],
+      "stack_out": [
+        "asa_id#0"
+      ]
+    },
+    "273": {
+      "op": "txn Sender",
+      "defined_out": [
+        "asa_id#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "tmp%0#2"
+      ]
+    },
+    "275": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "asa_id#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "tmp%0#2",
+        "0"
+      ]
+    },
+    "276": {
+      "op": "bytec 7 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "asa_id#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "tmp%0#2",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "278": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "asa_id#0",
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "tmp%0#2",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "279": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "asa_id#0",
+        "tmp%0#2",
+        "maybe_value%0#0"
+      ]
+    },
+    "280": {
+      "op": "==",
+      "defined_out": [
+        "asa_id#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "tmp%1#0"
+      ]
+    },
+    "281": {
+      "error": "admin only",
+      "op": "assert // admin only",
+      "stack_out": [
+        "asa_id#0"
+      ]
+    },
+    "282": {
+      "op": "dup",
+      "defined_out": [
+        "asa_id#0",
+        "asa_id#0 (copy)"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "asa_id#0 (copy)"
+      ]
+    },
+    "283": {
+      "error": "invalid ASA",
+      "op": "assert // invalid ASA",
+      "stack_out": [
+        "asa_id#0"
+      ]
+    },
+    "284": {
+      "op": "itxn_begin"
+    },
+    "285": {
+      "op": "global CurrentApplicationAddress",
+      "defined_out": [
+        "asa_id#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0"
+      ],
+      "stack_out": [
+        "asa_id#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0"
+      ]
+    },
+    "287": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "asa_id#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0",
+        "0"
+      ]
+    },
+    "288": {
+      "op": "itxn_field AssetAmount",
+      "stack_out": [
+        "asa_id#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0"
+      ]
+    },
+    "290": {
+      "op": "itxn_field AssetReceiver",
+      "stack_out": [
+        "asa_id#0"
+      ]
+    },
+    "292": {
+      "op": "itxn_field XferAsset",
+      "stack_out": []
+    },
+    "294": {
+      "op": "intc_3 // axfer",
+      "defined_out": [
+        "axfer"
+      ],
+      "stack_out": [
+        "axfer"
+      ]
+    },
+    "295": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": []
+    },
+    "297": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "298": {
+      "op": "itxn_field Fee",
+      "stack_out": []
+    },
+    "300": {
+      "op": "itxn_submit"
+    },
+    "301": {
+      "op": "intc_2 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "302": {
+      "op": "return",
+      "stack_out": []
+    },
+    "303": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter.pool_deposit[routing]",
+      "params": {},
+      "block": "pool_deposit",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "306": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "307": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "308": {
+      "op": "intc_1 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "309": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "310": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "311": {
+      "op": "btoi",
+      "defined_out": [
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "312": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._assert_psm",
+      "op": "callsub _assert_psm"
+    },
+    "315": {
+      "op": "global CurrentApplicationAddress",
+      "defined_out": [
+        "amount#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "amount#0",
+        "tmp%0#2"
+      ]
+    },
+    "317": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "amount#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "amount#0",
+        "tmp%0#2",
+        "0"
+      ]
+    },
+    "318": {
+      "op": "bytec_3 // \"usdc_asa_id\"",
+      "defined_out": [
+        "\"usdc_asa_id\"",
+        "0",
+        "amount#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "amount#0",
+        "tmp%0#2",
+        "0",
+        "\"usdc_asa_id\""
+      ]
+    },
+    "319": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "amount#0",
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "amount#0",
+        "tmp%0#2",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "320": {
+      "error": "check self.usdc_asa_id exists",
+      "op": "assert // check self.usdc_asa_id exists",
+      "stack_out": [
+        "amount#0",
+        "tmp%0#2",
+        "maybe_value%0#0"
+      ]
+    },
+    "321": {
+      "op": "asset_holding_get AssetBalance",
+      "defined_out": [
+        "amount#0",
+        "bal#0",
+        "exists#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "bal#0",
+        "exists#0"
+      ]
+    },
+    "323": {
+      "error": "adapter not opted into USDC",
+      "op": "assert // adapter not opted into USDC",
+      "stack_out": [
+        "amount#0",
+        "bal#0"
+      ]
+    },
+    "324": {
+      "op": "dig 1",
+      "defined_out": [
+        "amount#0",
+        "amount#0 (copy)",
+        "bal#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "bal#0",
+        "amount#0 (copy)"
+      ]
+    },
+    "326": {
+      "op": ">=",
+      "defined_out": [
+        "amount#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "amount#0",
+        "tmp%1#1"
+      ]
+    },
+    "327": {
+      "error": "usdc not received",
+      "op": "assert // usdc not received",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "328": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._pool_address",
+      "op": "callsub _pool_address",
+      "defined_out": [
+        "amount#0",
+        "pool_addr#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "pool_addr#0"
+      ]
+    },
+    "331": {
+      "op": "itxn_begin"
+    },
+    "332": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "amount#0",
+        "pool_addr#0",
+        "0"
+      ]
+    },
+    "333": {
+      "op": "bytec_3 // \"usdc_asa_id\"",
+      "stack_out": [
+        "amount#0",
+        "pool_addr#0",
+        "0",
+        "\"usdc_asa_id\""
+      ]
+    },
+    "334": {
+      "op": "app_global_get_ex",
+      "stack_out": [
+        "amount#0",
+        "pool_addr#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "335": {
+      "error": "check self.usdc_asa_id exists",
+      "op": "assert // check self.usdc_asa_id exists",
+      "stack_out": [
+        "amount#0",
+        "pool_addr#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "336": {
+      "op": "uncover 2",
+      "stack_out": [
+        "pool_addr#0",
+        "maybe_value%0#0",
+        "amount#0"
+      ]
+    },
+    "338": {
+      "op": "itxn_field AssetAmount",
+      "stack_out": [
+        "pool_addr#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "340": {
+      "op": "swap",
+      "stack_out": [
+        "maybe_value%0#0",
+        "pool_addr#0"
+      ]
+    },
+    "341": {
+      "op": "itxn_field AssetReceiver",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "343": {
+      "op": "dup",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "344": {
+      "op": "itxn_field XferAsset",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "346": {
+      "op": "intc_3 // axfer",
+      "defined_out": [
+        "axfer",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "axfer"
+      ]
+    },
+    "347": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "349": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "0"
+      ]
+    },
+    "350": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "352": {
+      "op": "itxn_next"
+    },
+    "353": {
+      "op": "global CurrentApplicationAddress",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "355": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "0"
+      ]
+    },
+    "356": {
+      "op": "bytec 4 // \"pool_manager_app_id\"",
+      "defined_out": [
+        "\"pool_manager_app_id\"",
+        "0",
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "0",
+        "\"pool_manager_app_id\""
+      ]
+    },
+    "358": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "359": {
+      "error": "check self.pool_manager_app_id exists",
+      "op": "assert // check self.pool_manager_app_id exists",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "360": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "0"
+      ]
+    },
+    "361": {
+      "op": "bytec_2 // \"fusdc_asa_id\"",
+      "defined_out": [
+        "\"fusdc_asa_id\"",
+        "0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "0",
+        "\"fusdc_asa_id\""
+      ]
+    },
+    "362": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%3#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "maybe_exists%3#0"
+      ]
+    },
+    "363": {
+      "error": "check self.fusdc_asa_id exists",
+      "op": "assert // check self.fusdc_asa_id exists",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "364": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "0"
+      ]
+    },
+    "365": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "defined_out": [
+        "\"pool_app_id\"",
+        "0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "0",
+        "\"pool_app_id\""
+      ]
+    },
+    "366": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%4#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_exists%4#0"
+      ]
+    },
+    "367": {
+      "error": "check self.pool_app_id exists",
+      "op": "assert // check self.pool_app_id exists",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0"
+      ]
+    },
+    "368": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "370": {
+      "op": "uncover 3",
+      "stack_out": [
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "372": {
+      "op": "itxn_field Assets",
+      "stack_out": [
+        "tmp%3#0",
+        "maybe_value%1#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "374": {
+      "op": "itxn_field Assets",
+      "stack_out": [
+        "tmp%3#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "376": {
+      "op": "itxn_field Applications",
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "378": {
+      "op": "itxn_field Accounts",
+      "stack_out": []
+    },
+    "380": {
+      "op": "pushbytes 0xb9d542fb // method \"deposit(txn,account,asset,asset,application)uint64\"",
+      "defined_out": [
+        "Method(deposit(txn,account,asset,asset,application)uint64)"
+      ],
+      "stack_out": [
+        "Method(deposit(txn,account,asset,asset,application)uint64)"
+      ]
+    },
+    "386": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "388": {
+      "op": "bytec_0 // 0x01",
+      "defined_out": [
+        "0x01"
+      ],
+      "stack_out": [
+        "0x01"
+      ]
+    },
+    "389": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "391": {
+      "op": "pushbytes 0x00",
+      "defined_out": [
+        "0x00"
+      ],
+      "stack_out": [
+        "0x00"
+      ]
+    },
+    "394": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "396": {
+      "op": "bytec_0 // 0x01",
+      "stack_out": [
+        "0x01"
+      ]
+    },
+    "397": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "399": {
+      "op": "bytec_0 // 0x01",
+      "stack_out": [
+        "0x01"
+      ]
+    },
+    "400": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "402": {
+      "op": "pushint 6 // appl",
+      "defined_out": [
+        "appl"
+      ],
+      "stack_out": [
+        "appl"
+      ]
+    },
+    "404": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": []
+    },
+    "406": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "407": {
+      "op": "itxn_field Fee",
+      "stack_out": []
+    },
+    "409": {
+      "op": "itxn_submit"
+    },
+    "410": {
+      "op": "itxn LastLog",
+      "defined_out": [
+        "awst_tmp%0#0"
+      ],
+      "stack_out": [
+        "awst_tmp%0#0"
+      ]
+    },
+    "412": {
+      "op": "dup",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "awst_tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "awst_tmp%0#0",
+        "awst_tmp%0#0 (copy)"
+      ]
+    },
+    "413": {
+      "op": "extract 0 4",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "awst_tmp%0#0",
+        "tmp%4#0"
+      ]
+    },
+    "416": {
+      "op": "bytec 5 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "awst_tmp%0#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "awst_tmp%0#0",
+        "tmp%4#0",
+        "0x151f7c75"
+      ]
+    },
+    "418": {
+      "op": "==",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "awst_tmp%0#0",
+        "tmp%5#0"
+      ]
+    },
+    "419": {
+      "error": "application log value is not the result of an ABI return",
+      "op": "assert // application log value is not the result of an ABI return",
+      "stack_out": [
+        "awst_tmp%0#0"
+      ]
+    },
+    "420": {
+      "op": "extract 4 0",
+      "defined_out": [
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "tmp%6#0"
+      ]
+    },
+    "423": {
+      "op": "len",
+      "stack_out": [
+        "len%0#0"
+      ]
+    },
+    "424": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "len%0#0",
+        "8"
+      ]
+    },
+    "425": {
+      "op": "==",
+      "stack_out": [
+        "eq%0#0"
+      ]
+    },
+    "426": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": []
+    },
+    "427": {
+      "op": "intc_2 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "428": {
+      "op": "return",
+      "stack_out": []
+    },
+    "429": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter.pool_withdraw[routing]",
+      "params": {},
+      "block": "pool_withdraw",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "432": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "433": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "434": {
+      "op": "intc_1 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "435": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "436": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "437": {
+      "op": "btoi",
+      "defined_out": [
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "438": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._assert_psm",
+      "op": "callsub _assert_psm"
+    },
+    "441": {
+      "op": "itxn_begin"
+    },
+    "442": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "0"
+      ]
+    },
+    "443": {
+      "op": "bytec 4 // \"pool_manager_app_id\"",
+      "defined_out": [
+        "\"pool_manager_app_id\"",
+        "0",
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "0",
+        "\"pool_manager_app_id\""
+      ]
+    },
+    "445": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "amount#0",
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "446": {
+      "error": "check self.pool_manager_app_id exists",
+      "op": "assert // check self.pool_manager_app_id exists",
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "447": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0",
+        "0"
+      ]
+    },
+    "448": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "defined_out": [
+        "\"pool_app_id\"",
+        "0",
+        "amount#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0",
+        "0",
+        "\"pool_app_id\""
+      ]
+    },
+    "449": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "amount#0",
+        "maybe_exists%1#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "450": {
+      "error": "check self.pool_app_id exists",
+      "op": "assert // check self.pool_app_id exists",
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "451": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "amount#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "453": {
+      "op": "itxn_field Applications",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "455": {
+      "op": "pushbytes 0xecd1da38 // method \"update_pool_interest_indexes(application)void\"",
+      "defined_out": [
+        "Method(update_pool_interest_indexes(application)void)",
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "Method(update_pool_interest_indexes(application)void)"
+      ]
+    },
+    "461": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "463": {
+      "op": "bytec_0 // 0x01",
+      "defined_out": [
+        "0x01",
+        "amount#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "0x01"
+      ]
+    },
+    "464": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "466": {
+      "op": "pushint 6 // appl",
+      "defined_out": [
+        "amount#0",
+        "appl"
+      ],
+      "stack_out": [
+        "amount#0",
+        "appl"
+      ]
+    },
+    "468": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "470": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "amount#0",
+        "0"
+      ]
+    },
+    "471": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "473": {
+      "op": "itxn_submit"
+    },
+    "474": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._deposit_index",
+      "op": "callsub _deposit_index",
+      "defined_out": [
+        "amount#0",
+        "index#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "index#0"
+      ]
+    },
+    "477": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._fusdc_balance",
+      "op": "callsub _fusdc_balance",
+      "defined_out": [
+        "amount#0",
+        "fusdc_bal#0",
+        "index#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "index#0",
+        "fusdc_bal#0"
+      ]
+    },
+    "480": {
+      "op": "uncover 2",
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "amount#0"
+      ]
+    },
+    "482": {
+      "op": "intc 4 // 100000000000000",
+      "defined_out": [
+        "100000000000000",
+        "amount#0",
+        "fusdc_bal#0",
+        "index#0"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "amount#0",
+        "100000000000000"
+      ]
+    },
+    "484": {
+      "op": "mulw",
+      "defined_out": [
+        "fusdc_bal#0",
+        "high#0",
+        "index#0",
+        "low#0"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "high#0",
+        "low#0"
+      ]
+    },
+    "485": {
+      "op": "dig 3",
+      "defined_out": [
+        "fusdc_bal#0",
+        "high#0",
+        "index#0",
+        "index#0 (copy)",
+        "low#0"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "high#0",
+        "low#0",
+        "index#0 (copy)"
+      ]
+    },
+    "487": {
+      "op": "divw",
+      "defined_out": [
+        "fusdc_bal#0",
+        "index#0",
+        "needed#0"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "needed#0"
+      ]
+    },
+    "488": {
+      "op": "dup",
+      "defined_out": [
+        "fusdc_bal#0",
+        "index#0",
+        "needed#0",
+        "needed#0 (copy)"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "needed#0",
+        "needed#0 (copy)"
+      ]
+    },
+    "489": {
+      "op": "dig 2",
+      "defined_out": [
+        "fusdc_bal#0",
+        "fusdc_bal#0 (copy)",
+        "index#0",
+        "needed#0",
+        "needed#0 (copy)"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "needed#0",
+        "needed#0 (copy)",
+        "fusdc_bal#0 (copy)"
+      ]
+    },
+    "491": {
+      "op": "<=",
+      "defined_out": [
+        "fusdc_bal#0",
+        "index#0",
+        "needed#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_bal#0",
+        "needed#0",
+        "tmp%3#1"
+      ]
+    },
+    "492": {
+      "op": "select",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "index#0"
+      ],
+      "stack_out": [
+        "index#0",
+        "fusdc_to_send#0"
+      ]
+    },
+    "493": {
+      "op": "dup",
+      "stack_out": [
+        "index#0",
+        "fusdc_to_send#0",
+        "fusdc_to_send#0"
+      ]
+    },
+    "494": {
+      "op": "cover 2",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "index#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "index#0",
+        "fusdc_to_send#0"
+      ]
+    },
+    "496": {
+      "op": "dup",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "fusdc_to_send#0 (copy)",
+        "index#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "index#0",
+        "fusdc_to_send#0",
+        "fusdc_to_send#0 (copy)"
+      ]
+    },
+    "497": {
+      "op": "uncover 2",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "fusdc_to_send#0",
+        "fusdc_to_send#0 (copy)",
+        "index#0"
+      ]
+    },
+    "499": {
+      "op": "mulw",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "fusdc_to_send#0",
+        "high#0",
+        "low#0"
+      ]
+    },
+    "500": {
+      "op": "intc 4 // 100000000000000",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "fusdc_to_send#0",
+        "high#0",
+        "low#0",
+        "100000000000000"
+      ]
+    },
+    "502": {
+      "op": "divw",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "503": {
+      "op": "swap",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "fusdc_to_send#0"
+      ]
+    },
+    "504": {
+      "op": "bz pool_withdraw_after_if_else@7",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "507": {
+      "op": "dup",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "received#0"
+      ]
+    },
+    "508": {
+      "op": "bz pool_withdraw_after_if_else@7",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "511": {
+      "op": "itxn_begin"
+    },
+    "512": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0"
+      ]
+    },
+    "513": {
+      "op": "bytec_2 // \"fusdc_asa_id\"",
+      "defined_out": [
+        "\"fusdc_asa_id\"",
+        "0",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0",
+        "\"fusdc_asa_id\""
+      ]
+    },
+    "514": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "maybe_exists%2#0",
+        "maybe_value%2#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0",
+        "maybe_exists%2#0"
+      ]
+    },
+    "515": {
+      "error": "check self.fusdc_asa_id exists",
+      "op": "assert // check self.fusdc_asa_id exists",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0"
+      ]
+    },
+    "516": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._pool_address",
+      "op": "callsub _pool_address",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0",
+        "maybe_value%2#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0"
+      ]
+    },
+    "519": {
+      "op": "dig 3",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0",
+        "fusdc_to_send#0"
+      ]
+    },
+    "521": {
+      "op": "itxn_field AssetAmount",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0",
+        "inner_txn_params%0%%param_AssetReceiver_idx_0#0"
+      ]
+    },
+    "523": {
+      "op": "itxn_field AssetReceiver",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "maybe_value%2#0"
+      ]
+    },
+    "525": {
+      "op": "itxn_field XferAsset",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "527": {
+      "op": "intc_3 // axfer",
+      "defined_out": [
+        "axfer",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "axfer"
+      ]
+    },
+    "528": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "530": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0"
+      ]
+    },
+    "531": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "533": {
+      "op": "itxn_next"
+    },
+    "534": {
+      "op": "dup",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "received#0"
+      ]
+    },
+    "535": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "536": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._psm_address",
+      "op": "callsub _psm_address",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0"
+      ]
+    },
+    "539": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "0"
+      ]
+    },
+    "540": {
+      "op": "bytec 4 // \"pool_manager_app_id\"",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "0",
+        "\"pool_manager_app_id\""
+      ]
+    },
+    "542": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "maybe_exists%3#0",
+        "maybe_value%3#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_exists%3#0"
+      ]
+    },
+    "543": {
+      "error": "check self.pool_manager_app_id exists",
+      "op": "assert // check self.pool_manager_app_id exists",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "544": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "0"
+      ]
+    },
+    "545": {
+      "op": "bytec_3 // \"usdc_asa_id\"",
+      "defined_out": [
+        "\"usdc_asa_id\"",
+        "0",
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "maybe_value%3#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "0",
+        "\"usdc_asa_id\""
+      ]
+    },
+    "546": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "maybe_exists%4#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_exists%4#0"
+      ]
+    },
+    "547": {
+      "error": "check self.usdc_asa_id exists",
+      "op": "assert // check self.usdc_asa_id exists",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0"
+      ]
+    },
+    "548": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "0"
+      ]
+    },
+    "549": {
+      "op": "bytec_2 // \"fusdc_asa_id\"",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "0",
+        "\"fusdc_asa_id\""
+      ]
+    },
+    "550": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "maybe_exists%5#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "maybe_exists%5#0"
+      ]
+    },
+    "551": {
+      "error": "check self.fusdc_asa_id exists",
+      "op": "assert // check self.fusdc_asa_id exists",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0"
+      ]
+    },
+    "552": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "0"
+      ]
+    },
+    "553": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "0",
+        "\"pool_app_id\""
+      ]
+    },
+    "554": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "maybe_exists%6#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0",
+        "received#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0",
+        "maybe_exists%6#0"
+      ]
+    },
+    "555": {
+      "error": "check self.pool_app_id exists",
+      "op": "assert // check self.pool_app_id exists",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0"
+      ]
+    },
+    "556": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%4#0",
+        "maybe_value%5#0"
+      ]
+    },
+    "558": {
+      "op": "swap",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%5#0",
+        "maybe_value%4#0"
+      ]
+    },
+    "559": {
+      "op": "itxn_field Assets",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0",
+        "maybe_value%5#0"
+      ]
+    },
+    "561": {
+      "op": "itxn_field Assets",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "563": {
+      "op": "itxn_field Applications",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "tmp%8#0"
+      ]
+    },
+    "565": {
+      "op": "itxn_field Accounts",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "567": {
+      "op": "pushbytes 0xeabe829d // method \"withdraw(axfer,uint64,account,asset,asset,application)uint64\"",
+      "defined_out": [
+        "Method(withdraw(axfer,uint64,account,asset,asset,application)uint64)",
+        "aggregate%val_as_bytes%0#0",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0",
+        "Method(withdraw(axfer,uint64,account,asset,asset,application)uint64)"
+      ]
+    },
+    "573": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "575": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "577": {
+      "op": "bytec_0 // 0x01",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0x01"
+      ]
+    },
+    "578": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "580": {
+      "op": "pushbytes 0x00",
+      "defined_out": [
+        "0x00",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0x00"
+      ]
+    },
+    "583": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "585": {
+      "op": "bytec_0 // 0x01",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0x01"
+      ]
+    },
+    "586": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "588": {
+      "op": "bytec_0 // 0x01",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0x01"
+      ]
+    },
+    "589": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "591": {
+      "op": "pushint 6 // appl",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "appl"
+      ]
+    },
+    "593": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "595": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0"
+      ]
+    },
+    "596": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "598": {
+      "op": "itxn_submit"
+    },
+    "599": {
+      "op": "itxn LastLog",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0"
+      ]
+    },
+    "601": {
+      "op": "dup",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "awst_tmp%0#0 (copy)",
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0",
+        "awst_tmp%0#0 (copy)"
+      ]
+    },
+    "602": {
+      "op": "extract 0 4",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0",
+        "tmp%9#0"
+      ]
+    },
+    "605": {
+      "op": "bytec 5 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "awst_tmp%0#0",
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0",
+        "tmp%9#0",
+        "0x151f7c75"
+      ]
+    },
+    "607": {
+      "op": "==",
+      "defined_out": [
+        "awst_tmp%0#0",
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%10#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0",
+        "tmp%10#0"
+      ]
+    },
+    "608": {
+      "error": "application log value is not the result of an ABI return",
+      "op": "assert // application log value is not the result of an ABI return",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "awst_tmp%0#0"
+      ]
+    },
+    "609": {
+      "op": "extract 4 0",
+      "defined_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%11#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%11#0"
+      ]
+    },
+    "612": {
+      "op": "len",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "len%0#0"
+      ]
+    },
+    "613": {
+      "op": "intc_1 // 8",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "614": {
+      "op": "==",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "eq%0#0"
+      ]
+    },
+    "615": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "616": {
+      "block": "pool_withdraw_after_if_else@7",
+      "stack_in": [
+        "fusdc_to_send#0",
+        "received#0"
+      ],
+      "op": "dup",
+      "defined_out": [
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "received#0"
+      ]
+    },
+    "617": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%1#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "618": {
+      "op": "bytec 5 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%1#0",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "aggregate%val_as_bytes%1#0",
+        "0x151f7c75"
+      ]
+    },
+    "620": {
+      "op": "swap",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "0x151f7c75",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "621": {
+      "op": "concat",
+      "defined_out": [
+        "received#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "tmp%3#0"
+      ]
+    },
+    "622": {
+      "op": "log",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "623": {
+      "op": "intc_2 // 1",
+      "defined_out": [
+        "1",
+        "received#0"
+      ],
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0",
+        "1"
+      ]
+    },
+    "624": {
+      "op": "return",
+      "stack_out": [
+        "fusdc_to_send#0",
+        "received#0"
+      ]
+    },
+    "625": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter.recoverable_value[routing]",
+      "params": {},
+      "block": "recoverable_value",
+      "stack_in": [],
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._fusdc_balance",
+      "op": "callsub _fusdc_balance",
+      "defined_out": [
+        "a#0"
+      ],
+      "stack_out": [
+        "a#0"
+      ]
+    },
+    "628": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._deposit_index",
+      "op": "callsub _deposit_index",
+      "defined_out": [
+        "a#0",
+        "b#0"
+      ],
+      "stack_out": [
+        "a#0",
+        "b#0"
+      ]
+    },
+    "631": {
+      "op": "mulw",
+      "defined_out": [
+        "high#0",
+        "low#0"
+      ],
+      "stack_out": [
+        "high#0",
+        "low#0"
+      ]
+    },
+    "632": {
+      "op": "intc 4 // 100000000000000",
+      "defined_out": [
+        "100000000000000",
+        "high#0",
+        "low#0"
+      ],
+      "stack_out": [
+        "high#0",
+        "low#0",
+        "100000000000000"
+      ]
+    },
+    "634": {
+      "op": "divw",
+      "defined_out": [
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1"
+      ]
+    },
+    "635": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "636": {
+      "op": "bytec 5 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "638": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "639": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%1#0"
+      ]
+    },
+    "640": {
+      "op": "log",
+      "stack_out": []
+    },
+    "641": {
+      "op": "intc_2 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "642": {
+      "op": "return",
+      "stack_out": []
+    },
+    "643": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter._psm_address",
+      "params": {},
+      "block": "_psm_address",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "644": {
+      "op": "bytec 6 // \"psm_app_id\"",
+      "defined_out": [
+        "\"psm_app_id\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"psm_app_id\""
+      ]
+    },
+    "646": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "647": {
+      "error": "check self.psm_app_id exists",
+      "op": "assert // check self.psm_app_id exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "648": {
+      "op": "app_params_get AppAddress",
+      "defined_out": [
+        "addr#0",
+        "exists#0"
+      ],
+      "stack_out": [
+        "addr#0",
+        "exists#0"
+      ]
+    },
+    "650": {
+      "error": "psm app not found",
+      "op": "assert // psm app not found",
+      "stack_out": [
+        "addr#0"
+      ]
+    },
+    "651": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "652": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter._pool_address",
+      "params": {},
+      "block": "_pool_address",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "653": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "defined_out": [
+        "\"pool_app_id\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pool_app_id\""
+      ]
+    },
+    "654": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "655": {
+      "error": "check self.pool_app_id exists",
+      "op": "assert // check self.pool_app_id exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "656": {
+      "op": "app_params_get AppAddress",
+      "defined_out": [
+        "addr#0",
+        "exists#0"
+      ],
+      "stack_out": [
+        "addr#0",
+        "exists#0"
+      ]
+    },
+    "658": {
+      "error": "pool app not found",
+      "op": "assert // pool app not found",
+      "stack_out": [
+        "addr#0"
+      ]
+    },
+    "659": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "660": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter._assert_psm",
+      "params": {},
+      "block": "_assert_psm",
+      "stack_in": [],
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "662": {
+      "callsub": "smart_contracts.folks_adapter.contract.FolksAdapter._psm_address",
+      "op": "callsub _psm_address",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "665": {
+      "op": "==",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "666": {
+      "error": "caller is not the PSM",
+      "op": "assert // caller is not the PSM",
+      "stack_out": []
+    },
+    "667": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "668": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter._fusdc_balance",
+      "params": {},
+      "block": "_fusdc_balance",
+      "stack_in": [],
+      "op": "global CurrentApplicationAddress",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "670": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0"
+      ]
+    },
+    "671": {
+      "op": "bytec_2 // \"fusdc_asa_id\"",
+      "defined_out": [
+        "\"fusdc_asa_id\"",
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0",
+        "\"fusdc_asa_id\""
+      ]
+    },
+    "672": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "673": {
+      "error": "check self.fusdc_asa_id exists",
+      "op": "assert // check self.fusdc_asa_id exists",
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "674": {
+      "op": "asset_holding_get AssetBalance",
+      "defined_out": [
+        "bal#0",
+        "exists#0"
+      ],
+      "stack_out": [
+        "bal#0",
+        "exists#0"
+      ]
+    },
+    "676": {
+      "error": "adapter not opted into fUSDC",
+      "op": "assert // adapter not opted into fUSDC",
+      "stack_out": [
+        "bal#0"
+      ]
+    },
+    "677": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "678": {
+      "subroutine": "smart_contracts.folks_adapter.contract.FolksAdapter._deposit_index",
+      "params": {},
+      "block": "_deposit_index",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "679": {
+      "op": "bytec_1 // \"pool_app_id\"",
+      "defined_out": [
+        "\"pool_app_id\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pool_app_id\""
+      ]
+    },
+    "680": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "681": {
+      "error": "check self.pool_app_id exists",
+      "op": "assert // check self.pool_app_id exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "682": {
+      "op": "pushbytes 0x69",
+      "defined_out": [
+        "0x69",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "0x69"
+      ]
+    },
+    "685": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "exists#0",
+        "raw#0"
+      ],
+      "stack_out": [
+        "raw#0",
+        "exists#0"
+      ]
+    },
+    "686": {
+      "error": "pool interest state missing",
+      "op": "assert // pool interest state missing",
+      "stack_out": [
+        "raw#0"
+      ]
+    },
+    "687": {
+      "op": "pushint 40",
+      "defined_out": [
+        "40",
+        "raw#0"
+      ],
+      "stack_out": [
+        "raw#0",
+        "40"
+      ]
+    },
+    "689": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "690": {
+      "retsub": true,
+      "op": "retsub"
+    }
+  }
+}

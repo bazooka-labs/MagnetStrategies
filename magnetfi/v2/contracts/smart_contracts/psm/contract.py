@@ -23,6 +23,11 @@ class PSM(
     state_totals=StateTotals(global_uints=8, global_bytes=6),
 ):
     """
+    ⚠️ SUPERSEDED — NOT the launch contract. The productive-reserves PSM in
+    `smart_contracts/psm_v3/` (class PSMv3) replaces this for v3/mainnet. This original v2 PSM
+    is retained ONLY because the v2 integration test suite (tests/conftest.py) deploys it to
+    exercise the vault + lp_oracle. Do not deploy this; do not review it as live code.
+
     MagnetFi v2 Peg Stability Module.
 
     Holds USDC reserves and the non-circulating mUSD reserve.

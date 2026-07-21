@@ -1,0 +1,2997 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 8 5 10000 172800
+    bytecblock "reserve_deficit" "usdc_asa_id" "treasury_address" "deployed_principal" "adapter_impaired" "paused" "adapter_ids" "musd_asa_id" "admin" "pending_vault_app_id" "pending_vault_eta" "pending_adapter_id" "pending_adapter_eta" "pending_treasury" "pending_treasury_eta" "guardian" "pending_admin" "pending_guardian" "buffer_bps" "redeem_fee_bps" "max_venue_bps" 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000 0x151f7c75 "vault_app_id" 0x5a44ecb5
+    // smart_contracts/psm_v3/contract.py:37-40
+    // class PSMv3(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=13, global_bytes=9),
+    // ):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@39
+    pushbytess 0xc50d6333 0x969a0da3 0x3c30bfe1 0xfe5892d6 0x0178f94b 0x1b529de8 0xd7c78c69 0x617b0963 0xe8ab6a79 0xd80d698d 0xb171ceff 0x894c839e 0xff4551fd 0xe6470cd5 0xfcd8caaf 0xca846ca8 0x5bcb2964 0xe1b34837 0x6cba55cb 0x3036a6cb 0x8c30bb75 0x51059bee 0xe646cce7 0x746dae34 0x237b68cd 0x1b9fa713 0xc8c15257 0x575be738 0x8b9aa5f1 0xb0d57779 0xd2c068cb 0xe3cdef3b 0xe83a87ab // method "propose_admin(address)void", method "accept_admin()void", method "propose_guardian(address)void", method "accept_guardian()void", method "pause()void", method "unpause()void", method "mint_musd(uint64)void", method "redeem_musd(uint64)void", method "issue_musd(address,uint64)void", method "receive_musd(uint64)void", method "deposit_usdc(uint64)void", method "withdraw_usdc(uint64)void", method "restore(uint64)void", method "set_redeem_fee(uint64)void", method "set_treasury(address)void", method "propose_treasury(address)void", method "confirm_treasury()void", method "cancel_pending_treasury()void", method "propose_vault_contract(uint64)void", method "confirm_vault_contract()void", method "cancel_pending_vault_contract()void", method "propose_adapter(uint64)void", method "confirm_adapter()void", method "cancel_pending_adapter()void", method "remove_adapter(uint64)void", method "strategy_deploy(uint64,uint64)void", method "strategy_recall(uint64,uint64)void", method "strategy_harvest(uint64)void", method "mark_impaired(uint64,uint64)void", method "set_buffer_bps(uint64)void", method "set_venue_cap_bps(uint64)void", method "opt_in_asset(uint64)void", method "noop()void"
+    txna ApplicationArgs 0
+    match propose_admin accept_admin propose_guardian accept_guardian pause unpause mint_musd redeem_musd issue_musd receive_musd deposit_usdc withdraw_usdc restore set_redeem_fee set_treasury propose_treasury confirm_treasury cancel_pending_treasury propose_vault_contract confirm_vault_contract cancel_pending_vault_contract propose_adapter confirm_adapter cancel_pending_adapter remove_adapter strategy_deploy strategy_recall strategy_harvest mark_impaired set_buffer_bps set_venue_cap_bps opt_in_asset main_noop_route@37
+    err
+
+main_noop_route@37:
+    // smart_contracts/psm_v3/contract.py:856
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+main_create_NoOp@39:
+    // smart_contracts/psm_v3/contract.py:37-40
+    // class PSMv3(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=13, global_bytes=9),
+    // ):
+    pushbytes 0x7f1ff179 // method "deploy(uint64,uint64,address)void"
+    txna ApplicationArgs 0
+    match deploy
+    err
+
+
+// smart_contracts.psm_v3.contract.PSMv3.deploy[routing]() -> void:
+deploy:
+    // smart_contracts/psm_v3/contract.py:101
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 3
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/psm_v3/contract.py:109
+    // assert musd_asa_id != UInt64(0), "musd_asa_id required"
+    dig 2
+    assert // musd_asa_id required
+    // smart_contracts/psm_v3/contract.py:110
+    // assert usdc_asa_id != UInt64(0), "usdc_asa_id required"
+    dig 1
+    assert // usdc_asa_id required
+    // smart_contracts/psm_v3/contract.py:111
+    // assert musd_asa_id != usdc_asa_id, "musd and usdc must be different assets"
+    dig 2
+    dig 2
+    !=
+    assert // musd and usdc must be different assets
+    // smart_contracts/psm_v3/contract.py:112
+    // assert guardian != Global.zero_address, "guardian required"
+    dup
+    global ZeroAddress
+    !=
+    assert // guardian required
+    // smart_contracts/psm_v3/contract.py:113
+    // assert guardian != Txn.sender, "guardian must differ from admin"
+    dup
+    txn Sender
+    !=
+    assert // guardian must differ from admin
+    // smart_contracts/psm_v3/contract.py:114
+    // self.musd_asa_id.value = musd_asa_id
+    bytec 7 // "musd_asa_id"
+    uncover 3
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:115
+    // self.usdc_asa_id.value = usdc_asa_id
+    bytec_1 // "usdc_asa_id"
+    uncover 2
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:116
+    // self.redeem_fee_bps.value = UInt64(100)  # 1% default
+    bytec 19 // "redeem_fee_bps"
+    pushint 100
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:118
+    // self.admin.value = Txn.sender
+    bytec 8 // "admin"
+    txn Sender
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:119
+    // self.guardian.value = guardian
+    bytec 15 // "guardian"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:120
+    // self.pending_admin.value = Global.zero_address
+    bytec 16 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:121
+    // self.pending_guardian.value = Global.zero_address
+    bytec 17 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:122
+    // self.treasury_address.value = Global.zero_address
+    bytec_2 // "treasury_address"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:123
+    // self.paused.value = UInt64(0)
+    bytec 5 // "paused"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:124
+    // self.pending_vault_app_id.value = UInt64(0)
+    bytec 9 // "pending_vault_app_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:125
+    // self.pending_vault_eta.value = UInt64(0)
+    bytec 10 // "pending_vault_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:127-129
+    // # v3 defaults: keep ≥70% liquid (deploy ≤30%); single-venue cap starts at 100%
+    // # (total deployment governed by the buffer). Both admin-tunable post-deploy.
+    // self.buffer_bps.value = UInt64(7_000)
+    bytec 18 // "buffer_bps"
+    pushint 7000
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:130
+    // self.max_venue_bps.value = UInt64(10_000)
+    bytec 20 // "max_venue_bps"
+    intc 4 // 10000
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:131
+    // self.reserve_deficit.value = UInt64(0)
+    bytec_0 // "reserve_deficit"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:132
+    // self.pending_adapter_id.value = UInt64(0)
+    bytec 11 // "pending_adapter_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:133
+    // self.pending_adapter_eta.value = UInt64(0)
+    bytec 12 // "pending_adapter_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:134
+    // self.pending_treasury.value = Global.zero_address
+    bytec 13 // "pending_treasury"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:135
+    // self.pending_treasury_eta.value = UInt64(0)
+    bytec 14 // "pending_treasury_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:136
+    // self.adapter_ids.value = AdapterArray(
+    bytec 6 // "adapter_ids"
+    // smart_contracts/psm_v3/contract.py:136-138
+    // self.adapter_ids.value = AdapterArray(
+    //     arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0)
+    // )
+    bytec 21 // 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:139
+    // self.deployed_principal.value = AdapterArray(
+    bytec_3 // "deployed_principal"
+    // smart_contracts/psm_v3/contract.py:136-138
+    // self.adapter_ids.value = AdapterArray(
+    //     arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0)
+    // )
+    bytec 21 // 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    // smart_contracts/psm_v3/contract.py:139-141
+    // self.deployed_principal.value = AdapterArray(
+    //     arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0)
+    // )
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:142
+    // self.adapter_impaired.value = AdapterArray(
+    bytec 4 // "adapter_impaired"
+    // smart_contracts/psm_v3/contract.py:136-138
+    // self.adapter_ids.value = AdapterArray(
+    //     arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0)
+    // )
+    bytec 21 // 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000
+    // smart_contracts/psm_v3/contract.py:142-144
+    // self.adapter_impaired.value = AdapterArray(
+    //     arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0), arc4.UInt64(0)
+    // )
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:101
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.propose_admin[routing]() -> void:
+propose_admin:
+    // smart_contracts/psm_v3/contract.py:305
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/psm_v3/contract.py:307
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/psm_v3/contract.py:308
+    // assert new_admin != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/psm_v3/contract.py:309
+    // assert new_admin != self.guardian.value, "admin must differ from guardian"
+    intc_0 // 0
+    bytec 15 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    dig 1
+    !=
+    assert // admin must differ from guardian
+    // smart_contracts/psm_v3/contract.py:310
+    // self.pending_admin.value = new_admin
+    bytec 16 // "pending_admin"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:305
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.accept_admin[routing]() -> void:
+accept_admin:
+    // smart_contracts/psm_v3/contract.py:314
+    // assert self.pending_admin.value != Global.zero_address, "no pending admin"
+    intc_0 // 0
+    bytec 16 // "pending_admin"
+    app_global_get_ex
+    assert // check self.pending_admin exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending admin
+    // smart_contracts/psm_v3/contract.py:315
+    // assert Txn.sender == self.pending_admin.value, "not pending admin"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending admin
+    // smart_contracts/psm_v3/contract.py:316
+    // self.admin.value = self.pending_admin.value
+    bytec 8 // "admin"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:317
+    // self.pending_admin.value = Global.zero_address
+    bytec 16 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:318-320
+    // # Clear any queued privileged change so it can't be confirmed by a new admin
+    // # unaware of its provenance (P21-04, extended to adapter + treasury queues).
+    // self.pending_vault_app_id.value = UInt64(0)
+    bytec 9 // "pending_vault_app_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:321
+    // self.pending_vault_eta.value = UInt64(0)
+    bytec 10 // "pending_vault_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:322
+    // self.pending_adapter_id.value = UInt64(0)
+    bytec 11 // "pending_adapter_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:323
+    // self.pending_adapter_eta.value = UInt64(0)
+    bytec 12 // "pending_adapter_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:324
+    // self.pending_treasury.value = Global.zero_address
+    bytec 13 // "pending_treasury"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:325
+    // self.pending_treasury_eta.value = UInt64(0)
+    bytec 14 // "pending_treasury_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:312
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.propose_guardian[routing]() -> void:
+propose_guardian:
+    // smart_contracts/psm_v3/contract.py:327
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/psm_v3/contract.py:329
+    // self._assert_guardian()
+    callsub _assert_guardian
+    // smart_contracts/psm_v3/contract.py:330
+    // assert new_guardian != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/psm_v3/contract.py:331
+    // assert new_guardian != self.admin.value, "guardian must differ from admin"
+    intc_0 // 0
+    bytec 8 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    dig 1
+    !=
+    assert // guardian must differ from admin
+    // smart_contracts/psm_v3/contract.py:332
+    // self.pending_guardian.value = new_guardian
+    bytec 17 // "pending_guardian"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:327
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.accept_guardian[routing]() -> void:
+accept_guardian:
+    // smart_contracts/psm_v3/contract.py:336
+    // assert self.pending_guardian.value != Global.zero_address, "no pending guardian"
+    intc_0 // 0
+    bytec 17 // "pending_guardian"
+    app_global_get_ex
+    assert // check self.pending_guardian exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending guardian
+    // smart_contracts/psm_v3/contract.py:337
+    // assert Txn.sender == self.pending_guardian.value, "not pending guardian"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending guardian
+    // smart_contracts/psm_v3/contract.py:338
+    // self.guardian.value = self.pending_guardian.value
+    bytec 15 // "guardian"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:339
+    // self.pending_guardian.value = Global.zero_address
+    bytec 17 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:334
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.pause[routing]() -> void:
+pause:
+    // smart_contracts/psm_v3/contract.py:345
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/psm_v3/contract.py:346
+    // self.paused.value = UInt64(1)
+    bytec 5 // "paused"
+    intc_1 // 1
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:343
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.unpause[routing]() -> void:
+unpause:
+    // smart_contracts/psm_v3/contract.py:350
+    // self._assert_guardian()
+    callsub _assert_guardian
+    // smart_contracts/psm_v3/contract.py:351
+    // self.paused.value = UInt64(0)
+    bytec 5 // "paused"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:348
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.mint_musd[routing]() -> void:
+mint_musd:
+    // smart_contracts/psm_v3/contract.py:355
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:358
+    // assert self.paused.value == UInt64(0), "minting paused"
+    intc_0 // 0
+    bytec 5 // "paused"
+    app_global_get_ex
+    assert // check self.paused exists
+    !
+    assert // minting paused
+    // smart_contracts/psm_v3/contract.py:359
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:361
+    // assert op.Txn.group_index >= UInt64(1), "mint_musd not preceded by USDC deposit"
+    txn GroupIndex
+    assert // mint_musd not preceded by USDC deposit
+    // smart_contracts/psm_v3/contract.py:362
+    // usdc_xfer = op.Txn.group_index - UInt64(1)
+    txn GroupIndex
+    intc_1 // 1
+    -
+    // smart_contracts/psm_v3/contract.py:363
+    // pay_txn = gtxn.AssetTransferTransaction(usdc_xfer)
+    dup
+    gtxns TypeEnum
+    pushint 4 // axfer
+    ==
+    assert // transaction type is axfer
+    // smart_contracts/psm_v3/contract.py:364
+    // assert pay_txn.xfer_asset == Asset(self.usdc_asa_id.value), "wrong asset"
+    dup
+    gtxns XferAsset
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    ==
+    assert // wrong asset
+    // smart_contracts/psm_v3/contract.py:365
+    // assert pay_txn.asset_receiver == Global.current_application_address, "wrong receiver"
+    dup
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    assert // wrong receiver
+    // smart_contracts/psm_v3/contract.py:366
+    // assert pay_txn.asset_amount == amount, "amount mismatch"
+    gtxns AssetAmount
+    dig 1
+    ==
+    assert // amount mismatch
+    // smart_contracts/psm_v3/contract.py:368
+    // assert self._psm_musd_balance() >= amount, "insufficient mUSD reserve"
+    callsub _psm_musd_balance
+    dig 1
+    >=
+    assert // insufficient mUSD reserve
+    // smart_contracts/psm_v3/contract.py:370-375
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.musd_asa_id.value,
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:371
+    // xfer_asset=self.musd_asa_id.value,
+    intc_0 // 0
+    bytec 7 // "musd_asa_id"
+    app_global_get_ex
+    assert // check self.musd_asa_id exists
+    // smart_contracts/psm_v3/contract.py:372
+    // asset_receiver=Txn.sender,
+    txn Sender
+    uncover 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:370
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:374
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:370-375
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.musd_asa_id.value,
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:355
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.redeem_musd[routing]() -> void:
+redeem_musd:
+    // smart_contracts/psm_v3/contract.py:377
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:385
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:386
+    // assert self.treasury_address.value != Global.zero_address, "treasury not set"
+    intc_0 // 0
+    bytec_2 // "treasury_address"
+    app_global_get_ex
+    assert // check self.treasury_address exists
+    global ZeroAddress
+    !=
+    assert // treasury not set
+    // smart_contracts/psm_v3/contract.py:388
+    // assert op.Txn.group_index >= UInt64(1), "redeem_musd not preceded by mUSD deposit"
+    txn GroupIndex
+    assert // redeem_musd not preceded by mUSD deposit
+    // smart_contracts/psm_v3/contract.py:389
+    // musd_xfer = op.Txn.group_index - UInt64(1)
+    txn GroupIndex
+    intc_1 // 1
+    -
+    // smart_contracts/psm_v3/contract.py:390
+    // musd_txn = gtxn.AssetTransferTransaction(musd_xfer)
+    dup
+    gtxns TypeEnum
+    pushint 4 // axfer
+    ==
+    assert // transaction type is axfer
+    // smart_contracts/psm_v3/contract.py:391
+    // assert musd_txn.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
+    dup
+    gtxns XferAsset
+    intc_0 // 0
+    bytec 7 // "musd_asa_id"
+    app_global_get_ex
+    assert // check self.musd_asa_id exists
+    ==
+    assert // wrong asset
+    // smart_contracts/psm_v3/contract.py:392
+    // assert musd_txn.asset_receiver == Global.current_application_address, "wrong receiver"
+    dup
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    assert // wrong receiver
+    // smart_contracts/psm_v3/contract.py:393
+    // assert musd_txn.asset_amount == amount, "amount mismatch"
+    gtxns AssetAmount
+    dig 1
+    ==
+    assert // amount mismatch
+    // smart_contracts/psm_v3/contract.py:395
+    // fee_bps = self.redeem_fee_bps.value
+    intc_0 // 0
+    bytec 19 // "redeem_fee_bps"
+    app_global_get_ex
+    assert // check self.redeem_fee_bps exists
+    // smart_contracts/psm_v3/contract.py:396
+    // usdc_out = self._wide_ratio(amount, UInt64(10_000) - fee_bps, UInt64(10_000))
+    intc 4 // 10000
+    swap
+    -
+    // smart_contracts/psm_v3/contract.py:196
+    // high, low = op.mulw(a, b)
+    dig 1
+    mulw
+    // smart_contracts/psm_v3/contract.py:396
+    // usdc_out = self._wide_ratio(amount, UInt64(10_000) - fee_bps, UInt64(10_000))
+    intc 4 // 10000
+    // smart_contracts/psm_v3/contract.py:197
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/psm_v3/contract.py:397
+    // assert usdc_out > UInt64(0), "amount too small (dust guard)"
+    dup
+    assert // amount too small (dust guard)
+    // smart_contracts/psm_v3/contract.py:399
+    // assert self._psm_usdc_balance() >= amount, "insufficient liquid reserve — retry shortly"
+    callsub _psm_usdc_balance
+    dig 2
+    >=
+    assert // insufficient liquid reserve — retry shortly
+    // smart_contracts/psm_v3/contract.py:401-406
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=usdc_out,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:402
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:403
+    // asset_receiver=Txn.sender,
+    txn Sender
+    dig 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:401
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:405
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:401-406
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=usdc_out,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:408
+    // fee_out = amount - usdc_out
+    -
+    dup
+    // smart_contracts/psm_v3/contract.py:409
+    // if fee_out > UInt64(0):
+    bz redeem_musd_after_if_else@5
+    // smart_contracts/psm_v3/contract.py:410-415
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.treasury_address.value,
+    //     asset_amount=fee_out,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:411
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:412
+    // asset_receiver=self.treasury_address.value,
+    intc_0 // 0
+    bytec_2 // "treasury_address"
+    app_global_get_ex
+    assert // check self.treasury_address exists
+    dig 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:410
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:414
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:410-415
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.treasury_address.value,
+    //     asset_amount=fee_out,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+
+redeem_musd_after_if_else@5:
+    // smart_contracts/psm_v3/contract.py:377
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.issue_musd[routing]() -> void:
+issue_musd:
+    // smart_contracts/psm_v3/contract.py:419
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:429
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:430
+    // self._assert_vault_caller()
+    callsub _assert_vault_caller
+    // smart_contracts/psm_v3/contract.py:431-434
+    // # v3: pause now halts new borrow issuance too (v2 left it open) — a single fast lever
+    // # for the guardian to stop all new backing exposure in an incident (INFO-1). Redeem
+    // # stays open, so users can always exit.
+    // assert self.paused.value == UInt64(0), "issuance paused"
+    intc_0 // 0
+    bytec 5 // "paused"
+    app_global_get_ex
+    assert // check self.paused exists
+    !
+    assert // issuance paused
+    // smart_contracts/psm_v3/contract.py:435
+    // assert self.reserve_deficit.value == UInt64(0), "issuance frozen — reserve deficit"
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    !
+    assert // issuance frozen — reserve deficit
+    // smart_contracts/psm_v3/contract.py:436
+    // assert not self._any_impaired(), "issuance frozen — adapter impaired"
+    callsub _any_impaired
+    !
+    assert // issuance frozen — adapter impaired
+    // smart_contracts/psm_v3/contract.py:438
+    // circulating = self._circulating_musd()
+    callsub _circulating_musd
+    // smart_contracts/psm_v3/contract.py:439
+    // assert circulating + amount <= self._total_backing(), "exceeds vault ceiling"
+    dig 1
+    +
+    callsub _total_backing
+    <=
+    assert // exceeds vault ceiling
+    // smart_contracts/psm_v3/contract.py:441-446
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.musd_asa_id.value,
+    //     asset_receiver=recipient,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:442
+    // xfer_asset=self.musd_asa_id.value,
+    intc_0 // 0
+    bytec 7 // "musd_asa_id"
+    app_global_get_ex
+    assert // check self.musd_asa_id exists
+    itxn_field XferAsset
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    // smart_contracts/psm_v3/contract.py:441
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:445
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:441-446
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.musd_asa_id.value,
+    //     asset_receiver=recipient,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:419
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.receive_musd[routing]() -> void:
+receive_musd:
+    // smart_contracts/psm_v3/contract.py:448
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:451
+    // assert amount > UInt64(0), "amount must be > 0"
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:452
+    // self._assert_vault_caller()
+    callsub _assert_vault_caller
+    // smart_contracts/psm_v3/contract.py:448
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.deposit_usdc[routing]() -> void:
+deposit_usdc:
+    // smart_contracts/psm_v3/contract.py:456
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:459
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:460
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:462
+    // assert op.Txn.group_index >= UInt64(1), "deposit_usdc not preceded by USDC deposit"
+    txn GroupIndex
+    assert // deposit_usdc not preceded by USDC deposit
+    // smart_contracts/psm_v3/contract.py:463
+    // usdc_xfer = op.Txn.group_index - UInt64(1)
+    txn GroupIndex
+    intc_1 // 1
+    -
+    // smart_contracts/psm_v3/contract.py:464
+    // pay_txn = gtxn.AssetTransferTransaction(usdc_xfer)
+    dup
+    gtxns TypeEnum
+    pushint 4 // axfer
+    ==
+    assert // transaction type is axfer
+    // smart_contracts/psm_v3/contract.py:465
+    // assert pay_txn.xfer_asset == Asset(self.usdc_asa_id.value), "wrong asset"
+    dup
+    gtxns XferAsset
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    ==
+    assert // wrong asset
+    // smart_contracts/psm_v3/contract.py:466
+    // assert pay_txn.asset_receiver == Global.current_application_address, "wrong receiver"
+    dup
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    assert // wrong receiver
+    // smart_contracts/psm_v3/contract.py:467
+    // assert pay_txn.asset_amount == amount, "amount mismatch"
+    gtxns AssetAmount
+    ==
+    assert // amount mismatch
+    // smart_contracts/psm_v3/contract.py:456
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.withdraw_usdc[routing]() -> void:
+withdraw_usdc:
+    // smart_contracts/psm_v3/contract.py:469
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:478
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:479
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:480
+    // assert self.reserve_deficit.value == UInt64(0), "withdraw frozen — reserve deficit"
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    !
+    assert // withdraw frozen — reserve deficit
+    // smart_contracts/psm_v3/contract.py:482
+    // on_chain = self._psm_usdc_balance()
+    callsub _psm_usdc_balance
+    // smart_contracts/psm_v3/contract.py:483
+    // circulating = self._circulating_musd()
+    callsub _circulating_musd
+    // smart_contracts/psm_v3/contract.py:484
+    // total_reserve = on_chain + self._total_deployed_principal()
+    callsub _total_deployed_principal
+    dig 2
+    +
+    // smart_contracts/psm_v3/contract.py:485
+    // buffer_floor = self._wide_ratio(total_reserve, self.buffer_bps.value, UInt64(10_000))
+    intc_0 // 0
+    bytec 18 // "buffer_bps"
+    app_global_get_ex
+    assert // check self.buffer_bps exists
+    // smart_contracts/psm_v3/contract.py:196
+    // high, low = op.mulw(a, b)
+    mulw
+    // smart_contracts/psm_v3/contract.py:485
+    // buffer_floor = self._wide_ratio(total_reserve, self.buffer_bps.value, UInt64(10_000))
+    intc 4 // 10000
+    // smart_contracts/psm_v3/contract.py:197
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/psm_v3/contract.py:487-488
+    // # amount ≤ on-chain − buffer  →  on-chain ≥ amount + buffer_floor
+    // assert on_chain >= amount + buffer_floor, "would breach liquidity buffer"
+    dig 3
+    +
+    uncover 2
+    <=
+    assert // would breach liquidity buffer
+    // smart_contracts/psm_v3/contract.py:489-490
+    // # amount ≤ total_backing − circulating  →  total_backing ≥ circulating + amount
+    // assert self._total_backing() >= circulating + amount, "would break invariant"
+    callsub _total_backing
+    swap
+    dig 2
+    +
+    >=
+    assert // would break invariant
+    // smart_contracts/psm_v3/contract.py:492-497
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.admin.value,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:493
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:494
+    // asset_receiver=self.admin.value,
+    intc_0 // 0
+    bytec 8 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    uncover 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:492
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:496
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:492-497
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.admin.value,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:469
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.restore[routing]() -> void:
+restore:
+    // smart_contracts/psm_v3/contract.py:499
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:507
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:508
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:510
+    // assert op.Txn.group_index >= UInt64(1), "restore not preceded by USDC deposit"
+    txn GroupIndex
+    assert // restore not preceded by USDC deposit
+    // smart_contracts/psm_v3/contract.py:511
+    // usdc_xfer = op.Txn.group_index - UInt64(1)
+    txn GroupIndex
+    intc_1 // 1
+    -
+    // smart_contracts/psm_v3/contract.py:512
+    // pay_txn = gtxn.AssetTransferTransaction(usdc_xfer)
+    dup
+    gtxns TypeEnum
+    pushint 4 // axfer
+    ==
+    assert // transaction type is axfer
+    // smart_contracts/psm_v3/contract.py:513
+    // assert pay_txn.xfer_asset == Asset(self.usdc_asa_id.value), "wrong asset"
+    dup
+    gtxns XferAsset
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    ==
+    assert // wrong asset
+    // smart_contracts/psm_v3/contract.py:514
+    // assert pay_txn.asset_receiver == Global.current_application_address, "wrong receiver"
+    dup
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    assert // wrong receiver
+    // smart_contracts/psm_v3/contract.py:515
+    // assert pay_txn.asset_amount == amount, "amount mismatch"
+    gtxns AssetAmount
+    dig 1
+    ==
+    assert // amount mismatch
+    // smart_contracts/psm_v3/contract.py:517
+    // deficit = self.reserve_deficit.value
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    // smart_contracts/psm_v3/contract.py:518
+    // paid = amount if amount <= deficit else deficit
+    dup2
+    <=
+    dig 1
+    uncover 3
+    uncover 2
+    select
+    // smart_contracts/psm_v3/contract.py:519
+    // self.reserve_deficit.value = deficit - paid
+    -
+    bytec_0 // "reserve_deficit"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:499
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.set_redeem_fee[routing]() -> void:
+set_redeem_fee:
+    // smart_contracts/psm_v3/contract.py:523
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:526
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:527
+    // assert fee_bps <= UInt64(500), "max fee 500 bps"
+    dup
+    pushint 500
+    <=
+    assert // max fee 500 bps
+    // smart_contracts/psm_v3/contract.py:528
+    // self.redeem_fee_bps.value = fee_bps
+    bytec 19 // "redeem_fee_bps"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:523
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.set_treasury[routing]() -> void:
+set_treasury:
+    // smart_contracts/psm_v3/contract.py:530
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/psm_v3/contract.py:536
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:537
+    // assert address != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/psm_v3/contract.py:538
+    // assert self.treasury_address.value == Global.zero_address, "already set — use propose_treasury"
+    intc_0 // 0
+    bytec_2 // "treasury_address"
+    app_global_get_ex
+    assert // check self.treasury_address exists
+    global ZeroAddress
+    ==
+    assert // already set — use propose_treasury
+    // smart_contracts/psm_v3/contract.py:539
+    // self.treasury_address.value = address
+    bytec_2 // "treasury_address"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:530
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.propose_treasury[routing]() -> void:
+propose_treasury:
+    // smart_contracts/psm_v3/contract.py:541
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/psm_v3/contract.py:544
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:545
+    // assert address != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/psm_v3/contract.py:546
+    // self.pending_treasury.value = address
+    bytec 13 // "pending_treasury"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:547
+    // self.pending_treasury_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+    global LatestTimestamp
+    intc 5 // 172800
+    +
+    bytec 14 // "pending_treasury_eta"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:541
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.confirm_treasury[routing]() -> void:
+confirm_treasury:
+    // smart_contracts/psm_v3/contract.py:551
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:552
+    // assert self.pending_treasury.value != Global.zero_address, "no pending treasury"
+    intc_0 // 0
+    bytec 13 // "pending_treasury"
+    app_global_get_ex
+    assert // check self.pending_treasury exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending treasury
+    // smart_contracts/psm_v3/contract.py:553
+    // assert Global.latest_timestamp >= self.pending_treasury_eta.value, "timelock not elapsed"
+    global LatestTimestamp
+    intc_0 // 0
+    bytec 14 // "pending_treasury_eta"
+    app_global_get_ex
+    assert // check self.pending_treasury_eta exists
+    >=
+    assert // timelock not elapsed
+    // smart_contracts/psm_v3/contract.py:554
+    // self.treasury_address.value = self.pending_treasury.value
+    bytec_2 // "treasury_address"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:555
+    // self.pending_treasury.value = Global.zero_address
+    bytec 13 // "pending_treasury"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:556
+    // self.pending_treasury_eta.value = UInt64(0)
+    bytec 14 // "pending_treasury_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:549
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.cancel_pending_treasury[routing]() -> void:
+cancel_pending_treasury:
+    // smart_contracts/psm_v3/contract.py:560
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/psm_v3/contract.py:561
+    // self.pending_treasury.value = Global.zero_address
+    bytec 13 // "pending_treasury"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:562
+    // self.pending_treasury_eta.value = UInt64(0)
+    bytec 14 // "pending_treasury_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:558
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.propose_vault_contract[routing]() -> void:
+propose_vault_contract:
+    // smart_contracts/psm_v3/contract.py:566
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:568
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:569
+    // assert vault_app_id != UInt64(0), "invalid vault app id"
+    dup
+    assert // invalid vault app id
+    // smart_contracts/psm_v3/contract.py:570
+    // self.pending_vault_app_id.value = vault_app_id
+    bytec 9 // "pending_vault_app_id"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:571
+    // self.pending_vault_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+    global LatestTimestamp
+    intc 5 // 172800
+    +
+    bytec 10 // "pending_vault_eta"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:566
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.confirm_vault_contract[routing]() -> void:
+confirm_vault_contract:
+    // smart_contracts/psm_v3/contract.py:575
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:576
+    // assert self.pending_vault_app_id.value != UInt64(0), "no pending vault contract"
+    intc_0 // 0
+    bytec 9 // "pending_vault_app_id"
+    app_global_get_ex
+    assert // check self.pending_vault_app_id exists
+    dup
+    assert // no pending vault contract
+    // smart_contracts/psm_v3/contract.py:577
+    // assert Global.latest_timestamp >= self.pending_vault_eta.value, "timelock not elapsed"
+    global LatestTimestamp
+    intc_0 // 0
+    bytec 10 // "pending_vault_eta"
+    app_global_get_ex
+    assert // check self.pending_vault_eta exists
+    >=
+    assert // timelock not elapsed
+    // smart_contracts/psm_v3/contract.py:578
+    // self.vault_app_id.value = self.pending_vault_app_id.value
+    bytec 23 // "vault_app_id"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:579
+    // self.pending_vault_app_id.value = UInt64(0)
+    bytec 9 // "pending_vault_app_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:580
+    // self.pending_vault_eta.value = UInt64(0)
+    bytec 10 // "pending_vault_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:573
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.cancel_pending_vault_contract[routing]() -> void:
+cancel_pending_vault_contract:
+    // smart_contracts/psm_v3/contract.py:584
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/psm_v3/contract.py:585
+    // self.pending_vault_app_id.value = UInt64(0)
+    bytec 9 // "pending_vault_app_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:586
+    // self.pending_vault_eta.value = UInt64(0)
+    bytec 10 // "pending_vault_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:582
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.propose_adapter[routing]() -> void:
+propose_adapter:
+    // smart_contracts/psm_v3/contract.py:590
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:597
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:598
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    dup
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:599
+    // assert self._find_adapter_slot(adapter_app_id) == UInt64(MAX_ADAPTERS), "already whitelisted"
+    dup
+    callsub _find_adapter_slot
+    intc_3 // 5
+    ==
+    assert // already whitelisted
+    // smart_contracts/psm_v3/contract.py:600
+    // assert self._free_slot() < UInt64(MAX_ADAPTERS), "adapter registry full"
+    callsub _free_slot
+    intc_3 // 5
+    <
+    assert // adapter registry full
+    // smart_contracts/psm_v3/contract.py:601
+    // self.pending_adapter_id.value = adapter_app_id
+    bytec 11 // "pending_adapter_id"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:602
+    // self.pending_adapter_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+    global LatestTimestamp
+    intc 5 // 172800
+    +
+    bytec 12 // "pending_adapter_eta"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:590
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.confirm_adapter[routing]() -> void:
+confirm_adapter:
+    // smart_contracts/psm_v3/contract.py:607
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:608
+    // aid = self.pending_adapter_id.value
+    intc_0 // 0
+    bytec 11 // "pending_adapter_id"
+    app_global_get_ex
+    assert // check self.pending_adapter_id exists
+    // smart_contracts/psm_v3/contract.py:609
+    // assert aid != UInt64(0), "no pending adapter"
+    dup
+    assert // no pending adapter
+    // smart_contracts/psm_v3/contract.py:610
+    // assert Global.latest_timestamp >= self.pending_adapter_eta.value, "timelock not elapsed"
+    global LatestTimestamp
+    intc_0 // 0
+    bytec 12 // "pending_adapter_eta"
+    app_global_get_ex
+    assert // check self.pending_adapter_eta exists
+    >=
+    assert // timelock not elapsed
+    // smart_contracts/psm_v3/contract.py:611
+    // assert self._find_adapter_slot(aid) == UInt64(MAX_ADAPTERS), "already whitelisted"
+    dup
+    callsub _find_adapter_slot
+    intc_3 // 5
+    ==
+    assert // already whitelisted
+    // smart_contracts/psm_v3/contract.py:612
+    // slot = self._free_slot()
+    callsub _free_slot
+    // smart_contracts/psm_v3/contract.py:613
+    // assert slot < UInt64(MAX_ADAPTERS), "adapter registry full"
+    dup
+    intc_3 // 5
+    <
+    assert // adapter registry full
+    // smart_contracts/psm_v3/contract.py:614
+    // self._set_slot(slot, aid, UInt64(0), UInt64(0))
+    swap
+    intc_0 // 0
+    dup
+    callsub _set_slot
+    // smart_contracts/psm_v3/contract.py:615
+    // self.pending_adapter_id.value = UInt64(0)
+    bytec 11 // "pending_adapter_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:616
+    // self.pending_adapter_eta.value = UInt64(0)
+    bytec 12 // "pending_adapter_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:604
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.cancel_pending_adapter[routing]() -> void:
+cancel_pending_adapter:
+    // smart_contracts/psm_v3/contract.py:621
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/psm_v3/contract.py:622
+    // self.pending_adapter_id.value = UInt64(0)
+    bytec 11 // "pending_adapter_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:623
+    // self.pending_adapter_eta.value = UInt64(0)
+    bytec 12 // "pending_adapter_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:618
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.remove_adapter[routing]() -> void:
+remove_adapter:
+    pushbytes ""
+    // smart_contracts/psm_v3/contract.py:625
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    dup
+    // smart_contracts/psm_v3/contract.py:642
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:643
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    dup
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:644
+    // slot = self._find_adapter_slot(adapter_app_id)
+    callsub _find_adapter_slot
+    dupn 2
+    // smart_contracts/psm_v3/contract.py:645
+    // assert slot < UInt64(MAX_ADAPTERS), "not whitelisted"
+    intc_3 // 5
+    <
+    assert // not whitelisted
+    // smart_contracts/psm_v3/contract.py:647
+    // flags = self.adapter_impaired.value.copy()
+    intc_0 // 0
+    bytec 4 // "adapter_impaired"
+    app_global_get_ex
+    assert // check self.adapter_impaired exists
+    // smart_contracts/psm_v3/contract.py:648
+    // if flags[slot].native == UInt64(0):
+    swap
+    intc_2 // 8
+    *
+    extract_uint64
+    bnz remove_adapter_else_body@3
+    // smart_contracts/psm_v3/contract.py:649-650
+    // # Healthy path: must be provably empty (safe to call the live adapter).
+    // assert self._principal_at(slot) == UInt64(0), "recall principal first"
+    dup
+    callsub _principal_at
+    !
+    assert // recall principal first
+    // smart_contracts/psm_v3/contract.py:651
+    // assert self._adapter_recoverable(adapter_app_id) == UInt64(0), "adapter still holds value"
+    dig 1
+    callsub _adapter_recoverable
+    !
+    assert // adapter still holds value
+
+remove_adapter_after_if_else@6:
+    // smart_contracts/psm_v3/contract.py:657
+    // self._set_slot(slot, UInt64(0), UInt64(0), UInt64(0))
+    dup
+    intc_0 // 0
+    dupn 2
+    callsub _set_slot
+    // smart_contracts/psm_v3/contract.py:625
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+remove_adapter_else_body@3:
+    // smart_contracts/psm_v3/contract.py:653-654
+    // # Impaired escape hatch: never call the adapter; write off any residual principal.
+    // remaining = self._principal_at(slot)
+    dup
+    callsub _principal_at
+    dup
+    bury 4
+    // smart_contracts/psm_v3/contract.py:655
+    // if remaining > UInt64(0):
+    bz remove_adapter_after_if_else@6
+    // smart_contracts/psm_v3/contract.py:656
+    // self.reserve_deficit.value = self.reserve_deficit.value + remaining
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    dig 3
+    +
+    bytec_0 // "reserve_deficit"
+    swap
+    app_global_put
+    b remove_adapter_after_if_else@6
+
+
+// smart_contracts.psm_v3.contract.PSMv3.strategy_deploy[routing]() -> void:
+strategy_deploy:
+    // smart_contracts/psm_v3/contract.py:661
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    dup
+    btoi
+    // smart_contracts/psm_v3/contract.py:668
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:669
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    dig 2
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:670
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:671
+    // assert self.paused.value == UInt64(0), "deploy paused"
+    intc_0 // 0
+    bytec 5 // "paused"
+    app_global_get_ex
+    assert // check self.paused exists
+    !
+    assert // deploy paused
+    // smart_contracts/psm_v3/contract.py:672
+    // assert self.reserve_deficit.value == UInt64(0), "deploy frozen — reserve deficit"
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    !
+    assert // deploy frozen — reserve deficit
+    // smart_contracts/psm_v3/contract.py:673
+    // assert not self._any_impaired(), "deploy frozen — adapter impaired"
+    callsub _any_impaired
+    !
+    assert // deploy frozen — adapter impaired
+    // smart_contracts/psm_v3/contract.py:675
+    // slot = self._find_adapter_slot(adapter_app_id)
+    dig 2
+    callsub _find_adapter_slot
+    // smart_contracts/psm_v3/contract.py:676
+    // assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
+    dup
+    intc_3 // 5
+    <
+    assert // adapter not whitelisted
+    // smart_contracts/psm_v3/contract.py:678
+    // on_chain = self._psm_usdc_balance()
+    callsub _psm_usdc_balance
+    // smart_contracts/psm_v3/contract.py:679
+    // total_reserve = on_chain + self._total_deployed_principal()
+    callsub _total_deployed_principal
+    dig 1
+    +
+    // smart_contracts/psm_v3/contract.py:681-682
+    // # Guardrail 1: on-chain USDC after deploy ≥ buffer floor (F-8, deploy-time throttle).
+    // buffer_floor = self._wide_ratio(total_reserve, self.buffer_bps.value, UInt64(10_000))
+    intc_0 // 0
+    bytec 18 // "buffer_bps"
+    app_global_get_ex
+    assert // check self.buffer_bps exists
+    // smart_contracts/psm_v3/contract.py:196
+    // high, low = op.mulw(a, b)
+    dig 1
+    mulw
+    // smart_contracts/psm_v3/contract.py:681-682
+    // # Guardrail 1: on-chain USDC after deploy ≥ buffer floor (F-8, deploy-time throttle).
+    // buffer_floor = self._wide_ratio(total_reserve, self.buffer_bps.value, UInt64(10_000))
+    intc 4 // 10000
+    // smart_contracts/psm_v3/contract.py:197
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/psm_v3/contract.py:683
+    // assert on_chain >= amount + buffer_floor, "would breach liquidity buffer"
+    dig 4
+    +
+    uncover 2
+    <=
+    assert // would breach liquidity buffer
+    // smart_contracts/psm_v3/contract.py:685-686
+    // # Guardrail 2: per-venue exposure cap on principal.
+    // principal_after = self._principal_at(slot) + amount
+    dig 1
+    callsub _principal_at
+    dig 3
+    +
+    // smart_contracts/psm_v3/contract.py:687
+    // venue_cap = self._wide_ratio(total_reserve, self.max_venue_bps.value, UInt64(10_000))
+    intc_0 // 0
+    bytec 20 // "max_venue_bps"
+    app_global_get_ex
+    assert // check self.max_venue_bps exists
+    // smart_contracts/psm_v3/contract.py:196
+    // high, low = op.mulw(a, b)
+    uncover 2
+    mulw
+    // smart_contracts/psm_v3/contract.py:687
+    // venue_cap = self._wide_ratio(total_reserve, self.max_venue_bps.value, UInt64(10_000))
+    intc 4 // 10000
+    // smart_contracts/psm_v3/contract.py:197
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/psm_v3/contract.py:688
+    // assert principal_after <= venue_cap, "would breach per-venue cap"
+    dig 1
+    >=
+    assert // would breach per-venue cap
+    // smart_contracts/psm_v3/contract.py:690-696
+    // # Move USDC to the adapter, then have it take custody / enter the venue.
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self._adapter_address(adapter_app_id),
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:692
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:203
+    // addr, exists = op.AppParamsGet.app_address(adapter_app_id)
+    dig 5
+    app_params_get AppAddress
+    // smart_contracts/psm_v3/contract.py:204
+    // assert exists, "adapter app not found"
+    assert // adapter app not found
+    uncover 4
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:690-691
+    // # Move USDC to the adapter, then have it take custody / enter the venue.
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:695
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:690-696
+    // # Move USDC to the adapter, then have it take custody / enter the venue.
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self._adapter_address(adapter_app_id),
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:697
+    // arc4.abi_call("pool_deposit(uint64)void", amount, app_id=adapter_app_id)
+    itxn_begin
+    uncover 3
+    itxn_field ApplicationID
+    pushbytes 0x77e93bad // method "pool_deposit(uint64)void"
+    itxn_field ApplicationArgs
+    uncover 2
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:699
+    // self._set_principal(slot, principal_after)
+    callsub _set_principal
+    // smart_contracts/psm_v3/contract.py:701-702
+    // # Guardrail 3: invariant still holds against the freshly-valued reserve.
+    // assert self._circulating_musd() <= self._total_backing(), "would break invariant"
+    callsub _circulating_musd
+    callsub _total_backing
+    <=
+    assert // would break invariant
+    // smart_contracts/psm_v3/contract.py:661
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.strategy_recall[routing]() -> void:
+strategy_recall:
+    pushbytes ""
+    // smart_contracts/psm_v3/contract.py:704
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    dup
+    btoi
+    // smart_contracts/psm_v3/contract.py:714
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:715
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    dig 2
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:716
+    // assert amount > UInt64(0), "amount must be > 0"
+    dup
+    assert // amount must be > 0
+    // smart_contracts/psm_v3/contract.py:717
+    // slot = self._find_adapter_slot(adapter_app_id)
+    dig 2
+    callsub _find_adapter_slot
+    // smart_contracts/psm_v3/contract.py:718
+    // assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
+    dup
+    intc_3 // 5
+    <
+    assert // adapter not whitelisted
+    // smart_contracts/psm_v3/contract.py:720-725
+    // # Measure USDC actually returned by the on-chain balance delta, NOT the adapter's
+    // # reported return value (M-1): a lying/buggy adapter could otherwise return `amount`
+    // # while sending nothing, hiding a realized loss so no deficit crystallizes. Reentrancy
+    // # is impossible (AVM forbids the PSM twice on the stack), so nothing else can move the
+    // # PSM's USDC between these two reads — the delta is exactly what the adapter sent.
+    // bal_before = self._psm_usdc_balance()
+    callsub _psm_usdc_balance
+    // smart_contracts/psm_v3/contract.py:726-730
+    // _reported, _txn = arc4.abi_call[arc4.UInt64](
+    //     "pool_withdraw(uint64)uint64",
+    //     amount,
+    //     app_id=adapter_app_id,
+    // )
+    itxn_begin
+    uncover 4
+    itxn_field ApplicationID
+    bytec 24 // method "pool_withdraw(uint64)uint64"
+    itxn_field ApplicationArgs
+    uncover 3
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec 22 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/psm_v3/contract.py:731
+    // recovered_usdc = self._psm_usdc_balance() - bal_before
+    callsub _psm_usdc_balance
+    swap
+    -
+    dup
+    cover 3
+    // smart_contracts/psm_v3/contract.py:733
+    // principal = self._principal_at(slot)
+    dig 1
+    callsub _principal_at
+    // smart_contracts/psm_v3/contract.py:734
+    // retired = principal if principal <= amount else amount
+    dup
+    dig 4
+    <=
+    uncover 4
+    dig 2
+    uncover 2
+    select
+    dup
+    cover 4
+    // smart_contracts/psm_v3/contract.py:735
+    // self._set_principal(slot, principal - retired)
+    swap
+    dig 1
+    -
+    uncover 3
+    swap
+    callsub _set_principal
+    // smart_contracts/psm_v3/contract.py:737
+    // if retired > recovered_usdc:
+    <
+    bz strategy_recall_after_if_else@6
+    // smart_contracts/psm_v3/contract.py:738
+    // shortfall = retired - recovered_usdc
+    dup
+    dig 2
+    -
+    dup
+    bury 4
+    // smart_contracts/psm_v3/contract.py:739
+    // if shortfall > UInt64(DUST_EPSILON):
+    pushint 1000
+    >
+    bz strategy_recall_after_if_else@6
+    // smart_contracts/psm_v3/contract.py:740
+    // self.reserve_deficit.value = self.reserve_deficit.value + shortfall
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    dig 3
+    +
+    bytec_0 // "reserve_deficit"
+    swap
+    app_global_put
+
+strategy_recall_after_if_else@6:
+    // smart_contracts/psm_v3/contract.py:704
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.strategy_harvest[routing]() -> void:
+strategy_harvest:
+    // smart_contracts/psm_v3/contract.py:742
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:762
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:763
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    dup
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:764
+    // assert self.paused.value == UInt64(0), "harvest paused"
+    intc_0 // 0
+    bytec 5 // "paused"
+    app_global_get_ex
+    assert // check self.paused exists
+    !
+    assert // harvest paused
+    // smart_contracts/psm_v3/contract.py:765
+    // assert self.reserve_deficit.value == UInt64(0), "harvest frozen — reserve deficit"
+    intc_0 // 0
+    bytec_0 // "reserve_deficit"
+    app_global_get_ex
+    assert // check self.reserve_deficit exists
+    !
+    assert // harvest frozen — reserve deficit
+    // smart_contracts/psm_v3/contract.py:766-768
+    // # Freeze ALL harvest while ANY adapter is impaired (INFO-2, consistent with deploy):
+    // # don't sweep yield out of the buffer while a loss may be brewing elsewhere.
+    // assert not self._any_impaired(), "harvest frozen — adapter impaired"
+    callsub _any_impaired
+    !
+    assert // harvest frozen — adapter impaired
+    // smart_contracts/psm_v3/contract.py:769
+    // assert self.treasury_address.value != Global.zero_address, "treasury not set"
+    intc_0 // 0
+    bytec_2 // "treasury_address"
+    app_global_get_ex
+    assert // check self.treasury_address exists
+    global ZeroAddress
+    !=
+    assert // treasury not set
+    // smart_contracts/psm_v3/contract.py:771
+    // slot = self._find_adapter_slot(adapter_app_id)
+    dup
+    callsub _find_adapter_slot
+    // smart_contracts/psm_v3/contract.py:772
+    // assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
+    dup
+    intc_3 // 5
+    <
+    assert // adapter not whitelisted
+    // smart_contracts/psm_v3/contract.py:774
+    // principal = self._principal_at(slot)
+    callsub _principal_at
+    // smart_contracts/psm_v3/contract.py:775
+    // recoverable_before = self._adapter_recoverable(adapter_app_id)
+    dig 1
+    callsub _adapter_recoverable
+    // smart_contracts/psm_v3/contract.py:776
+    // assert recoverable_before > principal, "no yield to harvest"
+    dup
+    dig 2
+    >
+    assert // no yield to harvest
+    // smart_contracts/psm_v3/contract.py:777
+    // yield_amt = recoverable_before - principal
+    dig 1
+    -
+    // smart_contracts/psm_v3/contract.py:779-782
+    // # Trust ONLY the on-chain USDC actually received, never the adapter's reported return
+    // # (H-2): a malicious adapter could otherwise report a huge `realized` and drain the PSM
+    // # buffer to treasury out of the PSM's own balance (funds NOT deployed to it).
+    // bal_before = self._psm_usdc_balance()
+    callsub _psm_usdc_balance
+    // smart_contracts/psm_v3/contract.py:783-787
+    // _reported, _txn = arc4.abi_call[arc4.UInt64](
+    //     "pool_withdraw(uint64)uint64",
+    //     yield_amt,
+    //     app_id=adapter_app_id,
+    // )
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:785
+    // yield_amt,
+    dig 1
+    itob
+    dig 4
+    itxn_field ApplicationID
+    // smart_contracts/psm_v3/contract.py:783-787
+    // _reported, _txn = arc4.abi_call[arc4.UInt64](
+    //     "pool_withdraw(uint64)uint64",
+    //     yield_amt,
+    //     app_id=adapter_app_id,
+    // )
+    bytec 24 // method "pool_withdraw(uint64)uint64"
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec 22 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/psm_v3/contract.py:788
+    // received = self._psm_usdc_balance() - bal_before
+    callsub _psm_usdc_balance
+    swap
+    -
+    // smart_contracts/psm_v3/contract.py:789-792
+    // # Sweep only realized yield: never more than what actually arrived, never more than the
+    // # computed yield (so an over-returning adapter can't push principal out to treasury —
+    // # any excess simply stays in the PSM buffer as backing).
+    // realized = received if received <= yield_amt else yield_amt
+    dup
+    dig 2
+    <=
+    select
+    // smart_contracts/psm_v3/contract.py:793
+    // assert realized > UInt64(0), "nothing realized"
+    dup
+    assert // nothing realized
+    // smart_contracts/psm_v3/contract.py:795-800
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.treasury_address.value,
+    //     asset_amount=realized,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:796
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:797
+    // asset_receiver=self.treasury_address.value,
+    intc_0 // 0
+    bytec_2 // "treasury_address"
+    app_global_get_ex
+    assert // check self.treasury_address exists
+    uncover 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:795
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:799
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:795-800
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.treasury_address.value,
+    //     asset_amount=realized,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:802-803
+    // # Defense-in-depth self-verify: principal must remain fully recoverable after the sweep.
+    // assert self._adapter_recoverable(adapter_app_id) >= principal, "harvest would impair principal"
+    swap
+    callsub _adapter_recoverable
+    <=
+    assert // harvest would impair principal
+    // smart_contracts/psm_v3/contract.py:742
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.mark_impaired[routing]() -> void:
+mark_impaired:
+    // smart_contracts/psm_v3/contract.py:805
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    dup
+    txna ApplicationArgs 2
+    dup
+    cover 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:816
+    // assert adapter_app_id != UInt64(0), "invalid adapter app id"
+    swap
+    assert // invalid adapter app id
+    // smart_contracts/psm_v3/contract.py:817
+    // assert flag <= UInt64(1), "flag must be 0 or 1"
+    dup
+    intc_1 // 1
+    <=
+    assert // flag must be 0 or 1
+    // smart_contracts/psm_v3/contract.py:818
+    // if flag == UInt64(0):
+    bnz mark_impaired_else_body@3
+    // smart_contracts/psm_v3/contract.py:819
+    // self._assert_guardian()
+    callsub _assert_guardian
+
+mark_impaired_after_if_else@4:
+    // smart_contracts/psm_v3/contract.py:822
+    // slot = self._find_adapter_slot(adapter_app_id)
+    dig 1
+    callsub _find_adapter_slot
+    // smart_contracts/psm_v3/contract.py:823
+    // assert slot < UInt64(MAX_ADAPTERS), "adapter not whitelisted"
+    dup
+    intc_3 // 5
+    <
+    assert // adapter not whitelisted
+    // smart_contracts/psm_v3/contract.py:824
+    // flags = self.adapter_impaired.value.copy()
+    intc_0 // 0
+    bytec 4 // "adapter_impaired"
+    app_global_get_ex
+    assert // check self.adapter_impaired exists
+    // smart_contracts/psm_v3/contract.py:825
+    // flags[slot] = arc4.UInt64(flag)
+    swap
+    intc_2 // 8
+    *
+    dig 2
+    replace3 // on error: index access is out of bounds
+    // smart_contracts/psm_v3/contract.py:826
+    // self.adapter_impaired.value = flags.copy()
+    bytec 4 // "adapter_impaired"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:805
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+mark_impaired_else_body@3:
+    // smart_contracts/psm_v3/contract.py:821
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    b mark_impaired_after_if_else@4
+
+
+// smart_contracts.psm_v3.contract.PSMv3.set_buffer_bps[routing]() -> void:
+set_buffer_bps:
+    // smart_contracts/psm_v3/contract.py:830
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:833
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:834
+    // assert bps <= UInt64(10_000), "max 10000 bps"
+    dup
+    intc 4 // 10000
+    <=
+    assert // max 10000 bps
+    // smart_contracts/psm_v3/contract.py:835
+    // self.buffer_bps.value = bps
+    bytec 18 // "buffer_bps"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:830
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.set_venue_cap_bps[routing]() -> void:
+set_venue_cap_bps:
+    // smart_contracts/psm_v3/contract.py:837
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:840
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:841
+    // assert bps <= UInt64(10_000), "max 10000 bps"
+    dup
+    intc 4 // 10000
+    <=
+    assert // max 10000 bps
+    // smart_contracts/psm_v3/contract.py:842
+    // self.max_venue_bps.value = bps
+    bytec 20 // "max_venue_bps"
+    swap
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:837
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3.opt_in_asset[routing]() -> void:
+opt_in_asset:
+    // smart_contracts/psm_v3/contract.py:844
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/psm_v3/contract.py:847
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/psm_v3/contract.py:848
+    // assert asa_id != UInt64(0), "invalid ASA ID"
+    dup
+    assert // invalid ASA ID
+    // smart_contracts/psm_v3/contract.py:849-854
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/psm_v3/contract.py:851
+    // asset_receiver=Global.current_application_address,
+    global CurrentApplicationAddress
+    // smart_contracts/psm_v3/contract.py:852
+    // asset_amount=0,
+    intc_0 // 0
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/psm_v3/contract.py:849
+    // itxn.AssetTransfer(
+    pushint 4 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/psm_v3/contract.py:853
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/psm_v3/contract.py:849-854
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/psm_v3/contract.py:844
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.psm_v3.contract.PSMv3._assert_admin() -> void:
+_assert_admin:
+    // smart_contracts/psm_v3/contract.py:150
+    // assert Txn.sender == self.admin.value, "admin only"
+    txn Sender
+    intc_0 // 0
+    bytec 8 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    assert // admin only
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._assert_guardian() -> void:
+_assert_guardian:
+    // smart_contracts/psm_v3/contract.py:154
+    // assert Txn.sender == self.guardian.value, "guardian only"
+    txn Sender
+    intc_0 // 0
+    bytec 15 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    assert // guardian only
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._assert_admin_or_guardian() -> void:
+_assert_admin_or_guardian:
+    // smart_contracts/psm_v3/contract.py:159
+    // Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    txn Sender
+    intc_0 // 0
+    bytec 8 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    bnz _assert_admin_or_guardian_bool_true@2
+    txn Sender
+    intc_0 // 0
+    bytec 15 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    bz _assert_admin_or_guardian_bool_false@3
+
+_assert_admin_or_guardian_bool_true@2:
+    intc_1 // 1
+
+_assert_admin_or_guardian_bool_merge@4:
+    // smart_contracts/psm_v3/contract.py:158-160
+    // assert (
+    //     Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    // ), "admin or guardian only"
+    assert // admin or guardian only
+    retsub
+
+_assert_admin_or_guardian_bool_false@3:
+    intc_0 // 0
+    b _assert_admin_or_guardian_bool_merge@4
+
+
+// smart_contracts.psm_v3.contract.PSMv3._psm_musd_balance() -> uint64:
+_psm_musd_balance:
+    // smart_contracts/psm_v3/contract.py:165
+    // Global.current_application_address, self.musd_asa_id.value
+    global CurrentApplicationAddress
+    intc_0 // 0
+    bytec 7 // "musd_asa_id"
+    app_global_get_ex
+    assert // check self.musd_asa_id exists
+    // smart_contracts/psm_v3/contract.py:164-166
+    // bal, exists = op.AssetHoldingGet.asset_balance(
+    //     Global.current_application_address, self.musd_asa_id.value
+    // )
+    asset_holding_get AssetBalance
+    // smart_contracts/psm_v3/contract.py:167
+    // assert exists, "PSM not opted into mUSD"
+    assert // PSM not opted into mUSD
+    // smart_contracts/psm_v3/contract.py:168
+    // return bal
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._psm_usdc_balance() -> uint64:
+_psm_usdc_balance:
+    // smart_contracts/psm_v3/contract.py:173
+    // Global.current_application_address, self.usdc_asa_id.value
+    global CurrentApplicationAddress
+    intc_0 // 0
+    bytec_1 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/psm_v3/contract.py:172-174
+    // bal, exists = op.AssetHoldingGet.asset_balance(
+    //     Global.current_application_address, self.usdc_asa_id.value
+    // )
+    asset_holding_get AssetBalance
+    // smart_contracts/psm_v3/contract.py:175
+    // assert exists, "PSM not opted into USDC"
+    assert // PSM not opted into USDC
+    // smart_contracts/psm_v3/contract.py:176
+    // return bal
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._circulating_musd() -> uint64:
+_circulating_musd:
+    // smart_contracts/psm_v3/contract.py:180
+    // total, exists = op.AssetParamsGet.asset_total(self.musd_asa_id.value)
+    intc_0 // 0
+    bytec 7 // "musd_asa_id"
+    app_global_get_ex
+    assert // check self.musd_asa_id exists
+    asset_params_get AssetTotal
+    // smart_contracts/psm_v3/contract.py:181
+    // assert exists, "mUSD ASA not found"
+    assert // mUSD ASA not found
+    // smart_contracts/psm_v3/contract.py:186
+    // return self._total_musd_supply() - self._psm_musd_balance()
+    callsub _psm_musd_balance
+    -
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._assert_vault_caller() -> void:
+_assert_vault_caller:
+    // smart_contracts/psm_v3/contract.py:190
+    // vault_addr, exists = op.AppParamsGet.app_address(self.vault_app_id.value)
+    intc_0 // 0
+    bytec 23 // "vault_app_id"
+    app_global_get_ex
+    assert // check self.vault_app_id exists
+    app_params_get AppAddress
+    // smart_contracts/psm_v3/contract.py:191
+    // assert exists, "vault app not found"
+    assert // vault app not found
+    // smart_contracts/psm_v3/contract.py:192
+    // assert Txn.sender == vault_addr, "caller is not registered vault"
+    txn Sender
+    ==
+    assert // caller is not registered vault
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._find_adapter_slot(adapter_app_id: uint64) -> uint64:
+_find_adapter_slot:
+    // smart_contracts/psm_v3/contract.py:207-208
+    // @subroutine
+    // def _find_adapter_slot(self, adapter_app_id: UInt64) -> UInt64:
+    proto 1 1
+    // smart_contracts/psm_v3/contract.py:211
+    // ids = self.adapter_ids.value.copy()
+    intc_0 // 0
+    bytec 6 // "adapter_ids"
+    app_global_get_ex
+    assert // check self.adapter_ids exists
+    // smart_contracts/psm_v3/contract.py:212
+    // result = UInt64(MAX_ADAPTERS)
+    intc_3 // 5
+    // smart_contracts/psm_v3/contract.py:213
+    // for i in urange(MAX_ADAPTERS):
+    intc_0 // 0
+
+_find_adapter_slot_for_header@1:
+    // smart_contracts/psm_v3/contract.py:213
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 2
+    intc_3 // 5
+    <
+    bz _find_adapter_slot_after_for@7
+    // smart_contracts/psm_v3/contract.py:214-215
+    // # Guard the 0 sentinel so a 0 query never matches an empty slot (L-3).
+    // if adapter_app_id != UInt64(0) and ids[i].native == adapter_app_id:
+    frame_dig -1
+    bz _find_adapter_slot_after_if_else@5
+    frame_dig 2
+    intc_2 // 8
+    *
+    frame_dig 0
+    swap
+    extract_uint64
+    frame_dig -1
+    ==
+    bz _find_adapter_slot_after_if_else@5
+    frame_dig 2
+    frame_bury 1
+
+_find_adapter_slot_after_if_else@5:
+    // smart_contracts/psm_v3/contract.py:213
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 2
+    intc_1 // 1
+    +
+    frame_bury 2
+    b _find_adapter_slot_for_header@1
+
+_find_adapter_slot_after_for@7:
+    // smart_contracts/psm_v3/contract.py:217
+    // return result
+    frame_dig 1
+    frame_bury 0
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._free_slot() -> uint64:
+_free_slot:
+    // smart_contracts/psm_v3/contract.py:219-220
+    // @subroutine
+    // def _free_slot(self) -> UInt64:
+    proto 0 1
+    pushbytes ""
+    // smart_contracts/psm_v3/contract.py:222
+    // ids = self.adapter_ids.value.copy()
+    intc_0 // 0
+    bytec 6 // "adapter_ids"
+    app_global_get_ex
+    assert // check self.adapter_ids exists
+    // smart_contracts/psm_v3/contract.py:223
+    // result = UInt64(MAX_ADAPTERS)
+    intc_3 // 5
+    // smart_contracts/psm_v3/contract.py:224
+    // for i in urange(MAX_ADAPTERS):
+    intc_0 // 0
+
+_free_slot_for_header@1:
+    // smart_contracts/psm_v3/contract.py:224
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 3
+    intc_3 // 5
+    <
+    bz _free_slot_after_for@6
+    // smart_contracts/psm_v3/contract.py:225-226
+    // # Walk high→low so the lowest empty index wins.
+    // j = UInt64(MAX_ADAPTERS) - UInt64(1) - i
+    pushint 4
+    frame_dig 3
+    -
+    dup
+    frame_bury 0
+    // smart_contracts/psm_v3/contract.py:227
+    // if ids[j].native == UInt64(0):
+    intc_2 // 8
+    *
+    frame_dig 1
+    swap
+    extract_uint64
+    bnz _free_slot_after_if_else@4
+    frame_dig 0
+    frame_bury 2
+
+_free_slot_after_if_else@4:
+    // smart_contracts/psm_v3/contract.py:224
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 3
+    intc_1 // 1
+    +
+    frame_bury 3
+    b _free_slot_for_header@1
+
+_free_slot_after_for@6:
+    // smart_contracts/psm_v3/contract.py:229
+    // return result
+    frame_dig 2
+    frame_bury 0
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._set_slot(slot: uint64, aid: uint64, principal: uint64, impaired: uint64) -> void:
+_set_slot:
+    // smart_contracts/psm_v3/contract.py:231-232
+    // @subroutine
+    // def _set_slot(self, slot: UInt64, aid: UInt64, principal: UInt64, impaired: UInt64) -> None:
+    proto 4 0
+    // smart_contracts/psm_v3/contract.py:233
+    // ids = self.adapter_ids.value.copy()
+    intc_0 // 0
+    bytec 6 // "adapter_ids"
+    app_global_get_ex
+    assert // check self.adapter_ids exists
+    // smart_contracts/psm_v3/contract.py:234
+    // principals = self.deployed_principal.value.copy()
+    intc_0 // 0
+    bytec_3 // "deployed_principal"
+    app_global_get_ex
+    assert // check self.deployed_principal exists
+    // smart_contracts/psm_v3/contract.py:235
+    // flags = self.adapter_impaired.value.copy()
+    intc_0 // 0
+    bytec 4 // "adapter_impaired"
+    app_global_get_ex
+    assert // check self.adapter_impaired exists
+    // smart_contracts/psm_v3/contract.py:236
+    // ids[slot] = arc4.UInt64(aid)
+    frame_dig -3
+    itob
+    frame_dig -4
+    intc_2 // 8
+    *
+    uncover 4
+    dig 1
+    uncover 3
+    replace3 // on error: index access is out of bounds
+    // smart_contracts/psm_v3/contract.py:237
+    // principals[slot] = arc4.UInt64(principal)
+    frame_dig -2
+    itob
+    uncover 4
+    dig 3
+    uncover 2
+    replace3 // on error: index access is out of bounds
+    // smart_contracts/psm_v3/contract.py:238
+    // flags[slot] = arc4.UInt64(impaired)
+    frame_dig -1
+    itob
+    uncover 4
+    uncover 4
+    uncover 2
+    replace3 // on error: index access is out of bounds
+    // smart_contracts/psm_v3/contract.py:239
+    // self.adapter_ids.value = ids.copy()
+    bytec 6 // "adapter_ids"
+    uncover 3
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:240
+    // self.deployed_principal.value = principals.copy()
+    bytec_3 // "deployed_principal"
+    uncover 2
+    app_global_put
+    // smart_contracts/psm_v3/contract.py:241
+    // self.adapter_impaired.value = flags.copy()
+    bytec 4 // "adapter_impaired"
+    swap
+    app_global_put
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._set_principal(slot: uint64, principal: uint64) -> void:
+_set_principal:
+    // smart_contracts/psm_v3/contract.py:243-244
+    // @subroutine
+    // def _set_principal(self, slot: UInt64, principal: UInt64) -> None:
+    proto 2 0
+    // smart_contracts/psm_v3/contract.py:245
+    // principals = self.deployed_principal.value.copy()
+    intc_0 // 0
+    bytec_3 // "deployed_principal"
+    app_global_get_ex
+    assert // check self.deployed_principal exists
+    // smart_contracts/psm_v3/contract.py:246
+    // principals[slot] = arc4.UInt64(principal)
+    frame_dig -1
+    itob
+    frame_dig -2
+    intc_2 // 8
+    *
+    swap
+    replace3 // on error: index access is out of bounds
+    // smart_contracts/psm_v3/contract.py:247
+    // self.deployed_principal.value = principals.copy()
+    bytec_3 // "deployed_principal"
+    swap
+    app_global_put
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._principal_at(slot: uint64) -> uint64:
+_principal_at:
+    // smart_contracts/psm_v3/contract.py:249-250
+    // @subroutine
+    // def _principal_at(self, slot: UInt64) -> UInt64:
+    proto 1 1
+    // smart_contracts/psm_v3/contract.py:251
+    // principals = self.deployed_principal.value.copy()
+    intc_0 // 0
+    bytec_3 // "deployed_principal"
+    app_global_get_ex
+    assert // check self.deployed_principal exists
+    // smart_contracts/psm_v3/contract.py:252
+    // return principals[slot].native
+    frame_dig -1
+    intc_2 // 8
+    *
+    extract_uint64
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._total_deployed_principal() -> uint64:
+_total_deployed_principal:
+    // smart_contracts/psm_v3/contract.py:254-255
+    // @subroutine
+    // def _total_deployed_principal(self) -> UInt64:
+    proto 0 1
+    // smart_contracts/psm_v3/contract.py:256
+    // principals = self.deployed_principal.value.copy()
+    intc_0 // 0
+    bytec_3 // "deployed_principal"
+    app_global_get_ex
+    assert // check self.deployed_principal exists
+    // smart_contracts/psm_v3/contract.py:257
+    // total = UInt64(0)
+    intc_0 // 0
+    // smart_contracts/psm_v3/contract.py:258
+    // for i in urange(MAX_ADAPTERS):
+    dup
+
+_total_deployed_principal_for_header@1:
+    // smart_contracts/psm_v3/contract.py:258
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 2
+    intc_3 // 5
+    <
+    bz _total_deployed_principal_after_for@4
+    // smart_contracts/psm_v3/contract.py:259
+    // total += principals[i].native
+    frame_dig 2
+    dup
+    intc_2 // 8
+    *
+    frame_dig 0
+    swap
+    extract_uint64
+    frame_dig 1
+    +
+    frame_bury 1
+    // smart_contracts/psm_v3/contract.py:258
+    // for i in urange(MAX_ADAPTERS):
+    intc_1 // 1
+    +
+    frame_bury 2
+    b _total_deployed_principal_for_header@1
+
+_total_deployed_principal_after_for@4:
+    // smart_contracts/psm_v3/contract.py:260
+    // return total
+    frame_dig 1
+    frame_bury 0
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._any_impaired() -> uint64:
+_any_impaired:
+    // smart_contracts/psm_v3/contract.py:262-263
+    // @subroutine
+    // def _any_impaired(self) -> bool:
+    proto 0 1
+    pushbytes ""
+    // smart_contracts/psm_v3/contract.py:264
+    // ids = self.adapter_ids.value.copy()
+    intc_0 // 0
+    bytec 6 // "adapter_ids"
+    app_global_get_ex
+    assert // check self.adapter_ids exists
+    // smart_contracts/psm_v3/contract.py:265
+    // flags = self.adapter_impaired.value.copy()
+    intc_0 // 0
+    bytec 4 // "adapter_impaired"
+    app_global_get_ex
+    assert // check self.adapter_impaired exists
+    // smart_contracts/psm_v3/contract.py:266
+    // result = False
+    intc_0 // 0
+    // smart_contracts/psm_v3/contract.py:267
+    // for i in urange(MAX_ADAPTERS):
+    dup
+
+_any_impaired_for_header@1:
+    // smart_contracts/psm_v3/contract.py:267
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 4
+    intc_3 // 5
+    <
+    bz _any_impaired_after_for@7
+    // smart_contracts/psm_v3/contract.py:268
+    // if ids[i].native != UInt64(0) and flags[i].native != UInt64(0):
+    frame_dig 4
+    intc_2 // 8
+    *
+    dup
+    frame_bury 0
+    frame_dig 1
+    swap
+    extract_uint64
+    bz _any_impaired_after_if_else@5
+    frame_dig 2
+    frame_dig 0
+    extract_uint64
+    bz _any_impaired_after_if_else@5
+    // smart_contracts/psm_v3/contract.py:269
+    // result = True
+    intc_1 // 1
+    frame_bury 3
+
+_any_impaired_after_if_else@5:
+    // smart_contracts/psm_v3/contract.py:267
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 4
+    intc_1 // 1
+    +
+    frame_bury 4
+    b _any_impaired_for_header@1
+
+_any_impaired_after_for@7:
+    // smart_contracts/psm_v3/contract.py:270
+    // return result
+    frame_dig 3
+    frame_bury 0
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._adapter_recoverable(adapter_app_id: uint64) -> uint64:
+_adapter_recoverable:
+    // smart_contracts/psm_v3/contract.py:272-273
+    // @subroutine
+    // def _adapter_recoverable(self, adapter_app_id: UInt64) -> UInt64:
+    proto 1 1
+    // smart_contracts/psm_v3/contract.py:275
+    // _addr, exists = op.AppParamsGet.app_address(adapter_app_id)
+    frame_dig -1
+    app_params_get AppAddress
+    bury 1
+    // smart_contracts/psm_v3/contract.py:276
+    // assert exists, "adapter app not found"  # cleaner revert than a bare cross-app failure (I-4)
+    assert // adapter app not found
+    // smart_contracts/psm_v3/contract.py:277-280
+    // result, _txn = arc4.abi_call[arc4.UInt64](
+    //     "recoverable_value()uint64",
+    //     app_id=adapter_app_id,
+    // )
+    itxn_begin
+    frame_dig -1
+    itxn_field ApplicationID
+    pushbytes 0x559bb911 // method "recoverable_value()uint64"
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec 22 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/psm_v3/contract.py:281
+    // return result.native
+    btoi
+    retsub
+
+
+// smart_contracts.psm_v3.contract.PSMv3._total_backing() -> uint64:
+_total_backing:
+    // smart_contracts/psm_v3/contract.py:298-299
+    // @subroutine
+    // def _total_backing(self) -> UInt64:
+    proto 0 1
+    pushbytes ""
+    dup
+    // smart_contracts/psm_v3/contract.py:301
+    // return self._psm_usdc_balance() + self._deployed_backing()
+    callsub _psm_usdc_balance
+    // smart_contracts/psm_v3/contract.py:286
+    // ids = self.adapter_ids.value.copy()
+    intc_0 // 0
+    bytec 6 // "adapter_ids"
+    app_global_get_ex
+    assert // check self.adapter_ids exists
+    // smart_contracts/psm_v3/contract.py:287
+    // principals = self.deployed_principal.value.copy()
+    intc_0 // 0
+    bytec_3 // "deployed_principal"
+    app_global_get_ex
+    assert // check self.deployed_principal exists
+    // smart_contracts/psm_v3/contract.py:288
+    // flags = self.adapter_impaired.value.copy()
+    intc_0 // 0
+    bytec 4 // "adapter_impaired"
+    app_global_get_ex
+    assert // check self.adapter_impaired exists
+    // smart_contracts/psm_v3/contract.py:289
+    // total = UInt64(0)
+    intc_0 // 0
+    // smart_contracts/psm_v3/contract.py:290
+    // for i in urange(MAX_ADAPTERS):
+    dup
+
+_total_backing_for_header@2:
+    // smart_contracts/psm_v3/contract.py:290
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 7
+    intc_3 // 5
+    <
+    bz _total_backing_after_for@7
+    // smart_contracts/psm_v3/contract.py:291
+    // aid = ids[i].native
+    frame_dig 7
+    intc_2 // 8
+    *
+    dup
+    frame_bury 0
+    frame_dig 3
+    swap
+    extract_uint64
+    dup
+    frame_bury 1
+    // smart_contracts/psm_v3/contract.py:292
+    // if aid != UInt64(0) and flags[i].native == UInt64(0):
+    bz _total_backing_after_if_else@6
+    frame_dig 5
+    frame_dig 0
+    extract_uint64
+    bnz _total_backing_after_if_else@6
+    // smart_contracts/psm_v3/contract.py:293
+    // principal = principals[i].native
+    frame_dig 4
+    frame_dig 0
+    extract_uint64
+    // smart_contracts/psm_v3/contract.py:294
+    // recoverable = self._adapter_recoverable(aid)
+    frame_dig 1
+    callsub _adapter_recoverable
+    // smart_contracts/psm_v3/contract.py:295
+    // total += principal if principal <= recoverable else recoverable
+    dup2
+    <=
+    swap
+    cover 2
+    select
+    frame_dig 6
+    +
+    frame_bury 6
+
+_total_backing_after_if_else@6:
+    // smart_contracts/psm_v3/contract.py:290
+    // for i in urange(MAX_ADAPTERS):
+    frame_dig 7
+    intc_1 // 1
+    +
+    frame_bury 7
+    b _total_backing_for_header@2
+
+_total_backing_after_for@7:
+    // smart_contracts/psm_v3/contract.py:301
+    // return self._psm_usdc_balance() + self._deployed_backing()
+    frame_dig 2
+    frame_dig 6
+    +
+    frame_bury 0
+    retsub

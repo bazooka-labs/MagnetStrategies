@@ -1,0 +1,120 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 8 1 6 0
+    // smart_contracts/mock_vault/contract.py:4
+    // class MockVault(ARC4Contract):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@6
+    pushbytess 0xb0c686a4 0x24828d40 // method "call_issue(uint64,address,uint64)void", method "call_receive(uint64,uint64)void"
+    txna ApplicationArgs 0
+    match call_issue call_receive
+    err
+
+main_create_NoOp@6:
+    // smart_contracts/mock_vault/contract.py:4
+    // class MockVault(ARC4Contract):
+    pushbytes 0x4c5c61ba // method "create()void"
+    txna ApplicationArgs 0
+    match main_create_route@7
+    err
+
+main_create_route@7:
+    // smart_contracts/mock_vault/contract.py:16
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_1 // 1
+    return
+
+
+// smart_contracts.mock_vault.contract.MockVault.call_issue[routing]() -> void:
+call_issue:
+    // smart_contracts/mock_vault/contract.py:20
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/mock_vault/contract.py:22-27
+    // arc4.abi_call(
+    //     "issue_musd(address,uint64)void",
+    //     recipient,
+    //     amount,
+    //     app_id=psm_app,
+    // )
+    itxn_begin
+    uncover 2
+    itxn_field ApplicationID
+    pushbytes 0xe8ab6a79 // method "issue_musd(address,uint64)void"
+    itxn_field ApplicationArgs
+    swap
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    intc_2 // appl
+    itxn_field TypeEnum
+    intc_3 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/mock_vault/contract.py:20
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.mock_vault.contract.MockVault.call_receive[routing]() -> void:
+call_receive:
+    // smart_contracts/mock_vault/contract.py:29
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/mock_vault/contract.py:31-35
+    // arc4.abi_call(
+    //     "receive_musd(uint64)void",
+    //     amount,
+    //     app_id=psm_app,
+    // )
+    itxn_begin
+    swap
+    itxn_field ApplicationID
+    pushbytes 0xd80d698d // method "receive_musd(uint64)void"
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    intc_2 // appl
+    itxn_field TypeEnum
+    intc_3 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/mock_vault/contract.py:29
+    // @arc4.abimethod
+    intc_1 // 1
+    return

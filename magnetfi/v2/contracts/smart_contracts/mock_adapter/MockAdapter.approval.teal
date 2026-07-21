@@ -1,0 +1,531 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 8 1 4
+    bytecblock "usdc_asa_id" "value_override" "withdraw_lie" "controller" "locked" "psm_app_id" 0x151f7c75
+    // smart_contracts/mock_adapter/contract.py:16-19
+    // class MockAdapter(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=5, global_bytes=1),
+    // ):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@14
+    pushbytess 0xe3cdef3b 0x77e93bad 0x5a44ecb5 0x559bb911 0xa8dc1c77 0x56ad1171 0x745454e8 0x014b8611 // method "opt_in_asset(uint64)void", method "pool_deposit(uint64)void", method "pool_withdraw(uint64)uint64", method "recoverable_value()uint64", method "set_value(uint64)void", method "set_locked(uint64)void", method "set_withdraw_lie(uint64)void", method "drain(uint64)void"
+    txna ApplicationArgs 0
+    match opt_in_asset pool_deposit pool_withdraw recoverable_value set_value set_locked set_withdraw_lie drain
+    err
+
+main_create_NoOp@14:
+    // smart_contracts/mock_adapter/contract.py:16-19
+    // class MockAdapter(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=5, global_bytes=1),
+    // ):
+    pushbytes 0xa2d11499 // method "create(uint64,uint64,address)void"
+    txna ApplicationArgs 0
+    match create
+    err
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.create[routing]() -> void:
+create:
+    // smart_contracts/mock_adapter/contract.py:48
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 3
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/mock_adapter/contract.py:50
+    // assert psm_app_id != UInt64(0), "psm_app_id required"
+    dig 2
+    assert // psm_app_id required
+    // smart_contracts/mock_adapter/contract.py:51
+    // assert usdc_asa_id != UInt64(0), "usdc_asa_id required"
+    dig 1
+    assert // usdc_asa_id required
+    // smart_contracts/mock_adapter/contract.py:52
+    // assert controller != Global.zero_address, "controller required"
+    dup
+    global ZeroAddress
+    !=
+    assert // controller required
+    // smart_contracts/mock_adapter/contract.py:53
+    // self.psm_app_id.value = psm_app_id
+    bytec 5 // "psm_app_id"
+    uncover 3
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:54
+    // self.usdc_asa_id.value = usdc_asa_id
+    bytec_0 // "usdc_asa_id"
+    uncover 2
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:55
+    // self.controller.value = controller
+    bytec_3 // "controller"
+    swap
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:56
+    // self.value_override.value = UInt64(0)
+    bytec_1 // "value_override"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:57
+    // self.locked.value = UInt64(0)
+    bytec 4 // "locked"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:58
+    // self.withdraw_lie.value = UInt64(0)
+    bytec_2 // "withdraw_lie"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:48
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.opt_in_asset[routing]() -> void:
+opt_in_asset:
+    // smart_contracts/mock_adapter/contract.py:84
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:87
+    // self._assert_controller()
+    callsub _assert_controller
+    // smart_contracts/mock_adapter/contract.py:88
+    // assert asa_id != UInt64(0), "invalid ASA"
+    dup
+    assert // invalid ASA
+    // smart_contracts/mock_adapter/contract.py:89-94
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/mock_adapter/contract.py:91
+    // asset_receiver=Global.current_application_address,
+    global CurrentApplicationAddress
+    // smart_contracts/mock_adapter/contract.py:92
+    // asset_amount=0,
+    intc_0 // 0
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/mock_adapter/contract.py:89
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/mock_adapter/contract.py:93
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/mock_adapter/contract.py:89-94
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/mock_adapter/contract.py:84
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.pool_deposit[routing]() -> void:
+pool_deposit:
+    // smart_contracts/mock_adapter/contract.py:98
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:102
+    // self._assert_psm()
+    callsub _assert_psm
+    // smart_contracts/mock_adapter/contract.py:103
+    // assert self._usdc_balance() >= amount, "usdc not received"
+    callsub _usdc_balance
+    <=
+    assert // usdc not received
+    // smart_contracts/mock_adapter/contract.py:98
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.pool_withdraw[routing]() -> void:
+pool_withdraw:
+    // smart_contracts/mock_adapter/contract.py:105
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:110
+    // self._assert_psm()
+    callsub _assert_psm
+    // smart_contracts/mock_adapter/contract.py:111
+    // assert self.locked.value == UInt64(0), "venue withdrawals halted"
+    intc_0 // 0
+    bytec 4 // "locked"
+    app_global_get_ex
+    assert // check self.locked exists
+    !
+    assert // venue withdrawals halted
+    // smart_contracts/mock_adapter/contract.py:112
+    // bal = self._usdc_balance()
+    callsub _usdc_balance
+    // smart_contracts/mock_adapter/contract.py:113
+    // send = amount if amount <= bal else bal
+    dup2
+    <=
+    swap
+    cover 2
+    select
+    dup
+    // smart_contracts/mock_adapter/contract.py:114
+    // if send > UInt64(0):
+    bz pool_withdraw_after_if_else@4
+    // smart_contracts/mock_adapter/contract.py:115-120
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self._psm_address(),
+    //     asset_amount=send,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/mock_adapter/contract.py:116
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_0 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/mock_adapter/contract.py:117
+    // asset_receiver=self._psm_address(),
+    callsub _psm_address
+    dig 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/mock_adapter/contract.py:115
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/mock_adapter/contract.py:119
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/mock_adapter/contract.py:115-120
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self._psm_address(),
+    //     asset_amount=send,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+
+pool_withdraw_after_if_else@4:
+    // smart_contracts/mock_adapter/contract.py:121-123
+    // # Honest adapters return exactly what they sent; a malicious one can REPORT anything.
+    // # The PSM must ignore this and measure its own USDC balance delta (H-2/M-1).
+    // reported = self.withdraw_lie.value if self.withdraw_lie.value > UInt64(0) else send
+    intc_0 // 0
+    bytec_2 // "withdraw_lie"
+    app_global_get_ex
+    assert // check self.withdraw_lie exists
+    bz pool_withdraw_ternary_false@6
+    intc_0 // 0
+    bytec_2 // "withdraw_lie"
+    app_global_get_ex
+    assert // check self.withdraw_lie exists
+
+pool_withdraw_ternary_merge@7:
+    // smart_contracts/mock_adapter/contract.py:124
+    // return arc4.UInt64(reported)
+    itob
+    // smart_contracts/mock_adapter/contract.py:105
+    // @arc4.abimethod
+    bytec 6 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_2 // 1
+    return
+
+pool_withdraw_ternary_false@6:
+    dup
+    b pool_withdraw_ternary_merge@7
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.recoverable_value[routing]() -> void:
+recoverable_value:
+    // smart_contracts/mock_adapter/contract.py:129
+    // if self.value_override.value > UInt64(0):
+    intc_0 // 0
+    bytec_1 // "value_override"
+    app_global_get_ex
+    assert // check self.value_override exists
+    bz recoverable_value_after_if_else@3
+    // smart_contracts/mock_adapter/contract.py:130
+    // return arc4.UInt64(self.value_override.value)
+    intc_0 // 0
+    bytec_1 // "value_override"
+    app_global_get_ex
+    assert // check self.value_override exists
+    itob
+
+recoverable_value_after_inlined_smart_contracts.mock_adapter.contract.MockAdapter.recoverable_value@4:
+    // smart_contracts/mock_adapter/contract.py:126
+    // @arc4.abimethod(readonly=True)
+    bytec 6 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_2 // 1
+    return
+
+recoverable_value_after_if_else@3:
+    // smart_contracts/mock_adapter/contract.py:131
+    // return arc4.UInt64(self._usdc_balance())
+    callsub _usdc_balance
+    itob
+    // smart_contracts/mock_adapter/contract.py:126
+    // @arc4.abimethod(readonly=True)
+    b recoverable_value_after_inlined_smart_contracts.mock_adapter.contract.MockAdapter.recoverable_value@4
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.set_value[routing]() -> void:
+set_value:
+    // smart_contracts/mock_adapter/contract.py:135
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:138
+    // self._assert_controller()
+    callsub _assert_controller
+    // smart_contracts/mock_adapter/contract.py:139
+    // self.value_override.value = v
+    bytec_1 // "value_override"
+    swap
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:135
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.set_locked[routing]() -> void:
+set_locked:
+    // smart_contracts/mock_adapter/contract.py:141
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:144
+    // self._assert_controller()
+    callsub _assert_controller
+    // smart_contracts/mock_adapter/contract.py:145
+    // self.locked.value = b
+    bytec 4 // "locked"
+    swap
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:141
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.set_withdraw_lie[routing]() -> void:
+set_withdraw_lie:
+    // smart_contracts/mock_adapter/contract.py:147
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:151
+    // self._assert_controller()
+    callsub _assert_controller
+    // smart_contracts/mock_adapter/contract.py:152
+    // self.withdraw_lie.value = v
+    bytec_2 // "withdraw_lie"
+    swap
+    app_global_put
+    // smart_contracts/mock_adapter/contract.py:147
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter.drain[routing]() -> void:
+drain:
+    // smart_contracts/mock_adapter/contract.py:154
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_adapter/contract.py:157
+    // self._assert_controller()
+    callsub _assert_controller
+    // smart_contracts/mock_adapter/contract.py:158-163
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.controller.value,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/mock_adapter/contract.py:159
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_0 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/mock_adapter/contract.py:160
+    // asset_receiver=self.controller.value,
+    intc_0 // 0
+    bytec_3 // "controller"
+    app_global_get_ex
+    assert // check self.controller exists
+    uncover 2
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/mock_adapter/contract.py:158
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/mock_adapter/contract.py:162
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/mock_adapter/contract.py:158-163
+    // itxn.AssetTransfer(
+    //     xfer_asset=self.usdc_asa_id.value,
+    //     asset_receiver=self.controller.value,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/mock_adapter/contract.py:154
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter._psm_address() -> bytes:
+_psm_address:
+    // smart_contracts/mock_adapter/contract.py:64
+    // addr, exists = op.AppParamsGet.app_address(self.psm_app_id.value)
+    intc_0 // 0
+    bytec 5 // "psm_app_id"
+    app_global_get_ex
+    assert // check self.psm_app_id exists
+    app_params_get AppAddress
+    // smart_contracts/mock_adapter/contract.py:65
+    // assert exists, "psm app not found"
+    assert // psm app not found
+    // smart_contracts/mock_adapter/contract.py:66
+    // return addr
+    retsub
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter._assert_psm() -> void:
+_assert_psm:
+    // smart_contracts/mock_adapter/contract.py:70
+    // assert Txn.sender == self._psm_address(), "caller is not the PSM"
+    txn Sender
+    callsub _psm_address
+    ==
+    assert // caller is not the PSM
+    retsub
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter._assert_controller() -> void:
+_assert_controller:
+    // smart_contracts/mock_adapter/contract.py:74
+    // assert Txn.sender == self.controller.value, "controller only"
+    txn Sender
+    intc_0 // 0
+    bytec_3 // "controller"
+    app_global_get_ex
+    assert // check self.controller exists
+    ==
+    assert // controller only
+    retsub
+
+
+// smart_contracts.mock_adapter.contract.MockAdapter._usdc_balance() -> uint64:
+_usdc_balance:
+    // smart_contracts/mock_adapter/contract.py:79
+    // Global.current_application_address, self.usdc_asa_id.value
+    global CurrentApplicationAddress
+    intc_0 // 0
+    bytec_0 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/mock_adapter/contract.py:78-80
+    // bal, exists = op.AssetHoldingGet.asset_balance(
+    //     Global.current_application_address, self.usdc_asa_id.value
+    // )
+    asset_holding_get AssetBalance
+    // smart_contracts/mock_adapter/contract.py:81
+    // assert exists, "adapter not opted into USDC"
+    assert // adapter not opted into USDC
+    // smart_contracts/mock_adapter/contract.py:82
+    // return bal
+    retsub

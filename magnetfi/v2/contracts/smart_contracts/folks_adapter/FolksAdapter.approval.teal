@@ -1,0 +1,851 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 8 1 4 100000000000000
+    bytecblock 0x01 "pool_app_id" "fusdc_asa_id" "usdc_asa_id" "pool_manager_app_id" 0x151f7c75 "psm_app_id" "admin"
+    // smart_contracts/folks_adapter/contract.py:26-29
+    // class FolksAdapter(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=5, global_bytes=1),
+    // ):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@10
+    pushbytess 0xe3cdef3b 0x77e93bad 0x5a44ecb5 0x559bb911 // method "opt_in_asset(uint64)void", method "pool_deposit(uint64)void", method "pool_withdraw(uint64)uint64", method "recoverable_value()uint64"
+    txna ApplicationArgs 0
+    match opt_in_asset pool_deposit pool_withdraw recoverable_value
+    err
+
+main_create_NoOp@10:
+    // smart_contracts/folks_adapter/contract.py:26-29
+    // class FolksAdapter(
+    //     ARC4Contract,
+    //     state_totals=StateTotals(global_uints=5, global_bytes=1),
+    // ):
+    pushbytes 0x48d3db34 // method "create(uint64,uint64,uint64,uint64,uint64,address)void"
+    txna ApplicationArgs 0
+    match create
+    err
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter.create[routing]() -> void:
+create:
+    // smart_contracts/folks_adapter/contract.py:58
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 4
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 5
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 6
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/folks_adapter/contract.py:68
+    // assert psm_app_id != UInt64(0), "psm_app_id required"
+    dig 5
+    assert // psm_app_id required
+    // smart_contracts/folks_adapter/contract.py:69
+    // assert usdc_asa_id != UInt64(0), "usdc required"
+    dig 4
+    assert // usdc required
+    // smart_contracts/folks_adapter/contract.py:70
+    // assert fusdc_asa_id != UInt64(0), "fusdc required"
+    dig 3
+    assert // fusdc required
+    // smart_contracts/folks_adapter/contract.py:71
+    // assert usdc_asa_id != fusdc_asa_id, "usdc and fusdc must differ"
+    dig 4
+    dig 4
+    !=
+    assert // usdc and fusdc must differ
+    // smart_contracts/folks_adapter/contract.py:72
+    // assert pool_app_id != UInt64(0), "pool required"
+    dig 2
+    assert // pool required
+    // smart_contracts/folks_adapter/contract.py:73
+    // assert pool_manager_app_id != UInt64(0), "pool_manager required"
+    dig 1
+    assert // pool_manager required
+    // smart_contracts/folks_adapter/contract.py:74
+    // assert admin != Global.zero_address, "admin required"
+    dup
+    global ZeroAddress
+    !=
+    assert // admin required
+    // smart_contracts/folks_adapter/contract.py:75
+    // self.psm_app_id.value = psm_app_id
+    bytec 6 // "psm_app_id"
+    uncover 6
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:76
+    // self.usdc_asa_id.value = usdc_asa_id
+    bytec_3 // "usdc_asa_id"
+    uncover 5
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:77
+    // self.fusdc_asa_id.value = fusdc_asa_id
+    bytec_2 // "fusdc_asa_id"
+    uncover 4
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:78
+    // self.pool_app_id.value = pool_app_id
+    bytec_1 // "pool_app_id"
+    uncover 3
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:79
+    // self.pool_manager_app_id.value = pool_manager_app_id
+    bytec 4 // "pool_manager_app_id"
+    uncover 2
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:80
+    // self.admin.value = admin
+    bytec 7 // "admin"
+    swap
+    app_global_put
+    // smart_contracts/folks_adapter/contract.py:58
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_2 // 1
+    return
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter.opt_in_asset[routing]() -> void:
+opt_in_asset:
+    // smart_contracts/folks_adapter/contract.py:131
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/folks_adapter/contract.py:101
+    // assert Txn.sender == self.admin.value, "admin only"
+    txn Sender
+    intc_0 // 0
+    bytec 7 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    assert // admin only
+    // smart_contracts/folks_adapter/contract.py:135
+    // assert asa_id != UInt64(0), "invalid ASA"
+    dup
+    assert // invalid ASA
+    // smart_contracts/folks_adapter/contract.py:136-141
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/folks_adapter/contract.py:138
+    // asset_receiver=Global.current_application_address,
+    global CurrentApplicationAddress
+    // smart_contracts/folks_adapter/contract.py:139
+    // asset_amount=0,
+    intc_0 // 0
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/folks_adapter/contract.py:136
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:140
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:136-141
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/folks_adapter/contract.py:131
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter.pool_deposit[routing]() -> void:
+pool_deposit:
+    // smart_contracts/folks_adapter/contract.py:143-144
+    // # ── PSM ↔ adapter interface ────────────────────────────────────────────────
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/folks_adapter/contract.py:148
+    // self._assert_psm()
+    callsub _assert_psm
+    // smart_contracts/folks_adapter/contract.py:114
+    // Global.current_application_address, self.usdc_asa_id.value
+    global CurrentApplicationAddress
+    intc_0 // 0
+    bytec_3 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:113-115
+    // bal, exists = op.AssetHoldingGet.asset_balance(
+    //     Global.current_application_address, self.usdc_asa_id.value
+    // )
+    asset_holding_get AssetBalance
+    // smart_contracts/folks_adapter/contract.py:116
+    // assert exists, "adapter not opted into USDC"
+    assert // adapter not opted into USDC
+    // smart_contracts/folks_adapter/contract.py:149
+    // assert self._usdc_balance() >= amount, "usdc not received"
+    dig 1
+    >=
+    assert // usdc not received
+    // smart_contracts/folks_adapter/contract.py:150
+    // pool_addr = self._pool_address()
+    callsub _pool_address
+    // smart_contracts/folks_adapter/contract.py:151-165
+    // arc4.abi_call[arc4.UInt64](
+    //     "deposit(txn,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.usdc_asa_id.value,
+    //         asset_receiver=pool_addr,
+    //         asset_amount=amount,
+    //         fee=0,
+    //     ),
+    //     Global.current_application_address,          # receiver (adapter gets fUSDC)
+    //     Asset(self.usdc_asa_id.value),               # asset
+    //     Asset(self.fusdc_asa_id.value),              # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_begin
+    // smart_contracts/folks_adapter/contract.py:154
+    // xfer_asset=self.usdc_asa_id.value,
+    intc_0 // 0
+    bytec_3 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    uncover 2
+    itxn_field AssetAmount
+    swap
+    itxn_field AssetReceiver
+    dup
+    itxn_field XferAsset
+    // smart_contracts/folks_adapter/contract.py:153
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:157
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:151-165
+    // arc4.abi_call[arc4.UInt64](
+    //     "deposit(txn,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.usdc_asa_id.value,
+    //         asset_receiver=pool_addr,
+    //         asset_amount=amount,
+    //         fee=0,
+    //     ),
+    //     Global.current_application_address,          # receiver (adapter gets fUSDC)
+    //     Asset(self.usdc_asa_id.value),               # asset
+    //     Asset(self.fusdc_asa_id.value),              # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_next
+    // smart_contracts/folks_adapter/contract.py:159
+    // Global.current_application_address,          # receiver (adapter gets fUSDC)
+    global CurrentApplicationAddress
+    // smart_contracts/folks_adapter/contract.py:162
+    // Application(self.pool_manager_app_id.value),  # pool_manager
+    intc_0 // 0
+    bytec 4 // "pool_manager_app_id"
+    app_global_get_ex
+    assert // check self.pool_manager_app_id exists
+    // smart_contracts/folks_adapter/contract.py:161
+    // Asset(self.fusdc_asa_id.value),              # f_asset
+    intc_0 // 0
+    bytec_2 // "fusdc_asa_id"
+    app_global_get_ex
+    assert // check self.fusdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:163
+    // app_id=self.pool_app_id.value,
+    intc_0 // 0
+    bytec_1 // "pool_app_id"
+    app_global_get_ex
+    assert // check self.pool_app_id exists
+    itxn_field ApplicationID
+    uncover 3
+    itxn_field Assets
+    itxn_field Assets
+    itxn_field Applications
+    itxn_field Accounts
+    // smart_contracts/folks_adapter/contract.py:151-165
+    // arc4.abi_call[arc4.UInt64](
+    //     "deposit(txn,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.usdc_asa_id.value,
+    //         asset_receiver=pool_addr,
+    //         asset_amount=amount,
+    //         fee=0,
+    //     ),
+    //     Global.current_application_address,          # receiver (adapter gets fUSDC)
+    //     Asset(self.usdc_asa_id.value),               # asset
+    //     Asset(self.fusdc_asa_id.value),              # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushbytes 0xb9d542fb // method "deposit(txn,account,asset,asset,application)uint64"
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:159
+    // Global.current_application_address,          # receiver (adapter gets fUSDC)
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:160
+    // Asset(self.usdc_asa_id.value),               # asset
+    pushbytes 0x00
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:161
+    // Asset(self.fusdc_asa_id.value),              # f_asset
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:162
+    // Application(self.pool_manager_app_id.value),  # pool_manager
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:151-165
+    // arc4.abi_call[arc4.UInt64](
+    //     "deposit(txn,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.usdc_asa_id.value,
+    //         asset_receiver=pool_addr,
+    //         asset_amount=amount,
+    //         fee=0,
+    //     ),
+    //     Global.current_application_address,          # receiver (adapter gets fUSDC)
+    //     Asset(self.usdc_asa_id.value),               # asset
+    //     Asset(self.fusdc_asa_id.value),              # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushint 6 // appl
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:164
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:151-165
+    // arc4.abi_call[arc4.UInt64](
+    //     "deposit(txn,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.usdc_asa_id.value,
+    //         asset_receiver=pool_addr,
+    //         asset_amount=amount,
+    //         fee=0,
+    //     ),
+    //     Global.current_application_address,          # receiver (adapter gets fUSDC)
+    //     Asset(self.usdc_asa_id.value),               # asset
+    //     Asset(self.fusdc_asa_id.value),              # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec 5 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/folks_adapter/contract.py:143-144
+    // # ── PSM ↔ adapter interface ────────────────────────────────────────────────
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter.pool_withdraw[routing]() -> void:
+pool_withdraw:
+    // smart_contracts/folks_adapter/contract.py:167
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/folks_adapter/contract.py:171
+    // self._assert_psm()
+    callsub _assert_psm
+    // smart_contracts/folks_adapter/contract.py:172-178
+    // # Refresh the pool's stored index so received_amount matches the live index.
+    // arc4.abi_call(
+    //     "update_pool_interest_indexes(application)void",
+    //     Application(self.pool_manager_app_id.value),
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_begin
+    // smart_contracts/folks_adapter/contract.py:175
+    // Application(self.pool_manager_app_id.value),
+    intc_0 // 0
+    bytec 4 // "pool_manager_app_id"
+    app_global_get_ex
+    assert // check self.pool_manager_app_id exists
+    // smart_contracts/folks_adapter/contract.py:176
+    // app_id=self.pool_app_id.value,
+    intc_0 // 0
+    bytec_1 // "pool_app_id"
+    app_global_get_ex
+    assert // check self.pool_app_id exists
+    itxn_field ApplicationID
+    itxn_field Applications
+    // smart_contracts/folks_adapter/contract.py:172-178
+    // # Refresh the pool's stored index so received_amount matches the live index.
+    // arc4.abi_call(
+    //     "update_pool_interest_indexes(application)void",
+    //     Application(self.pool_manager_app_id.value),
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushbytes 0xecd1da38 // method "update_pool_interest_indexes(application)void"
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:175
+    // Application(self.pool_manager_app_id.value),
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:172-178
+    // # Refresh the pool's stored index so received_amount matches the live index.
+    // arc4.abi_call(
+    //     "update_pool_interest_indexes(application)void",
+    //     Application(self.pool_manager_app_id.value),
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushint 6 // appl
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:177
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:172-178
+    // # Refresh the pool's stored index so received_amount matches the live index.
+    // arc4.abi_call(
+    //     "update_pool_interest_indexes(application)void",
+    //     Application(self.pool_manager_app_id.value),
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_submit
+    // smart_contracts/folks_adapter/contract.py:179
+    // index = self._deposit_index()
+    callsub _deposit_index
+    // smart_contracts/folks_adapter/contract.py:180
+    // fusdc_bal = self._fusdc_balance()
+    callsub _fusdc_balance
+    // smart_contracts/folks_adapter/contract.py:128
+    // high, low = op.mulw(a, b)
+    uncover 2
+    // smart_contracts/folks_adapter/contract.py:182-183
+    // # fUSDC needed to cover `amount` USDC (floor); cap at holdings (full exit).
+    // needed = self._wide_ratio(amount, UInt64(ONE_14_DP), index)
+    intc 4 // 100000000000000
+    // smart_contracts/folks_adapter/contract.py:128
+    // high, low = op.mulw(a, b)
+    mulw
+    // smart_contracts/folks_adapter/contract.py:129
+    // return op.divw(high, low, c)
+    dig 3
+    divw
+    // smart_contracts/folks_adapter/contract.py:184
+    // fusdc_to_send = needed if needed <= fusdc_bal else fusdc_bal
+    dup
+    dig 2
+    <=
+    select
+    dup
+    cover 2
+    // smart_contracts/folks_adapter/contract.py:128
+    // high, low = op.mulw(a, b)
+    dup
+    uncover 2
+    mulw
+    // smart_contracts/folks_adapter/contract.py:185-186
+    // # Request the USDC that this fUSDC is worth, so the request always matches what is sent.
+    // received = self._wide_ratio(fusdc_to_send, index, UInt64(ONE_14_DP))
+    intc 4 // 100000000000000
+    // smart_contracts/folks_adapter/contract.py:129
+    // return op.divw(high, low, c)
+    divw
+    swap
+    // smart_contracts/folks_adapter/contract.py:188
+    // if fusdc_to_send > UInt64(0) and received > UInt64(0):
+    bz pool_withdraw_after_if_else@7
+    dup
+    bz pool_withdraw_after_if_else@7
+    // smart_contracts/folks_adapter/contract.py:189-204
+    // arc4.abi_call[arc4.UInt64](
+    //     "withdraw(axfer,uint64,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.fusdc_asa_id.value,
+    //         asset_receiver=self._pool_address(),
+    //         asset_amount=fusdc_to_send,
+    //         fee=0,
+    //     ),
+    //     received,                                     # received_amount (USDC)
+    //     self._psm_address(),                          # receiver (USDC → PSM directly)
+    //     Asset(self.usdc_asa_id.value),                # asset
+    //     Asset(self.fusdc_asa_id.value),               # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_begin
+    // smart_contracts/folks_adapter/contract.py:192
+    // xfer_asset=self.fusdc_asa_id.value,
+    intc_0 // 0
+    bytec_2 // "fusdc_asa_id"
+    app_global_get_ex
+    assert // check self.fusdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:193
+    // asset_receiver=self._pool_address(),
+    callsub _pool_address
+    dig 3
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/folks_adapter/contract.py:191
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:195
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:189-204
+    // arc4.abi_call[arc4.UInt64](
+    //     "withdraw(axfer,uint64,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.fusdc_asa_id.value,
+    //         asset_receiver=self._pool_address(),
+    //         asset_amount=fusdc_to_send,
+    //         fee=0,
+    //     ),
+    //     received,                                     # received_amount (USDC)
+    //     self._psm_address(),                          # receiver (USDC → PSM directly)
+    //     Asset(self.usdc_asa_id.value),                # asset
+    //     Asset(self.fusdc_asa_id.value),               # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_next
+    // smart_contracts/folks_adapter/contract.py:197
+    // received,                                     # received_amount (USDC)
+    dup
+    itob
+    // smart_contracts/folks_adapter/contract.py:198
+    // self._psm_address(),                          # receiver (USDC → PSM directly)
+    callsub _psm_address
+    // smart_contracts/folks_adapter/contract.py:201
+    // Application(self.pool_manager_app_id.value),  # pool_manager
+    intc_0 // 0
+    bytec 4 // "pool_manager_app_id"
+    app_global_get_ex
+    assert // check self.pool_manager_app_id exists
+    // smart_contracts/folks_adapter/contract.py:199
+    // Asset(self.usdc_asa_id.value),                # asset
+    intc_0 // 0
+    bytec_3 // "usdc_asa_id"
+    app_global_get_ex
+    assert // check self.usdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:200
+    // Asset(self.fusdc_asa_id.value),               # f_asset
+    intc_0 // 0
+    bytec_2 // "fusdc_asa_id"
+    app_global_get_ex
+    assert // check self.fusdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:202
+    // app_id=self.pool_app_id.value,
+    intc_0 // 0
+    bytec_1 // "pool_app_id"
+    app_global_get_ex
+    assert // check self.pool_app_id exists
+    itxn_field ApplicationID
+    swap
+    itxn_field Assets
+    itxn_field Assets
+    itxn_field Applications
+    itxn_field Accounts
+    // smart_contracts/folks_adapter/contract.py:189-204
+    // arc4.abi_call[arc4.UInt64](
+    //     "withdraw(axfer,uint64,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.fusdc_asa_id.value,
+    //         asset_receiver=self._pool_address(),
+    //         asset_amount=fusdc_to_send,
+    //         fee=0,
+    //     ),
+    //     received,                                     # received_amount (USDC)
+    //     self._psm_address(),                          # receiver (USDC → PSM directly)
+    //     Asset(self.usdc_asa_id.value),                # asset
+    //     Asset(self.fusdc_asa_id.value),               # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushbytes 0xeabe829d // method "withdraw(axfer,uint64,account,asset,asset,application)uint64"
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:198
+    // self._psm_address(),                          # receiver (USDC → PSM directly)
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:199
+    // Asset(self.usdc_asa_id.value),                # asset
+    pushbytes 0x00
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:200
+    // Asset(self.fusdc_asa_id.value),               # f_asset
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:201
+    // Application(self.pool_manager_app_id.value),  # pool_manager
+    bytec_0 // 0x01
+    itxn_field ApplicationArgs
+    // smart_contracts/folks_adapter/contract.py:189-204
+    // arc4.abi_call[arc4.UInt64](
+    //     "withdraw(axfer,uint64,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.fusdc_asa_id.value,
+    //         asset_receiver=self._pool_address(),
+    //         asset_amount=fusdc_to_send,
+    //         fee=0,
+    //     ),
+    //     received,                                     # received_amount (USDC)
+    //     self._psm_address(),                          # receiver (USDC → PSM directly)
+    //     Asset(self.usdc_asa_id.value),                # asset
+    //     Asset(self.fusdc_asa_id.value),               # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    pushint 6 // appl
+    itxn_field TypeEnum
+    // smart_contracts/folks_adapter/contract.py:203
+    // fee=0,
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/folks_adapter/contract.py:189-204
+    // arc4.abi_call[arc4.UInt64](
+    //     "withdraw(axfer,uint64,account,asset,asset,application)uint64",
+    //     itxn.AssetTransfer(
+    //         xfer_asset=self.fusdc_asa_id.value,
+    //         asset_receiver=self._pool_address(),
+    //         asset_amount=fusdc_to_send,
+    //         fee=0,
+    //     ),
+    //     received,                                     # received_amount (USDC)
+    //     self._psm_address(),                          # receiver (USDC → PSM directly)
+    //     Asset(self.usdc_asa_id.value),                # asset
+    //     Asset(self.fusdc_asa_id.value),               # f_asset
+    //     Application(self.pool_manager_app_id.value),  # pool_manager
+    //     app_id=self.pool_app_id.value,
+    //     fee=0,
+    // )
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec 5 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    len
+    intc_1 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+
+pool_withdraw_after_if_else@7:
+    // smart_contracts/folks_adapter/contract.py:205
+    // return arc4.UInt64(received)
+    dup
+    itob
+    // smart_contracts/folks_adapter/contract.py:167
+    // @arc4.abimethod
+    bytec 5 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_2 // 1
+    return
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter.recoverable_value[routing]() -> void:
+recoverable_value:
+    // smart_contracts/folks_adapter/contract.py:211
+    // return arc4.UInt64(self._wide_ratio(self._fusdc_balance(), self._deposit_index(), UInt64(ONE_14_DP)))
+    callsub _fusdc_balance
+    callsub _deposit_index
+    // smart_contracts/folks_adapter/contract.py:128
+    // high, low = op.mulw(a, b)
+    mulw
+    // smart_contracts/folks_adapter/contract.py:211
+    // return arc4.UInt64(self._wide_ratio(self._fusdc_balance(), self._deposit_index(), UInt64(ONE_14_DP)))
+    intc 4 // 100000000000000
+    // smart_contracts/folks_adapter/contract.py:129
+    // return op.divw(high, low, c)
+    divw
+    // smart_contracts/folks_adapter/contract.py:211
+    // return arc4.UInt64(self._wide_ratio(self._fusdc_balance(), self._deposit_index(), UInt64(ONE_14_DP)))
+    itob
+    // smart_contracts/folks_adapter/contract.py:207
+    // @arc4.abimethod(readonly=True)
+    bytec 5 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_2 // 1
+    return
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter._psm_address() -> bytes:
+_psm_address:
+    // smart_contracts/folks_adapter/contract.py:85
+    // addr, exists = op.AppParamsGet.app_address(self.psm_app_id.value)
+    intc_0 // 0
+    bytec 6 // "psm_app_id"
+    app_global_get_ex
+    assert // check self.psm_app_id exists
+    app_params_get AppAddress
+    // smart_contracts/folks_adapter/contract.py:86
+    // assert exists, "psm app not found"
+    assert // psm app not found
+    // smart_contracts/folks_adapter/contract.py:87
+    // return addr
+    retsub
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter._pool_address() -> bytes:
+_pool_address:
+    // smart_contracts/folks_adapter/contract.py:91
+    // addr, exists = op.AppParamsGet.app_address(self.pool_app_id.value)
+    intc_0 // 0
+    bytec_1 // "pool_app_id"
+    app_global_get_ex
+    assert // check self.pool_app_id exists
+    app_params_get AppAddress
+    // smart_contracts/folks_adapter/contract.py:92
+    // assert exists, "pool app not found"
+    assert // pool app not found
+    // smart_contracts/folks_adapter/contract.py:93
+    // return addr
+    retsub
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter._assert_psm() -> void:
+_assert_psm:
+    // smart_contracts/folks_adapter/contract.py:97
+    // assert Txn.sender == self._psm_address(), "caller is not the PSM"
+    txn Sender
+    callsub _psm_address
+    ==
+    assert // caller is not the PSM
+    retsub
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter._fusdc_balance() -> uint64:
+_fusdc_balance:
+    // smart_contracts/folks_adapter/contract.py:106
+    // Global.current_application_address, self.fusdc_asa_id.value
+    global CurrentApplicationAddress
+    intc_0 // 0
+    bytec_2 // "fusdc_asa_id"
+    app_global_get_ex
+    assert // check self.fusdc_asa_id exists
+    // smart_contracts/folks_adapter/contract.py:105-107
+    // bal, exists = op.AssetHoldingGet.asset_balance(
+    //     Global.current_application_address, self.fusdc_asa_id.value
+    // )
+    asset_holding_get AssetBalance
+    // smart_contracts/folks_adapter/contract.py:108
+    // assert exists, "adapter not opted into fUSDC"
+    assert // adapter not opted into fUSDC
+    // smart_contracts/folks_adapter/contract.py:109
+    // return bal
+    retsub
+
+
+// smart_contracts.folks_adapter.contract.FolksAdapter._deposit_index() -> uint64:
+_deposit_index:
+    // smart_contracts/folks_adapter/contract.py:122
+    // raw, exists = op.AppGlobal.get_ex_bytes(self.pool_app_id.value, Bytes(b"i"))
+    intc_0 // 0
+    bytec_1 // "pool_app_id"
+    app_global_get_ex
+    assert // check self.pool_app_id exists
+    pushbytes 0x69
+    app_global_get_ex
+    // smart_contracts/folks_adapter/contract.py:123
+    // assert exists, "pool interest state missing"
+    assert // pool interest state missing
+    // smart_contracts/folks_adapter/contract.py:124
+    // return op.extract_uint64(raw, UInt64(INDEX_OFFSET))
+    pushint 40
+    extract_uint64
+    retsub

@@ -7,19 +7,28 @@ to build/test. Design authority: **[PSM.md → Productive Reserves (v3)](./PSM.m
 
 ## 1. Scope
 
-**In scope (new / changed — audit these):**
-- `contracts/smart_contracts/psm_v3/contract.py` — **PSMv3**, the reserve contract. *This holds the
-  funds.* Immutable (no `UpdateApplication`). The redefined backing invariant is the highest-risk
-  change (it changes what backs the dollar).
-- `contracts/smart_contracts/folks_adapter/contract.py` — **FolksAdapter**, the venue integration.
-  Its `recoverable_value()` is load-bearing (see §5).
+All contracts live in `contracts/smart_contracts/<name>/contract.py`.
 
-**Out of scope (unchanged from the v2 passes, keep their audit history):**
-- `vault/`, `lp_oracle/` contracts — untouched in v3.
-- The v2 `psm/contract.py` — superseded by `psm_v3`; not deployed at launch.
-- `mock_adapter/`, `mock_vault/`, `mock_psm/` — TEST-ONLY contracts (with deliberate knobs like
-  `set_withdraw_lie`); never deployed to mainnet. Do not audit as production, but they drive the
-  loss-path tests.
+**Primary — new in v3, highest risk (audit first):**
+- `psm_v3` — **PSMv3**, the reserve contract. *This holds the funds.* Immutable (no
+  `UpdateApplication`). The redefined backing invariant is the highest-risk change (it changes what
+  backs the dollar). ~861 lines.
+- `folks_adapter` — **FolksAdapter**, the venue integration. Its `recoverable_value()` is
+  load-bearing (see §5). ~211 lines.
+
+**Live production contracts — internally reviewed (27 v2 passes) but part of the running system;
+worth fresh eyes, especially the oracle/collateral surface discussed in §8:**
+- `vault` — collateral, borrowing, **liquidation**, LTV enforcement. ~977 lines.
+- `lp_oracle` — LP price oracle + **manipulation guards** (±25% anchor, ±50% deviation, freshness).
+  ~270 lines. This is the oracle-attack surface in §8.1/§8.3.
+
+**Out of scope:**
+- `psm` — the **superseded** original v2 PSM. Replaced by `psm_v3`; **not deployed.** Retained only
+  because the v2 test suite deploys it to exercise `vault` + `lp_oracle`. Do not review as live code.
+- `mock_adapter`, `mock_vault`, `mock_psm` — TEST-ONLY (with deliberate attack knobs like
+  `set_withdraw_lie`); never deployed. They drive the loss-path tests; don't audit as production.
+
+**Full-live-stack review = `psm_v3` + `folks_adapter` + `vault` + `lp_oracle` (~2,300 lines).**
 
 ## 2. What the PSM does
 

@@ -1,0 +1,670 @@
+{
+  "version": 3,
+  "sources": [
+    "contract.py"
+  ],
+  "mappings": ";;;;;;;AAGA;;AAAA;AAAA;AAAA;;AAAA;;;AAAA;;;;;;;;;;;;AAAA;;;AAAA;;;;;;AAAA;AAAA;;;;;;AAAA;;;AAAA;;;;AAAA;AAYK;AAAA;AAIA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAEG;;;;;AAAA;;;;;;;;;;;;;AAAA;;;AAAA;;;AAAA;AAFH;AAAA;AASA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAEG;;;;AAAA;;;;;;;;;;AAAA;;;AAAA;;;AAAA;AAFH;AAAA",
+  "op_pc_offset": 0,
+  "pc_events": {
+    "1": {
+      "subroutine": "algopy.arc4.ARC4Contract.approval_program",
+      "params": {},
+      "block": "main",
+      "stack_in": [],
+      "op": "intcblock 8 1 6 0"
+    },
+    "7": {
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "9": {
+      "op": "!",
+      "defined_out": [
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%1#0"
+      ]
+    },
+    "10": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "11": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "13": {
+      "op": "bz main_create_NoOp@6",
+      "stack_out": []
+    },
+    "16": {
+      "op": "pushbytess 0xb0c686a4 0x24828d40 // method \"call_issue(uint64,address,uint64)void\", method \"call_receive(uint64,uint64)void\"",
+      "defined_out": [
+        "Method(call_issue(uint64,address,uint64)void)",
+        "Method(call_receive(uint64,uint64)void)"
+      ],
+      "stack_out": [
+        "Method(call_issue(uint64,address,uint64)void)",
+        "Method(call_receive(uint64,uint64)void)"
+      ]
+    },
+    "28": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(call_issue(uint64,address,uint64)void)",
+        "Method(call_receive(uint64,uint64)void)",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "Method(call_issue(uint64,address,uint64)void)",
+        "Method(call_receive(uint64,uint64)void)",
+        "tmp%4#0"
+      ]
+    },
+    "31": {
+      "op": "match call_issue call_receive",
+      "stack_out": []
+    },
+    "37": {
+      "op": "err"
+    },
+    "38": {
+      "block": "main_create_NoOp@6",
+      "stack_in": [],
+      "op": "pushbytes 0x4c5c61ba // method \"create()void\"",
+      "defined_out": [
+        "Method(create()void)"
+      ],
+      "stack_out": [
+        "Method(create()void)"
+      ]
+    },
+    "44": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(create()void)",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "Method(create()void)",
+        "tmp%5#0"
+      ]
+    },
+    "47": {
+      "op": "match main_create_route@7",
+      "stack_out": []
+    },
+    "51": {
+      "op": "err"
+    },
+    "52": {
+      "block": "main_create_route@7",
+      "stack_in": [],
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "53": {
+      "op": "return",
+      "stack_out": []
+    },
+    "54": {
+      "subroutine": "smart_contracts.mock_vault.contract.MockVault.call_issue[routing]",
+      "params": {},
+      "block": "call_issue",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "57": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "58": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "59": {
+      "op": "intc_0 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "60": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "61": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "62": {
+      "op": "btoi",
+      "defined_out": [
+        "psm_app#0"
+      ],
+      "stack_out": [
+        "psm_app#0"
+      ]
+    },
+    "63": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ]
+    },
+    "66": {
+      "op": "dup",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "67": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "68": {
+      "op": "pushint 32",
+      "defined_out": [
+        "32",
+        "len%1#0",
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "len%1#0",
+        "32"
+      ]
+    },
+    "70": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "71": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ]
+    },
+    "72": {
+      "op": "txna ApplicationArgs 3",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0"
+      ]
+    },
+    "75": {
+      "op": "dup",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)"
+      ]
+    },
+    "76": {
+      "op": "len",
+      "defined_out": [
+        "len%2#0",
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0",
+        "len%2#0"
+      ]
+    },
+    "77": {
+      "op": "intc_0 // 8",
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0",
+        "len%2#0",
+        "8"
+      ]
+    },
+    "78": {
+      "op": "==",
+      "defined_out": [
+        "eq%2#0",
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0",
+        "eq%2#0"
+      ]
+    },
+    "79": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%4#0"
+      ]
+    },
+    "80": {
+      "op": "itxn_begin"
+    },
+    "81": {
+      "op": "uncover 2",
+      "stack_out": [
+        "tmp%2#0",
+        "tmp%4#0",
+        "psm_app#0"
+      ]
+    },
+    "83": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "tmp%2#0",
+        "tmp%4#0"
+      ]
+    },
+    "85": {
+      "op": "pushbytes 0xe8ab6a79 // method \"issue_musd(address,uint64)void\"",
+      "defined_out": [
+        "Method(issue_musd(address,uint64)void)",
+        "tmp%2#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "tmp%2#0",
+        "tmp%4#0",
+        "Method(issue_musd(address,uint64)void)"
+      ]
+    },
+    "91": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "tmp%2#0",
+        "tmp%4#0"
+      ]
+    },
+    "93": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%4#0",
+        "tmp%2#0"
+      ]
+    },
+    "94": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "tmp%4#0"
+      ]
+    },
+    "96": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "98": {
+      "op": "intc_2 // appl",
+      "defined_out": [
+        "appl"
+      ],
+      "stack_out": [
+        "appl"
+      ]
+    },
+    "99": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": []
+    },
+    "101": {
+      "op": "intc_3 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "102": {
+      "op": "itxn_field Fee",
+      "stack_out": []
+    },
+    "104": {
+      "op": "itxn_submit"
+    },
+    "105": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "106": {
+      "op": "return",
+      "stack_out": []
+    },
+    "107": {
+      "subroutine": "smart_contracts.mock_vault.contract.MockVault.call_receive[routing]",
+      "params": {},
+      "block": "call_receive",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "110": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "111": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "112": {
+      "op": "intc_0 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "113": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "114": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "115": {
+      "op": "btoi",
+      "defined_out": [
+        "psm_app#0"
+      ],
+      "stack_out": [
+        "psm_app#0"
+      ]
+    },
+    "116": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ]
+    },
+    "119": {
+      "op": "dup",
+      "defined_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "120": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "121": {
+      "op": "intc_0 // 8",
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "122": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "psm_app#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "123": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "psm_app#0",
+        "tmp%2#0"
+      ]
+    },
+    "124": {
+      "op": "itxn_begin"
+    },
+    "125": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%2#0",
+        "psm_app#0"
+      ]
+    },
+    "126": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "128": {
+      "op": "pushbytes 0xd80d698d // method \"receive_musd(uint64)void\"",
+      "defined_out": [
+        "Method(receive_musd(uint64)void)",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0",
+        "Method(receive_musd(uint64)void)"
+      ]
+    },
+    "134": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "136": {
+      "op": "itxn_field ApplicationArgs",
+      "stack_out": []
+    },
+    "138": {
+      "op": "intc_2 // appl",
+      "defined_out": [
+        "appl"
+      ],
+      "stack_out": [
+        "appl"
+      ]
+    },
+    "139": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": []
+    },
+    "141": {
+      "op": "intc_3 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "142": {
+      "op": "itxn_field Fee",
+      "stack_out": []
+    },
+    "144": {
+      "op": "itxn_submit"
+    },
+    "145": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "146": {
+      "op": "return",
+      "stack_out": []
+    }
+  }
+}

@@ -1,0 +1,262 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 8 0 1 4
+    bytecblock "admin" 0x151f7c75
+    // smart_contracts/mock_psm/contract.py:14
+    // class MockPsm(ARC4Contract):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@10
+    pushbytess 0xe3cdef3b 0xb667c529 0xe83a87ab 0x56ce894b // method "opt_in_asset(uint64)void", method "fund_and_deposit(uint64,uint64,uint64)void", method "noop()void", method "do_withdraw(uint64,uint64)uint64"
+    txna ApplicationArgs 0
+    match opt_in_asset fund_and_deposit main_noop_route@7 do_withdraw
+    err
+
+main_noop_route@7:
+    // smart_contracts/mock_psm/contract.py:61
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+main_create_NoOp@10:
+    // smart_contracts/mock_psm/contract.py:14
+    // class MockPsm(ARC4Contract):
+    pushbytes 0x4c5c61ba // method "create()void"
+    txna ApplicationArgs 0
+    match create
+    err
+
+
+// smart_contracts.mock_psm.contract.MockPsm.create[routing]() -> void:
+create:
+    // smart_contracts/mock_psm/contract.py:30
+    // self.admin.value = arc4.Address(Txn.sender)
+    bytec_0 // "admin"
+    txn Sender
+    app_global_put
+    // smart_contracts/mock_psm/contract.py:28
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_psm.contract.MockPsm.opt_in_asset[routing]() -> void:
+opt_in_asset:
+    // smart_contracts/mock_psm/contract.py:36
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/mock_psm/contract.py:38
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/mock_psm/contract.py:39
+    // assert asa_id != UInt64(0), "invalid ASA"
+    dup
+    assert // invalid ASA
+    // smart_contracts/mock_psm/contract.py:40-45
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/mock_psm/contract.py:42
+    // asset_receiver=Global.current_application_address,
+    global CurrentApplicationAddress
+    // smart_contracts/mock_psm/contract.py:43
+    // asset_amount=0,
+    intc_1 // 0
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/mock_psm/contract.py:40
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/mock_psm/contract.py:44
+    // fee=0,
+    intc_1 // 0
+    itxn_field Fee
+    // smart_contracts/mock_psm/contract.py:40-45
+    // itxn.AssetTransfer(
+    //     xfer_asset=asa_id,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/mock_psm/contract.py:36
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_psm.contract.MockPsm.fund_and_deposit[routing]() -> void:
+fund_and_deposit:
+    // smart_contracts/mock_psm/contract.py:47
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    dup
+    btoi
+    // smart_contracts/mock_psm/contract.py:50
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/mock_psm/contract.py:51
+    // adapter_addr, exists = op.AppParamsGet.app_address(adapter_app_id)
+    dig 3
+    app_params_get AppAddress
+    // smart_contracts/mock_psm/contract.py:52
+    // assert exists, "adapter app not found"
+    assert // adapter app not found
+    // smart_contracts/mock_psm/contract.py:53-58
+    // itxn.AssetTransfer(
+    //     xfer_asset=usdc_asa_id,
+    //     asset_receiver=adapter_addr,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_begin
+    itxn_field AssetReceiver
+    itxn_field AssetAmount
+    swap
+    itxn_field XferAsset
+    // smart_contracts/mock_psm/contract.py:53
+    // itxn.AssetTransfer(
+    intc_3 // axfer
+    itxn_field TypeEnum
+    // smart_contracts/mock_psm/contract.py:57
+    // fee=0,
+    intc_1 // 0
+    itxn_field Fee
+    // smart_contracts/mock_psm/contract.py:53-58
+    // itxn.AssetTransfer(
+    //     xfer_asset=usdc_asa_id,
+    //     asset_receiver=adapter_addr,
+    //     asset_amount=amount,
+    //     fee=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/mock_psm/contract.py:59
+    // arc4.abi_call("pool_deposit(uint64)void", amount, app_id=adapter_app_id, fee=0)
+    itxn_begin
+    swap
+    itxn_field ApplicationID
+    pushbytes 0x77e93bad // method "pool_deposit(uint64)void"
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_1 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/mock_psm/contract.py:47
+    // @arc4.abimethod
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_psm.contract.MockPsm.do_withdraw[routing]() -> void:
+do_withdraw:
+    // smart_contracts/mock_psm/contract.py:66
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/mock_psm/contract.py:68
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/mock_psm/contract.py:69-71
+    // result, _txn = arc4.abi_call[arc4.UInt64](
+    //     "pool_withdraw(uint64)uint64", amount, app_id=adapter_app_id, fee=0
+    // )
+    itxn_begin
+    swap
+    itxn_field ApplicationID
+    pushbytes 0x5a44ecb5 // method "pool_withdraw(uint64)uint64"
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    pushint 6 // appl
+    itxn_field TypeEnum
+    // smart_contracts/mock_psm/contract.py:70
+    // "pool_withdraw(uint64)uint64", amount, app_id=adapter_app_id, fee=0
+    intc_1 // 0
+    itxn_field Fee
+    // smart_contracts/mock_psm/contract.py:69-71
+    // result, _txn = arc4.abi_call[arc4.UInt64](
+    //     "pool_withdraw(uint64)uint64", amount, app_id=adapter_app_id, fee=0
+    // )
+    itxn_submit
+    itxn LastLog
+    dup
+    extract 0 4
+    bytec_1 // 0x151f7c75
+    ==
+    assert // application log value is not the result of an ABI return
+    extract 4 0
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    // smart_contracts/mock_psm/contract.py:66
+    // @arc4.abimethod
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_2 // 1
+    return
+
+
+// smart_contracts.mock_psm.contract.MockPsm._assert_admin() -> void:
+_assert_admin:
+    // smart_contracts/mock_psm/contract.py:34
+    // assert Txn.sender == self.admin.value.native, "admin only"
+    txn Sender
+    intc_1 // 0
+    bytec_0 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    assert // admin only
+    retsub
