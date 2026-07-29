@@ -218,6 +218,9 @@ export function OperationsPanel() {
             <ActionForm title="Set LP ASA ID" desc="Register the LP token for a pool."
               fields={[{ key: "p", label: "Pool ID" }, { key: "lp", label: "LP ASA ID" }]} button="Set LP ASA"
               onRun={(v) => ops.setLpAsaId(a(), me(), vault(), BigInt(v.p), BigInt(v.lp))} />
+            <ActionForm title="Opt vault into LP token" desc="The vault must opt into an LP ASA before borrowers can deposit it. Run once per pool."
+              fields={[{ key: "asa", label: "LP ASA ID" }]} button="Opt in"
+              onRun={(v) => ops.optInAsset(a(), me(), "vault", vault(), BigInt(v.asa))} />
           </Section>
 
           {/* Reserves & fees */}

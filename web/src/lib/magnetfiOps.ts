@@ -63,6 +63,9 @@ export const setLiqThreshold = (al: AlgorandClient, s: string, vault: bigint, po
   call(al, "vault", vault, s, "set_liq_threshold", [poolId, bps]);
 export const setLpAsaId = (al: AlgorandClient, s: string, vault: bigint, poolId: bigint, lpAsaId: bigint) =>
   call(al, "vault", vault, s, "set_lp_asa_id", [poolId, lpAsaId]);
+// Opt an app (vault / psm) into an ASA — the vault must opt into an LP token before borrowers deposit it.
+export const optInAsset = (al: AlgorandClient, s: string, which: Which, appId: bigint, asaId: bigint) =>
+  call(al, which, appId, s, "opt_in_asset", [asaId]);
 
 // ── Vault: liquidations & accrual ────────────────────────────────────────────────
 export const markOverdue = (al: AlgorandClient, s: string, vault: bigint, borrower: string, poolId: bigint) =>
