@@ -73,7 +73,8 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 - **5.1 Dedicated fresh code audit** of the v3 PSM + Folks adapter (a *new* pass, not a re-run of v2).
 - **5.2 Legal counsel sign-off.**
 - **5.3 Testnet rehearsal:** ✅ **done.** Deploy→recall proven against live Folks (`test_psm_folks_testnet.py`); loss→deficit→freeze→restore→unfreeze proven against the real PSMv3 on testnet (`test_psm_deficit_testnet.py` — deficit crystallized to exactly 50000 despite an adapter's lie; deploy+withdraw froze; restore re-enabled). Harvest-with-real-yield still only LocalNet (needs time to accrue). Audit handoff: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
-- **5.4 Mainnet deploy:** small ceiling, **conservative deployment fraction**, Folks-only.
+- **5.4 Mainnet deploy:** ✅ **LIVE (2026-07-30).** Oracle `3644230020` / PSMv3 `3644230181` / Vault `3644230459` deployed + wired; $1,000 USDC reserve seeded; oracle bot posting U/tALGO price every ~5 min; **$10 canary borrow proven end-to-end** (oracle → LTV → issuance → invariant held). Folks yield adapter built but **not yet whitelisted** on mainnet (next). Full record: [MAINNET.md](./MAINNET.md).
+- **5.1/5.2 (external audit + counsel):** owner's separate track — launched ahead of these on a small ceiling with the on-chain blast-radius controls (buffer, per-venue cap, balance-delta, deficit freeze) as the mitigation. See AUDIT_HANDOFF.md.
 
 ---
 
