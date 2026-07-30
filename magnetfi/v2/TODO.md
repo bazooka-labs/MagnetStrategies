@@ -11,11 +11,9 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - ✅ **mUSD ASA on mainnet:** `3615600399`.
 - ✅ **Full UI built** — `/magnetfi` app (Overview / CompX Markets / LP Vaults / mUSD) + gated Admin panel (Create mUSD, testnet asset factory, deploy wizard, operations console). Borrower tabs wired to live on-chain data + transactions.
 - ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
-- ✅ **LIVE ON MAINNET (2026-07-30).** Core protocol deployed + seeded + oracle bot posting + a $10
-  canary borrow proven end-to-end. Apps: Oracle `3644230020`, **PSMv3 `3644230181`**, Vault
-  `3644230459`. U/tALGO collateral `3163770927`, $1,000 ceiling, buffer 70%. **Full live record:
-  [MAINNET.md](./MAINNET.md).** Pending: repay canary, whitelist Folks yield adapter, bot hardening
-  + monitoring, scale/open, external audit (owner track).
+- ✅ **Live on mainnet.** Core protocol (Oracle / PSMv3 / Vault) deployed and operating on U/tALGO
+  collateral; v3 productive-reserves PSM live. Folks yield adapter not yet whitelisted. (Live app
+  IDs are in `web/src/lib/magnetfi.ts` `DEPLOYMENTS.mainnet` and the oracle bot config.)
 - ✅ **v3 productive reserves BUILT + testnet-validated** (PSMv3 + FolksAdapter). Design:
   [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3); roadmap:
   [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md); audit package: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
