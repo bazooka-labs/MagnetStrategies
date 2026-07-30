@@ -58,7 +58,7 @@ export async function getProtocolStats(algod: algosdk.Algodv2): Promise<Protocol
 
 export type VaultPosition = {
   lpAmount: number; musdBorrowed: number; accruedInterest: number;
-  rateBps: number; lastPaymentTs: number; vaultState: number;
+  rateBps: number; lastAccrualTs: number; lastPaymentTs: number; vaultState: number;
 };
 
 export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string): Promise<VaultPosition | null> {
@@ -73,7 +73,7 @@ export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string)
     const u = (i: number) => Number(v.getBigUint64(i * 8));
     return {
       lpAmount: fromBase(u(0)), musdBorrowed: fromBase(u(2)), accruedInterest: fromBase(u(3)),
-      rateBps: u(4), lastPaymentTs: u(6), vaultState: u(7),
+      rateBps: u(4), lastAccrualTs: u(5), lastPaymentTs: u(6), vaultState: u(7),
     };
   } catch {
     return null;

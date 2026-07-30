@@ -146,6 +146,31 @@ export function maxBorrow(collateralUsd: number, ltvBps: number): number {
   return collateralUsd * (ltvBps / 10_000);
 }
 
+export const SECONDS_PER_YEAR = 31_536_000; // mirrors the vault contract accrual denominator
+
+/**
+ * Live-projected accrued interest (mUSD): the stored on-chain accrued_interest plus the
+ * interest accumulated since last_accrual_timestamp that has not yet been written to chain.
+ * Accrual is lazy on-chain (only written on a vault interaction), so this lets a borrower
+ * watch interest build with no on-chain write. Mirrors the vault's per-second accrual,
+ * including its 1-year elapsed cap. DISPLAY ESTIMATE ONLY — the exact amount due is
+ * recomputed on-chain at pay time (integer floor math), so at equal timestamps this is a
+ * hair high, never low (health factor is never optimistically overstated).
+ */
+export function projectedAccruedInterest(
+  storedAccruedMusd: number,
+  principalMusd: number,
+  rateBps: number,
+  lastAccrualSec: number,
+  nowSec: number,
+): number {
+  if (principalMusd <= 0 || rateBps <= 0 || lastAccrualSec <= 0) return storedAccruedMusd;
+  let elapsed = Math.max(0, nowSec - lastAccrualSec);
+  if (elapsed > SECONDS_PER_YEAR) elapsed = SECONDS_PER_YEAR;
+  const annual = principalMusd * (rateBps / 10_000);
+  return storedAccruedMusd + (annual * elapsed) / SECONDS_PER_YEAR;
+}
+
 /**
  * The % drop in collateral value that would push the position to HF = 1.0
  * (the liquidation point). Returns 0 if already underwater.

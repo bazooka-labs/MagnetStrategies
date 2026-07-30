@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Info, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import {
   VAULT_TYPES, PROTOCOL_LIVE, pct, formatUsd, maxBorrow, healthFactor, liquidationBuffer,
+  projectedAccruedInterest,
 } from "@/lib/magnetfi";
 import {
   makeAlgorand, optIn, openVault, payInterest, repayPrincipal, borrowMore, addCollateral,
@@ -23,6 +24,33 @@ function hfColor(hf: number): string {
   if (hf >= 1.5) return "text-green-400";
   if (hf >= 1.15) return "text-yellow-400";
   return "text-red-400";
+}
+
+// Hoisted to module scope (not declared inside VaultsTab) so the 60s live-interest tick —
+// or any parent re-render — does NOT remount its <input> and steal focus mid-typing.
+function ManageAction({ id, label, unit, onRun, disabled, max, m, setM, run, busy }: {
+  id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
+  disabled?: boolean; max?: number;
+  m: Record<string, string>;
+  setM: Dispatch<SetStateAction<Record<string, string>>>;
+  run: (id: string, fn: () => Promise<void>, optAsset?: number) => Promise<void>;
+  busy: string | null;
+}) {
+  const v = m[id] ?? "";
+  const num = Number(v) || 0;
+  const amount = max !== undefined ? Math.min(num, max) : num;   // clamp (H-1)
+  return (
+    <div className="flex items-center gap-2">
+      <input value={v} disabled={disabled}
+        onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
+        placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
+        className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
+      <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
+        className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
+        {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
+      </button>
+    </div>
+  );
 }
 
 export function VaultsTab() {
@@ -86,31 +114,24 @@ export function VaultsTab() {
     } finally { setBusy(null); }
   }
 
-  // ── position math ──
-  const posValue = pos ? pos.lpAmount * price : 0;
-  const posDebt = pos ? pos.musdBorrowed + pos.accruedInterest : 0;
-  const posHf = pos ? healthFactor(posValue, posDebt, POOL.liqThresholdBps) : Infinity;
+  // Local clock so the live interest estimate visibly progresses without any network call.
+  // 60s is pure client-side math (no RPC); interest on a loan barely moves in a minute.
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
-  function ManageAction({ id, label, unit, onRun, disabled, max }: {
-    id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
-    disabled?: boolean; max?: number;
-  }) {
-    const v = m[id] ?? "";
-    const num = Number(v) || 0;
-    const amount = max !== undefined ? Math.min(num, max) : num;   // clamp (H-1)
-    return (
-      <div className="flex items-center gap-2">
-        <input value={v} disabled={disabled}
-          onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
-          placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
-        <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
-          className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
-          {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
-        </button>
-      </div>
-    );
-  }
+  // ── position math ──
+  // Live-projected accrued interest — the stored field is lazy (only written on a vault
+  // interaction), so we project it client-side. Skip in vault_state 2 where the contract
+  // repurposes accrued_interest as a settlement counter.
+  const liveInterest = pos && pos.vaultState !== 2
+    ? projectedAccruedInterest(pos.accruedInterest, pos.musdBorrowed, pos.rateBps, pos.lastAccrualTs, nowSec)
+    : (pos?.accruedInterest ?? 0);
+  const posValue = pos ? pos.lpAmount * price : 0;
+  const posDebt = pos ? pos.musdBorrowed + liveInterest : 0;
+  const posHf = pos ? healthFactor(posValue, posDebt, POOL.liqThresholdBps) : Infinity;
 
   return (
     <div className="space-y-8">
@@ -157,8 +178,9 @@ export function VaultsTab() {
               <p className="text-xs text-gray-500">${formatUsd(posValue)}</p></div>
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Borrowed</p>
               <p className="mt-1 font-mono text-white">{formatUsd(pos.musdBorrowed)}</p></div>
-            <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Accrued interest</p>
-              <p className="mt-1 font-mono text-white">{formatUsd(pos.accruedInterest, 4)}</p></div>
+            <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Accrued interest (est.)</p>
+              <p className="mt-1 font-mono text-white">{formatUsd(liveInterest, 4)}</p>
+              <p className="text-[11px] text-gray-500">@ {pct(pos.rateBps)}% APR</p></div>
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Health factor</p>
               <p className={`mt-1 font-mono font-bold ${hfColor(posHf)}`}>{posHf === Infinity ? "∞" : posHf.toFixed(2)}</p></div>
           </div>
@@ -166,10 +188,10 @@ export function VaultsTab() {
             <p className="mt-3 text-xs text-red-400">In liquidation — borrower actions are paused until settlement completes.</p>
           )}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ManageAction id="pay" label="Pay interest" unit="mUSD" onRun={(v) => payInterest(algorand!, address!, v)} />
-            <ManageAction id="repay" label="Repay principal" unit="mUSD" disabled={pos.accruedInterest > 0} max={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} />
-            <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v)} />
-            <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v)} />
+            <ManageAction id="pay" label="Pay interest" unit="mUSD" onRun={(v) => payInterest(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="repay" label="Repay principal" unit="mUSD" disabled={pos.accruedInterest > 0} max={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
           </div>
           <p className="mt-3 text-[11px] text-gray-600">Tip: clear accrued interest with “Pay interest” before repaying principal.</p>
         </Panel>
