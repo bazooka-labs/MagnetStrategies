@@ -10,14 +10,14 @@ export function AboutModal() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-magnet-500/40 bg-magnet-600/20 px-5 py-2 text-sm font-medium text-magnet-200 hover:bg-magnet-600/35 hover:border-magnet-400/60 hover:text-white transition-all backdrop-blur-sm shadow-md shadow-magnet-900/40"
+        className="text-sm font-medium text-white/60 hover:text-white transition-colors"
       >
-        About Magnet Strategies
+        About
       </button>
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           onClick={() => setOpen(false)}
         >
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />

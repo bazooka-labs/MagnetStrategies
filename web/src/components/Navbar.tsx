@@ -5,8 +5,19 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { WalletButton } from "@/components/WalletButton";
+import { AboutModal } from "@/components/AboutModal";
 
-const navLinks = [{ href: "/magnetfi", label: "MagnetFi" }];
+const navLinks = [
+  { href: "/token", label: "Magnet Token", external: false },
+  { href: "/magnetfi", label: "Bank", external: false },
+  {
+    href: "https://app.tinyman.org/pool/AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
+    label: "Farm",
+    external: true,
+  },
+];
+
+const navLinkClass = "text-sm font-medium text-white/60 hover:text-white transition-colors";
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -46,15 +57,24 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="text-sm font-medium text-white/60 hover:text-white transition-colors"
-            >
-              {link.label}
-            </Link>
-          ))}
+          <AboutModal />
+          {navLinks.map((link) =>
+            link.external ? (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={navLinkClass}
+              >
+                {link.label}
+              </a>
+            ) : (
+              <Link key={link.href} href={link.href} className={navLinkClass}>
+                {link.label}
+              </Link>
+            )
+          )}
         </div>
 
         {/* Right: socials + wallet */}
@@ -100,16 +120,32 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="relative md:hidden border-t border-white/10 bg-[#0a0010]/95 backdrop-blur-md px-4 py-4 space-y-1">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMobileOpen(false)}
-              className="block py-2 text-sm font-medium text-white/60 hover:text-white"
-            >
-              {link.label}
-            </Link>
-          ))}
+          <div className="py-2">
+            <AboutModal />
+          </div>
+          {navLinks.map((link) =>
+            link.external ? (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setMobileOpen(false)}
+                className="block py-2 text-sm font-medium text-white/60 hover:text-white"
+              >
+                {link.label}
+              </a>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileOpen(false)}
+                className="block py-2 text-sm font-medium text-white/60 hover:text-white"
+              >
+                {link.label}
+              </Link>
+            )
+          )}
           <div className="flex items-center gap-4 pt-3">
             <a
               href="https://x.com/Bazooka_Labs"
