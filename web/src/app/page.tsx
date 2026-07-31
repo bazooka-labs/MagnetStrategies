@@ -4,6 +4,7 @@ import { Landmark, Wheat } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { AboutModal } from "@/components/AboutModal";
 
 const TokenTradeModal = dynamic(
   () => import("@/components/TokenTradeModal").then((m) => m.TokenTradeModal),
@@ -130,6 +131,11 @@ export default async function LandingPage() {
           >
             A Bazooka Labs Product
           </a>
+
+          {/* About */}
+          <div className="mb-8 animate-fade-up [animation-delay:175ms]">
+            <AboutModal />
+          </div>
 
           {/* Live stat strip */}
           <div className="mb-10 flex flex-wrap items-stretch justify-center divide-x divide-white/10 rounded-2xl sm:rounded-full border border-white/10 bg-black/40 backdrop-blur-sm shadow-lg shadow-black/40 animate-fade-up [animation-delay:200ms]">

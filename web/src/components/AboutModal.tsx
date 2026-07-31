@@ -31,7 +31,7 @@ export function AboutModal() {
             {/* Header */}
             <div className="flex items-center justify-between px-7 pt-7 pb-5 border-b border-white/5">
               <div>
-                <h2 className="text-xl font-bold text-white">Magnet Strategies</h2>
+                <h2 className="font-display text-xl font-bold text-white">Magnet Strategies</h2>
                 <p className="text-xs text-gray-500 mt-0.5">A Bazooka Labs Product</p>
               </div>
               <button
@@ -47,36 +47,25 @@ export function AboutModal() {
 
               <p>
                 <span className="text-white font-semibold">Magnet Strategies</span> is an
-                Algorand-native DeFi organization with a focused long-term objective: to grow the
-                value of the Magnet token (<span className="text-magnet-400 font-semibold">$U</span>)
-                with the goal of outperforming a simple ALGO holding over time. Rather than tracking
-                the broader market, $U is designed to compound yield across multiple Algorand DeFi
-                strategies and reinvest returns to support the token&apos;s underlying value.
+                Algorand-native DeFi organization built to attract and compound liquidity. The
+                Magnet token (<span className="text-magnet-400 font-semibold">$U</span>) sits at
+                the center of everything we build, with the goal of outperforming a simple ALGO
+                holding over time by putting capital to work across multiple Algorand DeFi
+                strategies and reinvesting returns to support the token&apos;s underlying value.
               </p>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">The Magnet Token ($U)</h3>
+                <h3 className="font-display text-white font-semibold mb-2">The Magnet Token ($U)</h3>
                 <p>
                   Launched in June 2025, $U has a fixed supply of 750,000 tokens on Algorand (ASA
-                  ID: 3081853135). It serves as both the governance token for MagnetDAO and the
-                  primary asset across every Magnet Strategies product. Its value is directly tied to
-                  the performance of the underlying DeFi strategies it powers.
+                  ID: 3081853135). It&apos;s the primary asset across every Magnet Strategies
+                  product, and its value is directly tied to the performance of the underlying
+                  DeFi strategies it powers.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">MagnetDAO</h3>
-                <p>
-                  The liquidity deployment process is governed by MagnetDAO — an on-chain,
-                  community-driven governance system. Each quarter, Algorand projects can apply
-                  for treasury-backed liquidity support. $U holders vote on allocations (1 $U = 1
-                  vote). Approved projects are paired with $U in live DEX pools, where generated
-                  swap fees flow back into the treasury to compound in future cycles.
-                </p>
-              </div>
-
-              <div>
-                <h3 className="text-white font-semibold mb-2">MagnetFi</h3>
+                <h3 className="font-display text-white font-semibold mb-2">MagnetFi</h3>
                 <p>
                   MagnetFi is the lending and borrowing arm of Magnet Strategies. It operates across
                   two distinct layers:
@@ -105,7 +94,7 @@ export function AboutModal() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">Magnet Farms</h3>
+                <h3 className="font-display text-white font-semibold mb-2">Magnet Farms</h3>
                 <p>
                   Magnet Farms connects $U holders to active liquidity incentive programs on
                   Algorand DEXes. By providing liquidity to approved pools, farmers earn trading
@@ -115,13 +104,12 @@ export function AboutModal() {
               </div>
 
               <div>
-                <h3 className="text-white font-semibold mb-2">The Strategy</h3>
+                <h3 className="font-display text-white font-semibold mb-2">The Strategy</h3>
                 <p>
                   Every product within Magnet Strategies is designed to work together. $U sits at
-                  the center — governing DAO liquidity decisions, collateralizing MagnetFi loans,
-                  anchoring farm pairs, and accruing value from fees generated across each layer.
-                  The goal is a self-reinforcing ecosystem where each product strengthens the
-                  others over time.
+                  the center — collateralizing MagnetFi loans, anchoring farm pairs, and accruing
+                  value from fees generated across each layer. The goal is a self-reinforcing
+                  ecosystem where each product strengthens the others over time.
                 </p>
               </div>
 

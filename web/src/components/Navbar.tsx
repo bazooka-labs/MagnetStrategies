@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-import { AboutModal } from "@/components/AboutModal";
 import { WalletButton } from "@/components/WalletButton";
 
 const navLinks = [{ href: "/magnetfi", label: "MagnetFi" }];
@@ -56,7 +55,6 @@ export function Navbar() {
               {link.label}
             </Link>
           ))}
-          <AboutModal />
         </div>
 
         {/* Right: socials + wallet */}
@@ -113,7 +111,6 @@ export function Navbar() {
             </Link>
           ))}
           <div className="flex items-center gap-4 pt-3">
-            <AboutModal />
             <a
               href="https://x.com/Bazooka_Labs"
               target="_blank"
