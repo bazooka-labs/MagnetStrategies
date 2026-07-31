@@ -35,13 +35,13 @@ export function Navbar() {
           <Link
             href="/"
             aria-label="Magnet Strategies home"
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-500 to-magnet-700 p-1.5 shrink-0 hover:opacity-85 transition-opacity"
+            className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-500 to-magnet-700 p-2 shrink-0 hover:opacity-85 transition-opacity"
           >
             <Image
               src="/magnet-icon.png"
               alt=""
-              width={22}
-              height={22}
+              width={28}
+              height={28}
               className="h-full w-full object-contain"
             />
           </Link>
