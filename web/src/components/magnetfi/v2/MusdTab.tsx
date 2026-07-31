@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { ArrowDownUp, ShieldCheck, Scale, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
@@ -10,6 +11,19 @@ import { getBalances, getProtocolStats, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type B
 import { Panel, PrimaryButton, NotLiveNote } from "./shared";
 
 type Mode = "mint" | "redeem";
+
+function AssetBadge({ asset }: { asset: string }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-lg bg-surface-lighter px-3 py-1.5 text-sm font-semibold text-white">
+      {asset === "mUSD" && (
+        <span className="h-4 w-4 overflow-hidden rounded-full shrink-0">
+          <Image src="/musd-icon.png" alt="" width={16} height={16} className="h-full w-full object-cover" />
+        </span>
+      )}
+      {asset}
+    </span>
+  );
+}
 
 export function MusdTab() {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
@@ -89,7 +103,7 @@ export function MusdTab() {
           <div className="flex items-center rounded-xl border border-white/10 bg-black/40 px-4 focus-within:border-magnet-500/50">
             <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)}
               className="w-full bg-transparent px-1 py-3.5 font-mono text-xl text-white outline-none" placeholder="0" />
-            <span className="rounded-lg bg-surface-lighter px-3 py-1.5 text-sm font-semibold text-white">{fromAsset}</span>
+            <AssetBadge asset={fromAsset} />
           </div>
 
           <div className="my-2 flex justify-center">
@@ -102,7 +116,7 @@ export function MusdTab() {
           <div className="flex items-center rounded-xl border border-white/10 bg-black/30 px-4">
             <input readOnly value={out ? formatUsd(out) : "0.00"}
               className="w-full bg-transparent px-1 py-3.5 font-mono text-xl text-white outline-none" />
-            <span className="rounded-lg bg-surface-lighter px-3 py-1.5 text-sm font-semibold text-white">{toAsset}</span>
+            <AssetBadge asset={toAsset} />
           </div>
 
           <div className="mt-5 space-y-2 rounded-xl border border-white/5 bg-black/20 p-4 text-sm">

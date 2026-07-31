@@ -46,7 +46,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-surface text-gray-100 antialiased">
+      <body className="min-h-screen bg-surface text-gray-100 antialiased overflow-x-hidden">
         <WalletProvider>
           {children}
           <Toaster position="bottom-right" theme="dark" richColors />

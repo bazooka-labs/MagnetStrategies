@@ -45,7 +45,7 @@ export function AdminTab() {
               <ShieldCheck className="h-6 w-6 text-white" />
             </div>
             <div>
-              <p className="text-base font-semibold text-white">Admin</p>
+              <p className="font-display text-base font-semibold text-white">Admin</p>
               <p className="mt-0.5 text-sm text-gray-400">
                 Every action is built here and signed by your connected wallet.
               </p>

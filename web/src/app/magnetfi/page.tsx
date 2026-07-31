@@ -58,7 +58,9 @@ export default function MagnetFiPage() {
       {/* Hero */}
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+        </div>
 
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
@@ -66,10 +68,7 @@ export default function MagnetFiPage() {
               <Landmark className="h-7 w-7 text-white drop-shadow" />
             </div>
             <div>
-              <h1
-                className="glow-text text-3xl font-bold text-white sm:text-4xl"
-                style={{ fontFamily: "'Times New Roman', Times, serif" }}
-              >
+              <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
                 MagnetFi
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Vault, Coins, ShieldCheck, ArrowRight } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import {
@@ -17,7 +18,7 @@ function VaultTypeCard({ v, onBorrow }: { v: VaultType; onBorrow: () => void }) 
         <div className="flex items-center gap-3">
           <PairGlyph tokens={v.tokens} />
           <div>
-            <p className="text-base font-semibold text-white">{v.pair}</p>
+            <p className="font-display text-base font-semibold text-white">{v.pair}</p>
             <p className="text-xs text-gray-500">Tinyman LP collateral</p>
           </div>
         </div>
@@ -109,9 +110,11 @@ export function OverviewTab({ onBorrow }: { onBorrow: () => void }) {
       <section>
         <Panel className="p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-base font-bold text-white">m</div>
+            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl">
+              <Image src="/musd-icon.png" alt="mUSD" width={44} height={44} className="h-full w-full object-cover" />
+            </div>
             <div>
-              <p className="text-base font-semibold text-white">mUSD — the Magnet dollar</p>
+              <p className="font-display text-base font-semibold text-white">mUSD — the Magnet dollar</p>
               <p className="mt-0.5 text-sm text-gray-400">
                 Fully USDC-backed. Mint at 1:1 with no fee; redeem any time for a {pct(PSM_REDEEM_FEE_BPS)}% fee.
               </p>

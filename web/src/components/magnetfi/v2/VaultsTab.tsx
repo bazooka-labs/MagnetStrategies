@@ -150,7 +150,7 @@ export function VaultsTab() {
           <div className="flex items-center gap-3">
             <PairGlyph tokens={POOL.tokens} />
             <div>
-              <h2 className="text-lg font-semibold text-white">{POOL.pair} vault</h2>
+              <h2 className="font-display text-lg font-semibold text-white">{POOL.pair} vault</h2>
               <p className="mt-0.5 text-sm text-gray-400">
                 Borrow mUSD against your LP — interest-only, repay any time.
               </p>

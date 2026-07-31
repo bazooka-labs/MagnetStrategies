@@ -42,7 +42,7 @@ export default function DaoLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Navbar />
-      <main className="min-h-[calc(100vh-160px)]">{children}</main>
+      <main className="min-h-[calc(100vh-160px)] pt-16">{children}</main>
       <Footer />
     </>
   );
