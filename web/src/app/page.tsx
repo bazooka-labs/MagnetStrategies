@@ -109,19 +109,14 @@ export default async function LandingPage() {
         {/* Content */}
         <div className="relative z-10 mx-auto max-w-4xl px-6 pt-32 pb-20 flex flex-col items-center text-center">
 
-          {/* Wordmark */}
-          <div className="mb-8 relative flex items-center justify-center animate-fade-up">
-            <Image
-              src="/magnet-wordmark.png"
-              alt="Magnet Strategies"
-              width={520}
-              height={168}
-              className="magnet-glow-soft w-[280px] sm:w-[380px] lg:w-[460px] h-auto"
-              priority
-            />
-          </div>
-
           {/* Headline */}
+          <h1 className="glow-text font-display text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white mb-6 animate-fade-up">
+            Attract Liquidity
+          </h1>
+
+          <div className="w-24 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent mb-6 animate-fade-up [animation-delay:50ms]" />
+
+          {/* Tagline */}
           <p className="font-display max-w-xl text-lg sm:text-xl font-semibold text-white leading-relaxed mb-3 animate-fade-up [animation-delay:100ms]">
             Exploring the Possibilities &amp; Opportunities within Decentralized Finance
           </p>

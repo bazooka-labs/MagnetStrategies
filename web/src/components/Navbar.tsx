@@ -21,16 +21,29 @@ export function Navbar() {
       <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
 
       <div className="relative mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
-        <Link href="/" className="flex items-center shrink-0 min-w-0 hover:opacity-85 transition-opacity">
+        <div className="flex items-center gap-3 shrink-0 min-w-0">
+          <Link
+            href="/"
+            aria-label="Magnet Strategies home"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-500 to-magnet-700 p-1.5 shrink-0 hover:opacity-85 transition-opacity"
+          >
+            <Image
+              src="/magnet-icon.png"
+              alt=""
+              width={22}
+              height={22}
+              className="h-full w-full object-contain"
+            />
+          </Link>
           <Image
             src="/magnet-wordmark.png"
             alt="Magnet Strategies"
-            width={110}
-            height={36}
-            className="w-[84px] sm:w-[110px] h-auto shrink-0"
+            width={140}
+            height={46}
+            className="w-[96px] sm:w-[132px] h-auto shrink-0"
             priority
           />
-        </Link>
+        </div>
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
