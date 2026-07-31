@@ -142,14 +142,15 @@ body {
   animation: hero-fade 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Hero intro sequence: the logo mark holds, fades out over 2s, then the
-   headline fades + rises into the same spot over the next 2s. */
+/* Hero intro sequence: the logo mark holds for 2s, fades out over the
+   next 2s, then the headline fades + rises into the same spot over the
+   2s after that. */
 @keyframes logo-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  0%, 50% { opacity: 1; }
+  100% { opacity: 0; }
 }
 .animate-logo-fade-out {
-  animation: logo-fade-out 2s ease-in-out forwards;
+  animation: logo-fade-out 4s ease-in-out forwards;
 }
 
 @keyframes headline-fade-in {
@@ -157,5 +158,5 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-headline-fade-in {
-  animation: headline-fade-in 2s ease-in-out 2s both;
+  animation: headline-fade-in 2s ease-in-out 4s both;
 }
