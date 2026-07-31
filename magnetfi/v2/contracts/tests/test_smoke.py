@@ -27,13 +27,13 @@ def test_open_borrow_and_repay(proto):
     assert proto.musd_bal(alice.address) == 50 * ONE_MUSD
     assert proto.circulating_musd() == 50 * ONE_MUSD
 
-    # Repay full principal (no interest yet — same block-ish). Clear any tiny interest first.
-    box = proto.vault_box(alice)
-    if box.accrued_interest > 0:
-        proto.pay_interest(alice, box.accrued_interest)
+    # Full repayment now charges interest (no dodge): repay_principal routes through
+    # pay_interest, which the helper funds with a tiny interest cover. After close, all
+    # principal is returned to the PSM; the only residual circulating mUSD is that small
+    # cover (collected interest + refund), not protocol debt.
     proto.repay_principal(alice, 50 * ONE_MUSD)
 
-    # Vault closed, collateral + MBR returned, circulating back to 0
+    # Vault closed, collateral + MBR returned, circulating back to ~0 (cover residual only)
     assert not proto.vault_exists(alice)
     assert proto.lp_bal(alice.address) == 1000 * ONE_LP
-    assert proto.circulating_musd() == 0
+    assert proto.circulating_musd() <= ONE_MUSD // 50

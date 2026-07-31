@@ -3,8 +3,8 @@
 
 import algosdk from "algosdk";
 import { AlgorandClient, microAlgo } from "@algorandfoundation/algokit-utils";
-import { ACTIVE } from "./magnetfi";
-import { hasActiveAdapter } from "./magnetfiReads";
+import { ACTIVE, projectedAccruedInterest } from "./magnetfi";
+import { hasActiveAdapter, getVaultPosition } from "./magnetfiReads";
 
 export { makeAlgorand } from "./magnetfiOps";
 
@@ -100,12 +100,26 @@ export async function payInterest(al: AlgorandClient, sender: string, amountDisp
     .send(SEND);
 }
 
-/** Repay principal: app call + mUSD transfer to PSM. Clear accrued interest first. */
-export async function repayPrincipal(al: AlgorandClient, sender: string, amountDisplay: number) {
+/**
+ * Repay principal — routed through pay_interest, the sole repayment path. Sends the live
+ * accrued interest (+ a small drift buffer) plus the requested principal to the vault; the
+ * contract charges interest first, applies the rest to principal, and refunds any excess
+ * (so overpaying to close is safe). Pass the full outstanding principal to close the vault.
+ */
+export async function repayPrincipal(al: AlgorandClient, sender: string, principalDisplay: number) {
   const vc = await vault(al, sender);
+  const pos = await getVaultPosition(al.client.algod, sender);
+  if (!pos) throw new Error("no vault position");
+  const nowSec = Math.floor(Date.now() / 1000);
+  const liveInterest = projectedAccruedInterest(
+    pos.accruedInterest, pos.musdBorrowed, pos.rateBps, pos.lastAccrualTs, nowSec);
+  // Small cover for accrual drift between this estimate and on-chain execution; the contract
+  // refunds any excess, so a slight overpay is safe and guarantees interest is fully covered.
+  const interestCover = liveInterest * 1.01 + 0.001;
+  const payDisplay = interestCover + principalDisplay;
   await al.newGroup()
-    .addAppCallMethodCall(await vc.params.call({ method: "repay_principal", args: [BigInt(ACTIVE.poolId)], maxFee: MAX_FEE }))
-    .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.psm), assetId: BigInt(ACTIVE.musd), amount: toBase(amountDisplay) })
+    .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.vault), assetId: BigInt(ACTIVE.musd), amount: toBase(payDisplay) })
+    .addAppCallMethodCall(await vc.params.call({ method: "pay_interest", args: [BigInt(ACTIVE.poolId)], maxFee: MAX_FEE }))
     .send(SEND);
 }
 

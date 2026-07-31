@@ -28,9 +28,9 @@ function hfColor(hf: number): string {
 
 // Hoisted to module scope (not declared inside VaultsTab) so the 60s live-interest tick —
 // or any parent re-render — does NOT remount its <input> and steal focus mid-typing.
-function ManageAction({ id, label, unit, onRun, disabled, max, m, setM, run, busy }: {
+function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM, run, busy }: {
   id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
-  disabled?: boolean; max?: number;
+  disabled?: boolean; max?: number; maxFill?: number;
   m: Record<string, string>;
   setM: Dispatch<SetStateAction<Record<string, string>>>;
   run: (id: string, fn: () => Promise<void>, optAsset?: number) => Promise<void>;
@@ -39,12 +39,21 @@ function ManageAction({ id, label, unit, onRun, disabled, max, m, setM, run, bus
   const v = m[id] ?? "";
   const num = Number(v) || 0;
   const amount = max !== undefined ? Math.min(num, max) : num;   // clamp (H-1)
+  const showMax = maxFill !== undefined && maxFill > 0 && !disabled;
   return (
     <div className="flex items-center gap-2">
-      <input value={v} disabled={disabled}
-        onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
-        placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
-        className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
+      <div className="relative w-full">
+        <input value={v} disabled={disabled}
+          onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
+          placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
+          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 pr-12 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
+        {showMax && (
+          <button type="button" onClick={() => setM((s) => ({ ...s, [id]: String(maxFill) }))}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-magnet-400 hover:text-magnet-300">
+            Max
+          </button>
+        )}
+      </div>
       <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
         className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
         {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
@@ -178,9 +187,15 @@ export function VaultsTab() {
               <p className="text-xs text-gray-500">${formatUsd(posValue)}</p></div>
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Borrowed</p>
               <p className="mt-1 font-mono text-white">{formatUsd(pos.musdBorrowed)}</p></div>
-            <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Accrued interest (est.)</p>
-              <p className="mt-1 font-mono text-white">{formatUsd(liveInterest, 4)}</p>
-              <p className="text-[11px] text-gray-500">@ {pct(pos.rateBps)}% APR</p></div>
+            {pos.vaultState === 2 ? (
+              <div><p className="text-[11px] uppercase tracking-wider text-gray-500">In settlement</p>
+                <p className="mt-1 font-mono text-white">{formatUsd(pos.accruedInterest, 4)}</p>
+                <p className="text-[11px] text-gray-500">remaining</p></div>
+            ) : (
+              <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Accrued interest (est.)</p>
+                <p className="mt-1 font-mono text-white">{formatUsd(liveInterest, 4)}</p>
+                <p className="text-[11px] text-gray-500">@ {pct(pos.rateBps)}% APR</p></div>
+            )}
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Health factor</p>
               <p className={`mt-1 font-mono font-bold ${hfColor(posHf)}`}>{posHf === Infinity ? "∞" : posHf.toFixed(2)}</p></div>
           </div>
@@ -188,12 +203,12 @@ export function VaultsTab() {
             <p className="mt-3 text-xs text-red-400">In liquidation — borrower actions are paused until settlement completes.</p>
           )}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ManageAction id="pay" label="Pay interest" unit="mUSD" onRun={(v) => payInterest(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="repay" label="Repay principal" unit="mUSD" disabled={pos.accruedInterest > 0} max={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="pay" label="Pay interest" unit="mUSD" maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0} onRun={(v) => payInterest(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="repay" label="Repay / close" unit="mUSD" max={pos.musdBorrowed} maxFill={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
             <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
             <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
           </div>
-          <p className="mt-3 text-[11px] text-gray-600">Tip: clear accrued interest with “Pay interest” before repaying principal.</p>
+          <p className="mt-3 text-[11px] text-gray-600">Tip: “Repay / close” clears accrued interest automatically — enter your full borrowed amount to close the vault and reclaim your LP.</p>
         </Panel>
       )}
 

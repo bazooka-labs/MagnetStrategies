@@ -125,6 +125,11 @@ export async function fundApps(
     .send();
 }
 
+// Fund a single (freshly redeployed) vault app for min-balance + opt-ins.
+export async function fundVault(algorand: AlgorandClient, sender: string, vaultId: bigint): Promise<void> {
+  await algorand.send.payment({ sender, receiver: appAddr(vaultId), amount: algo(1) });
+}
+
 // ── 5: oracle — authorize bot + register pool (sets price AND the ±25% anchor) ──
 
 export async function configOracle(

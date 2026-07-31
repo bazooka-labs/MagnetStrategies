@@ -363,12 +363,18 @@ class Vault(
     @arc4.abimethod
     def pay_interest(self, pool_id: UInt64) -> None:
         """
-        Pay accrued interest. Overpayment reduces principal; full repayment closes vault.
+        Pay accrued interest — the SINGLE debt-repayment entry point. Interest is always
+        charged first (accrued to now); any payment beyond it reduces principal, any payment
+        beyond the principal is refunded, and repaying the principal in full closes the vault
+        and returns the LP + MBR. There is deliberately no separate repay-principal method:
+        routing every repayment through here makes it impossible to repay principal while
+        skipping interest.
 
         Atomic group: AssetTransfer (mUSD → vault address) + AppCall pay_interest(pool_id)
         The transfer MUST precede the app call: the vault forwards the principal-repayment
-        portion (`change`) to the PSM via an inner transaction during this call, so the
-        mUSD must already have landed in the vault (a later group txn has not executed yet).
+        portion to the PSM (and any refund to the sender) via inner transactions during this
+        call, so the mUSD must already have landed in the vault (a later group txn has not
+        executed yet).
         """
         key = self._vault_key(Txn.sender, pool_id)
         assert key in self.vaults, "vault not found"
@@ -395,27 +401,45 @@ class Vault(
         if vault.vault_state.native == UInt64(1):
             vault.vault_state = arc4.UInt64(0)
 
+        # Any payment beyond the interest due pays down principal; anything beyond the
+        # outstanding principal is refunded to the sender. Because accrued interest is a
+        # live-moving target, this lets a borrower safely overpay to fully close in one
+        # shot without a revert (the excess comes straight back). This is the ONLY path
+        # that reduces principal — pay_interest always charges interest first, so principal
+        # can never be repaid while dodging interest (there is no separate repay method).
         change = payment - interest_due
         if change > UInt64(0):
-            assert change <= vault.musd_borrowed.native, "overpayment exceeds principal"
-            new_borrowed = vault.musd_borrowed.native - change
-            vault.musd_borrowed = arc4.UInt64(new_borrowed)
+            principal = vault.musd_borrowed.native
+            principal_paid = change if change <= principal else principal
+            refund = change - principal_paid
 
-            psm_addr = self._psm_address()
-            itxn.AssetTransfer(
-                xfer_asset=self.musd_asa_id.value,
-                asset_receiver=psm_addr,
-                asset_amount=change,
-                fee=0,
-            ).submit()
-            itxn.abi_call(
-                PSM.receive_musd,
-                change,
-                app_id=self.psm_app_id.value,
-                fee=0,
-            ).submit()
+            if principal_paid > UInt64(0):
+                vault.musd_borrowed = arc4.UInt64(principal - principal_paid)
+                psm_addr = self._psm_address()
+                itxn.AssetTransfer(
+                    xfer_asset=self.musd_asa_id.value,
+                    asset_receiver=psm_addr,
+                    asset_amount=principal_paid,
+                    fee=0,
+                ).submit()
+                itxn.abi_call(
+                    PSM.receive_musd,
+                    principal_paid,
+                    app_id=self.psm_app_id.value,
+                    fee=0,
+                ).submit()
 
-            if new_borrowed == UInt64(0):
+            if refund > UInt64(0):
+                itxn.AssetTransfer(
+                    xfer_asset=self.musd_asa_id.value,
+                    asset_receiver=Txn.sender,
+                    asset_amount=refund,
+                    fee=0,
+                ).submit()
+
+            # Close only when principal was actually paid down to zero. A collateral-only
+            # vault (musd_borrowed == 0) is preserved and any stray payment is refunded.
+            if principal_paid > UInt64(0) and vault.musd_borrowed.native == UInt64(0):
                 lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
                 lp_amount = vault.lp_amount.native
                 del self.vaults[key]
@@ -433,63 +457,6 @@ class Vault(
                 ).submit()
             else:
                 self.vaults[key] = vault.copy()
-        else:
-            self.vaults[key] = vault.copy()
-
-    # ── repay principal ───────────────────────────────────────────────────────
-
-    @arc4.abimethod
-    def repay_principal(self, pool_id: UInt64) -> None:
-        """
-        Repay mUSD principal. Caller must clear accrued interest first.
-
-        Atomic group: AppCall repay_principal(pool_id) + AssetTransfer (mUSD → PSM address)
-        """
-        key = self._vault_key(Txn.sender, pool_id)
-        assert key in self.vaults, "vault not found"
-        vault = self.vaults[key].copy()
-
-        vault = self._lazy_overdue_check(vault)
-        assert vault.vault_state.native != UInt64(2), "vault in liquidation"
-
-        psm_addr = self._psm_address()
-        assert op.Txn.group_index + UInt64(1) < Global.group_size, "missing mUSD repayment txn"
-        musd_xfer = gtxn.AssetTransferTransaction(op.Txn.group_index + UInt64(1))
-        assert musd_xfer.xfer_asset == Asset(self.musd_asa_id.value), "wrong asset"
-        assert musd_xfer.asset_receiver == psm_addr, "mUSD must go to PSM"
-        assert musd_xfer.asset_amount > UInt64(0), "zero repayment"
-
-        assert vault.accrued_interest.native == UInt64(0), "clear interest first"
-
-        repayment = musd_xfer.asset_amount
-        assert repayment <= vault.musd_borrowed.native, "repayment exceeds debt"
-
-        new_borrowed = vault.musd_borrowed.native - repayment
-        vault.musd_borrowed = arc4.UInt64(new_borrowed)
-
-        itxn.abi_call(
-            PSM.receive_musd,
-            repayment,
-            app_id=self.psm_app_id.value,
-            fee=0,
-        ).submit()
-
-        if new_borrowed == UInt64(0):
-            lp_asa_id = self._pool_lp_asa(vault.lp_pool_id.native)
-            lp_amount = vault.lp_amount.native
-            del self.vaults[key]
-            if lp_amount > UInt64(0):
-                itxn.AssetTransfer(
-                    xfer_asset=lp_asa_id,
-                    asset_receiver=Txn.sender,
-                    asset_amount=lp_amount,
-                    fee=0,
-                ).submit()
-            itxn.Payment(
-                receiver=Txn.sender,
-                amount=UInt64(VAULT_MBR),
-                fee=0,
-            ).submit()
         else:
             self.vaults[key] = vault.copy()
 

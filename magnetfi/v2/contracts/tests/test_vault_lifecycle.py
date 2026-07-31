@@ -54,14 +54,16 @@ def test_overpayment_reduces_principal(proto):
     assert box.accrued_interest == 0
     assert 69 * ONE_MUSD <= box.musd_borrowed <= 71 * ONE_MUSD
     assert box.vault_state == 0
-    # Full close is covered separately by repay_principal.
+    # Full close is covered separately by repaying via pay_interest overpay (repay_principal).
 
 
 def test_repay_principal_partial_then_full(proto):
     alice = proto.new_user(lp=1_000 * ONE_LP)
     proto.open_vault(alice, lp_amount=200 * ONE_LP, borrow=100 * ONE_MUSD)
     proto.repay_principal(alice, 40 * ONE_MUSD)
-    assert proto.vault_box(alice).musd_borrowed == 60 * ONE_MUSD
+    # ~40 trimmed from principal (repayment now routes through pay_interest, which charges a
+    # few µUSD of interest first), so allow a small tolerance around 60.
+    assert abs(proto.vault_box(alice).musd_borrowed - 60 * ONE_MUSD) <= ONE_MUSD // 50
     proto.repay_principal(alice, 60 * ONE_MUSD)
     assert not proto.vault_exists(alice)
     assert proto.lp_bal(alice.address) == 1_000 * ONE_LP

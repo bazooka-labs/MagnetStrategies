@@ -267,12 +267,15 @@ class Protocol:
         grp.send(_SP)
 
     def repay_principal(self, user: SigningAccount, amount: int) -> None:
-        grp = self.algorand.new_group()
-        grp.add_app_call_method_call(self._mc(self.vault, "repay_principal", [POOL_ID], user))
-        grp.add_asset_transfer(AssetTransferParams(
-            sender=user.address, receiver=self.psm.app_address,
-            asset_id=self.musd_id, amount=amount, note=os.urandom(8)))
-        grp.send(_SP)
+        # There is no standalone repay-principal method: pay_interest is the sole repayment
+        # path and always charges accrued interest first. To repay `amount` of principal in a
+        # test, top the borrower up with a small mUSD buffer for interest, then pay
+        # interest + amount; the contract charges interest, applies the rest to principal,
+        # and refunds any excess. Mirrors the frontend's repayPrincipal reroute.
+        cover = ONE_MUSD // 100
+        self.admin_acquire_musd(cover)
+        self._give(user.address, self.musd_id, cover)
+        self.pay_interest(user, amount + cover)
 
     def add_collateral(self, user: SigningAccount, lp_amount: int) -> None:
         grp = self.algorand.new_group()

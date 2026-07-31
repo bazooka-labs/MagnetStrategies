@@ -128,14 +128,21 @@ def test_cannot_double_mint_one_deposit(proto):
 
 # ── group composition manipulation: repay / pay routing ────────────────────────
 
-def test_repay_to_wrong_receiver_rejected(proto):
+def test_no_free_principal_repayment(proto):
+    """The standalone repay-principal method was removed; pay_interest is the sole repayment
+    path and always charges accrued interest first, so a borrower can never clear principal
+    (or close the vault) while dodging accrued interest."""
+    from conftest import DAYS_90
     alice = _maxed(proto)
-    grp = proto.group()
-    grp.add_app_call_method_call(proto.mc(proto.vault, "repay_principal", [POOL_ID], alice))
-    grp.add_asset_transfer(AssetTransferParams(sender=alice.address, receiver=proto.vault.app_address,  # must be PSM
-                                               asset_id=proto.musd_id, amount=10 * ONE_MUSD, note=os.urandom(8)))
-    with pytest.raises(Exception):
-        proto.send_group(grp)
+    principal = proto.vault_box(alice).musd_borrowed
+    assert principal > 0
+    proto.time_travel(DAYS_90 // 2)   # let real interest accrue
+    # Pay EXACTLY the principal, nothing extra for interest. Interest is charged first, so the
+    # payment cannot cover the full principal — the vault stays open with residual debt.
+    proto.pay_interest(alice, principal)
+    box = proto.vault_box(alice)
+    assert box is not None, "vault must NOT close — interest was charged, principal not cleared"
+    assert box.musd_borrowed > 0, "residual principal remains = the interest that was charged"
 
 
 def test_pay_interest_to_wrong_receiver_rejected(proto):
@@ -161,8 +168,6 @@ def test_state2_blocks_all_borrower_ops(proto):
         proto.pay_interest(alice, ONE_MUSD)
     with pytest.raises(Exception):
         proto.add_collateral(alice, ONE_LP)
-    with pytest.raises(Exception):
-        proto.repay_principal(alice, ONE_MUSD)
 
 
 def test_borrow_more_on_overdue_rejected(proto):
