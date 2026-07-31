@@ -6,13 +6,13 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-magnet-500 to-magnet-700 p-1">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-magnet-500 to-magnet-700">
               <Image
                 src="/magnet-icon.png"
                 alt=""
-                width={14}
-                height={14}
-                className="h-full w-full object-contain"
+                width={32}
+                height={32}
+                className="w-8 h-8 shrink-0 object-contain"
               />
             </div>
             <span className="font-display text-sm font-semibold text-gray-400">
