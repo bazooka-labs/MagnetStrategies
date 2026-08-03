@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { WalletButton } from "@/components/WalletButton";
-import { AboutModal } from "@/components/AboutModal";
 
 const navLinks = [
   { href: "/token", label: "Magnet Token", external: false },
@@ -59,7 +58,6 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-6">
-          <AboutModal />
           {navLinks.map((link) =>
             link.external ? (
               <a
@@ -122,9 +120,6 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="relative md:hidden border-t border-white/10 bg-[#0a0010]/95 backdrop-blur-md px-4 py-4 space-y-1">
-          <div className="py-2">
-            <AboutModal />
-          </div>
           {navLinks.map((link) =>
             link.external ? (
               <a
