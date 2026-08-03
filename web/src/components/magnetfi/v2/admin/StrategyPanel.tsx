@@ -17,7 +17,7 @@ const LS_ADAPTER = "magnetfi_folks_adapter_v1";
 const usd = (n: number, dp = 2) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 
 function StatCell({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "good" | "warn" }) {
-  const c = tone === "good" ? "text-emerald-400" : tone === "warn" ? "text-yellow-400" : "text-white";
+  const c = tone === "good" ? "text-green-400" : tone === "warn" ? "text-yellow-400" : "text-white";
   return (
     <div className="rounded-lg border border-white/5 bg-black/20 p-3">
       <p className="text-[11px] uppercase tracking-wider text-gray-500">{label}</p>
@@ -33,7 +33,7 @@ function StatsHeader({ s }: { s: StrategyStats }) {
     <Panel className="p-6">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-white">Reserve backing</p>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${deficit ? "bg-yellow-500/15 text-yellow-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${deficit ? "bg-yellow-500/15 text-yellow-300" : "bg-green-500/15 text-green-300"}`}>
           {deficit ? `${ratioPct}% — restoration in progress` : `${ratioPct}% backed`}
         </span>
       </div>
@@ -68,11 +68,11 @@ function StatsHeader({ s }: { s: StrategyStats }) {
                     <td className="py-1.5 pr-4">{a.appId}</td>
                     <td className="py-1.5 pr-4">{usd(a.principal)}</td>
                     <td className={`py-1.5 pr-4 ${loss ? "text-yellow-400" : ""}`}>{usd(a.recoverable)}</td>
-                    <td className="py-1.5 pr-4 text-emerald-400">{a.yield > 0 ? `+${usd(a.yield)}` : "—"}</td>
+                    <td className="py-1.5 pr-4 text-green-400">{a.yield > 0 ? `+${usd(a.yield)}` : "—"}</td>
                     <td className="py-1.5">
                       {a.impaired ? <span className="text-red-400">impaired</span>
                         : loss ? <span className="text-yellow-400">below principal</span>
-                        : <span className="text-emerald-400">healthy</span>}
+                        : <span className="text-green-400">healthy</span>}
                     </td>
                   </tr>
                 );
@@ -136,7 +136,7 @@ function DeployAdapterCard({ algorand, sender, psmId }: { algorand: AlgorandClie
         Deploy &amp; initialize adapter
       </button>
       {deployed && (
-        <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
+        <p className="mt-3 rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2 text-xs text-green-200">
           Adapter app ID: <span className="font-mono font-semibold">{deployed}</span> — paste into “Propose adapter” below.
         </p>
       )}
@@ -229,7 +229,9 @@ export function StrategyPanel() {
 
           <section>
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Folks adapter — deploy</h4>
-            <DeployAdapterCard algorand={a()} sender={me()} psmId={psmId} />
+            <Panel className="p-4 sm:p-5">
+              <DeployAdapterCard algorand={a()} sender={me()} psmId={psmId} />
+            </Panel>
           </section>
 
           <Section title="Adapter whitelist — 48h timelock + guardian veto">

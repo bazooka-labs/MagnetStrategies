@@ -98,7 +98,9 @@ export function Section({ title, children }: { title: string; children: ReactNod
   return (
     <section>
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h4>
-      <div className="grid gap-3 lg:grid-cols-2">{children}</div>
+      <Panel className="p-4 sm:p-5">
+        <div className="grid gap-3 lg:grid-cols-2">{children}</div>
+      </Panel>
     </section>
   );
 }
@@ -229,7 +231,7 @@ export function OperationsPanel() {
               fields={[{ key: "u", label: "USDC amount" }]} button="Deposit"
               onRun={(v) => ops.depositUsdc(a(), me(), psm(), base(v.u), usdc())} />
             <ActionForm title="Withdraw USDC" desc="Excess only — guard blocks dipping below circulating mUSD."
-              fields={[{ key: "u", label: "USDC amount" }]} button="Withdraw"
+              fields={[{ key: "u", label: "USDC amount" }]} button="Withdraw" tone="warn"
               onRun={(v) => ops.withdrawUsdc(a(), me(), psm(), base(v.u))} />
             <ActionForm title="Collect interest fees" desc="Sweep accumulated mUSD interest to admin." fields={[]} button="Collect fees"
               onRun={() => ops.collectFees(a(), me(), vault())} />

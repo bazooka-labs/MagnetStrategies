@@ -6,10 +6,8 @@ import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { Panel } from "./shared";
 import { CreateMusd } from "./admin/CreateMusd";
 import { CreateTestAssets } from "./admin/CreateTestAssets";
-import { DeployWizard } from "./admin/DeployWizard";
 import { OperationsPanel } from "./admin/OperationsPanel";
 import { StrategyPanel } from "./admin/StrategyPanel";
-import { VaultRedeployPanel } from "./admin/VaultRedeployPanel";
 
 function NotAuthorized() {
   return (
@@ -74,28 +72,12 @@ export function AdminTab() {
         {isTestnet ? <CreateTestAssets /> : <CreateMusd />}
       </section>
 
-      {/* Deploy & initialize */}
-      <section>
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Deploy &amp; initialize
-        </h3>
-        <DeployWizard />
-      </section>
-
       {/* Operations */}
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
           Operations
         </h3>
         <OperationsPanel />
-      </section>
-
-      {/* Vault redeploy (reuse live PSM / oracle / mUSD) */}
-      <section>
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Vault redeploy
-        </h3>
-        <VaultRedeployPanel />
       </section>
 
       {/* Productive Reserves (v3) */}
