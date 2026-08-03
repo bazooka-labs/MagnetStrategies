@@ -16,6 +16,7 @@ const navLinks = [
     label: "Farm",
     external: true,
   },
+  { href: "/contact", label: "Contact", external: false },
 ];
 
 const navLinkClass = "text-sm font-medium text-white/60 hover:text-white transition-colors";
