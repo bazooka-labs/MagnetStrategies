@@ -82,21 +82,22 @@ export function MusdTab() {
     <div className="grid gap-8 lg:grid-cols-5">
       <div className="lg:col-span-3">
         <Panel className="p-6">
-          <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/40 p-1">
-            {(["mint", "redeem"] as Mode[]).map((m) => (
-              <button key={m} onClick={() => setMode(m)}
-                className={`rounded-lg py-2 text-sm font-semibold transition-all ${
-                  mode === m ? "bg-gradient-to-r from-magnet-600 to-magnet-500 text-white" : "text-gray-400 hover:text-white"}`}>
-                {m === "mint" ? "Mint mUSD" : "Redeem mUSD"}
-              </button>
-            ))}
+          <div className="mb-5 flex items-center justify-between">
+            <p className="font-display text-base font-semibold text-white">mUSD Exchange</p>
+            <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
+              {fromAsset} → {toAsset}
+            </span>
           </div>
 
           <div className="mb-1.5 flex items-center justify-between">
             <label className="text-xs font-medium uppercase tracking-wider text-gray-500">You pay</label>
             {bal && PROTOCOL_LIVE && (
-              <span className="text-xs text-gray-500">
+              <span className="flex items-center gap-2 text-xs text-gray-500">
                 Balance: {formatUsd(mode === "mint" ? bal.usdc : bal.musd)} {fromAsset}
+                <button type="button" onClick={() => setAmount(String(mode === "mint" ? bal.usdc : bal.musd))}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-magnet-300 hover:text-magnet-200">
+                  Max
+                </button>
               </span>
             )}
           </div>
@@ -107,9 +108,11 @@ export function MusdTab() {
           </div>
 
           <div className="my-2 flex justify-center">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-magnet-300">
-              <ArrowDownUp className="h-4 w-4" />
-            </div>
+            <button type="button" onClick={() => setMode((m) => (m === "mint" ? "redeem" : "mint"))}
+              aria-label="Switch swap direction"
+              className="group flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-magnet-300 transition-all hover:border-magnet-500/50 hover:bg-magnet-500/10 hover:text-magnet-200">
+              <ArrowDownUp className="h-4 w-4 transition-transform duration-300 group-hover:rotate-180" />
+            </button>
           </div>
 
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">You receive</label>
