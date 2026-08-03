@@ -18,7 +18,10 @@ All contracts live in `contracts/smart_contracts/<name>/contract.py`.
 
 **Live production contracts — internally reviewed (27 v2 passes) but part of the running system;
 worth fresh eyes, especially the oracle/collateral surface discussed in §8:**
-- `vault` — collateral, borrowing, **liquidation**, LTV enforcement. ~977 lines.
+- `vault` — collateral, borrowing, **liquidation**, LTV enforcement. ~977 lines. **Post-handoff change:**
+  the standalone `repay_principal()` was removed and `pay_interest()` made the single repayment path
+  (interest always charged before principal; clamp-and-refund on overpay). See [AUDIT.md](./AUDIT.md)
+  Pass 28. The live vault reflects this; review the current source.
 - `lp_oracle` — LP price oracle + **manipulation guards** (±25% anchor, ±50% deviation, freshness).
   ~270 lines. This is the oracle-attack surface in §8.1/§8.3.
 

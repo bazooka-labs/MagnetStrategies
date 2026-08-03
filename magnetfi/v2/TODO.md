@@ -5,7 +5,7 @@ finding that required a *code* change is already resolved and recorded in [AUDIT
 The three contracts compile clean, have been through three independent fresh-context
 reviews + adversarial testing, and pass 67 integration/adversarial + 30 oracle-bot tests.
 
-_Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
+_Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated._
 
 ## Deployment status
 - ✅ **mUSD ASA on mainnet:** `3615600399`.
@@ -14,6 +14,11 @@ _Last updated: 2026-06-27. First vault target: **U/tALGO** on mainnet._
 - ✅ **Live on mainnet.** Core protocol (Oracle / PSMv3 / Vault) deployed and operating on U/tALGO
   collateral; v3 productive-reserves PSM live. Folks yield adapter not yet whitelisted. (Live app
   IDs are in `web/src/lib/magnetfi.ts` `DEPLOYMENTS.mainnet` and the oracle bot config.)
+- ✅ **Repayment model consolidated + vault redeployed.** `pay_interest()` is now the single
+  repayment path (always charges interest before touching principal) with clamp-and-refund on
+  overpay; the standalone `repay_principal()` method was removed. The vault was redeployed with
+  this change and the PSM re-pointed to it via the 48h timelock. End-to-end validated on mainnet
+  (open → borrow → PSM swaps → interest-accruing close, all reconciled on-chain).
 - ✅ **v3 productive reserves BUILT + testnet-validated** (PSMv3 + FolksAdapter). Design:
   [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3); roadmap:
   [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md); audit package: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).

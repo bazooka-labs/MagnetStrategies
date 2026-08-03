@@ -124,39 +124,25 @@ Atomic group: AssetTransfer (mUSD to vault contract address) + AppCall `pay_inte
 5. Save `interest_due = accrued_interest`; compute `change = transfer.amount − interest_due` — overpayment amount
 6. Zero `accrued_interest`
 7. **Interest mUSD stays in vault contract** — add `interest_due` to `accumulated_fees` counter; NOT forwarded to PSM
-8. If `change > 0` (overpayment — borrower wants to reduce principal):
-   - Reduce `musd_borrowed` by `change`
-   - Issue inner tx 1: AssetTransfer mUSD from vault → PSM address, amount = `change` (physically routes excess to PSM)
-   - Issue inner tx 2: AppCall `PSM.receive_musd(change)` (PSM updates circulating supply accounting)
-   - If `musd_borrowed == 0` after reduction: trigger full vault closure (inner tx 3: AssetTransfer LP → borrower; inner tx 4: Payment 46,500 µALGO MBR → borrower)
-   - Without closure: `flat_fee=true, fee=3000` (outer + 2 inner txs)
-   - With vault closure: `flat_fee=true, fee=5000` (outer + 4 inner txs)
+8. If `change > 0` (overpayment — borrower is reducing principal):
+   - `principal_paid = min(change, musd_borrowed)` — **clamp** to the outstanding principal
+   - `refund = change − principal_paid` — any excess beyond the principal
+   - If `principal_paid > 0`: reduce `musd_borrowed` by `principal_paid`; inner txs: AssetTransfer mUSD vault → PSM (`principal_paid`) + AppCall `PSM.receive_musd(principal_paid)`
+   - If `refund > 0`: inner tx: AssetTransfer mUSD vault → sender (`refund`) — the borrower's own overpayment returned. **This is why overpaying to fully close never reverts:** accrued interest is a live-moving target, so the app takes exactly what's owed and refunds the rest.
+   - If `principal_paid > 0` and `musd_borrowed == 0` after reduction: trigger full vault closure (inner txs: AssetTransfer LP → borrower; Payment 46,500 µALGO MBR → borrower). A collateral-only vault (`musd_borrowed == 0`, so `principal_paid == 0`) is preserved and the payment fully refunded — a stray payment can never force-close it.
+   - Fee scales with the inner txs used (builders set `coverAppCallInnerTransactionFees`): up to outer + PSM transfer + `receive_musd` + refund + LP + MBR on a full close (~6 txns).
 9. Update `last_payment_timestamp = current_timestamp`
 10. If `vault_state == 1`: reset to `0`
 11. If no overpayment: `flat_fee=true, fee=1000`
 
 **Why interest stays in vault (not PSM):** the admin collects interest as mUSD and deploys it at discretion — either converting to USDC and depositing into PSM (grows ceiling) or deploying as protocol-owned DEX liquidity. Auto-forwarding to PSM removes this flexibility. Circulating mUSD is unchanged when interest is paid (mUSD moves from borrower to vault — still circulating until admin deposits to PSM).
 
-**Single-call full repayment:** borrowers clearing both interest and principal send `accrued_interest + musd_borrowed` as a single `pay_interest()` overpayment. Interest portion stays in vault; excess is routed to PSM as principal reduction. No second transaction needed.
+**Principal repayment — no separate method:** `pay_interest()` is the **single repayment entry point**. There is deliberately no `repay_principal()`. Because `pay_interest()` always accrues and charges interest *first* (steps 3–7) before any overpayment reduces principal (step 8), principal can never be repaid — and a vault can never close — while skipping accrued interest. Consolidating to one path removes an entire class of "repay-without-interest" bug by construction.
 
-**Principal repayment (partial or full):**
+- **Partial principal:** send `accrued_interest (+ small drift buffer) + amount`; interest is charged, the rest reduces principal, and any buffer beyond the principal is refunded.
+- **Full close:** send `accrued_interest (+ buffer) + musd_borrowed`; the app clamps `principal_paid` to the outstanding principal, refunds the excess, returns the LP + MBR, and deletes the box — in one transaction, with no risk of an overpayment revert.
 
-`repay_principal(pool_id)` — atomic group: AppCall + AssetTransfer (mUSD directly to PSM)
-[Lazy check: if `current_timestamp >= last_payment_timestamp + 90 days`, set `vault_state = 1` before any other logic — state may be stale if no vault interaction has occurred since the window expired]
-1. Assert `vault_state != 2`
-2. Assert AssetTransfer in group: ASA ID = mUSD, receiver = **PSM contract address** (`AppParam.address(psm_app_id).value`), amount > 0
-3. **Accrue interest to current timestamp**
-4. Assert `accrued_interest == 0` — interest must be fully cleared before any principal reduction; this is a hard precondition, not group-based
-5. Assert `repayment amount ≤ musd_borrowed` — explicit guard against over-repayment; without this the uint64 subtraction below would panic with an opaque AVM error
-6. Reduce `musd_borrowed` by repayment amount
-7. Call PSM `receive_musd(amount)` via inner transaction — PSM verifies vault app address and updates circulating supply accounting
-8. If `musd_borrowed == 0`: trigger full vault closure (return collateral, delete box)
-
-Fee: without vault closure: `flat_fee=true, fee=2000` (outer + PSM.receive_musd inner tx); with vault closure: `flat_fee=true, fee=4000` (outer + PSM.receive_musd + LP→borrower AssetTransfer + MBR Payment)
-
-**Why mUSD goes to PSM directly (not vault):** PSM tracks actual ASA balances (no counters). For PSM's mUSD balance to increase — and thus circulating mUSD to decrease — the tokens must physically arrive at PSM's address. Routing mUSD through the vault first means PSM's balance never changes and circulating supply never decreases, breaking the invariant.
-
-**Single-call full repayment path:** borrowers who want to clear both interest and principal in one transaction use `pay_interest()` with an overpayment. Any amount above `accrued_interest` is automatically routed to principal reduction (step 6 of `pay_interest()`). This covers the full repayment case without requiring group introspection in `repay_principal()`.
+The frontend `repayPrincipal()` helper builds this automatically: it reads the live-projected interest, adds a small buffer, and sends `interest + principal` to the vault (the refund covers any drift).
 
 **Full vault closure:**
 - All accrued interest cleared (sits as `accumulated_fees` in vault)
@@ -261,7 +247,7 @@ health_factor    = floor(lp_value × liq_threshold_bps / 10_000) / total_debt
 
 `vault_state` is never set to 1 automatically. The oracle bot has no vault permissions and cannot transition state. Two mechanisms exist:
 
-**Lazy discovery:** the following methods check `current_timestamp >= last_payment_timestamp + 90 days` at the very start and set `vault_state = 1` if true, before any other logic executes: `pay_interest()`, `repay_principal()`, `borrow_more()`, `add_collateral()`. Admin-only and vault-creation methods do not perform this check. The check never blocks the operation — it only updates state to reflect reality before proceeding.
+**Lazy discovery:** the following methods check `current_timestamp >= last_payment_timestamp + 90 days` at the very start and set `vault_state = 1` if true, before any other logic executes: `pay_interest()`, `borrow_more()`, `add_collateral()`. Admin-only and vault-creation methods do not perform this check. The check never blocks the operation — it only updates state to reflect reality before proceeding.
 
 **Admin transition:** `mark_payment_overdue(borrower, pool_id)` — admin wallet only
 1. Assert vault exists and `vault_state == 0`

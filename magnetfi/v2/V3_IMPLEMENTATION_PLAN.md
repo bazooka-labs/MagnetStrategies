@@ -73,7 +73,7 @@ Extend the v2 PSM (`contracts/smart_contracts/psm/contract.py`) into a fresh v3 
 - **5.1 Dedicated fresh code audit** of the v3 PSM + Folks adapter (a *new* pass, not a re-run of v2).
 - **5.2 Legal counsel sign-off.**
 - **5.3 Testnet rehearsal:** ✅ **done.** Deploy→recall proven against live Folks (`test_psm_folks_testnet.py`); loss→deficit→freeze→restore→unfreeze proven against the real PSMv3 on testnet (`test_psm_deficit_testnet.py` — deficit crystallized to exactly 50000 despite an adapter's lie; deploy+withdraw froze; restore re-enabled). Harvest-with-real-yield still only LocalNet (needs time to accrue). Audit handoff: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
-- **5.4 Mainnet deploy:** ✅ live on mainnet (U/tALGO collateral; Folks-only planned). The core is deployed and operating; the Folks yield adapter is built + testnet-validated but not yet whitelisted on mainnet.
+- **5.4 Mainnet deploy:** ✅ live on mainnet (U/tALGO collateral; Folks-only planned). The core is deployed and operating; the Folks yield adapter is built + testnet-validated but not yet whitelisted on mainnet. The vault was subsequently redeployed to consolidate repayment onto a single `pay_interest()` path (interest always charged before principal; clamp-and-refund on overpay), re-pointed via the 48h PSM timelock and validated end-to-end on mainnet.
 
 ---
 

@@ -289,7 +289,6 @@ When health factor is below 1.0, the protocol is at risk of bad debt. That risk 
 | `add_collateral()` | ✓ | ✓ | ✗ blocked |
 | `borrow_more()` | ✓ | ✗ blocked | ✗ blocked |
 | `pay_interest()` | ✓ | ✓ clears state | ✗ blocked |
-| `repay_principal()` | ✓ | ✓ | ✗ blocked |
 | `trigger_micro_liquidation()` | ✗ | ✓ admin | ✗ |
 | `trigger_partial_liquidation()` | ✓ if HF 0.85–0.9999 | ✓ if HF 0.85–0.9999 | ✗ |
 | `trigger_full_liquidation()` | ✓ if HF<0.85 | ✓ if HF<0.85 | ✗ |

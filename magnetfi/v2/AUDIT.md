@@ -1092,6 +1092,30 @@ Findings — Low/Info only, all fail-safe:
 
 ---
 
+## Pass 28 — Post-launch: repayment path consolidation
+
+Found post-launch: `repay_principal()` asserted the *stored* `accrued_interest == 0` but did not
+re-accrue first. Because accrual is lazy (only written on a vault interaction), a borrower who never
+triggered accrual could repay principal / close a vault while skipping accrued interest — a
+protocol-revenue leak (bounded by hold time; no solvency or fund-loss risk, and admin
+`advance_accrual` could always crystallize interest to close it operationally).
+
+**Fix (redeployed vault):** removed `repay_principal()` entirely and made `pay_interest()` the single
+repayment path. It always accrues and charges interest *before* any overpayment reduces principal, so
+principal can never be cleared while dodging interest — the bug class is removed by construction, not
+patched. `pay_interest()` also gained a clamp-and-refund overpayment path (principal payment clamped
+to the outstanding principal; excess refunded to the sender) so overpaying to fully close never
+reverts. A collateral-only vault cannot be force-closed by a stray payment.
+
+Independently reviewed by a fresh adversarial agent (breakage / dodge-resolution / new-vector): clean
+on all three. Full suite **83 passed** incl. a new `test_no_free_principal_repayment` regression;
+contract compiles clean. The vault was redeployed with this change and the PSM re-pointed via the 48h
+timelock, then validated end-to-end on mainnet (open → borrow → interest-accruing close with the
+correct refund, reconciled on-chain). Supersedes the `repay_principal`-specific notes in Passes 6 / 8 /
+14 / 27.
+
+---
+
 ## Forward — v3 Productive Reserves (NOT YET AUDITED)
 
 Passes 1–27 cover the **v2 core** (Oracle / PSM / Vault) as built. The **mainnet launch build is v3** = v2 core + a **yield-bearing PSM** (Productive Reserves — see [PSM.md](./PSM.md#productive-reserves-v3)): an adapter pattern (≤5 vetted, timelocked, immutable adapters; Folks Finance first), a **redefined core invariant** (`circulating ≤ on-chain USDC + Σ recoverable strategy value`), a liquidity buffer, per-venue exposure caps, and a recall-under-stress path.
