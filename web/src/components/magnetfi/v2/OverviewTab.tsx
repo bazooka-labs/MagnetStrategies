@@ -7,6 +7,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, formatUsd } from "@/lib/magnetfi";
 import { getProtocolStats, type ProtocolStats } from "@/lib/magnetfiReads";
 import { Panel, Stat } from "./shared";
+import { LpVaultLearnMore } from "./LpVaultLearnMore";
 
 // CompX $U (Magnet) single-token market — source of the headline lend yield.
 const COMPX_MAGNET_APP_ID = 3607827540;
@@ -87,10 +88,13 @@ export function OverviewTab({
             earning trading fees. Interest-only loans you can repay any time, with a live oracle tracking your
             health factor so you always know your buffer.
           </p>
-          <button onClick={onBorrow}
-            className="mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-magnet-300 transition-colors hover:text-magnet-200">
-            Open an LP Collateral Vault <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+          <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <button onClick={onBorrow}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-magnet-300 transition-colors hover:text-magnet-200">
+              Open an LP Collateral Vault <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+            <LpVaultLearnMore />
+          </div>
         </Panel>
       </section>
 
