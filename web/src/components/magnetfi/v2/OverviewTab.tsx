@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TrendingUp, Vault, Coins, ArrowRight } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, formatUsd } from "@/lib/magnetfi";
-import { getProtocolStats, type ProtocolStats } from "@/lib/magnetfiReads";
+import { getProtocolStats, getTotalVaultDebt, type ProtocolStats } from "@/lib/magnetfiReads";
 import { Panel, Stat } from "./shared";
 import { LpVaultLearnMore } from "./LpVaultLearnMore";
 
@@ -21,12 +21,14 @@ export function OverviewTab({
 }) {
   const { algodClient } = useWallet();
   const [stats, setStats] = useState<ProtocolStats | null>(null);
+  const [borrowed, setBorrowed] = useState<number | null>(null);
   const [lendApy, setLendApy] = useState<number | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
     if (!PROTOCOL_LIVE || !algodClient) return;
     getProtocolStats(algodClient).then(setStats).catch(() => setErr(true));
+    getTotalVaultDebt(algodClient).then(setBorrowed).catch(() => {});
   }, [algodClient]);
 
   // Client-only CompX read for the $U supply APY (dynamic import keeps the SDK off SSR).
@@ -42,11 +44,13 @@ export function OverviewTab({
   const money = (n?: number) =>
     !PROTOCOL_LIVE ? "Soon" : stats ? `$${formatUsd(n ?? 0, 0)}` : err ? "—" : "…";
   const lendVal = lendApy !== null ? `${lendApy.toFixed(2)}%` : "…";
-  const util =
-    stats && stats.circulating + stats.ceiling > 0
-      ? (stats.circulating / (stats.circulating + stats.ceiling)) * 100
-      : 0;
-  const utilVal = !PROTOCOL_LIVE ? "Soon" : stats ? `${util.toFixed(1)}%` : err ? "—" : "…";
+  // Utilization = true vault debt (loans against LP) ÷ USDC reserve. Uses actual borrowed
+  // principal, NOT circulating mUSD (which also counts minted mUSD + fees) — so zero loans
+  // correctly reads 0%.
+  const util = stats && borrowed !== null && stats.psmUsdc > 0 ? (borrowed / stats.psmUsdc) * 100 : 0;
+  const utilVal = !PROTOCOL_LIVE ? "Soon"
+    : stats && borrowed !== null ? `${util.toFixed(1)}%`
+    : err ? "—" : "…";
 
   return (
     <div className="space-y-10">

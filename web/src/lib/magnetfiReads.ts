@@ -80,6 +80,25 @@ export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string)
   }
 }
 
+/**
+ * Total mUSD principal borrowed across ALL open vault boxes — the true amount lent
+ * against LP collateral. Distinct from `circulating` mUSD (which also counts minted
+ * mUSD and collected fees), so this is the correct basis for vault utilization.
+ */
+export async function getTotalVaultDebt(algod: algosdk.Algodv2): Promise<number> {
+  const prefix = Buffer.from("vault_");
+  const res = await algod.getApplicationBoxes(ACTIVE.vault).do();
+  let total = BigInt(0);
+  for (const b of res.boxes) {
+    const name = b.name;
+    if (name.length < prefix.length || !Buffer.from(name.slice(0, prefix.length)).equals(prefix)) continue;
+    const box = await algod.getApplicationBoxByName(ACTIVE.vault, name).do();
+    const dv = new DataView(box.value.buffer, box.value.byteOffset, box.value.byteLength);
+    total += dv.getBigUint64(16); // musd_borrowed = uint64 slot 2 (bytes 16..24)
+  }
+  return fromBase(total);
+}
+
 // ── PSM v3 — Productive Reserves reads ────────────────────────────────────────────
 
 const ONE_14_DP = BigInt(100000000000000);
