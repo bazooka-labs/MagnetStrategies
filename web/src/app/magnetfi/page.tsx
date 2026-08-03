@@ -33,8 +33,8 @@ type TabDef = { id: Tab; label: string; icon: React.ReactNode; badge?: string; h
 
 const TABS: TabDef[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
-  { id: "markets", label: "Markets", icon: <TrendingUp className="h-4 w-4" />, badge: "Live" },
-  { id: "borrow", label: "LP Vaults", icon: <Vault className="h-4 w-4" /> },
+  { id: "markets", label: "Single Token Markets", icon: <TrendingUp className="h-4 w-4" />, badge: "Live" },
+  { id: "borrow", label: "LP Collateral Vaults", icon: <Vault className="h-4 w-4" /> },
   { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/musd" },
 ];
 
@@ -128,22 +128,10 @@ export default function MagnetFiPage() {
 
       {/* Content */}
       {activeTab === "overview" && (
-        <div className="space-y-12">
-          {/* Single-token markets section */}
-          <CompXMarkets />
-
-          {/* Divider with label */}
-          <div className="relative flex items-center gap-4">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="shrink-0 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1 text-xs font-medium text-magnet-300">
-              MagnetFi v2 — LP Collateral Vaults
-            </span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
-          {/* LP vault overview */}
-          <OverviewTab onBorrow={() => setActiveTab("borrow")} />
-        </div>
+        <OverviewTab
+          onExploreMarkets={() => setActiveTab("markets")}
+          onBorrow={() => setActiveTab("borrow")}
+        />
       )}
 
       {activeTab === "markets" && (
