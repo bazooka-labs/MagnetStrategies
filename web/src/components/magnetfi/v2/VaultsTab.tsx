@@ -199,6 +199,18 @@ export function VaultsTab() {
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Health factor</p>
               <p className={`mt-1 font-mono font-bold ${hfColor(posHf)}`}>{posHf === Infinity ? "∞" : posHf.toFixed(2)}</p></div>
           </div>
+          {pos.vaultState !== 2 && posDebt > 0 && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                <span className="uppercase tracking-wider text-gray-500">Liquidation buffer</span>
+                <span className="font-mono text-gray-400">{formatUsd(Math.min(100, liquidationBuffer(posValue, posDebt, POOL.liqThresholdBps) * 100), 1)}% price drop to liquidation</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div className={`h-full rounded-full transition-all ${posHf >= 1.5 ? "bg-green-400" : posHf >= 1.15 ? "bg-yellow-400" : "bg-red-400"}`}
+                  style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(posValue, posDebt, POOL.liqThresholdBps) * 100))}%` }} />
+              </div>
+            </div>
+          )}
           {pos.vaultState === 2 && (
             <p className="mt-3 text-xs text-red-400">In liquidation — borrower actions are paused until settlement completes.</p>
           )}
@@ -249,6 +261,12 @@ export function VaultsTab() {
                 <span className="text-sm text-gray-400">Health factor</span>
                 <span className={`font-mono text-2xl font-bold ${hfColor(openHf)}`}>{openHf === Infinity ? "∞" : openHf.toFixed(2)}</span>
               </div>
+              {borrowAmt > 0 && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div className={`h-full rounded-full transition-all ${openHf >= 1.5 ? "bg-green-400" : openHf >= 1.15 ? "bg-yellow-400" : "bg-red-400"}`}
+                    style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(collateralUsd, borrowAmt, POOL.liqThresholdBps) * 100))}%` }} />
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-white/5 pt-3 text-sm">
                 <span className="text-gray-400">Liquidation buffer</span>
                 <span className="font-mono text-white">{borrowAmt > 0 ? `${formatUsd(liquidationBuffer(collateralUsd, borrowAmt, POOL.liqThresholdBps) * 100, 1)}% drop` : "—"}</span>

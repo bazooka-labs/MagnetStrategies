@@ -13,7 +13,7 @@ import { Panel, Stat, PairGlyph, SoonBadge, LaunchingBadge } from "./shared";
 function VaultTypeCard({ v, onBorrow }: { v: VaultType; onBorrow: () => void }) {
   const launching = v.status === "launching";
   return (
-    <Panel className={`p-6 ${launching ? "ring-1 ring-magnet-500/30" : ""}`}>
+    <Panel className={`p-6 transition-all duration-200 hover:border-white/20 hover:shadow-2xl hover:shadow-magnet-900/30 ${launching ? "ring-1 ring-magnet-500/30" : ""}`}>
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={v.tokens} />
