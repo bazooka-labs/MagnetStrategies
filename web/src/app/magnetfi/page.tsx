@@ -71,21 +71,21 @@ export default function MagnetFiPage() {
                 MagnetFi
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Single-token lending via <span className="font-semibold text-white">CompX</span> markets,
-                plus LP-collateral vaults that let your liquidity keep earning while you borrow{" "}
-                <span className="font-semibold text-white">mUSD</span>.
+                Borrow <span className="font-semibold text-white">mUSD</span> against LP collateral that keeps
+                earning, mint and redeem the fully USDC-backed Magnet dollar, and lend or borrow single tokens —
+                all on-chain on Algorand.
               </p>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-              Single-token markets live
-            </span>
             <span className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200">
               <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse-slow" />
-              {PROTOCOL_LIVE ? "LP vaults live" : "LP vaults — mainnet launch incoming"}
+              {PROTOCOL_LIVE ? "LP Collateral Vaults live" : "LP Collateral Vaults — launching"}
+            </span>
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Single Token Markets live
             </span>
           </div>
         </div>
