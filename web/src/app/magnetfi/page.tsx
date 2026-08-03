@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Landmark, Vault, Coins, LayoutGrid, TrendingUp, Shield } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
@@ -19,10 +20,7 @@ const VaultsTab = dynamic(
   () => import("@/components/magnetfi/v2/VaultsTab").then((m) => m.VaultsTab),
   { ssr: false, loading: pulse }
 );
-const MusdTab = dynamic(
-  () => import("@/components/magnetfi/v2/MusdTab").then((m) => m.MusdTab),
-  { ssr: false, loading: pulse }
-);
+// The mUSD swap now lives on the dedicated /musd page; the Bank tab deep-links there.
 
 // Admin panel pulls in algokit-utils — lazy-load so it only ships when an admin opens it.
 const AdminTab = dynamic(
@@ -31,12 +29,13 @@ const AdminTab = dynamic(
 );
 
 type Tab = "overview" | "markets" | "borrow" | "musd" | "admin";
+type TabDef = { id: Tab; label: string; icon: React.ReactNode; badge?: string; href?: string };
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] = [
+const TABS: TabDef[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
   { id: "markets", label: "Markets", icon: <TrendingUp className="h-4 w-4" />, badge: "Live" },
   { id: "borrow", label: "LP Vaults", icon: <Vault className="h-4 w-4" /> },
-  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" /> },
+  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/musd" },
 ];
 
 export default function MagnetFiPage() {
@@ -49,7 +48,7 @@ export default function MagnetFiPage() {
     if (!isAdmin && activeTab === "admin") setActiveTab("overview");
   }, [isAdmin, activeTab]);
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: string }[] = isAdmin
+  const tabs: TabDef[] = isAdmin
     ? [...TABS, { id: "admin", label: "Admin", icon: <Shield className="h-4 w-4" /> }]
     : TABS;
 
@@ -102,25 +101,29 @@ export default function MagnetFiPage() {
 
       {/* Tabs */}
       <div className="mb-8 flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
-              activeTab === tab.id
-                ? "border-magnet-500/60 bg-magnet-500/10 text-white"
-                : "border-white/10 bg-black/30 text-gray-400 hover:border-white/20 hover:text-gray-200"
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-            {tab.badge && (
-              <span className="rounded-full bg-blue-500/20 border border-blue-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 leading-none">
-                {tab.badge}
-              </span>
-            )}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const cls = `inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
+            activeTab === tab.id
+              ? "border-magnet-500/60 bg-magnet-500/10 text-white"
+              : "border-white/10 bg-black/30 text-gray-400 hover:border-white/20 hover:text-gray-200"
+          }`;
+          const inner = (
+            <>
+              {tab.icon}
+              {tab.label}
+              {tab.badge && (
+                <span className="rounded-full bg-blue-500/20 border border-blue-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 leading-none">
+                  {tab.badge}
+                </span>
+              )}
+            </>
+          );
+          return tab.href ? (
+            <Link key={tab.id} href={tab.href} className={cls}>{inner}</Link>
+          ) : (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cls}>{inner}</button>
+          );
+        })}
       </div>
 
       {/* Content */}
@@ -150,7 +153,6 @@ export default function MagnetFiPage() {
       )}
 
       {activeTab === "borrow" && <VaultsTab />}
-      {activeTab === "musd" && <MusdTab />}
       {activeTab === "admin" && isAdmin && <AdminTab />}
     </div>
   );
