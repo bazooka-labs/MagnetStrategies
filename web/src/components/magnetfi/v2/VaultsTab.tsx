@@ -15,7 +15,7 @@ import {
   getOracle, getVaultPosition, getBalances,
   MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
 } from "@/lib/magnetfiReads";
-import { Panel, PairGlyph, PrimaryButton, NotLiveNote } from "./shared";
+import { Panel, PairGlyph, PrimaryButton } from "./shared";
 
 const POOL = VAULT_TYPES.find((v) => v.status === "launching")!; // U/tALGO
 
@@ -277,7 +277,7 @@ export function VaultsTab() {
               </div>
               <div className="flex items-start gap-2 rounded-lg border border-white/5 bg-black/30 px-3 py-2.5">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-400" />
-                <p className="text-xs leading-relaxed text-gray-500">Liquidation begins at a health factor of 1.00. Repay or add collateral to stay above it.</p>
+                <p className="text-xs leading-relaxed text-gray-500">Liquidation starts below a 1.00 health factor — see the full risk breakdown below.</p>
               </div>
               <PrimaryButton
                 onClick={() => run("open", () => openVault(algorand!, address!, lpAmt, borrowAmt), borrowAmt > 0 ? MUSD_ID : undefined)}
@@ -363,8 +363,6 @@ export function VaultsTab() {
           </p>
         </Panel>
       </section>
-
-      {PROTOCOL_LIVE && !pos && !isConnected && <NotLiveNote />}
     </div>
   );
 }
