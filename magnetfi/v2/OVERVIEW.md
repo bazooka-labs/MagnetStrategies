@@ -199,7 +199,7 @@ MagnetFi v2 has five revenue streams across two categories — automatic and adm
 | Architecture design | ✅ Complete (24 audit passes) |
 | Contracts (LP Oracle / PSMv3 / Vault) | ✅ Built — 83 integration/adversarial tests (67 v2 + 16 v3) + 30 oracle-bot tests pass |
 | mUSD ASA | ✅ Live on mainnet — ASA `3615600399` |
-| Admin UI + borrower app | ✅ Built — `/magnetfi` (deploy wizard, ops console, live borrower tabs) |
+| Admin UI + borrower app | ✅ Live — `/magnetfi` Bank (Overview / Single Token Markets / LP Collateral Vaults / mUSD deep-link) + gated admin (ops console + Productive Reserves); standalone `/musd` and `/about` pages. UI reference: [web/README.md](../../web/README.md) |
 | Testnet deployment | ✅ Complete — full deploy rehearsal (Oracle `765096480` / PSM `765096481` / Vault `765096491`) |
 | **Productive Reserves (v3)** | ✅ **Live** — yield-bearing PSM (PSMv3) deployed on mainnet: adapter pattern (≤5 vetted, timelocked adapters), Folks Finance first, redefined invariant + buffer + per-venue caps. Folks yield adapter built + testnet-validated, not yet whitelisted. See [PSM.md](./PSM.md#productive-reserves-v3). |
 | Mainnet deployment | ✅ **Live** — Oracle / PSMv3 / Vault operating on U/tALGO collateral; first borrows validated end-to-end. Vault redeployed to consolidate repayment onto a single `pay_interest()` path. Live app IDs are in `web/src/lib/magnetfi.ts` (`DEPLOYMENTS.mainnet`). |
@@ -214,3 +214,4 @@ MagnetFi v2 has five revenue streams across two categories — automatic and adm
 - [LP Oracle](./LP_ORACLE.md) — LP valuation formula, data sources, TWAP, circuit breakers
 - [Liquidation](./LIQUIDATION.md) — micro-liquidation, health-factor liquidation, state guards
 - [Admin](./ADMIN.md) — all admin actions, monitoring checklist, deployment procedure, emergency runbook
+- [Web app](../../web/README.md) — frontend site map, the Bank tabs, admin console, `src/lib` architecture, and notable UI behaviors

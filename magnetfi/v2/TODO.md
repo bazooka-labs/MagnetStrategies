@@ -9,7 +9,7 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
 
 ## Deployment status
 - ✅ **mUSD ASA on mainnet:** `3615600399`.
-- ✅ **Full UI built** — `/magnetfi` app (Overview / CompX Markets / LP Vaults / mUSD) + gated Admin panel (Create mUSD, testnet asset factory, deploy wizard, operations console). Borrower tabs wired to live on-chain data + transactions.
+- ✅ **Full UI live** — `/magnetfi` Bank (Overview / Single Token Markets / LP Collateral Vaults / mUSD) + gated admin (ops console + Productive Reserves); standalone `/musd` and `/about` pages. Borrower tabs wired to live on-chain data + transactions. Frontend reference: [web/README.md](../../web/README.md).
 - ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
 - ✅ **Live on mainnet.** Core protocol (Oracle / PSMv3 / Vault) deployed and operating on U/tALGO
   collateral; v3 productive-reserves PSM live. Folks yield adapter not yet whitelisted. (Live app
@@ -73,13 +73,13 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
 
 ## 🔵 Frontend / integration — ✅ built (testnet-validated)
 
-- [x] **MagnetFi v2 app** at `/magnetfi`: Overview / Markets (CompX) / LP Vaults / mUSD tabs + gated Admin panel.
+- [x] **MagnetFi app** at `/magnetfi`: Overview / Single Token Markets / LP Collateral Vaults / mUSD (deep-links to the standalone `/musd` page) + gated Admin panel. Plus standalone `/musd` and `/about` pages. Full site map: [web/README.md](../../web/README.md).
 - [x] **Network-aware config** (`lib/magnetfi` `ACTIVE` / `DEPLOYMENTS`) replaces hand-edited constants; resolves app + asset IDs per network via `NEXT_PUBLIC_ALGO_NETWORK`.
-- [x] **Admin panel** (gated to the admin wallet): Create mUSD, testnet asset factory, the resumable **deploy & initialize wizard** (48h-timelock aware), and the **operations console** (rates, liquidations, pause/unpause, reserves & fees, oracle re-anchor, governance/rotation + timelocked repoints).
+- [x] **Admin panel** (gated to the admin wallet): Create mUSD / testnet asset factory, the **operations console** (rates, liquidations, pause/unpause, reserves & fees, oracle re-anchor, governance/rotation + timelocked repoints), and the **Productive Reserves** panel. The step-wizards (full-stack deploy + vault redeploy) were removed from the live panel post-launch — retained in `admin/` + git; re-add to `AdminTab.tsx` if needed.
 - [x] **Borrower tabs wired to live data + transactions** with correct atomic-group ordering (incl. the pay-interest transfer-before-call fix, P22-01), live health factors, and oracle-freshness gating on borrows.
 - [x] **CompX single-token markets** integrated (live read + deep-link).
-- [ ] After mainnet deploy: fill `DEPLOYMENTS.mainnet` in `web/src/lib/magnetfi.ts` with the real Oracle/PSM/Vault app IDs + U/tALGO LP/pool IDs, fill the oracle bot config, and redeploy the site.
-- [ ] (Polish) Frontend should display the current rate and alert borrowers on rate changes (rate locks at vault open).
+- [x] After mainnet deploy: filled `DEPLOYMENTS.mainnet` in `web/src/lib/magnetfi.ts` (Oracle/PSMv3/Vault + U/tALGO LP/pool IDs), oracle bot config, and redeployed the site.
+- [x] Frontend shows the current rate (open-vault preview + the "How LP Collateral Vaults work" Learn More). No rate-change alert needed for existing positions — the rate is **locked at open** and never changes for a vault.
 
 ---
 

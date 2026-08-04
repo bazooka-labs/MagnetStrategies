@@ -10,6 +10,11 @@ Folks-only, canary first.**
 > the accepted H-1 residual (recoverable_value must be a non-manipulable read) is satisfied by the
 > Folks adapter. Keep the ceiling tiny until you're confident.
 
+> **Historical:** this records the original launch. The step-wizards it references (Deploy &
+> initialize, and later Vault redeploy) were **removed from the live admin panel post-launch** —
+> retained in `web/src/components/magnetfi/v2/admin/` + git; re-add the import to `AdminTab.tsx` to
+> run them again. Frontend map: [web/README.md](../../web/README.md).
+
 ## 0. Prerequisites
 - [ ] **Site is live with the v3 UI** — the pushed frontend must be deployed (Vercel) or run locally
       (`npm run dev`). The PSMv3 wizard + Productive Reserves panel don't exist on an old build.

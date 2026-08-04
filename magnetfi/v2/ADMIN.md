@@ -237,6 +237,7 @@ Order matters — do not skip steps or reorder.
 - [ ] Confirm initial oracle prices for each pool (used as `initial_price` to `add_pool()` — sets both the live price and the ±25% anchor)
 
 ### Deploy Contracts (admin wallet, via deploy wizard or script)
+> The deploy wizard was removed from the live admin panel post-launch (retained in git — re-add to `AdminTab.tsx` to use). The method calls below are unchanged. Frontend map: [web/README.md](../../web/README.md).
 - [ ] Deploy LP Oracle: `deploy(guardian)`; record App ID
 - [ ] Deploy PSM: `deploy(musd_asa_id, usdc_asa_id, guardian)`; record App ID
 - [ ] Deploy Vault: `deploy(psm_app_id, lp_oracle_app_id, musd_asa_id, usdc_asa_id, guardian)`; record App ID
