@@ -8,16 +8,17 @@ import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, pct, formatUsd } from "@/lib/magnetfi";
 import { makeAlgorand, optIn, mintMusd, redeemMusd } from "@/lib/magnetfiClient";
 import { getBalances, getProtocolStats, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type Balances } from "@/lib/magnetfiReads";
-import { Panel, PrimaryButton, NotLiveNote } from "./shared";
+import { Panel, PrimaryButton, NotLiveNote, tokenIcon } from "./shared";
 
 type Mode = "mint" | "redeem";
 
 function AssetBadge({ asset }: { asset: string }) {
+  const icon = tokenIcon(asset);
   return (
     <span className="flex items-center gap-1.5 rounded-lg bg-surface-lighter px-3 py-1.5 text-sm font-semibold text-white">
-      {asset === "mUSD" && (
+      {icon && (
         <span className="h-4 w-4 overflow-hidden rounded-full shrink-0">
-          <Image src="/musd-icon.png" alt="" width={16} height={16} className="h-full w-full object-cover" />
+          <Image src={icon} alt="" width={16} height={16} className="h-full w-full object-cover" />
         </span>
       )}
       {asset}

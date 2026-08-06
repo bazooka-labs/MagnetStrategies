@@ -7,10 +7,12 @@ import Image from "next/image";
 // This is the $U *ASA* mark — used only for the token itself, never as the brand/nav logo.
 const TOKEN_ICONS: Record<string, string> = {
   U: "/tokens/u.png",
+  MUSD: "/musd-icon.png",
   TALGO: "/tokens/talgo.png",
   USDC: "/tokens/usdc.png",
 };
-const iconFor = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
+/** Real icon path for a token symbol ("$"/case-insensitive), or null for a text fallback. */
+export const tokenIcon = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
 
 /** Glassy panel with the brand's top gradient hairline (matches the landing cards). */
 export function Panel({
@@ -55,7 +57,7 @@ export function LaunchingBadge() {
 function TokenChip({ sym, variant, className = "" }: {
   sym: string; variant: "primary" | "secondary"; className?: string;
 }) {
-  const icon = iconFor(sym);
+  const icon = tokenIcon(sym);
   const base = `flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 shadow-md ${className}`;
   if (icon) {
     return (
