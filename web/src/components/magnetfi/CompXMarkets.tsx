@@ -1,25 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { LendingClient, type MarketData } from "@compx/sdk";
-import { TrendingUp, Wallet, CircleDollarSign, Coins } from "lucide-react";
-import { Panel } from "./v2/shared";
+import { TrendingUp, Wallet } from "lucide-react";
+import { Panel, tokenIcon } from "./v2/shared";
 import { LendingActionModal, type LendingAction } from "./LendingActionModal";
 
 const COMPX_MAGNET_APP_ID = 3607827540;
 const COMPX_USDC_APP_ID   = 3491050310;
 
-const POOL_META: Record<number, { name: string; ticker: string; icon: React.ReactNode }> = {
-  [COMPX_MAGNET_APP_ID]: {
-    name: "Magnet",
-    ticker: "$U",
-    icon: <Coins className="h-5 w-5 text-white" />,
-  },
-  [COMPX_USDC_APP_ID]: {
-    name: "USD Coin",
-    ticker: "USDC",
-    icon: <CircleDollarSign className="h-5 w-5 text-white" />,
-  },
+const POOL_META: Record<number, { name: string; sub: string; symbol: string }> = {
+  [COMPX_MAGNET_APP_ID]: { name: "Magnet", sub: "$U", symbol: "$U" },
+  [COMPX_USDC_APP_ID]: { name: "USDC", sub: "USD Coin", symbol: "USDC" },
 };
 
 const ACTIONS: { id: LendingAction; label: string }[] = [
@@ -28,41 +21,6 @@ const ACTIONS: { id: LendingAction; label: string }[] = [
   { id: "borrow",   label: "Borrow"   },
   { id: "repay",    label: "Repay"    },
 ];
-
-// SDK 2.0.2 reports 6 decimals for all assets; $U is actually 5.
-const CORRECT_DECIMALS: Record<number, number> = {
-  3081853135: 5, // $U
-  3607827779: 5, // cU v3 (LST)
-}
-function correctDeposits(market: MarketData): number {
-  const sdkDec = market.baseTokenDecimals
-  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
-  if (realDec === sdkDec) return market.totalDeposits
-  // SDK over-divided by 10^(sdkDec-realDec); undo it
-  return market.totalDeposits * Math.pow(10, sdkDec - realDec)
-}
-function correctBorrows(market: MarketData): number {
-  const sdkDec = market.baseTokenDecimals
-  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
-  if (realDec === sdkDec) return market.totalBorrows
-  return market.totalBorrows * Math.pow(10, sdkDec - realDec)
-}
-function correctAvailable(market: MarketData): number {
-  const sdkDec = market.baseTokenDecimals
-  const realDec = CORRECT_DECIMALS[market.baseTokenId] ?? sdkDec
-  if (realDec === sdkDec) return market.availableToBorrow
-  return market.availableToBorrow * Math.pow(10, sdkDec - realDec)
-}
-
-async function fetchUPriceUSD(): Promise<number> {
-  try {
-    const [v, a] = await Promise.all([
-      fetch("https://api.vestigelabs.org/assets/price?asset_ids=3081853135&network_id=0").then(r => r.json()),
-      fetch("https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd").then(r => r.json()),
-    ])
-    return Number(v[0].price) * Number(a.algorand.usd)
-  } catch { return 0 }
-}
 
 function fmtUsd(n: number): string {
   if (!isFinite(n) || n === 0) return "$0.00";
@@ -75,16 +33,15 @@ function PoolCard({
   appId,
   data,
   loading,
-  usdPrice,
   onAction,
 }: {
   appId: number;
   data: MarketData | null;
   loading: boolean;
-  usdPrice: number;        // correct USD price per token (overrides SDK oracle)
   onAction: (action: LendingAction) => void;
 }) {
   const meta = POOL_META[appId];
+  const icon = tokenIcon(meta.symbol);
   const skeleton = (w: string) => (
     <span className={`inline-block h-4 ${w} animate-pulse rounded bg-white/10`} />
   );
@@ -96,12 +53,16 @@ function PoolCard({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 shrink-0">
-            {meta.icon}
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl">
+            {icon ? (
+              <Image src={icon} alt={meta.symbol} width={40} height={40} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-xs font-bold text-white">{meta.symbol}</div>
+            )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">{meta.name}</p>
-            <p className="text-xs text-gray-500">{meta.ticker}</p>
+            <p className="font-display text-sm font-semibold text-white">{meta.name}</p>
+            <p className="text-xs text-gray-500">{meta.sub}</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-300">
@@ -126,24 +87,24 @@ function PoolCard({
         </div>
       </div>
 
-      {/* Stats row — USD (corrected decimals × market price) */}
+      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2 border-t border-white/5 pt-4 text-center">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">TVL</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(correctDeposits(data) * usdPrice)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalDepositsUSD)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Borrowed</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(correctBorrows(data) * usdPrice)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.totalBorrowsUSD)}
           </p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-gray-500">Available</p>
           <p className="mt-1 font-mono text-sm font-semibold text-white">
-            {loading || !data ? skeleton("w-14") : fmtUsd(correctAvailable(data) * usdPrice)}
+            {loading || !data ? skeleton("w-14") : fmtUsd(data.availableToBorrowUSD)}
           </p>
         </div>
       </div>
@@ -186,10 +147,9 @@ function PoolCard({
 }
 
 export function CompXMarkets() {
-  const [markets, setMarkets]   = useState<Record<number, MarketData>>({});
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(false);
-  const [uPriceUSD, setUPriceUSD] = useState(0);
+  const [markets, setMarkets]         = useState<Record<number, MarketData>>({});
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(false);
   const [activeModal, setActiveModal] = useState<{ appId: number; action: LendingAction } | null>(null);
 
   useEffect(() => {
@@ -197,12 +157,10 @@ export function CompXMarkets() {
     Promise.all([
       client.getMarket(COMPX_MAGNET_APP_ID),
       client.getMarket(COMPX_USDC_APP_ID),
-      fetchUPriceUSD(),
     ])
-      .then(([magnet, usdc, uPrice]) => {
+      .then(([magnet, usdc]) =>
         setMarkets({ [magnet.appId]: magnet, [usdc.appId]: usdc })
-        setUPriceUSD(uPrice)
-      })
+      )
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
@@ -220,7 +178,7 @@ export function CompXMarkets() {
             <TrendingUp className="h-4 w-4 text-blue-400" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-white">Single-Token Markets</h2>
+            <h2 className="font-display text-sm font-semibold text-white">Single-Token Markets</h2>
             <p className="text-xs text-gray-500">
               Lend or borrow individual assets · live on Algorand mainnet
             </p>
@@ -237,14 +195,12 @@ export function CompXMarkets() {
               appId={COMPX_MAGNET_APP_ID}
               data={markets[COMPX_MAGNET_APP_ID] ?? null}
               loading={loading}
-              usdPrice={uPriceUSD}
               onAction={(action) => setActiveModal({ appId: COMPX_MAGNET_APP_ID, action })}
             />
             <PoolCard
               appId={COMPX_USDC_APP_ID}
               data={markets[COMPX_USDC_APP_ID] ?? null}
               loading={loading}
-              usdPrice={1}
               onAction={(action) => setActiveModal({ appId: COMPX_USDC_APP_ID, action })}
             />
           </div>

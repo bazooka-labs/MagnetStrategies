@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { TrendingUp, Vault, Coins, ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { TrendingUp, Vault, ArrowRight } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, formatUsd } from "@/lib/magnetfi";
 import { getProtocolStats, getTotalVaultDebt, type ProtocolStats } from "@/lib/magnetfiReads";
@@ -106,8 +107,8 @@ export function OverviewTab({
       <Panel className="p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">
-              <Coins className="h-5 w-5" />
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl">
+              <Image src="/musd-icon.png" alt="mUSD" width={40} height={40} className="h-full w-full object-cover" />
             </div>
             <p className="text-sm text-gray-300">
               <span className="font-semibold text-white">mUSD</span> — the fully USDC-backed Magnet dollar. Mint 1:1,
