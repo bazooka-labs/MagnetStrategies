@@ -7,6 +7,8 @@ import Image from "next/image";
 // This is the $U *ASA* mark — used only for the token itself, never as the brand/nav logo.
 const TOKEN_ICONS: Record<string, string> = {
   U: "/tokens/u.png",
+  TALGO: "/tokens/talgo.png",
+  USDC: "/tokens/usdc.png",
 };
 const iconFor = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
 
