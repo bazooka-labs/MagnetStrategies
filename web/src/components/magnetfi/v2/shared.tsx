@@ -21,6 +21,10 @@ export const tokenIcon = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpp
 const CONTAIN_ICONS = new Set(["ALPHA"]);
 export const tokenIconFit = (sym: string) =>
   CONTAIN_ICONS.has(sym.replace("$", "").toUpperCase()) ? "object-contain" : "object-cover";
+// Per-token vertical nudge for art whose visual center isn't the geometric center
+// (e.g. the COMPX coin's face sits high above its 3D base). Tune the % to taste.
+const ICON_NUDGE: Record<string, string> = { COMPX: "translate-y-[12%]" };
+const iconNudge = (sym: string) => ICON_NUDGE[sym.replace("$", "").toUpperCase()] ?? "";
 
 /** Glassy panel with the brand's top gradient hairline (matches the landing cards). */
 export function Panel({
@@ -70,7 +74,7 @@ function TokenChip({ sym, variant, className = "" }: {
   if (icon) {
     return (
       <span className={`${base} overflow-hidden bg-black`}>
-        <Image src={icon} alt={sym} width={36} height={36} className={`h-full w-full ${tokenIconFit(sym)}`} />
+        <Image src={icon} alt={sym} width={36} height={36} className={`h-full w-full ${tokenIconFit(sym)} ${iconNudge(sym)}`} />
       </span>
     );
   }
