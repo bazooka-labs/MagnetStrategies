@@ -1,6 +1,14 @@
 "use client";
 
 import { type ReactNode } from "react";
+import Image from "next/image";
+
+// Real token icons (by unit name, "$" stripped). Tokens not listed fall back to a text chip.
+// This is the $U *ASA* mark — used only for the token itself, never as the brand/nav logo.
+const TOKEN_ICONS: Record<string, string> = {
+  U: "/tokens/u.png",
+};
+const iconFor = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
 
 /** Glassy panel with the brand's top gradient hairline (matches the landing cards). */
 export function Panel({
@@ -41,16 +49,31 @@ export function LaunchingBadge() {
   );
 }
 
+/** A single token chip — real icon if we have one, else a text fallback. */
+function TokenChip({ sym, variant, className = "" }: {
+  sym: string; variant: "primary" | "secondary"; className?: string;
+}) {
+  const icon = iconFor(sym);
+  const base = `flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 shadow-md ${className}`;
+  if (icon) {
+    return (
+      <span className={`${base} overflow-hidden bg-black`}>
+        <Image src={icon} alt={sym} width={36} height={36} className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+  const fill = variant === "primary"
+    ? "bg-gradient-to-br from-magnet-500 to-magnet-700 text-white"
+    : "bg-surface-lighter text-gray-200";
+  return <span className={`${base} ${fill} text-[10px] font-bold`}>{sym.replace("$", "")}</span>;
+}
+
 /** Two overlapping token chips representing an LP pair. */
 export function PairGlyph({ tokens }: { tokens: [string, string] }) {
   return (
     <div className="flex shrink-0 items-center">
-      <span className="z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-gradient-to-br from-magnet-500 to-magnet-700 text-[10px] font-bold text-white shadow-md">
-        {tokens[0].replace("$", "")}
-      </span>
-      <span className="-ml-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-surface-lighter text-[10px] font-bold text-gray-200 shadow-md">
-        {tokens[1]}
-      </span>
+      <TokenChip sym={tokens[0]} variant="primary" className="z-10" />
+      <TokenChip sym={tokens[1]} variant="secondary" className="-ml-3" />
     </div>
   );
 }
