@@ -10,11 +10,7 @@ const navLinks = [
   { href: "/token", label: "Magnet Token", external: false },
   { href: "/magnetfi", label: "Bank", external: false },
   { href: "/musd", label: "mUSD", external: false },
-  {
-    href: "https://app.tinyman.org/pool/AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
-    label: "Farm",
-    external: true,
-  },
+  { href: "/earn", label: "Earn", external: false },
   { href: "/contact", label: "Contact", external: false },
 ];
 
