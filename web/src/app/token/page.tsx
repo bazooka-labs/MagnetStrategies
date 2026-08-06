@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { Coins } from "lucide-react";
+import Image from "next/image";
 import { Panel, Stat } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { MAGNET_ASA_ID, fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL } from "@/lib/tokenStats";
@@ -29,8 +29,8 @@ export default async function TokenPage() {
 
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-magnet-600 to-magnet-800 shadow-lg shadow-magnet-900/50 shrink-0">
-              <Coins className="h-7 w-7 text-white drop-shadow" />
+            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-magnet-900/50">
+              <Image src="/tokens/u.png" alt="$U" width={56} height={56} className="h-full w-full object-cover" priority />
             </div>
             <div>
               <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
