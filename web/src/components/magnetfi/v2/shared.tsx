@@ -10,9 +10,17 @@ const TOKEN_ICONS: Record<string, string> = {
   MUSD: "/musd-icon.png",
   TALGO: "/tokens/talgo.png",
   USDC: "/tokens/usdc.png",
+  MOOJ: "/tokens/mooj.png",
+  ALPHA: "/tokens/alpha.png",
+  COMPX: "/tokens/compx.png",
+  HAY: "/tokens/hay.png",
 };
 /** Real icon path for a token symbol ("$"/case-insensitive), or null for a text fallback. */
 export const tokenIcon = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
+// Wordmark-style art that should fit inside the chip rather than fill it.
+const CONTAIN_ICONS = new Set(["ALPHA"]);
+export const tokenIconFit = (sym: string) =>
+  CONTAIN_ICONS.has(sym.replace("$", "").toUpperCase()) ? "object-contain" : "object-cover";
 
 /** Glassy panel with the brand's top gradient hairline (matches the landing cards). */
 export function Panel({
@@ -62,7 +70,7 @@ function TokenChip({ sym, variant, className = "" }: {
   if (icon) {
     return (
       <span className={`${base} overflow-hidden bg-black`}>
-        <Image src={icon} alt={sym} width={36} height={36} className="h-full w-full object-cover" />
+        <Image src={icon} alt={sym} width={36} height={36} className={`h-full w-full ${tokenIconFit(sym)}`} />
       </span>
     );
   }
