@@ -38,12 +38,12 @@ export function Footer() {
               Discord
             </a>
             <a
-              href="https://algoexplorer.io/asset/3081853135"
+              href="https://allo.info/asset/3081853135"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
-              AlgoExplorer
+              Allo.info
             </a>
           </div>
 

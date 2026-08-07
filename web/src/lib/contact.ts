@@ -58,7 +58,8 @@ export function base64OfPrefix(prefix: string): string {
 }
 
 export function explorerTxUrl(id: string, network: "mainnet" | "testnet"): string {
-  return network === "testnet" ? `https://testnet.algoexplorer.io/tx/${id}` : `https://algoexplorer.io/tx/${id}`;
+  // AlgoExplorer was sunset in 2024. allo.info is the mainnet explorer; lora covers testnet.
+  return network === "testnet" ? `https://lora.algokit.io/testnet/tx/${id}` : `https://allo.info/tx/${id}`;
 }
 
 // ── encode ──────────────────────────────────────────────────────────────────────
