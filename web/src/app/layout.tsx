@@ -16,14 +16,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: "https://magnetstrategies.io/og-banner.png",
-        width: 1902,
-        height: 1056,
-        alt: "Magnet Strategies",
-      },
-      {
-        url: "https://magnetstrategies.io/og-image.jpg",
-        width: 1351,
-        height: 1248,
+        width: 1200,
+        height: 666,
         alt: "Magnet Strategies",
       },
     ],
