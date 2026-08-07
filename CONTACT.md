@@ -29,7 +29,9 @@ Decoded client-side, split by sub-prefix, support tickets grouped into threads b
           ↓
 Admin replies the same way: 0 ALGO → user's wallet, note "ms:reply:{JSON, thread: <root txn id>}"
           ↓
-Admin broadcasts: one "ms:update:{JSON}" payment per current subscriber, chunked ≤16/group
+Admin broadcasts: one "ms:update:{JSON, bid: <broadcast id>}" payment per subscriber, chunked ≤16/group
+          ↓
+Admin sees per-broadcast delivery (updates grouped by bid) and can resend only to subscribers missing it
 ```
 
 **Cost:** 0.001 ALGO (network fee only) per message, either direction. Subscribing adds
@@ -50,7 +52,7 @@ bodies capped at 600 characters, whole note kept under Algorand's 1000-byte limi
 | `ms:reply:` | admin → user | `{ msg, thread }` — `thread` = the root ticket's own txn ID |
 | `ms:subscribe:` | user → admin | `{ channel }` — `channel: "updates"` (default channel; schema allows more later) |
 | `ms:unsubscribe:` | user → admin | `{ channel }` |
-| `ms:update:` | admin → each subscriber | `{ msg, channel }` |
+| `ms:update:` | admin → each subscriber | `{ msg, channel, bid }` — `bid` = a broadcast id shared by every update txn in one broadcast (powers delivery tracking + resend) |
 
 **Thread correlation:** a ticket's own transaction ID *is* the thread ID. Every reply
 carries `thread` pointing back to it — a full conversation reconstructs client-side with
@@ -59,6 +61,32 @@ no server state.
 **Subscriber set:** computed, not stored. Every `ms:subscribe:`/`ms:unsubscribe:`
 transaction addressed to the admin wallet is scanned; the chronologically-last action
 per sender address (sorted by confirmed-round, then intra-round offset) wins.
+
+---
+
+## Broadcast Delivery Tracking & Resend
+
+Every update transaction in one broadcast carries the same **`bid`** (broadcast id —
+`newBroadcastId()` in `lib/contact.ts`: `base36(now) + random`). The admin's own sent updates
+come back in the admin's Indexer query, so `computeBroadcasts()` reconstructs each broadcast
+client-side — `{ bid, msg, channel, roundTime, recipients: Set<address> }`, grouped by `bid`.
+No server state: the chain itself records who received what.
+
+The admin panel turns this into:
+- **Per-broadcast delivery** — for each sent broadcast, `delivered / total current subscribers`,
+  where `delivered = currentSubscribers ∩ recipients(bid)` (plus the raw total recipient count).
+- **Resend to missing** — one action that computes `missing = currentSubscribers − recipients(bid)`
+  and sends the *same* `bid` + `msg` only to those wallets. This is the recovery path for both a
+  **partially-delivered broadcast** (session dropped / a signature rejected mid-batch) and wallets
+  that **subscribed after** the original send. It never re-sends to a wallet already in
+  `recipients`, and can't target a non-subscriber (missing is derived by filtering the current
+  subscriber set). The admin panel refreshes after every send — including partial failures — so the
+  delivered/missing counts always reflect what actually landed on-chain.
+
+Only bid-tagged updates are tracked; legacy untagged broadcasts still deliver and render, they just
+don't appear in the history. **`bid` is a grouping key only** — never used in any trust decision;
+`decodeNote()`'s admin-sender verification is unchanged, so a forged update with a spoofed `bid`
+can neither enter the admin's tracking nor appear in a victim's inbox.
 
 ---
 
@@ -148,11 +176,12 @@ await al.newGroup()
   payment if the checkbox is checked — one wallet signature covers both.
 - **Admin reply:** one `ms:reply:` payment to the ticket's sender, `thread` = the
   ticket's own txn ID.
-- **Admin broadcast:** one `ms:update:` payment per current subscriber, batched in
-  atomic groups of ≤16 (Algorand's group cap) — each chunk is one wallet signature.
-  Known scaling ceiling for large subscriber counts (this is exactly the problem
-  ConchShell's actual broadcast-escrow contract exists to solve at scale); acceptable
-  for v1.
+- **Admin broadcast:** one `ms:update:` payment (tagged with a shared `bid`) per current
+  subscriber, batched in atomic groups of ≤16 (Algorand's group cap) — each chunk is one wallet
+  signature. **Resend-to-missing** reuses the same `bid`/`msg` for only the current subscribers not
+  yet in `recipients(bid)` (see Broadcast Delivery Tracking above). Known scaling ceiling for large
+  subscriber counts (this is exactly the problem ConchShell's actual broadcast-escrow contract
+  exists to solve at scale); acceptable for v1.
 
 ---
 
@@ -160,15 +189,17 @@ await al.newGroup()
 
 | File | Purpose |
 |---|---|
-| `web/src/lib/contact.ts` | Note schema, `encodeNote`/`decodeNote`/`decodeNoteRaw`, `fetchAccountContactMessages`, `fetchImpersonationAttempts`, `buildThreads`, `computeSubscribers`, `explorerTxUrl`. Read-only + pure parsing, algosdk-free. |
-| `web/src/lib/contactClient.ts` | Writes: `sendTicket`, `sendSubscription`, `sendReply`, `sendBroadcast`, `makeAlgorand`. Mirrors the reads/writes split already used for MagnetFi. |
+| `web/src/lib/contact.ts` | Note schema, `encodeNote`/`decodeNote`/`decodeNoteRaw`, `fetchAccountContactMessages`, `fetchImpersonationAttempts`, `buildThreads`, `computeSubscribers`, `computeBroadcasts`, `newBroadcastId`, `explorerTxUrl` (allo.info / lora). Read-only + pure parsing, algosdk-free. |
+| `web/src/lib/contactClient.ts` | Writes: `sendTicket`, `sendSubscription`, `sendReply`, `sendBroadcast` (stamps the `bid`), `makeAlgorand`. Mirrors the reads/writes split already used for MagnetFi. |
 | `web/src/app/contact/layout.tsx` | Route metadata + shared Navbar/Footer, matches `app/magnetfi/layout.tsx`. |
 | `web/src/app/contact/page.tsx` | Hero, "How this works" mechanics overview, Create/Inbox/Admin tab bar. |
 | `web/src/components/contact/CreateTab.tsx` | Compose form: message, optional txn ID, "related to" product select, subscribe checkbox, send + confirmation. |
 | `web/src/components/contact/InboxTab.tsx` | Wallet-gated inbox: threads (ticket + replies) and a separate Announcements section for broadcasts received. |
-| `web/src/components/contact/AdminTab.tsx` | Gated to `CONTACT_ADMIN_ADDRESS`: ticket list + inline reply composer, subscriber count + broadcast composer, impersonation-attempts panel. |
+| `web/src/components/contact/AdminTab.tsx` | Gated to `CONTACT_ADMIN_ADDRESS`: ticket list + inline reply composer; prominent subscriber-count stat + broadcast composer; **Sent-broadcasts history** with per-broadcast delivered/total + **Resend to missing**; impersonation-attempts panel. |
+| `web/src/components/contact/SubscribeButton.tsx` | One-tap opt-in to the update channel (used on `/about`); errors if no wallet is connected. |
 | `web/src/components/contact/shared.tsx` | `SecurityNotice` (persistent disclosure/anti-phishing line), `formatTimestamp`, `APP_OPTIONS`. |
 | `web/src/components/Navbar.tsx` | "Contact" added to the header nav (`navLinks`). |
+| `web/src/app/about/page.tsx` | Carries the `SubscribeButton` so new visitors can opt into updates while learning about Magnet Strategies. |
 
 `CONTACT_ADMIN_ADDRESS` (in `lib/contact.ts`) reuses the existing
 `MAGNETFI_ADMIN_ADDRESS` from `lib/magnetfi.ts` — the same house wallet, not a separate
