@@ -1,12 +1,19 @@
+import { type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { Coins, Landmark, CircleDollarSign, Sprout, ArrowRight, ArrowUpRight } from "lucide-react";
+import { Landmark, Sprout, ArrowRight, ArrowUpRight } from "lucide-react";
 import { SubscribeButton } from "@/components/contact/SubscribeButton";
 
 const FARM_URL = "https://app.tinyman.org/pool/AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI";
 
-const PRODUCTS = [
+type Product = {
+  icon?: ReactNode; img?: string; name: string; body: string;
+  href: string; cta: string; external: boolean;
+};
+
+const PRODUCTS: Product[] = [
   {
-    icon: <Coins className="h-5 w-5" />, name: "$U — the Magnet Token",
+    img: "/tokens/u.png", name: "$U — the Magnet Token",
     body: "The asset at the center. A fixed-supply Algorand token whose value tracks the strategies it powers.",
     href: "/token", cta: "Token dashboard", external: false,
   },
@@ -16,7 +23,7 @@ const PRODUCTS = [
     href: "/magnetfi", cta: "Open the Bank", external: false,
   },
   {
-    icon: <CircleDollarSign className="h-5 w-5" />, name: "mUSD — the Magnet dollar",
+    img: "/musd-icon.png", name: "mUSD — the Magnet dollar",
     body: "A fully USDC-backed stablecoin. Mint 1:1 with no fee, redeem any time.",
     href: "/musd", cta: "Mint & redeem", external: false,
   },
@@ -68,7 +75,13 @@ export default function AboutPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {PRODUCTS.map((p) => (
             <div key={p.name} className="flex flex-col rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-sm transition-colors hover:border-magnet-500/30">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">{p.icon}</div>
+              {p.img ? (
+                <div className="mb-4 h-11 w-11 overflow-hidden rounded-xl">
+                  <Image src={p.img} alt={p.name} width={44} height={44} className="h-full w-full object-cover" />
+                </div>
+              ) : (
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">{p.icon}</div>
+              )}
               <h3 className="font-display text-base font-semibold text-white">{p.name}</h3>
               <p className="mt-1.5 flex-1 text-sm leading-relaxed text-gray-400">{p.body}</p>
               {p.external ? (

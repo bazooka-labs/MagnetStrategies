@@ -68,7 +68,7 @@ export default function LandingPage() {
             href="/about"
             className="mt-9 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:border-white/30 hover:text-white animate-fade-up [animation-delay:6350ms]"
           >
-            Discover Our Product
+            Discover Our Products
           </Link>
 
         </div>
