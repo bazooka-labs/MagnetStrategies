@@ -9,8 +9,8 @@ import { EmptyState } from "@/components/ui";
 import {
   CONTACT_ADMIN_ADDRESS, MSG_MAX,
   fetchAccountContactMessages, fetchImpersonationAttempts,
-  buildThreads, computeSubscribers,
-  type ContactMessage, type Thread,
+  buildThreads, computeSubscribers, computeBroadcasts, newBroadcastId,
+  type ContactMessage, type Thread, type Broadcast,
 } from "@/lib/contact";
 import { makeAlgorand, sendReply, sendBroadcast } from "@/lib/contactClient";
 import { formatTimestamp } from "./shared";
@@ -115,6 +115,7 @@ export function AdminTab() {
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [broadcastBusy, setBroadcastBusy] = useState(false);
   const [broadcastProgress, setBroadcastProgress] = useState<{ sent: number; total: number } | null>(null);
+  const [resendBid, setResendBid] = useState<string | null>(null);
 
   const algorand = useMemo(
     () => (isAdmin && algodClient && transactionSigner ? makeAlgorand(algodClient, transactionSigner) : null),
@@ -133,6 +134,7 @@ export function AdminTab() {
 
   const threads = buildThreads((messages ?? []).filter((m) => m.type === "support" || m.type === "reply"));
   const subscribers = computeSubscribers(messages ?? []);
+  const broadcasts = computeBroadcasts(messages ?? []);
 
   async function handleReply(thread: Thread, msg: string) {
     if (!algorand || !address) return;
@@ -153,7 +155,8 @@ export function AdminTab() {
     setBroadcastBusy(true);
     setBroadcastProgress({ sent: 0, total: subscribers.size });
     try {
-      await sendBroadcast(algorand, address, Array.from(subscribers), trimmed, (sent, total) => setBroadcastProgress({ sent, total }));
+      const bid = newBroadcastId();
+      await sendBroadcast(algorand, address, Array.from(subscribers), trimmed, bid, (sent, total) => setBroadcastProgress({ sent, total }));
       toast.success(`Sent to ${subscribers.size} subscriber${subscribers.size === 1 ? "" : "s"}`);
       setBroadcastMsg("");
     } catch (e) {
@@ -162,6 +165,29 @@ export function AdminTab() {
     } finally {
       setBroadcastBusy(false);
       setBroadcastProgress(null);
+      load(); // refresh even on partial failure so delivered/missing counts reflect what landed
+    }
+  }
+
+  // Resend a past broadcast to only the current subscribers who never received it —
+  // fixes an interrupted send and catches anyone who subscribed since. Same bid, same msg.
+  async function handleResend(b: Broadcast) {
+    if (!algorand || !address) return;
+    const missing = Array.from(subscribers).filter((a) => !b.recipients.has(a));
+    if (missing.length === 0) {
+      toast.success("All current subscribers already received this update.");
+      return;
+    }
+    setResendBid(b.bid);
+    try {
+      await sendBroadcast(algorand, address, missing, b.msg, b.bid);
+      toast.success(`Resent to ${missing.length} subscriber${missing.length === 1 ? "" : "s"}`);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Resend failed";
+      toast.error(m.includes("rejected") ? "Signing cancelled" : m.slice(0, 140));
+    } finally {
+      setResendBid(null);
+      load(); // refresh even on partial failure so the missing count reflects what landed
     }
   }
 
@@ -182,8 +208,15 @@ export function AdminTab() {
 
       <section>
         <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          <Users className="h-3.5 w-3.5" /> Subscribers — {subscribers.size}
+          <Megaphone className="h-3.5 w-3.5" /> Update channel
         </div>
+        <Panel className="mb-4 flex items-center gap-3 p-5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white"><Users className="h-5 w-5" /></div>
+          <div>
+            <p className="font-mono text-2xl font-bold text-white">{subscribers.size}</p>
+            <p className="text-xs text-gray-500">active subscriber{subscribers.size === 1 ? "" : "s"}</p>
+          </div>
+        </Panel>
         <Panel className="p-6">
           <div className="mb-1.5 flex items-center justify-between">
             <label className="text-xs font-medium uppercase tracking-wider text-gray-500">Broadcast an update</label>
@@ -212,6 +245,38 @@ export function AdminTab() {
             </p>
           </div>
         </Panel>
+
+        {broadcasts.length > 0 && (
+          <div className="mt-6 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Sent broadcasts</p>
+            {broadcasts.map((b) => {
+              const missing = Array.from(subscribers).filter((a) => !b.recipients.has(a)).length;
+              const delivered = subscribers.size - missing;
+              return (
+                <Panel key={b.bid} className="p-4">
+                  <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                    <span>{formatTimestamp(b.roundTime)}</span>
+                    <span className="font-mono">{delivered}/{subscribers.size} current subscribers</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-200">{b.msg}</p>
+                  <div className="mt-3 flex items-center gap-3">
+                    <span className="text-[11px] text-gray-500">{b.recipients.size} total recipient{b.recipients.size === 1 ? "" : "s"}</span>
+                    {missing > 0 && (
+                      <button
+                        onClick={() => handleResend(b)}
+                        disabled={resendBid !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-magnet-500/40 bg-magnet-500/10 px-3 py-1.5 text-xs font-semibold text-magnet-200 hover:bg-magnet-500/20 disabled:opacity-50"
+                      >
+                        {resendBid === b.bid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        Resend to {missing} missing
+                      </button>
+                    )}
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section>

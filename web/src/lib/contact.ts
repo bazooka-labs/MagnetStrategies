@@ -35,7 +35,7 @@ export type ContactMessage =
   | { type: "reply"; id: string; sender: string; receiver: string; round: number; roundTime: number; msg: string; thread: string }
   | { type: "subscribe"; id: string; sender: string; round: number; intraRoundOffset: number; channel: string }
   | { type: "unsubscribe"; id: string; sender: string; round: number; intraRoundOffset: number; channel: string }
-  | { type: "update"; id: string; sender: string; receiver: string; round: number; roundTime: number; msg: string; channel: string };
+  | { type: "update"; id: string; sender: string; receiver: string; round: number; roundTime: number; msg: string; channel: string; bid?: string };
 
 export type Thread = {
   id: string;
@@ -153,7 +153,7 @@ export function decodeNoteRaw(txn: IndexerTxn): ContactMessage | null {
       const msg = str(payload.msg);
       const channel = str(payload.channel);
       if (!msg || !channel || !receiver) return null;
-      return { type, id, sender, receiver, round, roundTime, msg: msg.slice(0, MSG_MAX), channel };
+      return { type, id, sender, receiver, round, roundTime, msg: msg.slice(0, MSG_MAX), channel, bid: str(payload.bid) };
     }
   }
 }
@@ -266,6 +266,39 @@ export function buildThreads(messages: ContactMessage[]): Thread[] {
   list.sort((a, b) => b.root.round - a.root.round);
   for (const t of list) t.replies.sort((a, b) => a.round - b.round);
   return list;
+}
+
+/** A sent broadcast, reconstructed from the admin's own `ms:update:` transactions grouped by
+ *  broadcast id (`bid`). `recipients` is every wallet that received this broadcast. */
+export type Broadcast = {
+  bid: string;
+  msg: string;
+  channel: string;
+  roundTime: number;
+  recipients: Set<string>;
+};
+
+/** Short, collision-resistant id stamped on every update txn in one broadcast. */
+export const newBroadcastId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+/**
+ * Groups the admin's sent update transactions into broadcasts by `bid`, newest first.
+ * Only bid-tagged updates are tracked (legacy untagged broadcasts simply don't appear).
+ * Combined with computeSubscribers(), this powers "delivered N/M" + resend-to-missing.
+ */
+export function computeBroadcasts(messages: ContactMessage[]): Broadcast[] {
+  const map = new Map<string, Broadcast>();
+  for (const m of messages) {
+    if (m.type !== "update" || !m.bid) continue;
+    let b = map.get(m.bid);
+    if (!b) {
+      b = { bid: m.bid, msg: m.msg, channel: m.channel, roundTime: m.roundTime, recipients: new Set() };
+      map.set(m.bid, b);
+    }
+    b.recipients.add(m.receiver);
+    if (m.roundTime && (b.roundTime === 0 || m.roundTime < b.roundTime)) b.roundTime = m.roundTime;
+  }
+  return Array.from(map.values()).sort((a, b) => b.roundTime - a.roundTime);
 }
 
 /** Current subscriber set: the chronologically-last subscribe/unsubscribe per sender wins. */

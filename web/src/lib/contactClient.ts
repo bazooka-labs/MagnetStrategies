@@ -65,6 +65,7 @@ export async function sendBroadcast(
   admin: string,
   subscribers: string[],
   msg: string,
+  bid: string,
   onProgress?: (sent: number, total: number) => void
 ): Promise<void> {
   const channel = DEFAULT_CHANNEL;
@@ -75,7 +76,7 @@ export async function sendBroadcast(
     for (const receiver of chunk) {
       grp = grp.addPayment({
         sender: admin, receiver, amount: microAlgo(0),
-        note: encodeNote("update", { msg, channel }),
+        note: encodeNote("update", { msg, channel, bid }),
       });
     }
     await grp.send();
