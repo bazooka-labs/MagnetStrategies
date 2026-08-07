@@ -14,9 +14,9 @@ export const metadata: Metadata = {
     siteName: "Magnet Strategies",
     images: [
       {
-        url: "https://magnetstrategies.io/og-banner.png",
+        url: "https://magnetstrategies.io/og-banner.jpg",
         width: 1200,
-        height: 666,
+        height: 389,
         alt: "Magnet Strategies",
       },
     ],
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     title: "MagnetDAO | Magnet Strategies",
     description:
       "Exploring the Possibilities & Opportunities within Decentralized Finance",
-    images: ["https://magnetstrategies.io/og-banner.png"],
+    images: ["https://magnetstrategies.io/og-banner.jpg"],
   },
 };
 
