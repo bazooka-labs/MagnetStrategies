@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, BookOpen, TrendingUp, Lock, Clock, CircleDollarSign, ShieldCheck } from "lucide-react";
 import { VAULT_TYPES, pct } from "@/lib/magnetfi";
 
@@ -34,7 +35,7 @@ export function LpVaultLearnMore() {
         <BookOpen className="h-3.5 w-3.5" /> Learn more
       </button>
 
-      {open && (
+      {open && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
@@ -105,7 +106,8 @@ export function LpVaultLearnMore() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
