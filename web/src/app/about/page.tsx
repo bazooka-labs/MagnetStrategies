@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Coins, Landmark, CircleDollarSign, Sprout, ArrowRight, ArrowUpRight } from "lucide-react";
+import { SubscribeButton } from "@/components/contact/SubscribeButton";
 
 const FARM_URL = "https://app.tinyman.org/pool/AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI";
 
@@ -44,6 +45,12 @@ export default function AboutPage() {
             simple: outperform a plain ALGO hold over time — by putting capital to work across Algorand DeFi and
             reinvesting the returns into $U&apos;s underlying value. We build for the long run, through cycles.
           </p>
+          <div className="mt-6">
+            <SubscribeButton />
+            <p className="mt-2 text-xs text-gray-500">
+              Get protocol updates delivered to your on-chain Contact inbox. Requires a connected wallet.
+            </p>
+          </div>
         </div>
       </section>
 
