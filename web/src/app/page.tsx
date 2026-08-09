@@ -53,16 +53,6 @@ export default function LandingPage() {
             Exploring the Possibilities &amp; Opportunities within Decentralized Finance
           </p>
 
-          {/* Attribution */}
-          <a
-            href="https://bazookalabs.xyz"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-base text-white/60 hover:text-white transition-colors animate-fade-up [animation-delay:6250ms]"
-          >
-            A Bazooka Labs Product
-          </a>
-
           {/* Learn more */}
           <Link
             href="/about"
