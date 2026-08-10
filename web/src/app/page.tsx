@@ -56,7 +56,7 @@ export default function LandingPage() {
           {/* Learn more */}
           <Link
             href="/about"
-            className="mt-9 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white/80 backdrop-blur-sm transition-colors hover:border-white/30 hover:text-white animate-fade-up [animation-delay:6350ms]"
+            className="mt-9 inline-flex items-center gap-2 rounded-full border border-magnet-400/40 bg-gradient-to-r from-magnet-600/80 to-magnet-500/80 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-magnet-900/40 backdrop-blur-sm transition-all hover:from-magnet-500 hover:to-magnet-400 hover:shadow-magnet-500/30 animate-fade-up [animation-delay:6350ms]"
           >
             Discover Our Products
           </Link>
