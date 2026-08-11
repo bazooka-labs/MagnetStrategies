@@ -11,7 +11,7 @@ const FEATURES = [
   { icon: <TrendingUp className="h-5 w-5" />, title: "Collateral keeps earning",
     body: "Access extra capital while your Tinyman LP tokens keep accruing pool trading fees — allowing you to stay liquid while providing liquidity on Algorand." },
   { icon: <Lock className="h-5 w-5" />, title: "Fixed rate, locked at open",
-    body: "Your interest rate is set the moment you open and never changes — even if protocol rates move or you borrow more against the same vault." },
+    body: "Your interest rate is fixed for the life of the loan the moment you open your vault. Protocol rates may be subject to change; however, this only impacts newly created vaults. Active vault rates remain unchanged as long as the vault stays opened, allowing for additional borrowing without changing terms." },
   { icon: <Clock className="h-5 w-5" />, title: "Interest-only, pay as you go",
     body: "Repay principal whenever you like. Just cover accrued interest at least once every 90 days to keep the position in good standing." },
   { icon: <CircleDollarSign className="h-5 w-5" />, title: "Borrow a real dollar",
