@@ -3,9 +3,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, BookOpen, TrendingUp, Lock, Clock, CircleDollarSign, ShieldCheck } from "lucide-react";
-import { VAULT_TYPES, pct } from "@/lib/magnetfi";
-
-const POOL = VAULT_TYPES.find((v) => v.status === "launching")!; // U/tALGO — launch params
 
 const FEATURES = [
   { icon: <TrendingUp className="h-5 w-5" />, title: "Collateral keeps earning",
@@ -19,10 +16,10 @@ const FEATURES = [
 ];
 
 const LADDER = [
-  { band: "HF ≥ 1.00", cls: "border-green-500/30 bg-green-500/10 text-green-300", label: "Healthy", body: "Nothing happens — your position is safe." },
-  { band: "0.95 – 1.00", cls: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300", label: "Tier 1", body: "~35% of your LP is seized to restore health. The position continues." },
-  { band: "0.85 – 0.95", cls: "border-orange-500/30 bg-orange-500/10 text-orange-300", label: "Tier 2", body: "~60% of your LP is seized. The position continues." },
-  { band: "< 0.85", cls: "border-red-500/30 bg-red-500/10 text-red-300", label: "Full liquidation", body: "All LP is seized — but any value above your debt is returned to you." },
+  { band: "HF ≥ 1.00", cls: "border-green-500/30 bg-green-500/10 text-green-300", label: "Healthy", body: "Nothing, your position is safe." },
+  { band: "0.95 – 1.00", cls: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300", label: "Tier 1", body: "~35% of your LP is seized to restore health. Your vault continues." },
+  { band: "0.85 – 0.95", cls: "border-orange-500/30 bg-orange-500/10 text-orange-300", label: "Tier 2", body: "~60% of your LP is seized. Your vault continues." },
+  { band: "< 0.85", cls: "border-red-500/30 bg-red-500/10 text-red-300", label: "Full liquidation", body: "Collateral is fully seized to cover your debt." },
 ];
 
 export function LpVaultLearnMore() {
@@ -75,8 +72,8 @@ export function LpVaultLearnMore() {
                   <p className="text-sm font-semibold text-white">Staying healthy — and what happens if you don&apos;t</p>
                 </div>
                 <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                  Health factor = collateral value × {pct(POOL.liqThresholdBps)}% liquidation threshold ÷ your debt. You can borrow
-                  up to {pct(POOL.ltvBps)}% of your collateral&apos;s value at open, and you can add collateral any time to raise your health factor.
+                  Partial tiers are deliberate to avoid closing out borrowers for small mistakes. A live oracle prices your
+                  collateral, and borrows are temporarily blocked if the price feed goes stale.
                 </p>
 
                 <div className="space-y-2">
@@ -92,17 +89,11 @@ export function LpVaultLearnMore() {
                 <div className="mt-4 flex items-start gap-2 rounded-lg border border-white/5 bg-black/40 px-3 py-2.5">
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-400" />
                   <p className="text-xs leading-relaxed text-gray-400">
-                    <span className="font-medium text-white">Miss your 90-day interest payment?</span> The vault flips to &ldquo;payment overdue,&rdquo; and the
-                    protocol may run a micro-liquidation — seizing only enough LP to cover the interest owed plus a 5% buffer.
-                    Your principal is untouched and the loan continues; the 90-day clock resets.
+                    <span className="font-medium text-white">Missed your 90-day interest payment?</span> The vault flips to &ldquo;payment overdue,&rdquo; and the
+                    protocol may run a micro-liquidation — seizing only enough of the collateralized LP tokens to cover the interest owed plus a 5% fee.
+                    Your principal loan is untouched, the loan continues and the 90-day clock resets.
                   </p>
                 </div>
-
-                <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
-                  Partial tiers are deliberate — they take just enough to nudge you back toward health, not close you out. You
-                  only lose all collateral value if it falls to or below your debt. A live oracle prices your collateral, and
-                  borrows are blocked if the price feed goes stale.
-                </p>
               </div>
             </div>
           </div>
