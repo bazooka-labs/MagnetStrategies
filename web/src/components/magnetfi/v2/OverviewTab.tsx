@@ -71,9 +71,8 @@ export function OverviewTab({
           </div>
           <h3 className="font-display text-base font-semibold text-white">Single Token Markets</h3>
           <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-400">
-            Lend and borrow individual assets — $U and USDC — through CompX&apos;s money markets on Algorand.
-            Supply to earn yield, or borrow against your deposit. Rates float with utilization, and everything
-            settles on-chain.
+            Lend and borrow individual assets through CompX&apos;s money markets on Algorand. Supply to earn
+            yield, or borrow against your deposited collateral. Rates float with market utilization.
           </p>
           <button onClick={onExploreMarkets}
             className="mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-300 transition-colors hover:text-blue-200">
