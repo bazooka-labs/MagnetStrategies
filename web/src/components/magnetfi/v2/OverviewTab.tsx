@@ -86,9 +86,8 @@ export function OverviewTab({
           </div>
           <h3 className="font-display text-base font-semibold text-white">LP Collateral Vaults</h3>
           <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-400">
-            Deposit your Tinyman LP tokens as collateral and borrow mUSD against them — while the LP keeps
-            earning trading fees. Interest-only loans you can repay any time, with a live oracle tracking your
-            health factor so you always know your buffer.
+            Stay liquid with Magnet&apos;s LP Vaults. Deposit your Tinyman LP tokens as collateral and borrow
+            mUSD against them while you keep earning trading fees in the background.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
             <button onClick={onBorrow}
