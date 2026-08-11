@@ -9,7 +9,7 @@ const POOL = VAULT_TYPES.find((v) => v.status === "launching")!; // U/tALGO — 
 
 const FEATURES = [
   { icon: <TrendingUp className="h-5 w-5" />, title: "Collateral keeps earning",
-    body: "Your Tinyman LP tokens keep accruing pool trading fees the whole time they back your loan — you reclaim the same LP, now worth more." },
+    body: "Access extra capital while your Tinyman LP tokens keep accruing pool trading fees — allowing you to stay liquid while providing liquidity on Algorand." },
   { icon: <Lock className="h-5 w-5" />, title: "Fixed rate, locked at open",
     body: "Your interest rate is set the moment you open and never changes — even if protocol rates move or you borrow more against the same vault." },
   { icon: <Clock className="h-5 w-5" />, title: "Interest-only, pay as you go",
