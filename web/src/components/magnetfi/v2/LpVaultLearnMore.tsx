@@ -13,7 +13,7 @@ const FEATURES = [
   { icon: <Lock className="h-5 w-5" />, title: "Fixed rate, locked at open",
     body: "Your interest rate is fixed for the life of the loan the moment you open your vault. Protocol rates may be subject to change; however, this only impacts newly created vaults. Active vault rates remain unchanged as long as the vault stays opened, allowing for additional borrowing without changing terms." },
   { icon: <Clock className="h-5 w-5" />, title: "Interest-only, pay as you go",
-    body: "Repay principal whenever you like. Just cover accrued interest at least once every 90 days to keep the position in good standing." },
+    body: "Borrowers can defer the principal payment as long as they'd like. Just cover the accrued interest at least once every 90 days to keep the position in good standing." },
   { icon: <CircleDollarSign className="h-5 w-5" />, title: "Borrow a real dollar",
     body: "You borrow mUSD — fully USDC-backed and redeemable 1:1. No maturity date; the loan stays open as long as you stay healthy." },
 ];
