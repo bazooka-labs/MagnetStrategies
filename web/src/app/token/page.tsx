@@ -37,8 +37,7 @@ export default async function TokenPage() {
                 Magnet Token
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                <span className="font-semibold text-white">$U</span> sits at the center of every
-                Magnet Strategies product — built to compound liquidity across Algorand DeFi.
+                Built to compound liquidity across Algorand DeFi.
               </p>
             </div>
           </div>
