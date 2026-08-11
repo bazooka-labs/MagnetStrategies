@@ -71,9 +71,7 @@ export default function MagnetFiPage() {
                 MagnetFi
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Borrow <span className="font-semibold text-white">mUSD</span> against LP collateral that keeps
-                earning, mint and redeem the fully USDC-backed Magnet dollar, and lend or borrow single tokens —
-                all on-chain on Algorand.
+                Digital Asset Lending and Borrowing on Algorand
               </p>
             </div>
           </div>
