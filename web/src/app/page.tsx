@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
@@ -53,13 +52,14 @@ export default function LandingPage() {
             Exploring the Possibilities &amp; Opportunities within Decentralized Finance
           </p>
 
-          {/* Learn more */}
+          {/* Learn more — hidden for now; /about page pending a revisit.
           <Link
             href="/about"
             className="mt-9 inline-flex items-center gap-2 rounded-full border border-magnet-400/40 bg-gradient-to-r from-magnet-600/80 to-magnet-500/80 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-magnet-900/40 backdrop-blur-sm transition-all hover:from-magnet-500 hover:to-magnet-400 hover:shadow-magnet-500/30 animate-fade-up [animation-delay:6350ms]"
           >
             Discover Our Products
           </Link>
+          */}
 
         </div>
       </div>
