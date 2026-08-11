@@ -23,7 +23,7 @@ export function OverviewTab({
   const { algodClient } = useWallet();
   const [stats, setStats] = useState<ProtocolStats | null>(null);
   const [borrowed, setBorrowed] = useState<number | null>(null);
-  const [lendApy, setLendApy] = useState<number | null>(null);
+  const [borrowApy, setBorrowApy] = useState<number | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
@@ -32,19 +32,19 @@ export function OverviewTab({
     getTotalVaultDebt(algodClient).then(setBorrowed).catch(() => {});
   }, [algodClient]);
 
-  // Client-only CompX read for the $U supply APY (dynamic import keeps the SDK off SSR).
+  // Client-only CompX read for the $U borrow APY (dynamic import keeps the SDK off SSR).
   useEffect(() => {
     let alive = true;
     import("@compx/sdk")
       .then(({ LendingClient }) => new LendingClient({ network: "mainnet" }).getMarket(COMPX_MAGNET_APP_ID))
-      .then((m) => { if (alive) setLendApy(m.supplyApy); })
+      .then((m) => { if (alive) setBorrowApy(m.borrowApy); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
 
   const money = (n?: number) =>
     !PROTOCOL_LIVE ? "Soon" : stats ? `$${formatUsd(n ?? 0, 0)}` : err ? "—" : "…";
-  const lendVal = lendApy !== null ? `${lendApy.toFixed(2)}%` : "…";
+  const borrowVal = borrowApy !== null ? `${borrowApy.toFixed(2)}%` : "…";
   // Utilization = true vault debt (loans against LP) ÷ USDC reserve. Uses actual borrowed
   // principal, NOT circulating mUSD (which also counts minted mUSD + fees) — so zero loans
   // correctly reads 0%.
@@ -59,7 +59,7 @@ export function OverviewTab({
       <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Protocol at a glance</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Stat label="Single-Token Lend Yield" value={lendVal} sub="$U supply APY · via CompX" accent="green" />
+          <Stat label="$U Borrow Rate" value={borrowVal} sub="Current $U borrow APY · via CompX" accent="green" />
           <Stat label="Available to Borrow" value={money(stats?.ceiling)} sub="mUSD against LP collateral" accent="purple" />
           <Stat label="LP Vault Utilization" value={utilVal} sub="Borrowing capacity in use" />
         </div>
