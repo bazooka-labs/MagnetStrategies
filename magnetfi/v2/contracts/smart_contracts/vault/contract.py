@@ -26,11 +26,18 @@ MICRO_LIQ_BUFFER_BPS = 500      # 5% buffer on micro-liq seizure
 
 # Health-factor liquidation penalties (prices the adverse-execution cost — swap fees, slippage,
 # thin-book impact — of unwinding seized LP; charged to the leveraged borrower, not the protocol).
-# The seize %s are HARDCODED and calibrated so that at the worst case of each tier the penalty
-# still restores post-liquidation HF ≥ 1.06. The penalty bps are stored in global state and
-# ADJUSTABLE via set_liq_penalty, but only DOWNWARD (≤ these caps) — the cap is coupled to the
-# fixed seize %, so lowering the penalty only improves health restoration and the coupling can
-# never be broken without a redeploy. See LIQUIDATION.md "Planned Upgrade" for the derivation.
+# The seize %s are HARDCODED and calibrated so a penalized partial restores post-liquidation
+# HF ≥ 1.06 at each tier's worst case. The penalty bps are stored in global state and ADJUSTABLE
+# via set_liq_penalty, but only DOWNWARD (≤ these caps) — lowering the penalty only improves
+# health restoration.
+#
+# ⚠️ CALIBRATION IS VALID ONLY AT liq_threshold = 7500 (75%). The seize %s / penalties assume the
+# collateral cushion a 75% threshold provides; a HIGHER threshold thins that cushion and a partial
+# liquidation would FAIL to restore health (repeated partials that never cure the position). The
+# on-chain cap in set_liq_threshold still permits up to 9000 (90%) — that is a KNOWN GAP (M1): the
+# liquidation threshold MUST be kept at 75% for every pool. Do NOT raise it. Raising it safely would
+# require recalibrating the seize %s = a redeploy (which should also lower the on-chain cap to 7500).
+# See ADMIN.md "Liquidation threshold is firmly capped at 75%" and LIQUIDATION.md M1.
 TIER1_SEIZE_BPS        = 3_500  # 35% — unchanged; a 5% penalty fits inside its existing slack
 TIER2_SEIZE_BPS        = 7_700  # 77% — recalibrated from 60% so a 7% penalty still restores HF ≥ 1.06
 PARTIAL_PENALTY_T1_BPS = 500    # 5% — Tier 1 penalty cap + default
@@ -932,11 +939,18 @@ class Vault(
 
     @arc4.abimethod
     def set_liq_threshold(self, pool_id: UInt64, threshold_bps: UInt64) -> None:
-        """Set liquidation threshold. Must exceed LTV and be ≤ 9000 bps (90%)."""
+        """
+        Set liquidation threshold. Must exceed LTV.
+
+        ⚠️ FIRM OPERATIONAL CAP: 7500 (75%). The on-chain assert below still permits up to 9000 for
+        backward compatibility, but the liquidation seize %s / penalties are calibrated ONLY for
+        75% — a higher threshold silently breaks partial-liquidation health restoration (M1). NEVER
+        pass a value above 7500. The on-chain cap will be lowered to 7500 in the next vault redeploy.
+        """
         self._assert_admin()
         ltv = op.AppGlobal.get_uint64(Bytes(_LTV_PREFIX) + op.itob(pool_id))
         assert threshold_bps > ltv, "threshold must exceed LTV"
-        assert threshold_bps <= UInt64(9_000), "threshold cap 90%"
+        assert threshold_bps <= UInt64(9_000), "threshold cap 90%"  # ⚠️ operational max is 7500 (M1)
         op.AppGlobal.put(Bytes(_LIQ_PREFIX) + op.itob(pool_id), threshold_bps)
 
     @arc4.abimethod

@@ -147,9 +147,23 @@
 > strictly safer; state machine; fee budgets; schema sizing all checked). No new attack vectors
 > (penalty rounding protocol-favorable; cap-hit unreachable in-band + safe if hit; `set_liq_penalty`
 > coupling holds — seize % never writable; no self-liquidation surface). Issue fully resolved
-> (protocol compensated every tier; no snapshot-priced refund; **post-liq HF ≥ 1.06 across the full
-> tier bands** — Tier-1 min ≈ 1.069, Tier-2 min ≈ 1.061, verified with exact integer arithmetic;
-> P23-01 closed). Remaining gate: pin the compiler for reproducible TEAL before the deploy.
+> (protocol compensated every tier; no snapshot-priced refund; **post-liq HF ≥ 1.0 across the full
+> tier bands at liq_threshold = 7500** — Tier-1 min ≈ 1.069, Tier-2 min ≈ **1.058** true integer
+> worst (the 1.060 in the table above is the continuous-math target; rounding-unfavorable combos land
+> a hair lower — still ≥ 1.0 with margin); P23-01 closed).
+>
+> ### Second audit — adversarial (fresh-context agent, 2026-08-12): NO CRITICAL/HIGH.
+> Confirmed safe: PSM invariant across every path, protocol-favorable penalty rounding, degenerate
+> rounding edges unreachable in-band, tier boundaries, state machine, wide-math overflow, oracle
+> gating, the 58/6 schema. **Finding M1 (medium):** the seize %/penalty health-restoration coupling
+> is valid **only at liq_threshold = 7500** — `set_liq_threshold` still permits up to 9000, and a
+> higher threshold thins the cushion so a partial can leave HF < 1.0 (cascade / penalty-griefing).
+> The deployed vault is safe (all pools at 7500). **Resolution (doc-only, no redeploy):** the source
+> comment + ADMIN.md now firmly cap the threshold at 7500 as a hard operational rule; **the next
+> vault redeploy must lower the on-chain `set_liq_threshold` cap from 9000 → 7500.** A genuinely
+> higher-threshold pool (pure stable/stable pair) needs a *non-tiered* liquidation mode — a future
+> redeploy designed around the real pool, not a param change. (Also noted: L1 — risk-param setters
+> aren't timelocked, bounded/consistent with the admin-managed trust model.)
 
 ---
 

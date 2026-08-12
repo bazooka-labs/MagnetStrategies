@@ -126,10 +126,23 @@ Monitoring adds: buffer coverage (on-chain USDC vs expected redemption flow), pe
 |---|---|---|
 | Set interest rate | `set_rate(pool_id, rate_bps)` | Per vault type; max 3000 bps (30% APR) |
 | Set LTV | `set_ltv(pool_id, ltv_bps)` | Lower LTV = less borrowing capacity; affects new borrows only. Set `set_liq_threshold` first. |
-| Set liquidation threshold | `set_liq_threshold(pool_id, bps)` | Cannot be lower than LTV (would allow instant liquidation) |
+| Set liquidation threshold | `set_liq_threshold(pool_id, bps)` | Cannot be lower than LTV. **🔒 FIRMLY CAP AT 7500 (75%) — see rule below; never set higher.** |
 | Update LP oracle reference | `propose_lp_oracle(new_app_id)` → wait 48h → `confirm_lp_oracle()` | **Timelocked 48h.** Guardian can `cancel_pending_lp_oracle()`. Only if oracle redeployed. |
 | Advance accrual | `advance_accrual(borrower, pool_id)` | Catch up interest on a multi-year-abandoned vault (1yr cap per call); call repeatedly before liquidating |
 | Pause / unpause borrowing | `pause()` / `unpause()` | Incident only | `pause` halts `open_vault` (with borrow) and `borrow_more`; repay/liquidate/settle stay open. Either role pauses; **guardian only** unpauses. |
+
+**🔒 Liquidation threshold is firmly capped at 75% (7500) — do not move the needle.** Every pool's
+`liq_threshold` MUST be **7500**. The tiered liquidation seize %s (35% / 77%) and penalties (5% / 7%)
+are **hardcoded and calibrated only for a 75% threshold**. A higher threshold thins the collateral
+cushion so a *partial* liquidation can no longer restore health — the position stays liquidatable
+and gets partial-liquidated repeatedly, each round extracting a penalty without ever curing the loan
+(borrower griefing / mis-tiering). This applies to **every pool**, including U/USDC (documented at
+65% LTV / **75%** threshold — its efficiency comes from the higher LTV, not a higher threshold) and
+any future collateral. The on-chain `set_liq_threshold` assert currently permits up to 9000 (90%) —
+that is a **known latent gap (M1)**; treat 7500 as a hard operational ceiling and do not rely on the
+on-chain cap. The on-chain cap will be lowered to 7500 in the next vault redeploy. A genuinely
+higher threshold (e.g. a pure stable/stable collateral pair) would require **recalibrating the seize
+%s = a redeploy with a dedicated non-tiered liquidation mode**, not a parameter change.
 
 **Rate change note:** rate changes take effect on next accrual event per position. Borrowers are not notified on-chain. The frontend must display the current rate and alert borrowers when rates change.
 
