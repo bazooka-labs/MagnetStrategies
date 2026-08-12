@@ -15,7 +15,9 @@ import { Panel } from "../shared";
 // Focused, resumable flow to REDEPLOY the vault against the LIVE PSM + oracle (reusing the
 // existing mUSD ASA). Distinct from the full-stack DeployWizard: it deploys ONLY a new vault
 // and re-points the live PSM to it via the 48h timelock. Progress persists across the wait.
-const LS_KEY = "magnetfi_vault_redeploy_v1";
+// v2: bumped from v1 so the completed progress persisted by the PRIOR redeploy (the repayment-fix
+// vault) is ignored and this liquidation-penalty redeploy starts from a clean slate.
+const LS_KEY = "magnetfi_vault_redeploy_v2";
 const POOL = VAULT_TYPES.find((v) => v.status === "launching")!; // U/tALGO defaults
 
 type State = {
@@ -26,12 +28,16 @@ type State = {
   etaTs?: number;
 };
 
-function load(): State {
-  const base: State = {
+function freshState(): State {
+  return {
     guardian: "",
     rateBps: String(POOL.rateBps), ltvBps: String(POOL.ltvBps), liqThresholdBps: String(POOL.liqThresholdBps),
     done: {},
   };
+}
+
+function load(): State {
+  const base = freshState();
   if (typeof window === "undefined") return base;
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -157,7 +163,14 @@ export function VaultRedeployPanel() {
     );
   }
 
-  const reset = () => { if (confirm("Reset redeploy progress? (does not undo on-chain actions)")) setS(load()); };
+  const reset = () => {
+    // Must clear to a FRESH state — the old reset() called load(), which re-read the same saved
+    // progress and never actually cleared. removeItem + freshState guarantees a clean slate.
+    if (confirm("Reset redeploy progress? (does not undo on-chain actions)")) {
+      try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+      setS(freshState());
+    }
+  };
 
   return (
     <Panel className="p-6">
