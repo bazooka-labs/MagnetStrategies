@@ -19,6 +19,14 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
   overpay; the standalone `repay_principal()` method was removed. The vault was redeployed with
   this change and the PSM re-pointed to it via the 48h timelock. End-to-end validated on mainnet
   (open → borrow → PSM swaps → interest-accruing close, all reconciled on-chain).
+- 🟠 **Liquidation-penalty vault upgrade — BUILT + REVIEWED CLEAN, awaiting clean redeploy.** Adds
+  adverse-execution penalties to health liquidations (Tier 1 5% / Tier 2 7% with seizure recalibrated
+  to 77%; full liq → seize-all, borrower gets $0 above MBR, no snapshot-priced surplus refund). New
+  adjustable-but-capped `set_liq_penalty` (on-chain lever only). Global schema maxed to a 12-pool
+  capacity in the same redeploy. Spec + decisions + review result: [LIQUIDATION.md](./LIQUIDATION.md)
+  "PLANNED UPGRADE" block. 92/92 LocalNet tests; fresh review CLEAN. **This also resolves P23-01**
+  (LP-opt-out liquidation griefing) via seize-all. Deploy gated on: pin puyapy (reproducible TEAL),
+  founder closing the open dogfood loan, then vault redeploy + PSM re-point (48h timelock) + canary.
 - ✅ **v3 productive reserves BUILT + testnet-validated** (PSMv3 + FolksAdapter). Design:
   [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3); roadmap:
   [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md); audit package: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).

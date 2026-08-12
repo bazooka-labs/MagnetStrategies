@@ -171,9 +171,10 @@ export function VaultRedeployPanel() {
         <p className="text-xs leading-relaxed text-red-200/90">
           Redeploys ONLY the vault ({network}) and re-points the live PSM via the 48h timelock. Before starting,
           ensure no vaults are open and <strong>pause the current vault</strong> (Operations) so no loans open on the
-          old contract during migration. After “Confirm”, paste the new vault ID into{" "}
-          <code className="font-mono">DEPLOYMENTS.mainnet.vault</code> and redeploy the site — the new borrower repay
-          flow requires this new vault.
+          old contract during migration. This build has a larger global-state schema (12-pool capacity), so the{" "}
+          <strong>admin wallet needs ~2.5 ALGO free</strong> to cover the create-time min-balance bump. After “Confirm”,
+          paste the new vault ID into <code className="font-mono">DEPLOYMENTS.mainnet.vault</code> and redeploy the
+          site — the new borrower repay flow requires this new vault.
         </p>
       </div>
 

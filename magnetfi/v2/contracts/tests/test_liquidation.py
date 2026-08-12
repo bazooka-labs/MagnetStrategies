@@ -57,23 +57,27 @@ def test_partial_tier2(proto):
                [alice.address, POOL_ID, 2], proto.admin)
     box = proto.vault_box(alice)
     assert box.vault_state == 2
-    assert box.lp_amount == 40 * ONE_LP          # 60% of 100 seized
+    assert box.lp_amount == 23 * ONE_LP          # 77% of 100 seized (recalibrated for the penalty)
     proto.settle(alice, box.accrued_interest)
     assert proto.vault_box(alice).vault_state == 0
 
 
-def test_full_liquidation_with_surplus(proto):
+def test_full_liquidation_seize_all_no_surplus(proto):
+    # 900 LP left in wallet after depositing 100. Seize-all returns NO surplus to the borrower.
     alice = _borrower_at(proto, lp=100, borrow=50)
+    admin_lp_before = proto.lp_bal(proto.admin.address)
     proto.set_price(550_000)                      # lp_value 55 > debt 50, HF 0.825 → full
     proto.call(proto.vault, "trigger_full_liquidation", [alice.address, POOL_ID], proto.admin)
     box = proto.vault_box(alice)
     assert box.vault_state == 2
     assert box.lp_amount == 0
-    # Surplus LP (value above debt) was returned to the borrower immediately
-    assert proto.lp_bal(alice.address) > 900 * ONE_LP
+    # Seize-all: the entire 100 LP went to admin; borrower's wallet LP is UNCHANGED (no surplus).
+    assert proto.lp_bal(alice.address) == 900 * ONE_LP
+    assert proto.lp_bal(proto.admin.address) == admin_lp_before + 100 * ONE_LP
     settle_amt = box.accrued_interest
     proto.settle(alice, settle_amt)
-    assert not proto.vault_exists(alice)         # closed
+    assert not proto.vault_exists(alice)         # closed; borrower still got only MBR back, no LP
+    assert proto.lp_bal(alice.address) == 900 * ONE_LP
     assert proto.circulating_musd() <= proto.psm_usdc()
 
 

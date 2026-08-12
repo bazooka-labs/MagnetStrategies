@@ -15,7 +15,7 @@ algorand-python-testing = "^1"
 
 [tool.poetry.group.dev.dependencies]
 algokit-client-generator = "^2.1.0"
-puyapy = "*"
+puyapy = "==5.9.0"   # pinned for reproducible TEAL — the compiler the liq-penalty upgrade was reviewed + built against
 
 [build-system]
 requires = ["poetry-core"]

@@ -148,6 +148,13 @@ Monitoring adds: buffer coverage (on-chain USDC vs expected redemption flow), pe
 
 **Health-Factor Liquidation Procedure (Tiered):**
 
+> ⚠️ **Pending upgrade (not yet live):** a built-and-reviewed liquidation-penalty change will alter
+> this procedure once redeployed — Tier 2 will seize 77% (not 60%), partials carry a 5%/7% penalty,
+> and full liquidation becomes seize-all (no surplus returned to the borrower; they receive nothing
+> above the MBR). Liquidation proceeds are **cost-recovery / a bad-debt buffer, not forecast revenue**
+> (D6). This table + the steps below describe the **current live** contract until the redeploy. Spec:
+> [LIQUIDATION.md](./LIQUIDATION.md) "PLANNED UPGRADE" block.
+
 | HF Range | Admin Action | Expected Outcome |
 |---|---|---|
 | 0.95 – 0.9999 | `trigger_partial_liquidation(borrower, pool_id, tier=1)` | Seize 35% LP → health restored; position continues |

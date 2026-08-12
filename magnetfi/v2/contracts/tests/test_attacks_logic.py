@@ -268,10 +268,10 @@ def test_zero_mint_rejected(proto):
 
 # ── griefing: opt-out to block a refund/liquidation transfer ───────────────────
 
-def test_optout_griefing_is_bounded(proto):
-    """A borrower can opt out of the LP ASA to block a surplus-returning full liquidation,
-    but only while equity exists; once underwater past the debt, full-liq needs no
-    borrower-bound transfer and proceeds. So the grief delays, it does not prevent."""
+def test_optout_no_longer_blocks_full_liquidation(proto):
+    """P23-01 RESOLVED by seize-all. Full liquidation no longer transfers any LP back to the
+    borrower (the surplus-return branch is gone), so a borrower who opts out of the LP ASA can no
+    longer block — or even delay — a surplus full liquidation. The old grief vector is closed."""
     alice = proto._account(100)
     proto.algorand.send.asset_opt_in(AssetOptInParams(sender=alice.address, asset_id=proto.lp_id))
     proto.algorand.send.asset_opt_in(AssetOptInParams(sender=alice.address, asset_id=proto.musd_id))
@@ -281,12 +281,11 @@ def test_optout_griefing_is_bounded(proto):
     proto.algorand.send.asset_opt_out(
         AssetOptOutParams(sender=alice.address, asset_id=proto.lp_id, creator=proto.admin.address))
 
-    # With surplus (lp_value 55 > debt 50, HF 0.825) full-liq returns surplus LP → blocked.
+    # With surplus (lp_value 55 > debt 50, HF 0.825) full-liq previously reverted on the opted-out
+    # account. Seize-all needs no borrower-bound transfer → it succeeds regardless.
     proto.set_price(550_000)
-    with pytest.raises(Exception):
-        proto.call(proto.vault, "trigger_full_liquidation", [alice.address, POOL_ID], proto.admin)
-
-    # Once underwater past debt (lp_value 45 < 50), there is no surplus transfer → succeeds.
-    proto.set_price(450_000)
     proto.call(proto.vault, "trigger_full_liquidation", [alice.address, POOL_ID], proto.admin)
+    box = proto.vault_box(alice)
+    assert box.vault_state == 2 and box.lp_amount == 0
+    assert proto.lp_bal(alice.address) == 0        # nothing was pushed to the opted-out borrower
     assert proto.vault_box(alice).vault_state == 2

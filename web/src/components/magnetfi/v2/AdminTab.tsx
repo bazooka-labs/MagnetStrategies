@@ -8,6 +8,7 @@ import { CreateMusd } from "./admin/CreateMusd";
 import { CreateTestAssets } from "./admin/CreateTestAssets";
 import { OperationsPanel } from "./admin/OperationsPanel";
 import { StrategyPanel } from "./admin/StrategyPanel";
+import { VaultRedeployPanel } from "./admin/VaultRedeployPanel";
 
 function NotAuthorized() {
   return (
@@ -86,6 +87,14 @@ export function AdminTab() {
           Productive Reserves
         </h3>
         <StrategyPanel />
+      </section>
+
+      {/* Vault redeploy — deploy a new vault against the live PSM/oracle + re-point via 48h timelock */}
+      <section>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Vault Redeploy
+        </h3>
+        <VaultRedeployPanel />
       </section>
     </div>
   );

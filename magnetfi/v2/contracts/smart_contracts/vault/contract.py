@@ -23,6 +23,18 @@ SECONDS_PER_YEAR = 31_536_000   # 365 × 24 × 3600
 DAYS_90 = 7_776_000             # 90 × 24 × 3600
 VAULT_MBR = 46_500              # µALGO MBR: 2500 + 400×(46+64)
 MICRO_LIQ_BUFFER_BPS = 500      # 5% buffer on micro-liq seizure
+
+# Health-factor liquidation penalties (prices the adverse-execution cost — swap fees, slippage,
+# thin-book impact — of unwinding seized LP; charged to the leveraged borrower, not the protocol).
+# The seize %s are HARDCODED and calibrated so that at the worst case of each tier the penalty
+# still restores post-liquidation HF ≥ 1.06. The penalty bps are stored in global state and
+# ADJUSTABLE via set_liq_penalty, but only DOWNWARD (≤ these caps) — the cap is coupled to the
+# fixed seize %, so lowering the penalty only improves health restoration and the coupling can
+# never be broken without a redeploy. See LIQUIDATION.md "Planned Upgrade" for the derivation.
+TIER1_SEIZE_BPS        = 3_500  # 35% — unchanged; a 5% penalty fits inside its existing slack
+TIER2_SEIZE_BPS        = 7_700  # 77% — recalibrated from 60% so a 7% penalty still restores HF ≥ 1.06
+PARTIAL_PENALTY_T1_BPS = 500    # 5% — Tier 1 penalty cap + default
+PARTIAL_PENALTY_T2_BPS = 700    # 7% — Tier 2 penalty cap + default
 ORACLE_FRESHNESS = 1_800        # 30 minutes
 TIMELOCK_DELAY = 172_800        # 48h on the catastrophic oracle-repointing power
 
@@ -55,7 +67,11 @@ class VaultState(arc4.Struct):
 
 class Vault(
     ARC4Contract,
-    state_totals=StateTotals(global_uints=40, global_bytes=6),
+    # Global-state schema is fixed at create and immutable, so it's sized to the practical max now.
+    # 58 uints + 6 bytes = 64 (the protocol ceiling). Budget: 10 named uints + 4 per pool ⇒ capacity
+    # for 12 collateral pools; 6 byte-slots hold the 4 role accounts with 2 spare for a future
+    # address global (e.g. treasury). No vault redeploy is ever needed just to add a vault type.
+    state_totals=StateTotals(global_uints=58, global_bytes=6),
 ):
     """
     MagnetFi v2 Vault — LP collateral engine.
@@ -92,6 +108,11 @@ class Vault(
         self.pending_lp_oracle = GlobalState(UInt64)
         self.pending_lp_oracle_eta = GlobalState(UInt64)
 
+        # Health-liquidation penalty per tier (bps). Adjustable ≤ compile-time cap via
+        # set_liq_penalty; the seize % it is calibrated against is fixed (see constants).
+        self.liq_penalty_t1_bps = GlobalState(UInt64)
+        self.liq_penalty_t2_bps = GlobalState(UInt64)
+
         # Per-pool params live in dynamic global-state slots using prefixed keys:
         # b"rate_" + itob(pool_id), b"ltv_" + itob(pool_id), etc.
 
@@ -127,6 +148,9 @@ class Vault(
         self.paused.value = UInt64(0)
         self.pending_lp_oracle.value = UInt64(0)
         self.pending_lp_oracle_eta.value = UInt64(0)
+        # Default liquidation penalties to their caps; adjustable downward via set_liq_penalty.
+        self.liq_penalty_t1_bps.value = UInt64(PARTIAL_PENALTY_T1_BPS)
+        self.liq_penalty_t2_bps.value = UInt64(PARTIAL_PENALTY_T2_BPS)
 
     # ── internal helpers ──────────────────────────────────────────────────────
 
@@ -663,8 +687,8 @@ class Vault(
         self, borrower: Account, pool_id: UInt64, tier: UInt64
     ) -> None:
         """
-        Seize 35% (tier 1) or 60% (tier 2) of LP for HF in [0.85, 1.0).
-        Sets vault_state = 2 pending admin mUSD settlement.
+        Seize 35% (tier 1) or 77% (tier 2) of LP for HF in [0.85, 1.0), applying the tier's
+        liquidation penalty. Sets vault_state = 2 pending admin mUSD settlement.
         """
         self._assert_admin()
         assert tier == UInt64(1) or tier == UInt64(2), "tier must be 1 or 2"
@@ -693,7 +717,12 @@ class Vault(
             assert hf_num * UInt64(100) >= total_debt * UInt64(85), "HF not in tier 2 (lower)"
             assert hf_num * UInt64(100) < total_debt * UInt64(95), "HF not in tier 2 (upper)"
 
-        tier_bps = UInt64(3_500) if tier == UInt64(1) else UInt64(6_000)
+        if tier == UInt64(1):
+            tier_bps = UInt64(TIER1_SEIZE_BPS)
+            penalty_bps = self.liq_penalty_t1_bps.value
+        else:
+            tier_bps = UInt64(TIER2_SEIZE_BPS)
+            penalty_bps = self.liq_penalty_t2_bps.value
 
         lp_amount = vault.lp_amount.native
         lp_to_seize = self._wide_ratio(lp_amount, tier_bps, UInt64(10_000))
@@ -703,11 +732,25 @@ class Vault(
 
         lp_price = self._oracle_price(pool_id)
         seized_lp_value = self._wide_ratio(lp_to_seize, lp_price, UInt64(1_000_000))
-        if seized_lp_value > total_debt:
-            seized_lp_value = total_debt
 
-        vault.musd_borrowed = arc4.UInt64(total_debt - seized_lp_value)
-        vault.accrued_interest = arc4.UInt64(seized_lp_value)  # settlement counter
+        # Carve the liquidation penalty out of debt relief. The admin recovers `seized_lp_value`
+        # by selling the seized LP but returns only `debt_retired` to the PSM, keeping the
+        # difference (= penalty × debt_retired) as protocol revenue → treasury. Because the
+        # penalty is taken from debt relief (not extra collateral), the fixed seize %s are
+        # calibrated so post-liq HF ≥ 1.06 at each tier's worst case.
+        #   seized_lp_value = debt_retired × (1 + penalty)  ⇒  debt_retired = seized / (1 + penalty)
+        # Round DOWN (protocol-favorable: admin keeps marginally more penalty).
+        debt_retired = self._wide_ratio(
+            seized_lp_value, UInt64(10_000), UInt64(10_000) + penalty_bps
+        )
+        # Defensive clamp (not reachable in-band for the calibrated seize %s): if the seizure
+        # would retire the entire debt, cap it — the position fully repays and closes via the
+        # settlement cap-hit branch, returning the un-seized LP to the borrower.
+        if debt_retired > total_debt:
+            debt_retired = total_debt
+
+        vault.musd_borrowed = arc4.UInt64(total_debt - debt_retired)
+        vault.accrued_interest = arc4.UInt64(debt_retired)  # settlement counter (mUSD owed to PSM)
         vault.lp_amount = arc4.UInt64(lp_amount - lp_to_seize)
         vault.last_accrual_timestamp = arc4.UInt64(Global.latest_timestamp)
         vault.vault_state = arc4.UInt64(2)
@@ -727,7 +770,10 @@ class Vault(
     def trigger_full_liquidation(self, borrower: Account, pool_id: UInt64) -> None:
         """
         Seize all LP for HF < 0.85. Sets vault_state = 2 pending settlement.
-        Surplus LP above total debt is returned to borrower immediately.
+        Seize-all: the entire position is taken; the debt is settled from realized proceeds and
+        any value above the debt is the protocol's cushion (→ treasury). No snapshot-priced
+        surplus is refunded to the borrower — that refund left the protocol with zero slippage
+        buffer against a falling market it must sell into. (Also resolves P23-01: no surplus push.)
         Dust positions (total_lp_value == 0) are closed as bad debt immediately.
         """
         self._assert_admin()
@@ -770,15 +816,9 @@ class Vault(
             ).submit()
             return
 
-        surplus_lp = UInt64(0)
-        lp_to_seize = lp_amount
-        if total_lp_value > total_debt:
-            surplus_lp = self._wide_ratio(
-                total_lp_value - total_debt, UInt64(1_000_000), lp_price
-            )
-            lp_to_seize = lp_amount - surplus_lp
-        assert lp_to_seize > UInt64(0), "nothing to seize after surplus"
-
+        # Settlement counter = min(total_debt, total_lp_value): the shortfall case (LP worth less
+        # than the debt) settles only what the collateral covers; the remainder is ceiling-headroom
+        # loss, not an invariant breach (PSM USDC was reserved at open). No surplus is carved.
         musd_to_settle = total_debt if total_lp_value >= total_debt else total_lp_value
 
         vault.musd_borrowed = arc4.UInt64(0)
@@ -787,18 +827,12 @@ class Vault(
         vault.vault_state = arc4.UInt64(2)
         self.vaults[key] = vault.copy()
 
-        if surplus_lp > UInt64(0):
-            itxn.AssetTransfer(
-                xfer_asset=lp_asa_id,
-                asset_receiver=borrower,
-                asset_amount=surplus_lp,
-                fee=0,
-            ).submit()
-
+        # Seize the entire position to admin — one inner transfer (the borrower surplus transfer
+        # is gone). Any realized value above the settled debt is protocol revenue → treasury.
         itxn.AssetTransfer(
             xfer_asset=lp_asa_id,
             asset_receiver=self.admin.value,
-            asset_amount=lp_to_seize,
+            asset_amount=lp_amount,
             fee=0,
         ).submit()
 
@@ -911,6 +945,25 @@ class Vault(
         self._assert_admin()
         assert lp_asa_id != UInt64(0), "invalid ASA ID"
         op.AppGlobal.put(Bytes(_LP_ASA_PREFIX) + op.itob(pool_id), lp_asa_id)
+
+    @arc4.abimethod
+    def set_liq_penalty(self, tier: UInt64, penalty_bps: UInt64) -> None:
+        """
+        Adjust the health-liquidation penalty for a partial tier (1 or 2). Bounded ≤ the
+        compile-time cap the (hardcoded) seize % was calibrated against, so every reachable value
+        keeps post-liquidation HF ≥ 1.06. DOWNWARD-safe: a lower penalty only improves health
+        restoration and reduces protocol revenue — it can never break the coupling. Raising a cap,
+        or making the seize % adjustable, would require a redeploy. Admin-only; pure state write,
+        no inner transactions — grants no capability the admin does not already hold.
+        """
+        self._assert_admin()
+        assert tier == UInt64(1) or tier == UInt64(2), "tier must be 1 or 2"
+        if tier == UInt64(1):
+            assert penalty_bps <= UInt64(PARTIAL_PENALTY_T1_BPS), "exceeds tier-1 penalty cap"
+            self.liq_penalty_t1_bps.value = penalty_bps
+        else:
+            assert penalty_bps <= UInt64(PARTIAL_PENALTY_T2_BPS), "exceeds tier-2 penalty cap"
+            self.liq_penalty_t2_bps.value = penalty_bps
 
     # ── timelocked LP-oracle repointing ───────────────────────────────────────
 

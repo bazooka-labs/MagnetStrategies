@@ -1,5 +1,158 @@
 # MagnetFi v2 — Liquidation
 
+> ## ⚠️ PLANNED UPGRADE — Liquidation Penalties (NOT YET LIVE)
+>
+> **Status: BUILT + TESTED + REVIEWED CLEAN — awaiting the clean redeploy (2026-08-11).** The
+> sections *below the divider* still describe the **live on-chain** contract (the old behavior);
+> this block is the finished spec for the new one and is flipped into the live sections only when it
+> actually deploys. It is a **vault-contract-only** change (PSM / LP Oracle / mUSD ASA untouched) —
+> a vault redeploy + PSM re-point via the 48h timelock + a canary, same shape as the
+> repayment-consolidation redeploy.
+>
+> **Progress:** contract implemented; compiles clean; **92/92 LocalNet tests pass**; a fresh-context
+> security review returned **CLEAN to proceed** (no regressions, no new attack vectors, issue fully
+> resolved). Global schema sized to the 64-entry cap (`58` uints + `6` bytes → **12-pool capacity**)
+> so adding a collateral type never needs another redeploy. **Pending before deploy:** pin the puyapy
+> compiler + rebuild for reproducible TEAL; flip the live docs + user-facing web copy; founder closes
+> the dogfood loan + sweeps fees.
+>
+> ### Why
+> Every health-factor liquidation settles at the **oracle mark**, but the protocol has to
+> **realize** that value by unwinding the seized LP *afterward*. Fees, slippage, and thin-book
+> impact fall on the protocol — and because liquidations cluster in the drawdowns where realized
+> price sits *below* the mark, the expected execution result is **negative by construction**, not
+> neutral. Today partial liq is equity-neutral (zero protocol compensation, zero cushion); full
+> liq refunds surplus to the borrower *at the pre-sale mark* (zero cushion + full bad-debt tail).
+> Only micro-liq carries a buffer. The penalty prices that adverse-execution cost up front,
+> charged to the party who chose the leverage.
+>
+> ### Target behavior
+> | Path | Today | After upgrade |
+> |---|---|---|
+> | Tier 1 (0.95 ≤ HF < 1.0) | seize 35%, equity-neutral | seize 35%, **5% penalty** → treasury |
+> | Tier 2 (0.85 ≤ HF < 0.95) | seize 60%, equity-neutral | seize **77%**, **7% penalty** → treasury |
+> | Tier 3 (HF < 0.85) | seize 100%, **refund surplus to borrower** | **seize all**, settle debt, **remainder → treasury**, borrower gets $0 |
+> | Micro-liq | 5% buffer | **unchanged** |
+>
+> ### The health-recovery recalibration (load-bearing)
+> A penalty removes value, which **lowers post-liq HF**. The current seize %s restore to ≥ 1.06
+> *only because they carry no penalty*. Modeled at each tier's worst case (`t = 0.75`, debt = 1,
+> `C = HF/t`; penalty carved from debt relief so seized value `S = R·(1+π)`, `R` = debt retired =
+> settlement counter; **post-HF = `(C − S)·t / (1 − R)`**):
+> - **Tier 1 @ HF 0.95, π = 5%:** keep 35% → `S = 0.4433`, `R = 0.4222`, post-HF = **1.069 ✓** — no seize change.
+> - **Tier 2 @ HF 0.85, π = 7%:** current 60% → post-HF = **0.933 ✗ still Tier 2** (cascade). Solving
+>   for post-HF 1.06 ⇒ seize fraction **0.770**. So **Tier 2 seize → 7700 bps** (verify: `S = 0.8727`,
+>   `R = 0.8156`, post-HF = **1.060 ✓**). The 60% had almost no slack (restored to only 1.063), so any
+>   penalty forces the jump.
+>
+> | Tier | Seize (bps) | Penalty (bps) | Post-HF @ worst case |
+> |---|---|---|---|
+> | 1 | 3500 (unchanged) | 500 (5%) | 1.069 |
+> | 2 | **7700 (was 6000)** | 700 (7%) | 1.060 |
+> | 3 (full) | 10000 (all) | seize-all; cushion = collateral − debt | closes |
+>
+> ### Penalty realization — cost-recovery, NOT forecast revenue
+> Reuses the settlement machinery exactly as the micro-liq buffer does: seize `lp_to_seize`; the
+> **settlement counter** (`accrued_interest` in state 2) = `R` = debt actually retired (NOT the full
+> seized value); `musd_borrowed = total_debt − R`. The admin sells the seized LP, returns only `R`
+> to the PSM, and the residual `seized_lp_value − R` **offsets the adverse-execution cost** of the
+> liquidation (fees/slippage). **It is deliberately NOT modeled as protocol profit (D6)** — realized
+> recovery is unpredictable (that unpredictability is the whole reason the penalty exists), so the
+> protocol forecasts **no** revenue from liquidations. **No `treasury_address` added to the vault** —
+> the residual lands with the admin like existing swept revenue, treated as loss mitigation.
+>
+> ### Full liquidation → seize-all (simpler, not more complex)
+> Replace the surplus computation + borrower inner-transfer with: seize **all** LP to admin;
+> `settlement counter = min(total_debt, total_lp_value)` (shortfall logic unchanged); the borrower
+> receives **$0 above the MBR refund**. Any realized value above the debt is a **buffer against
+> slippage and the bad-debt tail — not planned profit (D6)**, and in most real liquidations it is
+> small or zero. Keep the dust fast-path (`total_lp_value == 0`). This **removes** code and
+> **auto-resolves deferred P23-01** (no surplus force-push to borrower). The
+> `settle_health_liquidation` surplus-LP-return branch is now reached only by the Tier-1 full-repay
+> cap-hit case (borrower did fully repay).
+>
+> ### Contract changes — `smart_contracts/vault/contract.py` (✅ implemented)
+> - **Constants:** `TIER1_SEIZE_BPS = 3500`, `TIER2_SEIZE_BPS = 7700`, `PARTIAL_PENALTY_T1_BPS = 500`,
+>   `PARTIAL_PENALTY_T2_BPS = 700`. **Schema:** `StateTotals(global_uints=58, global_bytes=6)` (64-cap → 12 pools).
+> - **Two global penalty slots** (`liq_penalty_t1_bps` / `liq_penalty_t2_bps`), initialized to the caps
+>   in `deploy()` so a fresh create never reads 0.
+> - **`trigger_partial_liquidation`:** tier-2 uses `TIER2_SEIZE_BPS`; after `seized_lp_value`, compute
+>   `debt_retired = WideRatio(seized_lp_value, 10_000, 10_000 + penalty_bps)` (round **down**,
+>   protocol-favorable). Clamp: if `debt_retired ≥ total_debt`, set `= total_debt` and let the
+>   position **close** with remaining LP returned to borrower (existing cap-hit path — the one place
+>   surplus LP is still legitimately returned, because the borrower fully repaid). Then
+>   `musd_borrowed = total_debt − debt_retired`, `accrued_interest = debt_retired`,
+>   `lp_amount -= lp_to_seize`, `vault_state = 2`.
+> - **`trigger_full_liquidation`:** seize-all rewrite (above); non-dust `fee` 3000 → 2000 (one fewer
+>   inner txn — verify fee budget).
+> - **`settle_health_liquidation`:** mUSD math unchanged; review the surplus-LP branch (dead for
+>   full liq, retained for Tier-1 cap-hit).
+> - **`set_liq_penalty(tier, penalty_bps)` [D2]:** admin-only; `tier ∈ {1,2}`; `penalty_bps ≤` the
+>   per-tier compile-time cap (500 / 700); pure state write, **no inner txns**. Downward-safe: any
+>   value ≤ cap keeps post-HF ≥ 1.06 because seize % is fixed for the max. **Coupling invariant
+>   (review-agent must confirm): the cap is a compile-time constant tied to the hardcoded seize %,
+>   and seize % stays hardcoded — never adjustable.** Initialize penalties to the constants at
+>   `create()` so a fresh deploy never reads 0.
+>
+> ### Edge cases to preserve (regression-critical)
+> Dust position; shortfall (settlement counter = `total_lp_value`, PSM invariant intact); bad-debt
+> tail below HF 0.75 (seize-all cushion can be zero — still needs tight bot + treasury reserve);
+> oracle-staleness gate on all liq paths; state-guard table; interest-accrued-first ordering;
+> `WideRatio` + round-down on the penalty carve.
+>
+> ### Tests (LocalNet — ✅ 92/92 pass; new/updated in `test_liquidation{,_penalty}.py` + `test_attacks_logic.py`)
+> Tier-1 penalty (post-HF ≥ 1.06, counter = debt retired, admin nets penalty, PSM gets only `R`);
+> Tier-2 @ 77% (post-HF ≥ 1.06, no cascade); Tier-1 full-repay cap-hit (closes, LP returned, penalty
+> collected); full-liq seize-all (no surplus, `lp_amount = 0`, remainder = revenue, borrower gets
+> only MBR); full-liq shortfall; dust; P23-01 regression (LP-opt-out no longer blocks full liq);
+> `set_liq_penalty` (cap enforced, lower penalty raises post-HF, 0% ⇒ equity-neutral); no-free-value
+> invariant (partial can never raise borrower equity or leave HF < 1.0). Run: `algokit localnet
+> start` → `.venv-test/bin/python -m pytest tests/`. Rebuild + regen ARC-56: `algokit project run
+> build`, copy `Vault.arc56.json` → `web/public/contracts/`.
+>
+> ### Docs to flip AT DEPLOY (not before — they describe the live contract)
+> When the new vault is live: fold this block into the live sections below (tier table → 77% + the
+> penalties; full-liq flow → seize-all; Risk Parameters `Liquidation fee` row; settlement notes; mark
+> P23-01 resolved) and delete the banner. **ADMIN.md** — liquidation procedure (no surplus return) +
+> Revenue Accounting (frame liquidation proceeds as cost-recovery, **NOT** a revenue line, per D6).
+> **TODO.md** P23-01 → resolved. **web `LpVaultLearnMore.tsx`** — Tier-2 wording + "partial
+> liquidations carry a 5%/7% fee; on a full liquidation the borrower receives nothing above the MBR."
+> ⚠️ The **web copy must NOT change before the contract is live**, or it misrepresents the on-chain
+> terms to real users. (ADMIN.md now carries a forward-pointer to this block near the liq procedure.)
+>
+> ### Deploy sequence (vault-only redeploy)
+> (1) Ensure **no open positions** [D3 — founder closing the dogfood loan + sweeping fees first];
+> (2) `pause()` borrowing; (3) deploy new vault; (4) `opt_in_asset` + `set_liq_threshold` → `set_ltv`
+> → `set_rate` → `set_lp_asa_id` per pool (order matters) + penalties; (5) PSM
+> `propose_vault_contract` → **wait 48h** → `confirm_vault_contract` (guardian veto available);
+> (6) update `DEPLOYMENTS.mainnet.vault` in `web/src/lib/magnetfi.ts` + redeploy site; (7) **canary**
+> (open → borrow → drive to each tier or math-validate → confirm penalty accrual + settlement
+> reconcile on allo.info); (8) leave old vault for stragglers under old terms.
+>
+> ### Decisions — LOCKED (2026-08-11)
+> - **D1 — Tier 2 seize % = 77% (A).** Severe but protects the protocol; a double liquidation lands
+>   in the same place anyway (net-neutral downside).
+> - **D2 — Adjustable penalties = YES,** with the capped/downward-safe/no-inner-txn design + coupling
+>   invariant above. Review **confirmed** no new surface area. On-chain lever only — not wired into the UI.
+> - **D3 — Migrate only when no positions are open.** Founder closing the dogfood loan + sweeping
+>   fees, then redeploy clean.
+> - **D4 — Post-HF target = 1.06** (unchanged).
+> - **D5 — Global schema maxed to 12 pools** (`58` uints + `6` bytes = the 64 cap) so adding a
+>   collateral type never needs a redeploy.
+> - **D6 — Liquidation proceeds are cost-recovery / bad-debt buffer, NEVER forecast profit.** Too
+>   unpredictable to bank; docs + revenue accounting must not treat them as income.
+>
+> ### Review — DONE (fresh-context agent, 2026-08-11): **CLEAN to proceed.**
+> No regressions (settlement math; PSM invariant — the penalty carve makes circulating drop *less*,
+> strictly safer; state machine; fee budgets; schema sizing all checked). No new attack vectors
+> (penalty rounding protocol-favorable; cap-hit unreachable in-band + safe if hit; `set_liq_penalty`
+> coupling holds — seize % never writable; no self-liquidation surface). Issue fully resolved
+> (protocol compensated every tier; no snapshot-priced refund; **post-liq HF ≥ 1.06 across the full
+> tier bands** — Tier-1 min ≈ 1.069, Tier-2 min ≈ 1.061, verified with exact integer arithmetic;
+> P23-01 closed). Remaining gate: pin the compiler for reproducible TEAL before the deploy.
+
+---
+
 ## Overview
 
 MagnetFi v2 has two independent liquidation mechanisms serving different risks. Both are admin-triggered and manual — no automated bots, no public liquidators.
