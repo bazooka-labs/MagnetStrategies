@@ -13,14 +13,19 @@ const LS_DEPLOY = "magnetfi_deploy_v1";
 
 type Cfg = { oracle: string; psm: string; vault: string; musd: string; usdc: string };
 
-function loadCfg(): Cfg {
-  const base: Cfg = {
+// The app IDs from the current deployment (ACTIVE) — the source of truth for what is actually live.
+function deployedCfg(): Cfg {
+  return {
     oracle: ACTIVE.oracle ? String(ACTIVE.oracle) : "",
     psm: ACTIVE.psm ? String(ACTIVE.psm) : "",
     vault: ACTIVE.vault ? String(ACTIVE.vault) : "",
     musd: ACTIVE.musd ? String(ACTIVE.musd) : "",
     usdc: ACTIVE.usdc ? String(ACTIVE.usdc) : "",
   };
+}
+
+function loadCfg(): Cfg {
+  const base = deployedCfg();
   if (typeof window === "undefined") return base;
   try {
     const saved = localStorage.getItem(LS_OPS);
@@ -111,6 +116,16 @@ export function OperationsPanel() {
 
   useEffect(() => { localStorage.setItem(LS_OPS, JSON.stringify(cfg)); }, [cfg]);
 
+  // Surface — never silently override — any app ID that has drifted from the current deployment.
+  // A stale saved ID (from before a redeploy) once caused a "pause" to hit a retired vault; this
+  // makes the mismatch visible and offers a one-click reset, while leaving the admin in control
+  // (editing IDs to operate a fresh deployment still works).
+  const deployed = useMemo(() => deployedCfg(), []);
+  const drift = (Object.keys(deployed) as (keyof Cfg)[]).filter(
+    (k) => deployed[k] !== "" && cfg[k] !== "" && cfg[k] !== deployed[k],
+  );
+  const resetToDeployed = () => { setCfg(deployed); toast.success("Reset to deployed IDs"); };
+
   const algorand = useMemo(
     () => (algodClient && transactionSigner ? ops.makeAlgorand(algodClient, transactionSigner) : null),
     [algodClient, transactionSigner],
@@ -156,6 +171,33 @@ export function OperationsPanel() {
         <p className="mt-2 text-[11px] text-gray-600">
           Prefilled from the deploy wizard / config. Edit if you&apos;re operating a different deployment.
         </p>
+
+        {drift.length > 0 && (
+          <div className="mt-3 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-400" />
+              <div className="min-w-0 flex-1 text-xs text-yellow-100/90">
+                <p className="font-semibold">Config differs from the current deployment.</p>
+                <p className="mt-1">Actions will target the IDs above — <strong>not</strong> the deployed ones:</p>
+                <ul className="mt-1 space-y-0.5 font-mono text-[11px] leading-relaxed">
+                  {drift.map((k) => (
+                    <li key={k}>
+                      {k}: <span className="text-yellow-300">{cfg[k]}</span>{" "}
+                      <span className="text-gray-500">→ deployed:</span>{" "}
+                      <span className="text-green-300">{deployed[k]}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={resetToDeployed}
+                  className="mt-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-1 text-[11px] font-semibold text-yellow-100 transition-colors hover:bg-yellow-500/20"
+                >
+                  Reset to deployed IDs
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Panel>
 
       {!ready ? (
@@ -172,13 +214,13 @@ export function OperationsPanel() {
         <div className="space-y-8">
           {/* Emergency */}
           <Section title="Emergency — pause">
-            <ActionForm title="Pause vault borrowing" desc="Halts open_vault (with borrow) + borrow_more. Admin or guardian."
+            <ActionForm title="Pause vault borrowing" desc={`Halts open_vault (with borrow) + borrow_more on vault ${cfg.vault}. Admin or guardian.`}
               fields={[]} button="Pause vault" tone="warn" onRun={() => ops.pauseVault(a(), me(), vault())} />
-            <ActionForm title="Unpause vault" desc="Resumes borrowing. Guardian only." fields={[]} button="Unpause vault"
+            <ActionForm title="Unpause vault" desc={`Resumes borrowing on vault ${cfg.vault}. Guardian only.`} fields={[]} button="Unpause vault"
               onRun={() => ops.unpauseVault(a(), me(), vault())} />
-            <ActionForm title="Pause PSM mint" desc="Halts public mint_musd (redeem stays open). Admin or guardian."
+            <ActionForm title="Pause PSM mint" desc={`Halts public mint_musd on PSM ${cfg.psm} (redeem stays open). Admin or guardian.`}
               fields={[]} button="Pause PSM" tone="warn" onRun={() => ops.pausePsm(a(), me(), psm())} />
-            <ActionForm title="Unpause PSM" desc="Resumes minting. Guardian only." fields={[]} button="Unpause PSM"
+            <ActionForm title="Unpause PSM" desc={`Resumes minting on PSM ${cfg.psm}. Guardian only.`} fields={[]} button="Unpause PSM"
               onRun={() => ops.unpausePsm(a(), me(), psm())} />
           </Section>
 
