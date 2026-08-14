@@ -29,7 +29,7 @@ function AssetBadge({ asset }: { asset: string }) {
 export function MusdTab() {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [mode, setMode] = useState<Mode>("mint");
-  const [amount, setAmount] = useState("1000");
+  const [amount, setAmount] = useState("");
   const [bal, setBal] = useState<Balances | null>(null);
   const [psmUsdc, setPsmUsdc] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
