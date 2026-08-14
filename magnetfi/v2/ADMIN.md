@@ -170,9 +170,9 @@ higher threshold (e.g. a pure stable/stable collateral pair) would require **rec
 
 | HF Range | Admin Action | Expected Outcome |
 |---|---|---|
-| 0.95 – 0.9999 | `trigger_partial_liquidation(borrower, pool_id, tier=1)` | Seize 35% LP → health restored; position continues |
-| 0.85 – 0.9499 | `trigger_partial_liquidation(borrower, pool_id, tier=2)` | Seize 60% LP → health restored; position continues |
-| < 0.85 | `trigger_full_liquidation(borrower, pool_id)` | Seize 100% LP → position closed |
+| 0.95 – 0.9999 | `trigger_partial_liquidation(borrower, pool_id, tier=1)` | Seize 35% LP + 5% penalty → health restored; position continues |
+| 0.85 – 0.9499 | `trigger_partial_liquidation(borrower, pool_id, tier=2)` | Seize 77% LP + 7% penalty → health restored; position continues |
+| < 0.85 | `trigger_full_liquidation(borrower, pool_id)` | Seize-all → position closed; **no surplus returned** (borrower gets only MBR) |
 
 **Partial liquidation steps (Tier 1 or Tier 2):**
 1. Monitor health factors; flag any vault where `health_factor < 1.0`
@@ -185,7 +185,7 @@ higher threshold (e.g. a pure stable/stable collateral pair) would require **rec
 
 **Full liquidation steps (Tier 3):**
 1. Call `trigger_full_liquidation(borrower_address, pool_id)` — contract asserts HF < 0.85
-2. Receive all LP tokens; any surplus LP above debt is returned to borrower by contract
+2. Receive **all** LP tokens (seize-all) — no surplus is returned to the borrower; any realized value above the settled debt is protocol cushion/treasury (cost-recovery, not forecast revenue, D6)
 3. If LP value ≥ total debt: use USDC float to buy full `musd_to_settle`, call `settle_health_liquidation(borrower_address, pool_id, musd_to_settle)` in an atomic group with `AssetTransfer(mUSD → PSM address)`
 4. If LP value < total debt (shortfall): buy and settle only `musd_to_settle` mUSD (= lp_value, the contract's settlement counter) via `settle_health_liquidation(borrower_address, pool_id, musd_to_settle)` in an atomic group with `AssetTransfer(mUSD → PSM address, amount = musd_to_settle)` — the contract asserts `musd_amount ≤ accrued_interest = musd_to_settle`; passing `total_debt` fails this assertion. The PSM invariant is not broken by the shortfall — PSM USDC was reserved at vault open time. Optionally call `deposit_usdc(total_debt − musd_to_settle)` after settlement to restore vault ceiling headroom; this is discretionary, not an invariant requirement.
 5. Vault box is deleted; MBR returned to borrower; position closed

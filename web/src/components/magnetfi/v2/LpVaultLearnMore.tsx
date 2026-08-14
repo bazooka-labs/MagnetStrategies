@@ -17,9 +17,9 @@ const FEATURES = [
 
 const LADDER = [
   { band: "HF ≥ 1.00", cls: "border-green-500/30 bg-green-500/10 text-green-300", label: "Healthy", body: "Nothing, your position is safe." },
-  { band: "0.95 – 1.00", cls: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300", label: "Tier 1", body: "~35% of your LP is seized to restore health. Your vault continues." },
-  { band: "0.85 – 0.95", cls: "border-orange-500/30 bg-orange-500/10 text-orange-300", label: "Tier 2", body: "~60% of your LP is seized. Your vault continues." },
-  { band: "< 0.85", cls: "border-red-500/30 bg-red-500/10 text-red-300", label: "Full liquidation", body: "Collateral is fully seized to cover your debt." },
+  { band: "0.95 – 1.00", cls: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300", label: "Tier 1", body: "~35% of your LP is seized to restore health, plus a 5% liquidation fee. Your vault continues." },
+  { band: "0.85 – 0.95", cls: "border-orange-500/30 bg-orange-500/10 text-orange-300", label: "Tier 2", body: "~77% of your LP is seized to restore health, plus a 7% liquidation fee. Your vault continues." },
+  { band: "< 0.85", cls: "border-red-500/30 bg-red-500/10 text-red-300", label: "Full liquidation", body: "All remaining LP collateral is seized to settle your debt — no collateral is returned." },
 ];
 
 export function LpVaultLearnMore() {

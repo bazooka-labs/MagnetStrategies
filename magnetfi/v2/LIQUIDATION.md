@@ -1,8 +1,12 @@
 # MagnetFi v2 — Liquidation
 
-> ## ⚠️ PLANNED UPGRADE — Liquidation Penalties (NOT YET LIVE)
+> ## ✅ SHIPPED — Liquidation Penalties (LIVE on mainnet 2026-08-14, vault `3671287267`)
 >
-> **Status: BUILT + TESTED + REVIEWED CLEAN — awaiting the clean redeploy (2026-08-11).** The
+> **This upgrade is LIVE.** Vault `3671287267` (schema 58/6, penalties 500/700, pools at 75%) is the
+> PSM-registered vault; old vault `3657553596` is retired/paused. The live sections below have been
+> updated to match; this block is retained as the authoritative design + audit record.
+>
+> **Status: BUILT + TESTED + REVIEWED CLEAN — shipped 2026-08-14 (proposed/confirmed via 48h timelock).** The
 > sections *below the divider* still describe the **live on-chain** contract (the old behavior);
 > this block is the finished spec for the new one and is flipped into the live sections only when it
 > actually deploys. It is a **vault-contract-only** change (PSM / LP Oracle / mUSD ASA untouched) —
@@ -297,9 +301,14 @@ No waiting period. The admin may trigger immediately when health factor falls be
 
 | Tier | Health Factor Range | LP Seizure | Position After |
 |---|---|---|---|
-| 1 — Partial | 0.95 ≤ HF < 1.0 | 35% of LP tokens | Continues; debt reduced; health restored |
-| 2 — Partial | 0.85 ≤ HF < 0.95 | 60% of LP tokens | Continues; debt reduced; health restored |
-| 3 — Full | HF < 0.85 | 100% of LP tokens | Closed |
+| 1 — Partial | 0.95 ≤ HF < 1.0 | 35% of LP tokens (+ 5% penalty) | Continues; debt reduced; health restored |
+| 2 — Partial | 0.85 ≤ HF < 0.95 | 77% of LP tokens (+ 7% penalty) | Continues; debt reduced; health restored |
+| 3 — Full | HF < 0.85 | 100% of LP tokens (seize-all) | Closed; no surplus returned (borrower gets only the MBR refund) |
+
+> **Liquidation penalties (live).** Partial tiers carry a penalty carved from debt relief (Tier 1
+> 5%, Tier 2 7%); Tier 2 seizes **77%** (recalibrated so the penalty still restores HF ≥ 1.06). Full
+> liquidation is **seize-all** — no snapshot-priced surplus is refunded. Proceeds are cost-recovery /
+> a bad-debt buffer, never forecast revenue (D6). Full derivation + audit: the "SHIPPED" block at top.
 
 **Tier boundary contract implementation:** boundaries must use strict inequalities, not decimal approximations. In contract code: Tier 1 = `HF_num × 100 >= HF_den × 95 AND HF_num < HF_den`; Tier 2 = `HF_num × 100 >= HF_den × 85 AND HF_num × 100 < HF_den × 95`; Tier 3 = `HF_num × 100 < HF_den × 85`. No gap, no overlap.
 
@@ -470,7 +479,8 @@ When health factor is below 1.0, the protocol is at risk of bad debt. That risk 
 | Grace period before micro-liq | 90 days |
 | Micro-liq buffer | 5% (2% execution + 3% late fee) |
 | Health-factor liquidation threshold | 75% (all vault types) |
-| Liquidation fee (health path) | 0% — no penalty on partial or full health liquidations |
+| Liquidation penalty (health path) | Tier 1 **5%**, Tier 2 **7%** (adjustable ≤ cap via `set_liq_penalty`); full liq is seize-all. Cost-recovery, not revenue (D6) |
+| Liquidation threshold | **75% — firm cap for every pool** (seize %s/penalties calibrated only for 75%; never set higher — audit M1) |
 
 ---
 
