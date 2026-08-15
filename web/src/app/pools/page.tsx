@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sprout, ArrowUpRight, Info } from "lucide-react";
+import { Waves, Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData } from "@/lib/pools";
 import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
@@ -31,17 +31,17 @@ function PoolCard({ p }: { p: PoolData }) {
         </div>
         {farming && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-green-300">
-            <Sprout className="h-3 w-3" /> Farming
+            <Wheat className="h-3 w-3" /> Farming
           </span>
         )}
       </div>
 
       {/* Total APR headline */}
       <div className="rounded-xl border border-white/5 bg-black/30 p-4">
-        <p className="text-[11px] uppercase tracking-wider text-gray-500">Total APR</p>
+        <p className="text-[11px] uppercase tracking-wider text-gray-500">Total 7-Day APR</p>
         <p className="mt-1 font-mono text-3xl font-bold text-green-400">{fmtApr(p.totalApr)}</p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
-          <span>Fee <span className="font-mono text-gray-300">{fmtApr(p.feeApr)}</span></span>
+          <span>Swap Fees <span className="font-mono text-gray-300">{fmtApr(p.feeApr)}</span></span>
           {farming && <span>Farm <span className="font-mono text-green-300">{fmtApr(p.farmApr)}</span></span>}
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function PoolsPage() {
         <div className="animate-blob-drift pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
         <div className="relative flex items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white shadow-lg shadow-magnet-900/50">
-            <Sprout className="h-7 w-7" />
+            <Waves className="h-7 w-7" />
           </div>
           <div>
             <h1 className="magnet-glow-soft font-display text-3xl font-bold text-white sm:text-4xl">Pools</h1>
