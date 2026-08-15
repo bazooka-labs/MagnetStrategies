@@ -57,8 +57,7 @@ export default function MusdPage() {
             <div>
               <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">mUSD</h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                The Magnet dollar — fully <span className="font-semibold text-white">USDC-backed</span>, minted 1:1 with
-                no fee and redeemable any time. Everything about mUSD in one place.
+                Magnet Strategies&apos; <span className="font-semibold text-white">USDC-backed</span> stablecoin.
               </p>
             </div>
           </div>
