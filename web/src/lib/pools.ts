@@ -33,6 +33,11 @@ export const POOLS: Pool[] = [
     ref: "YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I",
     addLiquidityUrl: "https://app.tinyman.org/pool/YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I",
   },
+  {
+    id: "u-usdc", pair: "U / USDC", partner: "USDC", dex: "tinyman",
+    ref: "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
+    addLiquidityUrl: "https://app.tinyman.org/pool/ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
+  },
   // ── Pact ──
   {
     id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", dex: "pact",
