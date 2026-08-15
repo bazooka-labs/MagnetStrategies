@@ -103,10 +103,13 @@ export function Stat({
   label: string;
   value: string;
   sub?: string;
-  accent?: "green" | "purple";
+  accent?: "green" | "purple" | "red";
 }) {
   const valueColor =
-    accent === "green" ? "text-green-400" : accent === "purple" ? "text-magnet-300" : "text-white";
+    accent === "green" ? "text-green-400"
+    : accent === "purple" ? "text-magnet-300"
+    : accent === "red" ? "text-red-400"
+    : "text-white";
   return (
     <Panel className="p-5">
       <p className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</p>

@@ -48,6 +48,12 @@ export default function MusdPage() {
         ? "+100%"
         : `${(backingRatioNum * 100).toFixed(2)}%`;
 
+  // Static $1 peg until a live market-price feed is wired (see the "Market Price" subtext). When
+  // that lands, pegPrice becomes the live quote and the metric turns red automatically below $1.
+  const pegPrice = 1;
+  const underPeg = pegPrice < 1;
+  const underBacked = backingRatioNum != null && backingRatioNum < 1;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Hero */}
@@ -69,11 +75,6 @@ export default function MusdPage() {
               </p>
             </div>
           </div>
-
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-200">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse-slow" />
-            $1.00 · USDC-backed 1:1
-          </span>
         </div>
       </div>
 
@@ -81,10 +82,10 @@ export default function MusdPage() {
       <section className="mb-10">
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Peg Stability Module</h2>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat label="mUSD Peg" value="$1.00" sub="Market Price" />
-          <Stat label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" />
+          <Stat label="mUSD Peg" value={`$${pegPrice.toFixed(2)}`} sub="Market Price" accent={underPeg ? "red" : "green"} />
+          <Stat label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" accent="purple" />
           <Stat label="Available USDC" value={val(stats?.psmUsdc)} sub="PSM balance for mUSD swaps" accent="green" />
-          <Stat label="Backing Ratio" value={backing} sub="USDC Reserves" accent="green" />
+          <Stat label="Backing Ratio" value={backing} sub="USDC Reserves" accent={underBacked ? "red" : "green"} />
         </div>
       </section>
 
