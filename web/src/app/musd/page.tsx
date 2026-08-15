@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useWallet } from "@/hooks/useWallet";
-import { PROTOCOL_LIVE, PSM_REDEEM_FEE_BPS, pct, formatUsd } from "@/lib/magnetfi";
+import { PROTOCOL_LIVE, formatUsd } from "@/lib/magnetfi";
 import {
   getProtocolStats, getStrategyStats,
   type ProtocolStats, type StrategyStats,
@@ -34,11 +34,19 @@ export default function MusdPage() {
   const val = (n?: number, dp = 0) =>
     PROTOCOL_LIVE ? (stats ? `$${formatUsd(n ?? 0, dp)}` : err ? "—" : "…") : "Soon";
 
-  const backing = strat
-    ? `${(strat.backingRatio * 100).toFixed(strat.backingRatio >= 1 ? 0 : 2)}%`
+  // Fully/over-backed shows "+100%" (a raw 57,000% when circulating is tiny reads as nonsense);
+  // an actual under-backed state still shows the true percentage so it's never hidden.
+  const backingRatioNum = strat
+    ? strat.backingRatio
     : stats
-      ? `${stats.circulating > 0 ? Math.round((stats.psmUsdc / stats.circulating) * 100) : 100}%`
-      : PROTOCOL_LIVE ? (err ? "—" : "…") : "Soon";
+      ? stats.circulating > 0 ? stats.psmUsdc / stats.circulating : 1
+      : null;
+  const backing =
+    backingRatioNum == null
+      ? (PROTOCOL_LIVE ? (err ? "—" : "…") : "Soon")
+      : backingRatioNum >= 1
+        ? "+100%"
+        : `${(backingRatioNum * 100).toFixed(2)}%`;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -73,10 +81,10 @@ export default function MusdPage() {
       <section className="mb-10">
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Peg Stability Module</h2>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat label="mUSD Circulating" value={val(stats?.circulating)} sub="Outstanding supply" />
-          <Stat label="USDC Reserve" value={val(stats?.psmUsdc)} sub="Backing held in the PSM" accent="green" />
-          <Stat label="Backing Ratio" value={backing} sub="Reserve ÷ circulating" accent="green" />
-          <Stat label="mUSD Peg" value="$1.00" sub={`Redeem fee ${pct(PSM_REDEEM_FEE_BPS)}%`} />
+          <Stat label="mUSD Peg" value="$1.00" sub="Market Price" />
+          <Stat label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" />
+          <Stat label="Available USDC" value={val(stats?.psmUsdc)} sub="PSM balance for mUSD swaps" accent="green" />
+          <Stat label="Backing Ratio" value={backing} sub="USDC Reserves" accent="green" />
         </div>
       </section>
 
