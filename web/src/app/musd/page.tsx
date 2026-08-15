@@ -75,6 +75,11 @@ export default function MusdPage() {
               </p>
             </div>
           </div>
+
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200 shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Live on Algorand mainnet
+          </span>
         </div>
       </div>
 
