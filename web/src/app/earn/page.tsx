@@ -81,7 +81,7 @@ export default function EarnPage() {
             <Sprout className="h-7 w-7" />
           </div>
           <div>
-            <h1 className="magnet-glow-soft font-display text-3xl font-bold text-white sm:text-4xl">Earn</h1>
+            <h1 className="magnet-glow-soft font-display text-3xl font-bold text-white sm:text-4xl">Pools</h1>
             <p className="mt-1 max-w-2xl text-sm text-gray-300">
               Provide liquidity to <span className="font-semibold text-white">$U</span> pools on Tinyman and Pact to
               earn trading fees — plus farm rewards whenever incentives are live. APRs update in real time.

@@ -3,7 +3,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Earn — Magnet Strategies",
+  title: "Pools — Magnet Strategies",
   description: "Live yields on $U liquidity pools across Tinyman and Pact — trading-fee APRs plus active farm rewards, updated in real time.",
 };
 
