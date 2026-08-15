@@ -56,12 +56,24 @@ Folks packs the pool's interest data in global-state **byte key `"i"`** (0x69, a
 - You send `fUSDC_amt` fUSDC and request `received_amount` USDC to `receiver` (adapter).
 - SDK sets the app-call **fee to 5000** (covers the pool's inner USDC transfer back). Fee budget is
   the #1 live-test item.
-- **Adapter withdraw strategy (to validate on fork):** to service `pool_withdraw(amount)` — read the
-  fresh index (optionally call `update_pool_interest_indexes(pool_manager)` first), compute
-  `fUSDC_to_send = min(fUSDC_balance, ceil(amount × 1e14 / index))`, and request
+- **Adapter withdraw strategy (validated on testnet; matches live code):** to service
+  `pool_withdraw(amount)` — read the fresh index (optionally call
+  `update_pool_interest_indexes(pool_manager)` first), compute
+  `fUSDC_to_send = min(fUSDC_balance, floor(amount × 1e14 / index))`, and request
   `received_amount = floor(fUSDC_to_send × index / 1e14)` so the request always corresponds to the
-  fUSDC sent (avoids a mismatch revert / excess-refund ambiguity). Full-exit = send all fUSDC. The
-  PSM re-measures the real USDC delta regardless (H-2/M-1), so a best-effort adapter return is safe.
+  fUSDC sent (avoids a mismatch revert / excess-refund ambiguity).
+  **⚠️ `fUSDC_to_send` uses FLOOR, not ceil (`contract.py:183`) — this is deliberate and MUST NOT be
+  "fixed" to ceil.** Floor is the conservative direction: it never over-sends fUSDC and never
+  over-requests USDC, so a recall returns ≤ requested and the PSM re-measures the real USDC delta
+  regardless (H-2/M-1). Ceil would risk over-sending. (Audit L-A: earlier drafts of this doc said
+  ceil; the code is correct, the doc is now reconciled to floor.)
+- **Full-exit / wind-down (audit L-A):** to fully remove the adapter, recall the **entire fUSDC
+  position** (send ALL fUSDC), NOT `amount = deployed_principal`. After index growth, a
+  principal-sized recall leaves sub-µUSDC fUSDC dust, so `recoverable_value()` stays > 0 and the
+  **healthy-path `remove_adapter` blocks** (it requires the adapter fully emptied). Wind down via a
+  full-position recall (drains the dust) or, if the venue is impaired/unresponsive, the impaired
+  escape hatch (`remove_adapter` on an impaired adapter writes off residual principal to
+  `reserve_deficit` without calling the dead adapter — the H-1 fix).
 
 ## update_pool_interest_indexes
 `update_pool_interest_indexes(application pool_manager) void` — refresh the pool's stored indexes to
@@ -97,13 +109,37 @@ could spread references. The frontend must likewise pad the group (extra app cal
 references) whenever `strategy_deploy` / `strategy_recall` / `strategy_harvest` — or a vault borrow,
 since `issue_musd` live-reads the adapter — touches the Folks adapter.
 
-## Open items — remaining (before mainnet)
-0. **Encoding: CLEARED** (static SDK cross-check). **Deposit/withdraw/read: VALIDATED** on testnet.
-- **Dedicated audit** of the FolksAdapter (the venue-specific contract) before whitelisting.
-- **Mainnet canary**: tiny deploy on mainnet Folks, then scale within the buffer/cap.
-1. **Withdraw fUSDC↔received_amount + rounding + excess-refund** behavior (does the pool refund
-   unused fUSDC, or must `received_amount` exactly equal `fUSDC_sent × index/1e14`?).
-2. **Fee budget** across the deposit/withdraw inner groups (SDK uses fee=5000 on withdraw).
-3. **Resource/foreign-array** needs when the PSM→adapter→pool call chain runs inside a vault borrow
-   (`issue_musd` live-reads the adapter): pool app + pool-manager app + USDC + fUSDC references.
-4. A full **deposit → recoverable read (matches SDK) → harvest → recall** cycle vs. real Folks.
+## Internal adversarial audit (2026-08-14) — READY (with gates), NO CRITICAL/HIGH
+A fresh-context adversarial audit of PSMv3 + FolksAdapter (scoped by [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md))
+could not break any of the 3 non-negotiables (1:1 redeemability, invariant integrity, adapter-loss
+bounded to its own principal), demonstrated with probe tests using the MockAdapter attack knobs.
+`recoverable_value()` confirmed non-manipulable (fUSDC balance × Folks index, no override/cache/setter).
+Findings recorded: **M-A** (below), **L-A** (floor/ceil doc reconciled above), **L-B** (in PSM.md —
+`withdraw_usdc` also consumes the venue mark; bounded to that adapter's principal + admin-gated).
+
+## ✅ / 🔒 Pre-whitelist GATES (hard — do not whitelist or deploy reserves until all clear)
+- [x] Encoding cross-checked vs SDK; deposit/withdraw/read VALIDATED on live Folks **testnet**.
+- [x] Internal adversarial audit — READY, no critical/high (above).
+- [ ] **M-A — Folks pool-layout dependency.** `recoverable_value()`/`pool_withdraw` read the deposit
+      index at a hardcoded byte offset (`INDEX_OFFSET=40`) in Folks' pool global-state blob `"i"`.
+      Correct today, and **bounded** (`min(principal, recoverable)` can't inflate backing past
+      principal), but an *external* risk if Folks upgrades/relocates the schema. Before whitelisting:
+      confirm whether the mainnet Folks USDC pool app is upgradeable and whether Folks
+      versions/moves the `"i"` layout; **add an off-chain monitor that alarms if on-chain
+      `recoverable_value()` diverges from an independent SDK computation.**
+- [ ] **Dedicated FolksAdapter audit** (venue-specific contract) — `recoverable_value()` honesty is
+      the #1 target.
+- [ ] **External firm review** of `psm_v3` + `folks_adapter` (real-fund custody warrants it before scale).
+- [ ] **Mainnet canary** — tiny deposit → recoverable read (matches SDK) → harvest → **full-position**
+      recall → remove, against real mainnet Folks, before scaling within the buffer/cap.
+- [ ] **Reproducible TEAL** — pin the puyapy compiler + confirm the deployed adapter/PSM bytecode
+      matches the reviewed source (as done for the vault redeploy).
+- [ ] **Legal counsel sign-off** — yield routes to treasury, never holders (GENIUS Act).
+- [ ] **Launch posture** — buffer ≥ 70%, per-venue cap, Folks-only (single adapter) at launch.
+
+## Runtime notes confirmed on testnet (were open items)
+- **Withdraw / rounding:** floor-based `received_amount` accepted; no excess-refund revert (see the
+  withdraw-strategy note above). **Fee budget:** withdraw fee=5000 OK. **Resources:** the
+  PSM→adapter→pool chain (incl. inside a vault borrow, since `issue_musd` live-reads the adapter)
+  needs group padding with `PSMv3.noop` app calls — the frontend does this via the `hasActiveAdapter`
+  gate. Full deposit → read → harvest → recall cycle validated on Folks testnet.

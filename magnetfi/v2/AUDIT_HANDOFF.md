@@ -61,6 +61,16 @@ math, arc4-array state handling, freezes, access control, and reentrancy-safety 
 twice on the call stack) were checked and held in internal review — re-verify, but spend the most
 effort on the adapter boundary and the redefined invariant.
 
+> **Third pass — pre-scale adversarial audit (2026-08-14): READY, NO CRITICAL/HIGH.** A fresh-context
+> agent re-verified all three non-negotiables with MockAdapter-attack-knob probe tests (1:1
+> redeemability under a drained+locked+impaired venue; lying-adapter loss bounded to its own
+> principal with the buffer byte-identical; harvest residual bounded; `recoverable_value()`
+> non-manipulable). New findings: **M-A** (Folks pool byte-layout dependency — bounded by `min()`;
+> gate = confirm Folks upgradeability + off-chain divergence monitor; see FOLKS_ADAPTER.md),
+> **L-A** (adapter withdraw is floor not ceil — code correct, doc reconciled), **L-B** (`withdraw_usdc`
+> also consumes the venue mark — bounded to that adapter's principal + admin-gated; §5 blast-radius).
+> All §4 fixes below confirmed present in current source.
+
 ## 4. Prior internal review — findings fixed (two fresh-agent passes)
 
 All fixed in-code and covered by named regression tests (§6). Summarized so the auditor can confirm
