@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { EARN_POOLS, type EarnPoolData } from "@/lib/earn";
+import { POOLS, type PoolData } from "@/lib/pools";
 
 // Cache the upstream reads for 60s (server-side; dodges browser CORS + rate limits).
 export const revalidate = 60;
@@ -10,7 +10,7 @@ const PACT = "https://api.pact.fi/api/pools";
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; MagnetStrategies/1.0)" };
 const pct = (v: unknown) => (v == null ? null : Number(v) * 100);
 
-type Metrics = Pick<EarnPoolData, "tvlUsd" | "feeApr" | "farmApr" | "totalApr">;
+type Metrics = Pick<PoolData, "tvlUsd" | "feeApr" | "farmApr" | "totalApr">;
 const EMPTY: Metrics = { tvlUsd: null, feeApr: null, farmApr: null, totalApr: null };
 
 async function fetchTinyman(addr: string): Promise<Metrics> {
@@ -38,8 +38,8 @@ async function fetchPact(id: string): Promise<Metrics> {
 }
 
 export async function GET() {
-  const pools: EarnPoolData[] = await Promise.all(
-    EARN_POOLS.map(async (pool) => {
+  const pools: PoolData[] = await Promise.all(
+    POOLS.map(async (pool) => {
       try {
         const m = pool.dex === "tinyman" ? await fetchTinyman(pool.ref) : await fetchPact(pool.ref);
         return { ...pool, ...m };

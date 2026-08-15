@@ -1,27 +1,27 @@
-// $U liquidity pools showcased on /earn. Live fee + farm APRs are fetched server-side
-// (see app/api/earn/pools/route.ts): Tinyman by pool address, Pact by pool id. Farm APR
+// $U liquidity pools showcased on /pools. Live fee + farm APRs are fetched server-side
+// (see app/api/pools/route.ts): Tinyman by pool address, Pact by pool id. Farm APR
 // appears automatically whenever a DEX runs an incentive program — no manual upkeep.
 
-export type EarnDex = "tinyman" | "pact";
+export type PoolDex = "tinyman" | "pact";
 
-export type EarnPool = {
+export type Pool = {
   id: string;      // internal key
   pair: string;    // display, e.g. "U / tALGO"
   partner: string; // the non-U token unit name
-  dex: EarnDex;
+  dex: PoolDex;
   ref: string;     // tinyman → pool account address; pact → pool id
   addLiquidityUrl: string;
 };
 
-/** Live-fetched numbers merged onto an EarnPool. APRs are percentages (e.g. 36.78). */
-export type EarnPoolData = EarnPool & {
+/** Live-fetched numbers merged onto an Pool. APRs are percentages (e.g. 36.78). */
+export type PoolData = Pool & {
   tvlUsd: number | null;
   feeApr: number | null;
   farmApr: number | null;   // null when no active farm
   totalApr: number | null;
 };
 
-export const EARN_POOLS: EarnPool[] = [
+export const POOLS: Pool[] = [
   // ── Tinyman ──
   {
     id: "u-talgo", pair: "U / tALGO", partner: "tALGO", dex: "tinyman",
@@ -51,4 +51,4 @@ export const EARN_POOLS: EarnPool[] = [
   // Add here once found: { id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", dex, ref, addLiquidityUrl }.
 ];
 
-export const DEX_LABEL: Record<EarnDex, string> = { tinyman: "Tinyman", pact: "Pact" };
+export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "Pact" };

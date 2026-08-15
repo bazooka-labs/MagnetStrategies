@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Live yields on $U liquidity pools across Tinyman and Pact — trading-fee APRs plus active farm rewards, updated in real time.",
 };
 
-export default function EarnLayout({ children }: { children: React.ReactNode }) {
+export default function PoolsLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />

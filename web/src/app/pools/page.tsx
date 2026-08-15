@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Sprout, ArrowUpRight, Info } from "lucide-react";
-import { DEX_LABEL, type EarnPoolData } from "@/lib/earn";
+import { DEX_LABEL, type PoolData } from "@/lib/pools";
 import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
 const fmtApr = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)}%`);
 
-function DexBadge({ dex }: { dex: EarnPoolData["dex"] }) {
+function DexBadge({ dex }: { dex: PoolData["dex"] }) {
   return (
     <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-medium text-gray-300">
       {DEX_LABEL[dex]}
@@ -17,7 +17,7 @@ function DexBadge({ dex }: { dex: EarnPoolData["dex"] }) {
   );
 }
 
-function PoolCard({ p }: { p: EarnPoolData }) {
+function PoolCard({ p }: { p: PoolData }) {
   const farming = p.farmApr != null && p.farmApr > 0;
   return (
     <Panel className="flex flex-col p-6 transition-colors hover:border-magnet-500/30">
@@ -59,12 +59,12 @@ function PoolCard({ p }: { p: EarnPoolData }) {
   );
 }
 
-export default function EarnPage() {
-  const [pools, setPools] = useState<EarnPoolData[] | null>(null);
+export default function PoolsPage() {
+  const [pools, setPools] = useState<PoolData[] | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    fetch("/api/earn/pools")
+    fetch("/api/pools")
       .then((r) => r.json())
       .then((d) => setPools(d.pools))
       .catch(() => setErr(true));
