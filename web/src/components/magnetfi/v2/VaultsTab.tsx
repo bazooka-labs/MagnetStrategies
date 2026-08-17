@@ -101,6 +101,10 @@ export function VaultsTab() {
   const cap = maxBorrow(collateralUsd, POOL.ltvBps);
   const borrowAmt = Math.min(Math.max(0, Number(borrow) || 0), cap || 0);
   const openHf = healthFactor(collateralUsd, borrowAmt, POOL.liqThresholdBps);
+  // The entered borrow is clamped to `cap` (H-1) and everything downstream (preview HF, buffer,
+  // Open) uses the clamped `borrowAmt` — surface when the input exceeds the cap so the field never
+  // silently disagrees. (The contract independently rejects any borrow > cap: "exceeds LTV".)
+  const overCap = cap > 0 && (Number(borrow) || 0) > cap;
 
   async function run(id: string, fn: () => Promise<void>, optAsset?: number) {
     if (!algorand || !address) return;
@@ -247,12 +251,18 @@ export function VaultsTab() {
                   <label className="text-xs font-medium uppercase tracking-wider text-gray-500">Borrow mUSD</label>
                   <button onClick={() => setBorrow(String(Math.floor(cap)))} className="text-xs text-magnet-300 hover:text-magnet-200">Max {formatUsd(cap, 0)}</button>
                 </div>
-                <div className="flex items-center rounded-xl border border-white/10 bg-black/40 px-4 focus-within:border-magnet-500/50">
+                <div className={`flex items-center rounded-xl border bg-black/40 px-4 ${overCap ? "border-yellow-500/60" : "border-white/10 focus-within:border-magnet-500/50"}`}>
                   <input type="number" min={0} value={borrow} onChange={(e) => setBorrow(e.target.value)}
                     className="w-full bg-transparent px-1 py-3 font-mono text-lg text-white outline-none" placeholder="0" />
                   <span className="text-xs text-gray-500">mUSD</span>
                 </div>
-                <p className="mt-1.5 text-xs text-gray-500">{pct(POOL.ltvBps)}% max LTV</p>
+                {overCap ? (
+                  <p className="mt-1.5 text-xs text-yellow-400/90">
+                    Exceeds max borrow — capped at {formatUsd(cap, 0)} ({pct(POOL.ltvBps)}% LTV). The health factor and Open use the capped amount.
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-gray-500">{pct(POOL.ltvBps)}% max LTV</p>
+                )}
               </div>
             </div>
 
