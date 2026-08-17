@@ -27,6 +27,12 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
   returned CLEAN (only medium M1 — liq_threshold must stay ≤ 75%, doc-guarded; on-chain cap to 7500 in
   next redeploy). **P23-01 resolved** (seize-all removes the surplus force-push). Old vault `3657553596`
   retired/paused. Spec + audit record: [LIQUIDATION.md](./LIQUIDATION.md) "SHIPPED" block.
+- ✅ **Mainnet canary — VALIDATED end-to-end (2026-08-17) on vault `3671287267`.** Full loop reconciled
+  on-chain to the µUSD: open + borrow 30 mUSD → PSM mUSD↔USDC swap → ~3 days interest accrual
+  (**0.019481 mUSD = exactly 30 × 8% APR × 2.96 days**, confirming the rate lock + per-second accrual)
+  → close via `pay_interest` (interest charged, 30 principal returned to PSM, overpay buffer refunded,
+  box deleted + MBR returned). PSM invariant held throughout (circulating ≤ USDC reserve). The new
+  penalty/liquidation paths are covered by the test suite + two audits (a normal close never liquidates).
 - ✅ **v3 productive reserves BUILT + testnet-validated** (PSMv3 + FolksAdapter). Design:
   [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3); roadmap:
   [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md); audit package: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
