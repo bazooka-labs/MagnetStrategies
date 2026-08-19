@@ -51,6 +51,25 @@ const DEPLOYMENTS: Record<"mainnet" | "testnet", Deployment> = {
 
 export const ACTIVE: Deployment = DEPLOYMENTS[_NET];
 
+// Per-network on-chain IDs per collateral pool, keyed by VaultType.id. A VaultType present here is
+// WIRED for live on-chain interaction; one absent renders as "coming soon". lpAsaId doubles as the
+// pool_id in the vault contract. (Migrating off the single ACTIVE.poolId/lpAsaId toward multi-pool.)
+export type PoolWiring = { poolId: number; lpAsaId: number };
+const POOL_WIRING: Record<"mainnet" | "testnet", Record<string, PoolWiring>> = {
+  mainnet: {
+    "u-talgo": { poolId: 3163770927, lpAsaId: 3163770927 },
+    // "u-usdc": { poolId: 3673941603, lpAsaId: 3673941603 },  // ← uncomment at on-chain go-live
+  },
+  testnet: {
+    "u-talgo": { poolId: 765095900, lpAsaId: 765095900 },
+  },
+};
+export const ACTIVE_POOL_WIRING = POOL_WIRING[_NET];
+/** On-chain IDs for a collateral pool by VaultType id; undefined if not yet wired ("coming soon"). */
+export function poolWiring(typeId: string): PoolWiring | undefined {
+  return ACTIVE_POOL_WIRING[typeId];
+}
+
 // Folks Finance v2 USDC lending pool — the launch yield venue. Ids verified against live
 // state + the algorand-js-sdk (see FOLKS_ADAPTER.md). Used to deploy the FolksAdapter.
 export type FolksVenue = { pool: number; manager: number; usdc: number; fusdc: number };

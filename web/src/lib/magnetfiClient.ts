@@ -33,6 +33,12 @@ async function loadSpec(which: keyof typeof SPEC): Promise<string> {
 const toBase = (display: number) => BigInt(Math.round(display * 1_000_000));
 const appAddr = (id: number) => algosdk.getApplicationAddress(id).toString();
 
+// Which collateral pool a borrower write targets. Defaults to the primary (U/tALGO) pool so
+// single-pool callers are unchanged; multi-pool callers (VaultsTab) pass each pool explicitly.
+// poolId doubles as the vault's per-pool key; lpAsaId is the LP token deposited/returned.
+export type PoolRef = { poolId: number; lpAsaId: number };
+const DEFAULT_POOL: PoolRef = { poolId: ACTIVE.poolId, lpAsaId: ACTIVE.lpAsaId };
+
 async function vault(al: AlgorandClient, sender: string) {
   return al.client.getAppClientById({ appSpec: await loadSpec("vault"), appId: BigInt(ACTIVE.vault), defaultSender: sender });
 }
@@ -64,7 +70,7 @@ export const optIn = (al: AlgorandClient, sender: string, assetId: number) =>
   al.send.assetOptIn({ sender, assetId: BigInt(assetId) });
 
 /** Open a vault: MBR payment + open_vault + LP deposit (display units). */
-export async function openVault(al: AlgorandClient, sender: string, lpDisplay: number, borrowDisplay: number) {
+export async function openVault(al: AlgorandClient, sender: string, lpDisplay: number, borrowDisplay: number, pool: PoolRef = DEFAULT_POOL) {
   const vc = await vault(al, sender);
   const vAddr = appAddr(ACTIVE.vault);
   // A borrow (>0) issues mUSD, which live-reads any whitelisted adapter through Folks → pad.
@@ -72,31 +78,31 @@ export async function openVault(al: AlgorandClient, sender: string, lpDisplay: n
   const fee = pad > 0 ? BORROW_PAD_FEE : MAX_FEE;
   const grp = al.newGroup()
     .addPayment({ sender, receiver: vAddr, amount: microAlgo(VAULT_MBR) })
-    .addAppCallMethodCall(await vc.params.call({ method: "open_vault", args: [BigInt(ACTIVE.poolId), toBase(borrowDisplay)], maxFee: fee }))
-    .addAssetTransfer({ sender, receiver: vAddr, assetId: BigInt(ACTIVE.lpAsaId), amount: toBase(lpDisplay) });
+    .addAppCallMethodCall(await vc.params.call({ method: "open_vault", args: [BigInt(pool.poolId), toBase(borrowDisplay)], maxFee: fee }))
+    .addAssetTransfer({ sender, receiver: vAddr, assetId: BigInt(pool.lpAsaId), amount: toBase(lpDisplay) });
   await addFillers(grp, al, sender, pad);
   await grp.send(SEND);
 }
 
-export async function borrowMore(al: AlgorandClient, sender: string, amountDisplay: number) {
+export async function borrowMore(al: AlgorandClient, sender: string, amountDisplay: number, pool: PoolRef = DEFAULT_POOL) {
   const vc = await vault(al, sender);
   const pad = await borrowFillers(al);
   if (pad === 0) {
-    await vc.send.call({ method: "borrow_more", args: [BigInt(ACTIVE.poolId), toBase(amountDisplay)], maxFee: MAX_FEE, ...SEND });
+    await vc.send.call({ method: "borrow_more", args: [BigInt(pool.poolId), toBase(amountDisplay)], maxFee: MAX_FEE, ...SEND });
     return;
   }
   const grp = al.newGroup()
-    .addAppCallMethodCall(await vc.params.call({ method: "borrow_more", args: [BigInt(ACTIVE.poolId), toBase(amountDisplay)], maxFee: BORROW_PAD_FEE }));
+    .addAppCallMethodCall(await vc.params.call({ method: "borrow_more", args: [BigInt(pool.poolId), toBase(amountDisplay)], maxFee: BORROW_PAD_FEE }));
   await addFillers(grp, al, sender, pad);
   await grp.send(SEND);
 }
 
 /** Pay interest: mUSD transfer (to vault) BEFORE the app call (P22-01). Overpay reduces principal. */
-export async function payInterest(al: AlgorandClient, sender: string, amountDisplay: number) {
+export async function payInterest(al: AlgorandClient, sender: string, amountDisplay: number, pool: PoolRef = DEFAULT_POOL) {
   const vc = await vault(al, sender);
   await al.newGroup()
     .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.vault), assetId: BigInt(ACTIVE.musd), amount: toBase(amountDisplay) })
-    .addAppCallMethodCall(await vc.params.call({ method: "pay_interest", args: [BigInt(ACTIVE.poolId)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await vc.params.call({ method: "pay_interest", args: [BigInt(pool.poolId)], maxFee: MAX_FEE }))
     .send(SEND);
 }
 
@@ -106,9 +112,9 @@ export async function payInterest(al: AlgorandClient, sender: string, amountDisp
  * contract charges interest first, applies the rest to principal, and refunds any excess
  * (so overpaying to close is safe). Pass the full outstanding principal to close the vault.
  */
-export async function repayPrincipal(al: AlgorandClient, sender: string, principalDisplay: number) {
+export async function repayPrincipal(al: AlgorandClient, sender: string, principalDisplay: number, pool: PoolRef = DEFAULT_POOL) {
   const vc = await vault(al, sender);
-  const pos = await getVaultPosition(al.client.algod, sender);
+  const pos = await getVaultPosition(al.client.algod, sender, pool.poolId);
   if (!pos) throw new Error("no vault position");
   const nowSec = Math.floor(Date.now() / 1000);
   const liveInterest = projectedAccruedInterest(
@@ -119,15 +125,15 @@ export async function repayPrincipal(al: AlgorandClient, sender: string, princip
   const payDisplay = interestCover + principalDisplay;
   await al.newGroup()
     .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.vault), assetId: BigInt(ACTIVE.musd), amount: toBase(payDisplay) })
-    .addAppCallMethodCall(await vc.params.call({ method: "pay_interest", args: [BigInt(ACTIVE.poolId)], maxFee: MAX_FEE }))
+    .addAppCallMethodCall(await vc.params.call({ method: "pay_interest", args: [BigInt(pool.poolId)], maxFee: MAX_FEE }))
     .send(SEND);
 }
 
-export async function addCollateral(al: AlgorandClient, sender: string, lpDisplay: number) {
+export async function addCollateral(al: AlgorandClient, sender: string, lpDisplay: number, pool: PoolRef = DEFAULT_POOL) {
   const vc = await vault(al, sender);
   await al.newGroup()
-    .addAppCallMethodCall(await vc.params.call({ method: "add_collateral", args: [BigInt(ACTIVE.poolId)], maxFee: MAX_FEE }))
-    .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.vault), assetId: BigInt(ACTIVE.lpAsaId), amount: toBase(lpDisplay) })
+    .addAppCallMethodCall(await vc.params.call({ method: "add_collateral", args: [BigInt(pool.poolId)], maxFee: MAX_FEE }))
+    .addAssetTransfer({ sender, receiver: appAddr(ACTIVE.vault), assetId: BigInt(pool.lpAsaId), amount: toBase(lpDisplay) })
     .send(SEND);
 }
 

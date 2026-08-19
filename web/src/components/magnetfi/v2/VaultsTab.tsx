@@ -6,10 +6,11 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import {
   VAULT_TYPES, PROTOCOL_LIVE, pct, formatUsd, maxBorrow, healthFactor, liquidationBuffer,
-  projectedAccruedInterest,
+  projectedAccruedInterest, poolWiring, type VaultType,
 } from "@/lib/magnetfi";
 import {
   makeAlgorand, optIn, openVault, payInterest, repayPrincipal, borrowMore, addCollateral,
+  type PoolRef,
 } from "@/lib/magnetfiClient";
 import {
   getOracle, getVaultPosition, getBalances,
@@ -17,7 +18,11 @@ import {
 } from "@/lib/magnetfiReads";
 import { Panel, PairGlyph, PrimaryButton } from "./shared";
 
-const POOL = VAULT_TYPES.find((v) => v.status === "launching")!; // U/tALGO
+// Collateral pools with on-chain wiring — one live vault panel each. A VaultType without wiring
+// (poolWiring undefined) is not yet configured on-chain and is omitted here.
+const LIVE_VAULTS = VAULT_TYPES
+  .map((vt) => ({ vt, pool: poolWiring(vt.id) }))
+  .filter((x): x is { vt: VaultType; pool: PoolRef } => !!x.pool);
 
 function hfColor(hf: number): string {
   if (hf === Infinity) return "text-gray-400";
@@ -26,7 +31,7 @@ function hfColor(hf: number): string {
   return "text-red-400";
 }
 
-// Hoisted to module scope (not declared inside VaultsTab) so the 60s live-interest tick —
+// Hoisted to module scope (not declared inside a panel) so the 60s live-interest tick —
 // or any parent re-render — does NOT remount its <input> and steal focus mid-typing.
 function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM, run, busy }: {
   id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
@@ -62,7 +67,10 @@ function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM,
   );
 }
 
-export function VaultsTab() {
+// One self-contained vault for a single collateral pool: reads its own oracle/position/balances
+// (parameterized by pool.poolId / pool.lpAsaId) and routes every write to that pool. All state is
+// local so multiple panels on the page are fully independent.
+function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
   const [pos, setPos] = useState<VaultPosition | null>(null);
@@ -83,13 +91,13 @@ export function VaultsTab() {
     if (!PROTOCOL_LIVE || !algodClient) return;
     try {
       const [o, p, b] = await Promise.all([
-        getOracle(algodClient),
-        address ? getVaultPosition(algodClient, address) : Promise.resolve(null),
-        address ? getBalances(algodClient, address) : Promise.resolve(null),
+        getOracle(algodClient, pool.poolId),
+        address ? getVaultPosition(algodClient, address, pool.poolId) : Promise.resolve(null),
+        address ? getBalances(algodClient, address, pool.lpAsaId) : Promise.resolve(null),
       ]);
       setOracle(o); setPos(p); setBal(b);
     } catch { /* ignore */ }
-  }, [algodClient, address]);
+  }, [algodClient, address, pool.poolId, pool.lpAsaId]);
   useEffect(() => { refresh(); }, [refresh]);
 
   const price = oracle?.price ?? 0;
@@ -98,9 +106,9 @@ export function VaultsTab() {
   // open-form math
   const lpAmt = Math.max(0, Number(lp) || 0);
   const collateralUsd = lpAmt * price;
-  const cap = maxBorrow(collateralUsd, POOL.ltvBps);
+  const cap = maxBorrow(collateralUsd, vt.ltvBps);
   const borrowAmt = Math.min(Math.max(0, Number(borrow) || 0), cap || 0);
-  const openHf = healthFactor(collateralUsd, borrowAmt, POOL.liqThresholdBps);
+  const openHf = healthFactor(collateralUsd, borrowAmt, vt.liqThresholdBps);
   // The entered borrow is clamped to `cap` (H-1) and everything downstream (preview HF, buffer,
   // Open) uses the clamped `borrowAmt` — surface when the input exceeds the cap so the field never
   // silently disagrees. (The contract independently rejects any borrow > cap: "exceeds LTV".)
@@ -114,7 +122,7 @@ export function VaultsTab() {
       // borrow more). Fetch balances if not loaded yet so a required opt-in is never skipped.
       if (optAsset === MUSD_ID) {
         let b = bal;
-        if (!b && algodClient) b = await getBalances(algodClient, address);
+        if (!b && algodClient) b = await getBalances(algodClient, address, pool.lpAsaId);
         if (b && !b.optedMusd) { await optIn(algorand, address, MUSD_ID); toast.success("Opted into mUSD"); }
       }
       await fn();
@@ -144,17 +152,17 @@ export function VaultsTab() {
     : (pos?.accruedInterest ?? 0);
   const posValue = pos ? pos.lpAmount * price : 0;
   const posDebt = pos ? pos.musdBorrowed + liveInterest : 0;
-  const posHf = pos ? healthFactor(posValue, posDebt, POOL.liqThresholdBps) : Infinity;
+  const posHf = pos ? healthFactor(posValue, posDebt, vt.liqThresholdBps) : Infinity;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Intro + oracle */}
       <Panel className="p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <PairGlyph tokens={POOL.tokens} />
+            <PairGlyph tokens={vt.tokens} />
             <div>
-              <h2 className="font-display text-lg font-semibold text-white">{POOL.pair} vault</h2>
+              <h2 className="font-display text-lg font-semibold text-white">{vt.pair} vault</h2>
               <p className="mt-0.5 text-sm text-gray-400">
                 Borrow mUSD against your LP — interest-only, repay any time.
               </p>
@@ -174,15 +182,11 @@ export function VaultsTab() {
         </div>
       </Panel>
 
-      {!PROTOCOL_LIVE && (
-        <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
-      )}
-
       {/* Existing position */}
       {PROTOCOL_LIVE && pos && (
         <Panel className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-white">Your {POOL.pair} vault</p>
+            <p className="text-sm font-semibold text-white">Your {vt.pair} vault</p>
             <button onClick={refresh} className="text-gray-500 hover:text-white"><RefreshCw className="h-3.5 w-3.5" /></button>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -207,11 +211,11 @@ export function VaultsTab() {
             <div className="mt-4">
               <div className="mb-1.5 flex items-center justify-between text-[11px]">
                 <span className="uppercase tracking-wider text-gray-500">Liquidation buffer</span>
-                <span className="font-mono text-gray-400">{formatUsd(Math.min(100, liquidationBuffer(posValue, posDebt, POOL.liqThresholdBps) * 100), 1)}% price drop to liquidation</span>
+                <span className="font-mono text-gray-400">{formatUsd(Math.min(100, liquidationBuffer(posValue, posDebt, vt.liqThresholdBps) * 100), 1)}% price drop to liquidation</span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div className={`h-full rounded-full transition-all ${posHf >= 1.5 ? "bg-green-400" : posHf >= 1.15 ? "bg-yellow-400" : "bg-red-400"}`}
-                  style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(posValue, posDebt, POOL.liqThresholdBps) * 100))}%` }} />
+                  style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(posValue, posDebt, vt.liqThresholdBps) * 100))}%` }} />
               </div>
             </div>
           )}
@@ -219,10 +223,10 @@ export function VaultsTab() {
             <p className="mt-3 text-xs text-red-400">In liquidation — borrower actions are paused until settlement completes.</p>
           )}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ManageAction id="pay" label="Pay interest" unit="mUSD" maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0} onRun={(v) => payInterest(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="repay" label="Repay / close" unit="mUSD" max={pos.musdBorrowed} maxFill={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="pay" label="Pay interest" unit="mUSD" maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0} onRun={(v) => payInterest(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="repay" label="Repay / close" unit="mUSD" max={pos.musdBorrowed} maxFill={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
           </div>
           <p className="mt-3 text-[11px] text-gray-600">Tip: “Repay / close” clears accrued interest automatically — enter your full borrowed amount to close the vault and reclaim your LP.</p>
         </Panel>
@@ -231,7 +235,7 @@ export function VaultsTab() {
       {/* Open new vault */}
       {PROTOCOL_LIVE && !pos && (
         <Panel className="p-6">
-          <p className="mb-4 text-sm font-semibold text-white">Open a vault</p>
+          <p className="mb-4 text-sm font-semibold text-white">Open a {vt.pair} vault</p>
           <div className="grid gap-8 lg:grid-cols-2">
             <div className="space-y-5">
               <div>
@@ -258,10 +262,10 @@ export function VaultsTab() {
                 </div>
                 {overCap ? (
                   <p className="mt-1.5 text-xs text-yellow-400/90">
-                    Exceeds max borrow — capped at {formatUsd(cap, 0)} ({pct(POOL.ltvBps)}% LTV). The health factor and Open use the capped amount.
+                    Exceeds max borrow — capped at {formatUsd(cap, 0)} ({pct(vt.ltvBps)}% LTV). The health factor and Open use the capped amount.
                   </p>
                 ) : (
-                  <p className="mt-1.5 text-xs text-gray-500">{pct(POOL.ltvBps)}% max LTV</p>
+                  <p className="mt-1.5 text-xs text-gray-500">{pct(vt.ltvBps)}% max LTV</p>
                 )}
               </div>
             </div>
@@ -274,23 +278,23 @@ export function VaultsTab() {
               {borrowAmt > 0 && (
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                   <div className={`h-full rounded-full transition-all ${openHf >= 1.5 ? "bg-green-400" : openHf >= 1.15 ? "bg-yellow-400" : "bg-red-400"}`}
-                    style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(collateralUsd, borrowAmt, POOL.liqThresholdBps) * 100))}%` }} />
+                    style={{ width: `${Math.max(4, Math.min(100, liquidationBuffer(collateralUsd, borrowAmt, vt.liqThresholdBps) * 100))}%` }} />
                 </div>
               )}
               <div className="flex items-center justify-between border-t border-white/5 pt-3 text-sm">
                 <span className="text-gray-400">Liquidation buffer</span>
-                <span className="font-mono text-white">{borrowAmt > 0 ? `${formatUsd(liquidationBuffer(collateralUsd, borrowAmt, POOL.liqThresholdBps) * 100, 1)}% drop` : "—"}</span>
+                <span className="font-mono text-white">{borrowAmt > 0 ? `${formatUsd(liquidationBuffer(collateralUsd, borrowAmt, vt.liqThresholdBps) * 100, 1)}% drop` : "—"}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Interest / year</span>
-                <span className="font-mono text-white">{formatUsd(borrowAmt * (POOL.rateBps / 10_000))} mUSD ({pct(POOL.rateBps)}%)</span>
+                <span className="font-mono text-white">{formatUsd(borrowAmt * (vt.rateBps / 10_000))} mUSD ({pct(vt.rateBps)}%)</span>
               </div>
               <div className="flex items-start gap-2 rounded-lg border border-white/5 bg-black/30 px-3 py-2.5">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-400" />
                 <p className="text-xs leading-relaxed text-gray-500">Liquidation starts below a 1.00 health factor. Repay or add collateral to stay above it.</p>
               </div>
               <PrimaryButton
-                onClick={() => run("open", () => openVault(algorand!, address!, lpAmt, borrowAmt), borrowAmt > 0 ? MUSD_ID : undefined)}
+                onClick={() => run("open", () => openVault(algorand!, address!, lpAmt, borrowAmt, pool), borrowAmt > 0 ? MUSD_ID : undefined)}
                 disabled={!isConnected || busy !== null || lpAmt <= 0 || (borrowAmt > 0 && !fresh) || (!!bal && bal.lp < lpAmt)}>
                 {busy === "open" ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…</span>
                   : !isConnected ? "Connect wallet to borrow"
@@ -305,7 +309,21 @@ export function VaultsTab() {
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
 
+export function VaultsTab() {
+  if (!PROTOCOL_LIVE) {
+    return (
+      <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
+    );
+  }
+  return (
+    <div className="space-y-10">
+      {LIVE_VAULTS.map(({ vt, pool }) => (
+        <VaultPanel key={vt.id} vt={vt} pool={pool} />
+      ))}
     </div>
   );
 }

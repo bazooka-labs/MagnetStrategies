@@ -25,15 +25,17 @@ function globalUint(app: algosdk.modelsv2.Application, keyBytes: Uint8Array): nu
   return undefined;
 }
 
-const poolKey = (prefix: string) =>
-  new Uint8Array([...Buffer.from(prefix), ...algosdk.encodeUint64(BigInt(ACTIVE.poolId))]);
+// Pool-specific reads/writes take a poolId; it defaults to the primary (U/tALGO) pool so existing
+// single-pool callers are unchanged, while multi-pool callers (VaultsTab) pass each pool explicitly.
+const poolKey = (prefix: string, poolId: number = ACTIVE.poolId) =>
+  new Uint8Array([...Buffer.from(prefix), ...algosdk.encodeUint64(BigInt(poolId))]);
 
 export type OracleInfo = { price: number; ts: number; fresh: boolean };
 
-export async function getOracle(algod: algosdk.Algodv2): Promise<OracleInfo> {
+export async function getOracle(algod: algosdk.Algodv2, poolId: number = ACTIVE.poolId): Promise<OracleInfo> {
   const app = await algod.getApplicationByID(ACTIVE.oracle).do();
-  const price = globalUint(app, poolKey("lp_price_")) ?? 0;
-  const ts = globalUint(app, poolKey("lp_ts_")) ?? 0;
+  const price = globalUint(app, poolKey("lp_price_", poolId)) ?? 0;
+  const ts = globalUint(app, poolKey("lp_ts_", poolId)) ?? 0;
   const now = Math.floor(Date.now() / 1000);
   return { price: price / 1_000_000, ts, fresh: ts > 0 && now - ts <= ORACLE_FRESHNESS };
 }
@@ -61,11 +63,11 @@ export type VaultPosition = {
   rateBps: number; lastAccrualTs: number; lastPaymentTs: number; vaultState: number;
 };
 
-export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string): Promise<VaultPosition | null> {
+export async function getVaultPosition(algod: algosdk.Algodv2, borrower: string, poolId: number = ACTIVE.poolId): Promise<VaultPosition | null> {
   const name = new Uint8Array([
     ...Buffer.from("vault_"),
     ...algosdk.decodeAddress(borrower).publicKey,
-    ...algosdk.encodeUint64(BigInt(ACTIVE.poolId)),
+    ...algosdk.encodeUint64(BigInt(poolId)),
   ]);
   try {
     const box = await algod.getApplicationBoxByName(ACTIVE.vault, name).do();
@@ -207,16 +209,16 @@ export type Balances = {
   optedMusd: boolean; optedUsdc: boolean; optedLp: boolean;
 };
 
-export async function getBalances(algod: algosdk.Algodv2, address: string): Promise<Balances> {
+export async function getBalances(algod: algosdk.Algodv2, address: string, lpAsaId: number = ACTIVE.lpAsaId): Promise<Balances> {
   const info = await algod.accountInformation(address).do();
   const held = new Map((info.assets ?? []).map((x) => [Number(x.assetId), Number(x.amount)]));
   return {
     algo: Number(info.amount) / 1_000_000,
     musd: fromBase(held.get(ACTIVE.musd) ?? 0),
     usdc: fromBase(held.get(ACTIVE.usdc) ?? 0),
-    lp: fromBase(held.get(ACTIVE.lpAsaId) ?? 0),
+    lp: fromBase(held.get(lpAsaId) ?? 0),
     optedMusd: held.has(ACTIVE.musd),
     optedUsdc: held.has(ACTIVE.usdc),
-    optedLp: held.has(ACTIVE.lpAsaId),
+    optedLp: held.has(lpAsaId),
   };
 }
