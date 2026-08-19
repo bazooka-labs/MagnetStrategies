@@ -51,6 +51,18 @@
    "max_price": 900000,
    "compx_check_asset_id": 3081853135,
    "label": "U/tALGO"
+  },
+  {
+   "pool_id": 3673941603,
+   "pool_address": "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
+   "asset_a_id": 3081853135,
+   "asset_a_decimals": 5,
+   "asset_b_id": 31566704,
+   "asset_b_decimals": 6,
+   "min_price": 1200000,
+   "max_price": 5000000,
+   "compx_check_asset_id": 3081853135,
+   "label": "U/USDC"
   }
  ]
 }
