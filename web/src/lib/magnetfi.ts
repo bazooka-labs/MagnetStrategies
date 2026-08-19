@@ -58,7 +58,7 @@ export type PoolWiring = { poolId: number; lpAsaId: number };
 const POOL_WIRING: Record<"mainnet" | "testnet", Record<string, PoolWiring>> = {
   mainnet: {
     "u-talgo": { poolId: 3163770927, lpAsaId: 3163770927 },
-    // "u-usdc": { poolId: 3673941603, lpAsaId: 3673941603 },  // ← uncomment at on-chain go-live
+    "u-usdc": { poolId: 3673941603, lpAsaId: 3673941603 },  // live 2026-08-19 (oracle posting, vault configured)
   },
   testnet: {
     "u-talgo": { poolId: 765095900, lpAsaId: 765095900 },
