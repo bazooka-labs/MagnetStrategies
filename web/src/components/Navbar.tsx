@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/magnetfi", label: "Bank", external: false },
   { href: "/musd", label: "mUSD", external: false },
   { href: "/pools", label: "Pools", external: false },
+  { href: "/vote", label: "Vote", external: false },
   { href: "/contact", label: "Contact", external: false },
 ];
 
