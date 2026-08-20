@@ -21,7 +21,7 @@ export const UVOTE_NETWORK = _NET;
 // Live app id per network. 0 until deployed via the admin Deploy handshake — the
 // admin pastes the printed App ID here and redeploys the site (mirrors MagnetFi).
 const UVOTE_APP_IDS: Record<"mainnet" | "testnet", number> = {
-  mainnet: 0,
+  mainnet: 3679681107,
   testnet: 0,
 };
 export const UVOTE_APP_ID = UVOTE_APP_IDS[_NET];
