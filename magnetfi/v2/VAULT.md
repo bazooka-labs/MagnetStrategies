@@ -12,12 +12,18 @@ All vault borrowing is overcollateralized. No undercollateralized positions, no 
 
 Each vault type corresponds to a specific Tinyman LP pool. Risk parameters differ by pair.
 
-| Vault Type | LP Pair | LTV | Liquidation Threshold | LP Buffer at Max LTV | Interest Rate (APR) |
-|---|---|---|---|---|---|
-| U/USDC LP | $U + USDC | 65% | 75% | ~13% LP drop (~27% $U move) | ~5% |
-| U/ALGO LP | $U + ALGO | 60% | 75% | ~20% LP drop | ~8% |
-| U/tALGO LP | $U + tALGO (liquid staked) | 60% | 75% | ~20% LP drop | ~8% |
-| U/wBTC LP | $U + wBTC | 60% | 75% | ~20% LP drop | ~8% |
+| Vault Type | LP Pair | LTV | Liquidation Threshold | LP Buffer at Max LTV | Interest Rate (APR) | Status |
+|---|---|---|---|---|---|---|
+| U/tALGO LP | $U + tALGO (liquid staked) | 60% | 75% | ~20% LP drop | 8% | ✅ **LIVE** (pool/LP `3163770927`) |
+| U/USDC LP | $U + USDC | 65% | 75% | ~13% LP drop (~27% $U move) | 5% | ✅ **LIVE** (pool/LP `3673941603`, added 2026-08-19) |
+| U/ALGO LP | $U + ALGO | 60% | 75% | ~20% LP drop | ~8% | planned |
+| U/wBTC LP | $U + wBTC | 60% | 75% | ~20% LP drop | ~8% | planned |
+
+**Adding a collateral vault needs NO redeploy** (the vault's global-state schema was sized to 12 pools).
+U/USDC was added entirely via admin ops on the live stack: oracle `add_pool(lp_asa_id, price)` + the
+bot config, then vault `set_liq_threshold → set_ltv → set_rate → set_lp_asa_id → opt_in_asset` (threshold
+before LTV), then flip the frontend `POOL_WIRING` entry. ⚠️ Every pool's liquidation threshold **must
+stay 75%** — the tiered seize %s/penalties are calibrated only for 75% (see LIQUIDATION.md M1).
 
 **LTV:** the max mUSD a user can borrow as a fraction of their LP position value.
 **Liquidation threshold:** the collateral ratio at which health factor hits 1.0 and admin may liquidate.

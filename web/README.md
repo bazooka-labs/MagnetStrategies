@@ -28,8 +28,11 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
   modal (`LpVaultLearnMore`) holding the full LP-vault mechanics + liquidation ladder.
 - **Single Token Markets** (`CompXMarkets`) — CompX-hosted $U/USDC lending pools (read-only SDK data
   + deep-link to transact; CompX custodies these, MagnetFi adds no contract surface).
-- **LP Collateral Vaults** (`VaultsTab`) — the borrow flow: open/manage a vault, live-projected
-  accrued interest, liquidation-buffer bar, and pay/repay/borrow/add actions with Max buttons.
+- **LP Collateral Vaults** (`VaultsTab`) — **multi-pool**: renders one self-contained `VaultPanel` per
+  wired collateral pool (U/tALGO + U/USDC live), each with its own oracle price, open form, live-projected
+  accrued interest, liquidation-buffer bar, and pay/repay/borrow/add actions. Which pools are wired lives
+  in `POOL_WIRING` (`magnetfi.ts`); reads/writes are parameterized by pool. Adding a pool = an admin-ops
+  config pass + flipping its `POOL_WIRING` entry — **no contract redeploy** (12-pool schema headroom).
 - **mUSD** — deep-links to `/musd` (the swap is no longer rendered inline).
 - **Admin** (gated to `MAGNETFI_ADMIN_ADDRESS`) — see below.
 
@@ -47,13 +50,16 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
 
 ## Frontend architecture — `src/lib/`
 - **`magnetfi.ts`** — config + pure helpers. `DEPLOYMENTS` (per-network app/asset IDs), `ACTIVE`,
-  `ACTIVE_FOLKS`, `MAGNETFI_ADMIN_ADDRESS`, `VAULT_TYPES`, and `healthFactor` / `maxBorrow` /
-  `liquidationBuffer` / `projectedAccruedInterest` / `pct` / `formatUsd`. **Update live IDs here.**
+  `ACTIVE_FOLKS`, `MAGNETFI_ADMIN_ADDRESS`, `VAULT_TYPES`, **`POOL_WIRING` / `poolWiring(id)`** (per-pool
+  on-chain ids — which collateral vaults are live), and `healthFactor` / `maxBorrow` /
+  `liquidationBuffer` / `projectedAccruedInterest` / `pct` / `formatUsd`. **Update live IDs + wiring here.**
 - **`magnetfiReads.ts`** — read-only chain queries (algosdk): `getProtocolStats`, `getStrategyStats`,
-  `getVaultPosition`, `getTotalVaultDebt`, `getBalances`, oracle reads.
+  `getVaultPosition`, `getTotalVaultDebt`, `getBalances`, oracle reads. Pool-specific reads take an
+  optional poolId/lpAsaId (defaults to the primary pool).
 - **`magnetfiClient.ts`** — borrower writes (algokit-utils + Pera): `openVault`, `borrowMore`,
   `payInterest`, `repayPrincipal` (routes through `pay_interest`), `addCollateral`, `mintMusd`,
-  `redeemMusd`.
+  `redeemMusd`. Vault writes take an optional `pool: PoolRef` (defaults to the primary pool) so each
+  `VaultPanel` targets its own pool.
 - **`magnetfiOps.ts`** — admin ops. **`magnetfiDeploy.ts`** — deploy/config helpers (used by the
   retained wizards).
 

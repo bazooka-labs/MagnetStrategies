@@ -5,15 +5,15 @@ finding that required a *code* change is already resolved and recorded in [AUDIT
 The three contracts compile clean, have been through three independent fresh-context
 reviews + adversarial testing, and pass 67 integration/adversarial + 30 oracle-bot tests.
 
-_Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated._
+_Last updated: 2026-08-19. Live on mainnet with U/tALGO **and U/USDC** collateral vaults; both borrow loops validated. Liquidation-penalty vault `3671287267` is the live vault._
 
 ## Deployment status
 - ✅ **mUSD ASA on mainnet:** `3615600399`.
 - ✅ **Full UI live** — `/magnetfi` Bank (Overview / Single Token Markets / LP Collateral Vaults / mUSD) + gated admin (ops console + Productive Reserves); standalone `/musd` and `/about` pages. Borrower tabs wired to live on-chain data + transactions. Frontend reference: [web/README.md](../../web/README.md).
 - ✅ **Testnet rehearsal complete** — deploy wizard ran end to end (incl. the 48h timelock). Testnet apps: Oracle `765096480`, PSM `765096481`, Vault `765096491`; test assets mUSD `765095889`, USDC `765095890`, LP `765095900`.
-- ✅ **Live on mainnet.** Core protocol (Oracle / PSMv3 / Vault) deployed and operating on U/tALGO
-  collateral; v3 productive-reserves PSM live. Folks yield adapter not yet whitelisted. (Live app
-  IDs are in `web/src/lib/magnetfi.ts` `DEPLOYMENTS.mainnet` and the oracle bot config.)
+- ✅ **Live on mainnet.** Core protocol (Oracle / PSMv3 / Vault) deployed and operating on **U/tALGO +
+  U/USDC** collateral; v3 productive-reserves PSM live. Folks yield adapter not yet whitelisted. (Live app
+  IDs are in `web/src/lib/magnetfi.ts` `DEPLOYMENTS.mainnet` + `POOL_WIRING`, and the oracle bot config.)
 - ✅ **Repayment model consolidated + vault redeployed.** `pay_interest()` is now the single
   repayment path (always charges interest before touching principal) with clamp-and-refund on
   overpay; the standalone `repay_principal()` method was removed. The vault was redeployed with
@@ -33,6 +33,17 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
   → close via `pay_interest` (interest charged, 30 principal returned to PSM, overpay buffer refunded,
   box deleted + MBR returned). PSM invariant held throughout (circulating ≤ USDC reserve). The new
   penalty/liquidation paths are covered by the test suite + two audits (a normal close never liquidates).
+- ✅ **Second collateral vault — U/USDC — ADDED WITH NO REDEPLOY + VALIDATED (2026-08-19).** First use of
+  the 12-pool schema headroom: registered entirely via admin ops on the live stack — oracle
+  `add_pool(3673941603)` + anchor; vault `set_liq_threshold 7500 → set_ltv 6500 → set_rate 500 →
+  set_lp_asa_id → opt_in_asset`; oracle bot config gained the pool (dry-run + live: derived $U
+  cross-checks CompX <0.1% and the U/USDC-direct $U matches the reference graph to ~0.06% — a stronger
+  $U anchor). Frontend made **multi-pool** (per-pool wiring map; `VaultPanel` reads/writes parameterized
+  by pool; fresh review CLEAN). Canary reconciled on-chain: 75 U/USDC LP collateral → borrow 5 mUSD at
+  the **5% rate** (vs U/tALGO 8%, confirming per-pool params) → close (principal→PSM, LP + MBR returned,
+  box deleted); PSM invariant held. **U/USDC LP token/pool_id = `3673941603`**; Tinyman v2 pool acct
+  `ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI`; params 65% LTV / 75% liq / 5% APR.
+  Note: the MBR (`46,500 µALGO`) is a refundable box deposit — paid on open, returned on close, both pools.
 - ✅ **v3 productive reserves BUILT + testnet-validated** (PSMv3 + FolksAdapter). Design:
   [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3); roadmap:
   [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md); audit package: [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md).
@@ -52,7 +63,7 @@ _Last updated: 2026-08-03. Live on mainnet with U/tALGO; first borrows validated
   - [x] U/tALGO LP token ASA = `3163770927` (used as `lp_asa_id` and `pool_id`)
   - [x] AMM validator app id = `1002541853` (mainnet) confirmed
 
-### Oracle bot config — ✅ rebuilt on-chain (Pass 25); `config.json` filled for U/tALGO
+### Oracle bot config — ✅ rebuilt on-chain (Pass 25); `config.json` prices **U/tALGO + U/USDC**
 - [x] Pricing is now **fully on-chain** (no external price API): reference-pool graph over Tinyman v2 reserves (`ALGO←ALGO/USDC`, `tALGO←tALGO/ALGO`, `U←U/tALGO`), rooted at USDC. Resolves P19-02.
 - [x] **CompX Flux oracle** (mainnet `3307588794`) wired as the second-source divergence guard; verified live (derived vs CompX Δ0.86%). Sanity bounds set for U/tALGO.
 - [x] Verified against mainnet via `--dry-run` (LP price `675635` ≈ $0.6756); test suite 30→42, all green.

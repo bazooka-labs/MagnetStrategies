@@ -72,14 +72,14 @@ The PSM is a protocol-owned fixed-rate swap module. It is not an AMM.
 
 Each vault is an LP collateral position. A borrower deposits a Tinyman LP token and mints mUSD up to the vault's LTV limit.
 
-### Vault Types (planned)
+### Vault Types
 
-| Vault | LP Pair | LTV | Liq. Threshold | Interest Rate (APR) |
-|---|---|---|---|---|
-| U/USDC LP | $U + USDC | 65% | 75% | ~5% |
-| U/ALGO LP | $U + ALGO | 60% | 75% | ~8% |
-| U/tALGO LP | $U + tALGO | 60% | 75% | ~8% |
-| U/wBTC LP | $U + wBTC | 60% | 75% | ~8% |
+| Vault | LP Pair | LTV | Liq. Threshold | Interest Rate (APR) | Status |
+|---|---|---|---|---|---|
+| U/tALGO LP | $U + tALGO | 60% | 75% | 8% | ✅ live |
+| U/USDC LP | $U + USDC | 65% | 75% | 5% | ✅ live |
+| U/ALGO LP | $U + ALGO | 60% | 75% | ~8% | planned |
+| U/wBTC LP | $U + wBTC | 60% | 75% | ~8% | planned |
 
 ### Repayment Model
 

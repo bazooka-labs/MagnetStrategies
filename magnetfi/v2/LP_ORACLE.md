@@ -61,12 +61,15 @@ The LP oracle is a separate contract from the v1 price oracle. It stores one pri
 
 **Supported pools (initial):**
 
-| Pool | Pool App ID | Assets |
-|---|---|---|
-| U/ALGO | TBD | $U + ALGO |
-| U/tALGO | TBD | $U + tALGO |
-| U/USDC | TBD | $U + USDC |
-| U/wBTC | TBD | $U + wBTC (bridged; verify ASA decimal count before deploy — see AUD-006) |
+Pool app id = the Tinyman v2 LP token ASA (used as `pool_id` on-chain). Live pools are registered on
+the oracle via `add_pool` and priced by the bot (`oracle_bot/config.json`).
+
+| Pool | Pool App ID (LP ASA) | Assets | Status |
+|---|---|---|---|
+| U/tALGO | `3163770927` | $U + tALGO | ✅ live |
+| U/USDC | `3673941603` | $U + USDC | ✅ live (2026-08-19) |
+| U/ALGO | TBD | $U + ALGO | planned |
+| U/wBTC | TBD | $U + wBTC (bridged; verify ASA decimal count before deploy — see AUD-006) | planned |
 
 ---
 
