@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Vote as VoteIcon, Lock, Sparkles } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
+import { Panel } from "@/components/magnetfi/v2/shared";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
 import { listProposals, getUBalance } from "@/lib/uvoteReads";
@@ -44,19 +45,32 @@ export default function VotePage() {
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
         </div>
-        <div className="relative flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-magnet-600 to-magnet-800 shadow-lg shadow-magnet-900/50 shrink-0">
-            <VoteIcon className="h-7 w-7 text-white drop-shadow" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-magnet-600 to-magnet-800 shadow-lg shadow-magnet-900/50 shrink-0">
+              <VoteIcon className="h-7 w-7 text-white drop-shadow" />
+            </div>
+            <div>
+              <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">UVote</h1>
+              <p className="mt-1 max-w-xl text-sm text-gray-300">
+                Founder-led governance. Lock $U to help shape protocol direction.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white sm:text-3xl">UVote</h1>
-            <p className="mt-1 text-sm text-gray-400">
-              Founder-led governance. Lock $U to help shape protocol direction.
-            </p>
-          </div>
-        </div>
 
-        <p className="relative mt-5 max-w-2xl text-sm leading-relaxed text-gray-400">
+          {UVOTE_LIVE && (
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Live on Algorand mainnet
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* How it works */}
+      <Panel className="mb-8 p-6 sm:p-8">
+        <h2 className="mb-3 font-display text-lg font-semibold text-white">How it works</h2>
+        <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
           The admin posts a direction question — liquidity, parameters, or where the protocol invests next.
           Holders signal by locking whole $U for the 7-day window; your $U (and a small refundable box
           deposit) come back in full when the vote closes. Votes are <span className="text-gray-300">advisory</span>:
@@ -64,13 +78,13 @@ export default function VotePage() {
         </p>
 
         {isConnected && (
-          <div className="relative mt-5 inline-flex items-center gap-2 rounded-full border border-magnet-500/20 bg-magnet-950/40 px-3 py-1.5 text-xs">
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-magnet-500/20 bg-magnet-950/40 px-3 py-1.5 text-xs">
             <Lock className="h-3.5 w-3.5 text-magnet-400" />
             <span className="text-gray-400">Your voting power</span>
             <span className="font-mono font-semibold text-white">{formatU(uBalance)} $U</span>
           </div>
         )}
-      </div>
+      </Panel>
 
       {/* Admin */}
       {isAdmin && (

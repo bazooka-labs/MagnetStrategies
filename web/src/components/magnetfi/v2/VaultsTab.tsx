@@ -16,7 +16,7 @@ import {
   getOracle, getVaultPosition, getBalances,
   MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
 } from "@/lib/magnetfiReads";
-import { Panel, PairGlyph, PrimaryButton } from "./shared";
+import { Panel, PairGlyph, PrimaryButton, LivePill } from "./shared";
 
 // Collateral pools with on-chain wiring — one live vault panel each. A VaultType without wiring
 // (poolWiring undefined) is not yet configured on-chain and is omitted here.
@@ -162,7 +162,10 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
           <div className="flex items-center gap-3">
             <PairGlyph tokens={vt.tokens} />
             <div>
-              <h2 className="font-display text-lg font-semibold text-white">{vt.pair} vault</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display text-lg font-semibold text-white">{vt.pair} vault</h2>
+                {PROTOCOL_LIVE && <LivePill />}
+              </div>
               <p className="mt-0.5 text-sm text-gray-400">
                 Borrow mUSD against your LP — interest-only, repay any time.
               </p>

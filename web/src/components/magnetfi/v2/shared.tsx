@@ -56,6 +56,16 @@ export function SoonBadge() {
   );
 }
 
+/** Blue "Live" pill — matches the Single-Token Markets cards; use across live surfaces. */
+export function LivePill() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-300">
+      <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+      Live
+    </span>
+  );
+}
+
 export function LaunchingBadge() {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">

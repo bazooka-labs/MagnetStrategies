@@ -96,7 +96,7 @@ export default function MusdPage() {
 
       {/* Mint / redeem — reused verbatim from the mUSD tab */}
       <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Mint &amp; redeem</h2>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">mUSD Exchange</h2>
         <MusdTab />
       </section>
     </div>

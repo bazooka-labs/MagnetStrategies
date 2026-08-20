@@ -43,10 +43,15 @@ export function OverviewTab({
   const money = (n?: number) =>
     !PROTOCOL_LIVE ? "Soon" : stats ? `$${formatUsd(n ?? 0, 0)}` : err ? "—" : "…";
   const borrowVal = borrowApy !== null ? `${borrowApy.toFixed(2)}%` : "…";
-  // Utilization = true vault debt (loans against LP) ÷ USDC reserve. Uses actual borrowed
-  // principal, NOT circulating mUSD (which also counts minted mUSD + fees) — so zero loans
-  // correctly reads 0%.
-  const util = stats && borrowed !== null && stats.psmUsdc > 0 ? (borrowed / stats.psmUsdc) * 100 : 0;
+  // Utilization = outstanding vault debt ÷ total lending capacity (debt already lent +
+  // the remaining ceiling still available). Bounded 0–100% and consistent with the
+  // "Available to Borrow" card. NOTE: debt ÷ psmUsdc is wrong — redeeming borrowed mUSD
+  // for USDC drains the reserve while the debt stays on the books, pushing that ratio
+  // past 100%. Uses actual borrowed principal, so zero loans correctly reads 0%.
+  const capacity = (borrowed ?? 0) + (stats?.ceiling ?? 0);
+  const util = stats && borrowed !== null && capacity > 0
+    ? Math.min(100, (borrowed / capacity) * 100)
+    : 0;
   const utilVal = !PROTOCOL_LIVE ? "Soon"
     : stats && borrowed !== null ? `${util.toFixed(1)}%`
     : err ? "—" : "…";

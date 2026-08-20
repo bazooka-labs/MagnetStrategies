@@ -54,18 +54,19 @@ export default async function TokenPage() {
         <h2 className="font-display text-lg font-semibold text-white mb-3">What is $U?</h2>
         <div className="space-y-3 text-sm leading-relaxed text-gray-400">
           <p>
-            $U is the native asset of Magnet Strategies, an Algorand-native DeFi organization
-            built to attract and compound liquidity. Rather than tracking the broader market, $U
-            is designed to compound yield across multiple Algorand DeFi strategies and reinvest
-            returns to support the token&apos;s underlying value — with the goal of outperforming
-            a simple ALGO holding over time.
+            Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
+            organization, built to attract and compound liquidity, with the goal of outperforming
+            a simple ALGO holding over time. $U is positioned to capture the broader Algorand
+            market through its strategic LP pairings, as well as earn yield across additional DeFi
+            strategies like node staking rewards.
           </p>
           <p>
-            Launched in June 2025, $U has a fixed supply of 750,000 tokens on Algorand (ASA ID:{" "}
+            Launched in June 2025, $U has a fixed supply of 750,000 tokens (ASA ID:{" "}
             <span className="font-mono text-gray-300">{MAGNET_ASA_ID}</span>). It&apos;s the
-            primary asset across every Magnet Strategies product — collateralizing MagnetFi
-            loans, anchoring Magnet Farms liquidity pairs, and accruing value from fees generated
-            across each layer.
+            primary asset across every Magnet Strategies product — collateralizing MagnetFi LP
+            loans, anchoring liquidity pairs, and used for voting power in founder-led proposals.
+            Track Magnet&apos;s performance below and decide if you&apos;d like to add $U to your
+            Algorand portfolio using our swap tooling provided by TxnLab.
           </p>
         </div>
       </Panel>
