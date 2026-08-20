@@ -38,7 +38,7 @@ export default function VotePage() {
   const closed = proposals.filter((p) => !isActive(p));
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Hero */}
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
@@ -115,7 +115,7 @@ export default function VotePage() {
           {open.length > 0 && (
             <section>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">Open votes</h2>
-              <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {open.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
               </div>
             </section>
@@ -123,7 +123,7 @@ export default function VotePage() {
           {closed.length > 0 && (
             <section>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">Closed</h2>
-              <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {closed.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
               </div>
             </section>
