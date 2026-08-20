@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
@@ -22,6 +23,10 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
   const { activeAddress, signTransactions, algodClient } = useWallet();
   const [status, setStatus] = useState<"idle" | "signing" | "confirming" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  // Portal to body so the overlay escapes the proposal card's backdrop-filter
+  // containing block + overflow-hidden (otherwise it's clipped inside the card).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const maxWhole = Math.floor(uBalance / DECIMAL_FACTOR); // whole $U available
   const [amount, setAmount] = useState<string>(maxWhole > 0 ? String(maxWhole) : "");
@@ -46,7 +51,8 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
     }
   }
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl border border-magnet-500/20 bg-gray-950 shadow-2xl overflow-hidden">
@@ -140,6 +146,7 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
