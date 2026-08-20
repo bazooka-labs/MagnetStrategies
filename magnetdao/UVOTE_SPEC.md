@@ -102,6 +102,30 @@ Vote box (16 B): `[0:8] choice  [8:16] locked_amount`. Key `vote_{id8}{pubkey32}
 - **claim_tokens** (voter, after close): AppCall `[claim_tokens, id8]`;
   outer `flat_fee=true, fee=3000` (covers 2 inner txns: $U return + MBR refund).
 
+## Final re-audit (2026-08-20, live App 3679681107, creative/out-of-bounds mandate)
+
+Second independent adversarial pass AFTER deploy, verifying (a) nothing critical
+was missed and (b) the four post-audit hardening edits didn't regress anything.
+Deployed approval program confirmed **byte-for-byte identical** to `uvote.py`.
+**No Critical/High/Medium. All three invariants hold. All four hardening edits
+regression-free.** Two structural guarantees confirmed:
+
+- **App is immutable + non-deletable.** UpdateApplication/DeleteApplication fall
+  through to `Reject()` — the founder can never add a sweep path or brick logic.
+- **$U freeze + clawback are permanently disabled at the protocol level** (both
+  were zero at asset creation → unsettable forever, even by the surviving
+  manager). The entire asset-reconfiguration attack class is neutralized
+  structurally, not just by the L4 guard.
+
+Two zero-urgency defense-in-depth notes — **cannot be applied to the live
+immutable app; for any FUTURE redeploy only** (do NOT edit `uvote.py` now, it must
+stay byte-identical to the live deploy):
+- I-1: add `Assert(Global.group_size() == Int(1))` to `claim_tokens` (belt-and-
+  suspenders; claim is already safe in any group — box delete precedes inner txns,
+  key is caller-scoped, no double-claim/fee-pool advantage exists).
+- I-2: use the checked `Assert(BoxCreate(...) == Int(1))` form in `create_proposal`
+  (currently safe only via monotonic `proposal_count`; make it self-evident).
+
 ## Invariants the audit must confirm
 1. **Voting can't be manipulated** — no double-vote, no crediting weight you
    didn't lock, no voting into non-existent choices, no tally overflow, no
