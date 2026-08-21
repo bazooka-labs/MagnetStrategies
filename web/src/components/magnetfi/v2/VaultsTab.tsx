@@ -70,6 +70,18 @@ function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM,
 // One self-contained vault for a single collateral pool: reads its own oracle/position/balances
 // (parameterized by pool.poolId / pool.lpAsaId) and routes every write to that pool. All state is
 // local so multiple panels on the page are fully independent.
+function HeaderMetric({ label, value, sub, subClass }: {
+  label: string; value: string; sub?: string; subClass?: string;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="mt-0.5 font-mono text-base font-bold text-white">{value}</p>
+      {sub && <p className={`text-[11px] ${subClass ?? "text-gray-500"}`}>{sub}</p>}
+    </div>
+  );
+}
+
 function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
@@ -155,38 +167,34 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   const posHf = pos ? healthFactor(posValue, posDebt, vt.liqThresholdBps) : Infinity;
 
   return (
-    <div className="space-y-6">
-      {/* Intro + oracle */}
-      <Panel className="p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <PairGlyph tokens={vt.tokens} />
-            <div>
-              <h2 className="font-display text-lg font-semibold text-white">{vt.pair} vault</h2>
-              <p className="mt-0.5 text-sm text-gray-400">
-                Borrow mUSD against your LP — interest-only, repay any time.
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-gray-500">LP price</p>
-            <p className="font-mono text-lg font-bold text-white">
-              {PROTOCOL_LIVE ? (oracle ? `$${formatUsd(price, 4)}` : "…") : "Soon"}
-            </p>
-            {oracle && (
-              <span className={`text-[11px] ${fresh ? "text-green-400" : "text-red-400"}`}>
-                {fresh ? "oracle fresh" : "oracle stale"}
-              </span>
-            )}
-          </div>
+    <Panel className="p-6">
+      {/* Header bar — one container per vault: title + key metrics, no subtext */}
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <PairGlyph tokens={vt.tokens} />
+          <h2 className="font-display text-lg font-semibold text-white sm:text-xl">
+            {`$${vt.tokens[0]}/ $${vt.tokens[1]} LP Collateral Vault`}
+          </h2>
         </div>
-      </Panel>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <HeaderMetric label="Interest rate" value={`${pct(vt.rateBps)}%`} />
+          <HeaderMetric label="LTV ratio" value={`${pct(vt.ltvBps)}%`} />
+          <HeaderMetric
+            label="LP price"
+            value={PROTOCOL_LIVE ? (oracle ? `$${formatUsd(price, 4)}` : "…") : "Soon"}
+            sub={oracle ? (fresh ? "oracle fresh" : "oracle stale") : undefined}
+            subClass={fresh ? "text-green-400" : "text-red-400"}
+          />
+        </div>
+      </div>
+
+      <div className="my-6 border-t border-white/10" />
 
       {/* Existing position */}
       {PROTOCOL_LIVE && pos && (
-        <Panel className="p-6">
+        <div>
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-white">Your {vt.pair} vault</p>
+            <p className="text-sm font-semibold text-white">Your position</p>
             <button onClick={refresh} className="text-gray-500 hover:text-white"><RefreshCw className="h-3.5 w-3.5" /></button>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -229,14 +237,12 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
             <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
           </div>
           <p className="mt-3 text-[11px] text-gray-600">Tip: “Repay / close” clears accrued interest automatically — enter your full borrowed amount to close the vault and reclaim your LP.</p>
-        </Panel>
+        </div>
       )}
 
       {/* Open new vault */}
       {PROTOCOL_LIVE && !pos && (
-        <Panel className="p-6">
-          <p className="mb-4 text-sm font-semibold text-white">Open a {vt.pair} vault</p>
-          <div className="grid gap-8 lg:grid-cols-2">
+        <div className="grid gap-8 lg:grid-cols-2">
             <div className="space-y-5">
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
@@ -307,9 +313,8 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
               )}
             </div>
           </div>
-        </Panel>
       )}
-    </div>
+    </Panel>
   );
 }
 
