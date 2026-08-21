@@ -8,7 +8,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, pct, formatUsd } from "@/lib/magnetfi";
 import { makeAlgorand, optIn, mintMusd, redeemMusd } from "@/lib/magnetfiClient";
 import { getBalances, getProtocolStats, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type Balances } from "@/lib/magnetfiReads";
-import { Panel, PrimaryButton, NotLiveNote, tokenIcon, LivePill } from "./shared";
+import { Panel, PrimaryButton, NotLiveNote, tokenIcon } from "./shared";
 
 type Mode = "mint" | "redeem";
 
@@ -84,10 +84,7 @@ export function MusdTab() {
       <div className="lg:col-span-3">
         <Panel className="p-6">
           <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <p className="font-display text-base font-semibold text-white">Stablecoin Swap</p>
-              {PROTOCOL_LIVE && <LivePill />}
-            </div>
+            <p className="font-display text-base font-semibold text-white">Stablecoin Swap</p>
             <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
               {fromAsset} → {toAsset}
             </span>

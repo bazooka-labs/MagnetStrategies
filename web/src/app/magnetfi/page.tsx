@@ -33,9 +33,9 @@ type TabDef = { id: Tab; label: string; icon: React.ReactNode; badge?: string; h
 
 const TABS: TabDef[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
-  { id: "markets", label: "Single Token Markets", icon: <TrendingUp className="h-4 w-4" />, badge: "Live" },
-  { id: "borrow", label: "LP Collateral Vaults", icon: <Vault className="h-4 w-4" />, badge: "Live" },
-  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/musd", badge: "Live" },
+  { id: "markets", label: "Single Token Markets", icon: <TrendingUp className="h-4 w-4" /> },
+  { id: "borrow", label: "LP Collateral Vaults", icon: <Vault className="h-4 w-4" /> },
+  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/musd" },
 ];
 
 export default function MagnetFiPage() {
