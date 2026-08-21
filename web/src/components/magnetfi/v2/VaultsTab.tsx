@@ -74,10 +74,10 @@ function HeaderMetric({ label, value, sub, subClass }: {
   label: string; value: string; sub?: string; subClass?: string;
 }) {
   return (
-    <div>
-      <p className="text-[11px] uppercase tracking-wider text-gray-500">{label}</p>
-      <p className="mt-0.5 font-mono text-base font-bold text-white">{value}</p>
-      {sub && <p className={`text-[11px] ${subClass ?? "text-gray-500"}`}>{sub}</p>}
+    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+      <p className="text-xs font-medium uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="mt-1 font-mono text-lg font-bold text-white">{value}</p>
+      {sub && <p className={`mt-0.5 text-[11px] ${subClass ?? "text-gray-500"}`}>{sub}</p>}
     </div>
   );
 }
@@ -169,23 +169,21 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   return (
     <Panel className="p-6">
       {/* Header bar — one container per vault: title + key metrics, no subtext */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <PairGlyph tokens={vt.tokens} />
-          <h2 className="font-display text-lg font-semibold text-white sm:text-xl">
-            {`$${vt.tokens[0]}/ $${vt.tokens[1]} LP Collateral Vault`}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <HeaderMetric label="Interest rate" value={`${pct(vt.rateBps)}%`} />
-          <HeaderMetric label="LTV ratio" value={`${pct(vt.ltvBps)}%`} />
-          <HeaderMetric
-            label="LP price"
-            value={PROTOCOL_LIVE ? (oracle ? `$${formatUsd(price, 4)}` : "…") : "Soon"}
-            sub={oracle ? (fresh ? "oracle fresh" : "oracle stale") : undefined}
-            subClass={fresh ? "text-green-400" : "text-red-400"}
-          />
-        </div>
+      <div className="flex items-center gap-3">
+        <PairGlyph tokens={vt.tokens} />
+        <h2 className="font-display text-xl font-semibold text-white sm:text-2xl">
+          {vt.tokens[0]} / {vt.tokens[1]}
+        </h2>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <HeaderMetric label="Interest rate" value={`${pct(vt.rateBps)}%`} />
+        <HeaderMetric label="LTV ratio" value={`${pct(vt.ltvBps)}%`} />
+        <HeaderMetric
+          label="LP price"
+          value={PROTOCOL_LIVE ? (oracle ? `$${formatUsd(price, 4)}` : "…") : "Soon"}
+          sub={oracle ? (fresh ? "oracle fresh" : "oracle stale") : undefined}
+          subClass={fresh ? "text-green-400" : "text-red-400"}
+        />
       </div>
 
       <div className="my-6 border-t border-white/10" />
