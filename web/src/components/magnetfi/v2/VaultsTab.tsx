@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Info, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { Info, Loader2, RefreshCw, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import {
@@ -33,9 +33,9 @@ function hfColor(hf: number): string {
 
 // Hoisted to module scope (not declared inside a panel) so the 60s live-interest tick —
 // or any parent re-render — does NOT remount its <input> and steal focus mid-typing.
-function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM, run, busy }: {
-  id: string; label: string; unit: string; onRun: (v: number) => Promise<void>;
-  disabled?: boolean; max?: number; maxFill?: number;
+function ManageAction({ id, title, buttonLabel, unit, onRun, disabled, max, maxFill, hint, m, setM, run, busy }: {
+  id: string; title: string; buttonLabel: string; unit: string; onRun: (v: number) => Promise<void>;
+  disabled?: boolean; max?: number; maxFill?: number; hint?: ReactNode;
   m: Record<string, string>;
   setM: Dispatch<SetStateAction<Record<string, string>>>;
   run: (id: string, fn: () => Promise<void>, optAsset?: number) => Promise<void>;
@@ -46,23 +46,27 @@ function ManageAction({ id, label, unit, onRun, disabled, max, maxFill, m, setM,
   const amount = max !== undefined ? Math.min(num, max) : num;   // clamp (H-1)
   const showMax = maxFill !== undefined && maxFill > 0 && !disabled;
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative w-full">
-        <input value={v} disabled={disabled}
-          onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
-          placeholder={disabled ? "clear interest first" : `${label} (${unit})`}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 pr-12 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
-        {showMax && (
-          <button type="button" onClick={() => setM((s) => ({ ...s, [id]: String(maxFill) }))}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-magnet-400 hover:text-magnet-300">
-            Max
-          </button>
-        )}
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-gray-300">{title}</p>
+      <div className="flex items-center gap-2">
+        <div className="relative w-full">
+          <input value={v} disabled={disabled}
+            onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
+            placeholder={disabled ? "clear interest first" : `0.00 ${unit}`}
+            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 pr-12 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
+          {showMax && (
+            <button type="button" onClick={() => setM((s) => ({ ...s, [id]: String(maxFill) }))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-magnet-400 hover:text-magnet-300">
+              Max
+            </button>
+          )}
+        </div>
+        <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
+          className="shrink-0 whitespace-nowrap rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
+          {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : buttonLabel}
+        </button>
       </div>
-      <button onClick={() => run(id, () => onRun(amount), MUSD_ID)} disabled={busy !== null || disabled || !(amount > 0)}
-        className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-30">
-        {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
-      </button>
+      {hint && <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">{hint}</p>}
     </div>
   );
 }
@@ -166,6 +170,15 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   const posDebt = pos ? pos.musdBorrowed + liveInterest : 0;
   const posHf = pos ? healthFactor(posValue, posDebt, vt.liqThresholdBps) : Infinity;
 
+  // Interest-payment grace clock: 90 days from the last payment (resets on each pay).
+  const GRACE_SECONDS = 90 * 86_400;
+  const graceLeftSec = pos ? pos.lastPaymentTs + GRACE_SECONDS - nowSec : 0;
+  const isPastDue = graceLeftSec < 0;
+  const graceDays = Math.floor(Math.abs(graceLeftSec) / 86_400);
+  const dueTone = isPastDue ? "red" : graceDays <= 14 ? "yellow" : "green";
+  const dueBorderBg = { green: "border-green-500/30 bg-green-500/5", yellow: "border-yellow-500/30 bg-yellow-500/5", red: "border-red-500/40 bg-red-500/5" }[dueTone];
+  const dueText = { green: "text-green-400", yellow: "text-yellow-400", red: "text-red-400" }[dueTone];
+
   return (
     <Panel className="p-6">
       {/* Header bar — one container per vault: title + key metrics, no subtext */}
@@ -213,6 +226,18 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Health factor</p>
               <p className={`mt-1 font-mono font-bold ${hfColor(posHf)}`}>{posHf === Infinity ? "∞" : posHf.toFixed(2)}</p></div>
           </div>
+          {pos.vaultState !== 2 && pos.lastPaymentTs > 0 && (
+            <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${dueBorderBg}`}>
+              <span className="flex items-center gap-2 text-sm text-gray-300">
+                <CalendarClock className="h-4 w-4 text-gray-400" /> Interest payment due
+              </span>
+              <span className={`font-mono text-sm font-semibold ${dueText}`}>
+                {isPastDue ? `${graceDays} day${graceDays === 1 ? "" : "s"} past due`
+                  : graceDays === 0 ? "due today"
+                  : `${graceDays} day${graceDays === 1 ? "" : "s"} left`}
+              </span>
+            </div>
+          )}
           {pos.vaultState !== 2 && posDebt > 0 && (
             <div className="mt-4">
               <div className="mb-1.5 flex items-center justify-between text-[11px]">
@@ -228,13 +253,21 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
           {pos.vaultState === 2 && (
             <p className="mt-3 text-xs text-red-400">In liquidation — borrower actions are paused until settlement completes.</p>
           )}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ManageAction id="pay" label="Pay interest" unit="mUSD" maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0} onRun={(v) => payInterest(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="repay" label="Repay / close" unit="mUSD" max={pos.musdBorrowed} maxFill={pos.musdBorrowed} onRun={(v) => repayPrincipal(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="borrow" label="Borrow more" unit="mUSD" onRun={(v) => borrowMore(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
-            <ManageAction id="add" label="Add collateral" unit="LP" onRun={(v) => addCollateral(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <ManageAction id="pay" title="Interest Only Payment (mUSD)" buttonLabel="Pay Interest" unit="mUSD"
+              maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0}
+              hint={`Accrued interest to date: ${formatUsd(liveInterest, 4)} mUSD`}
+              onRun={(v) => payInterest(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="repay" title="Interest + Principal Payment (mUSD)" buttonLabel="Repay & Close" unit="mUSD"
+              max={pos.musdBorrowed} maxFill={pos.musdBorrowed}
+              hint={<>Principal {formatUsd(pos.musdBorrowed)} + interest {formatUsd(liveInterest, 4)} = <span className="text-gray-300">≈ {formatUsd(pos.musdBorrowed + liveInterest, 4)} mUSD</span> total. Max fills principal — interest is added automatically.</>}
+              onRun={(v) => repayPrincipal(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="borrow" title="Borrow More (mUSD)" buttonLabel="Borrow" unit="mUSD"
+              onRun={(v) => borrowMore(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            <ManageAction id="add" title="Add Collateral (LP)" buttonLabel="Add" unit="LP"
+              onRun={(v) => addCollateral(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
           </div>
-          <p className="mt-3 text-[11px] text-gray-600">Tip: “Repay / close” clears accrued interest automatically — enter your full borrowed amount to close the vault and reclaim your LP.</p>
+          <p className="mt-3 text-[11px] text-gray-600">Tip: “Repay &amp; Close” pays your accrued interest first, then the principal — enter your full borrowed amount to close the vault and reclaim your LP.</p>
         </div>
       )}
 
