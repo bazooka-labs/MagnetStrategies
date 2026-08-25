@@ -7,6 +7,7 @@ import { Panel } from "./shared";
 import { CreateMusd } from "./admin/CreateMusd";
 import { CreateTestAssets } from "./admin/CreateTestAssets";
 import { OperationsPanel } from "./admin/OperationsPanel";
+import { PositionsPanel } from "./admin/PositionsPanel";
 import { StrategyPanel } from "./admin/StrategyPanel";
 import { VaultRedeployPanel } from "./admin/VaultRedeployPanel";
 
@@ -71,6 +72,14 @@ export function AdminTab() {
           {isTestnet ? "Testnet rehearsal — stand-in assets" : "Token setup"}
         </h3>
         {isTestnet ? <CreateTestAssets /> : <CreateMusd />}
+      </section>
+
+      {/* Active loans — positions, health, past-due, fast liquidation */}
+      <section>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Active Loans
+        </h3>
+        <PositionsPanel />
       </section>
 
       {/* Operations */}

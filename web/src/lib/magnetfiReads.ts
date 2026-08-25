@@ -101,6 +101,53 @@ export async function getTotalVaultDebt(algod: algosdk.Algodv2): Promise<number>
   return fromBase(total);
 }
 
+export type AdminPosition = {
+  borrower: string;        // 58-char address
+  poolId: number;
+  lpAmount: number;        // display LP
+  musdBorrowed: number;    // display mUSD
+  accruedInterest: number; // stored (lazy) accrued interest, display
+  rateBps: number;
+  lastAccrualTs: number;
+  lastPaymentTs: number;
+  vaultState: number;      // 0 healthy · 1 overdue-marked · 2 in settlement
+};
+
+/**
+ * Every open vault position across all pools — one row per `vault_{borrower}{poolId}` box.
+ * Admin-facing: the borrower address comes from the box name; the rest from the box value.
+ * Layout mirrors getVaultPosition; `vault_` is the vault's only box prefix (per-pool params
+ * live in global state), so no non-position box is misparsed. Derived metrics (USD value,
+ * health factor, live interest, past-due) are computed in the UI with the per-pool oracle
+ * price + config, keeping this a pure chain read.
+ */
+export async function getAllPositions(algod: algosdk.Algodv2): Promise<AdminPosition[]> {
+  const prefix = Buffer.from("vault_");
+  const res = await algod.getApplicationBoxes(ACTIVE.vault).do();
+  const out: AdminPosition[] = [];
+  for (const b of res.boxes) {
+    const name = b.name;
+    if (name.length < prefix.length + 40) continue; // "vault_"(6) + pubkey(32) + poolId(8)
+    if (!Buffer.from(name.slice(0, prefix.length)).equals(prefix)) continue;
+    const borrower = algosdk.encodeAddress(name.slice(6, 38));
+    const box = await algod.getApplicationBoxByName(ACTIVE.vault, name).do();
+    const v = new DataView(box.value.buffer, box.value.byteOffset, box.value.byteLength);
+    const u = (i: number) => Number(v.getBigUint64(i * 8));
+    out.push({
+      borrower,
+      poolId: u(1),
+      lpAmount: fromBase(u(0)),
+      musdBorrowed: fromBase(u(2)),
+      accruedInterest: fromBase(u(3)),
+      rateBps: u(4),
+      lastAccrualTs: u(5),
+      lastPaymentTs: u(6),
+      vaultState: u(7),
+    });
+  }
+  return out;
+}
+
 // ── PSM v3 — Productive Reserves reads ────────────────────────────────────────────
 
 const ONE_14_DP = BigInt(100000000000000);
