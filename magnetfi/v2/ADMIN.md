@@ -148,6 +148,14 @@ higher threshold (e.g. a pure stable/stable collateral pair) would require **rec
 
 **Oracle re-anchoring note:** the LP oracle bounds posted prices to ±25% of an admin anchor. During a genuine large price move, call `set_price_anchor(pool_id, new_anchor)` (LP Oracle, admin) to follow it; otherwise the bot's posts will be rejected once they hit the band edge. This manual step is the cumulative-drift backstop a compromised bot cannot perform.
 
+**Recognizing an anchor-band rejection (happened 2026-08-21, U/tALGO).** Symptom: a pool's price goes **stale on the UI while the bot is running and logging no pricing errors** — the bot computes a valid price and passes its own guards/CompX check, but the *post transaction* fails:
+```
+logic eval error: assert failed pc=512, opcodes=divw; >=; assert  (app=3644230020)  "above/below anchor band"
+```
+Cause: the LP price has drifted past the ±25% band around a now-stale anchor (e.g. U/tALGO legitimately rose past its anchor ceiling as $U appreciated). It is **not** the bot, not fees, not the price being wrong.
+- **Fix (self-serve, ~1 min):** `/magnetfi` → Admin → Operations → **"Re-anchor price"** → Pool ID + current price (mUSD/LP, in dollars, e.g. `0.74`). Next bot cycle (~5 min) posts again. A restart only "fixes" it if the price has since drifted back inside the band — re-anchor is the durable fix.
+- **Prevent:** re-anchor when a pool nears its band edge, keeping the anchor near the live price. A staleness/anchor-proximity alert is planned to flag this automatically — see [TODO.md → Bot redundancy & alerting](./TODO.md) (shelved 2026-08-25).
+
 #### Liquidations
 
 **Micro-Liquidation Procedure:**
@@ -229,7 +237,9 @@ The admin (or an automated monitoring script) should track:
 
 | Metric | Threshold | Action |
 |---|---|---|
-| Oracle bot last update | >10 min stale | Alert; investigate bot; restart if needed |
+| Oracle bot last update | >10 min stale | Alert. If the bot is running with no pricing errors, check for an **anchor-band rejection** (`pc=512` in bot logs — see re-anchoring note) and re-anchor; otherwise investigate/restart |
+| Any pool: posted price vs anchor band | within ~5% of a band edge | **Re-anchor to current price** before posts start getting rejected (proactive) |
+| Oracle bot wallet ALGO (`authorized_updater`) | <2 ALGO | Top up — the bot pays fees per post |
 | Any vault: `current_time - last_payment_timestamp` | >75 days | Flag; begin borrower outreach |
 | Any vault: `current_time - last_payment_timestamp` | >90 days | Eligible for micro-liq; admin discretion on timing |
 | Any vault: health factor | <1.2 | Watch closely; compute HF with every oracle update |
