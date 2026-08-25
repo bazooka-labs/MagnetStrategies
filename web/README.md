@@ -38,6 +38,15 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
 
 ## Admin console — `AdminTab` (gated)
 - **Token setup** — `CreateMusd` (mainnet) / `CreateTestAssets` (testnet).
+- **Active Loans** (`PositionsPanel`) — every open vault across all pools in one view:
+  borrower (from the `vault_` box name), pool, collateral (LP + $), borrowed, live accrued
+  interest, **health factor**, and an **interest-payment countdown** (past-due in red). Reads via
+  `getAllPositions` (`magnetfiReads.ts`) + per-pool oracle. **Contextual liquidation buttons** wire
+  the existing `magnetfiOps` calls: past-due state-0 → **Mark overdue** (→ state 1), state-1 →
+  **Micro-liquidate** (needs a fresh oracle); health-factor tiers **T1 0.95–1.0 / T2 0.85–0.95 /
+  full <0.85**. Guards: HF shown/actioned only when the oracle is **fresh** (no bogus HF→full-liq),
+  a two-click arm→confirm (400 ms double-click guard) on the irreversible seizure, and settlement
+  (`vault_state==2`) suppresses actions. Strictly additive + admin-gated — no borrower flow touched.
 - **Operations** (`OperationsPanel`) — pauses, liquidations, risk params, reserves & fees, oracle,
   and governance/timelocked repoints. Each action is an `ActionForm` signed via Pera; button tones:
   default (purple) / warn (yellow) / danger (red).

@@ -233,6 +233,14 @@ PSM redemption fees route to treasury automatically per transaction. All other r
 
 ## Monitoring Checklist
 
+> **Active Loans panel** (`/magnetfi` → Admin → Active Loans) surfaces most of the below in-UI:
+> every open vault across all pools with borrower, collateral, borrowed, live accrued interest,
+> **health factor**, and an **interest-payment countdown** (past-due flagged red), plus one-click
+> **liquidation buttons** (mark-overdue → micro; and health tiers T1/T2/full). Health factor and
+> price-based liquidations are shown/enabled only when the pool's oracle is fresh. Use it for at-a-glance
+> triage; the thresholds below are the actioning rules. (Component: `PositionsPanel` — see
+> [web/README.md](../../web/README.md).)
+
 The admin (or an automated monitoring script) should track:
 
 | Metric | Threshold | Action |
