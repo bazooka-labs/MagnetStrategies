@@ -38,7 +38,7 @@ export function Panel({
 }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-surface-light shadow-xl shadow-black/40 ${
+      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm shadow-xl shadow-black/40 ${
         glow ? "glow-blue" : ""
       } ${className}`}
     >
