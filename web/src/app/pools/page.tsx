@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Waves, Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData } from "@/lib/pools";
-import { Panel, PairGlyph, HeroBackdrop } from "@/components/magnetfi/v2/shared";
+import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
@@ -74,7 +74,6 @@ export default function PoolsPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Hero */}
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
-        <HeroBackdrop />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
         <div className="animate-blob-drift pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
         <div className="relative flex items-center gap-4">

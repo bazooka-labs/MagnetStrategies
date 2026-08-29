@@ -41,6 +41,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-surface text-gray-100 antialiased overflow-x-hidden">
+        {/* Fixed branded backdrop — the whole UI scrolls over the splash art. Tune the
+            scrim (bg-black/NN) for brightness; the frosted panels sit on top of it. */}
+        <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+          <div className="absolute inset-0 bg-[url('/magnet-bg.png')] bg-cover bg-center" />
+          <div className="absolute inset-0 bg-black/50" />
+        </div>
         <WalletProvider>
           {children}
           <Toaster position="bottom-right" theme="dark" richColors />
