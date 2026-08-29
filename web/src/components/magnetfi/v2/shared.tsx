@@ -34,8 +34,8 @@ const iconNudge = (sym: string) => ICON_NUDGE[sym.replace("$", "").toUpperCase()
 export function HeroBackdrop() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
-      <div className="absolute inset-0 bg-[url('/magnet-bg.png')] bg-cover bg-center opacity-50" />
-      <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-black/25 to-black/45" />
+      <div className="absolute inset-0 bg-[url('/magnet-bg.png')] bg-cover bg-center opacity-90" />
+      <div className="absolute inset-0 bg-gradient-to-br from-black/30 via-black/10 to-black/35" />
     </div>
   );
 }
