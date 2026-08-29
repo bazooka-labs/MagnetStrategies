@@ -4,7 +4,7 @@
 // the deploy signer match the MagnetFi admin wallet.
 
 import algosdk from "algosdk";
-import { MAGNETFI_ADMIN_ADDRESS, U_TOKEN } from "./magnetfi";
+import { MAGNETFI_ADMIN_ADDRESS, U_TOKEN, ACTIVE } from "./magnetfi";
 
 // The Vote admin (create proposals, deploy, founder transfer) is the same wallet
 // that gates the MagnetFi admin panel. On deploy this wallet becomes `founder`.
@@ -13,6 +13,14 @@ export const UVOTE_ADMIN_ADDRESS = MAGNETFI_ADMIN_ADDRESS;
 export const MAGNET_ASA_ID = U_TOKEN.asaId;          // 3081853135
 export const MAGNET_DECIMALS = U_TOKEN.decimals;     // 5
 export const DECIMAL_FACTOR = 10 ** U_TOKEN.decimals; // 100_000 base units = 1 $U
+
+// Magnet Strategies treasury wallet — the USDC pool that UVote proposals direct
+// (liquidity funding). Same wallet as the historical MagnetDAO founder/treasury.
+export const TREASURY_ADDRESS = "VM2JLZMKFLE635FXX54MU4TY6JUDIMLNRXOQDZUX3FKUFLS2BPEO2VL7QM";
+export const USDC_ASA_ID = ACTIVE.usdc;              // 31566704 (mainnet)
+const USDC_DECIMALS = 6;
+export const formatUsdc = (baseUnits: number): string =>
+  (baseUnits / 10 ** USDC_DECIMALS).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const _NET: "mainnet" | "testnet" =
   process.env.NEXT_PUBLIC_ALGO_NETWORK === "testnet" ? "testnet" : "mainnet";

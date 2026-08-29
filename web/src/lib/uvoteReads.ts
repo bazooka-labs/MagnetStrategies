@@ -2,7 +2,7 @@
 
 import algosdk from "algosdk";
 import {
-  UVOTE_APP_ID, MAGNET_ASA_ID,
+  UVOTE_APP_ID, MAGNET_ASA_ID, TREASURY_ADDRESS, USDC_ASA_ID,
   propBoxName, voteBoxName, decodeProposal, decodeVote,
   type UVoteProposal, type UVoteRecord,
 } from "./uvote";
@@ -62,6 +62,17 @@ export async function getUBalance(algod: algosdk.Algodv2, address: string): Prom
   try {
     const acct = await algod.accountInformation(address).do();
     const holding = (acct.assets ?? []).find((a) => Number(a.assetId) === MAGNET_ASA_ID);
+    return holding ? Number(holding.amount) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Treasury wallet USDC balance (base units). 0 if not opted in / unreachable. */
+export async function getTreasuryUsdc(algod: algosdk.Algodv2): Promise<number> {
+  try {
+    const acct = await algod.accountInformation(TREASURY_ADDRESS).do();
+    const holding = (acct.assets ?? []).find((a) => Number(a.assetId) === USDC_ASA_ID);
     return holding ? Number(holding.amount) : 0;
   } catch {
     return 0;

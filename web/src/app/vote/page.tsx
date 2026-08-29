@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Vote as VoteIcon, Lock, Sparkles } from "lucide-react";
+import { Vote as VoteIcon, Lock, Sparkles, Landmark, ExternalLink } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel } from "@/components/magnetfi/v2/shared";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
-import { listProposals, getUBalance } from "@/lib/uvoteReads";
-import { UVOTE_LIVE, UVOTE_ADMIN_ADDRESS, formatU, isActive, type UVoteProposal } from "@/lib/uvote";
+import { listProposals, getUBalance, getTreasuryUsdc } from "@/lib/uvoteReads";
+import { UVOTE_LIVE, UVOTE_ADMIN_ADDRESS, TREASURY_ADDRESS, formatU, formatUsdc, isActive, type UVoteProposal } from "@/lib/uvote";
 
 export default function VotePage() {
   const { address, isConnected, algodClient } = useWallet();
@@ -15,18 +15,21 @@ export default function VotePage() {
 
   const [proposals, setProposals] = useState<UVoteProposal[]>([]);
   const [uBalance, setUBalance] = useState(0);
+  const [treasuryUsdc, setTreasuryUsdc] = useState<number | null>(null);
   const [loading, setLoading] = useState(UVOTE_LIVE);
 
   const load = useCallback(async () => {
     if (!algodClient) return;
     setLoading(true);
     try {
-      const [props, bal] = await Promise.all([
+      const [props, bal, treasury] = await Promise.all([
         listProposals(algodClient),
         address ? getUBalance(algodClient, address) : Promise.resolve(0),
+        getTreasuryUsdc(algodClient),
       ]);
       setProposals(props);
       setUBalance(bal);
+      setTreasuryUsdc(treasury);
     } finally {
       setLoading(false);
     }
@@ -66,6 +69,35 @@ export default function VotePage() {
           )}
         </div>
       </div>
+
+      {/* Treasury tracker */}
+      <Panel className="mb-8 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/40">
+              <Landmark className="h-5 w-5 text-magnet-400" />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500">Treasury</p>
+              <a
+                href={`https://allo.info/account/${TREASURY_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-[11px] text-gray-500 hover:text-gray-300"
+              >
+                {TREASURY_ADDRESS.slice(0, 6)}…{TREASURY_ADDRESS.slice(-4)}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="font-mono text-2xl font-bold text-white">
+              {treasuryUsdc === null ? "…" : `$${formatUsdc(treasuryUsdc)}`}
+            </p>
+            <p className="text-[11px] text-gray-500">USDC available for liquidity</p>
+          </div>
+        </div>
+      </Panel>
 
       {/* How it works */}
       <Panel className="mb-8 p-6 sm:p-8">
