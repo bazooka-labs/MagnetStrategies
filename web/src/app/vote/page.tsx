@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Vote as VoteIcon, Lock, Sparkles, Landmark, ExternalLink } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { Panel } from "@/components/magnetfi/v2/shared";
+import { Panel, HeroBackdrop } from "@/components/magnetfi/v2/shared";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
 import { listProposals, getUBalance, getTreasuryUsdc } from "@/lib/uvoteReads";
@@ -44,6 +44,7 @@ export default function VotePage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Hero */}
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
+        <HeroBackdrop />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />

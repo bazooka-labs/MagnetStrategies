@@ -26,6 +26,20 @@ export const tokenIconFit = (sym: string) =>
 const ICON_NUDGE: Record<string, string> = { COMPX: "translate-y-[12%]" };
 const iconNudge = (sym: string) => ICON_NUDGE[sym.replace("$", "").toUpperCase()] ?? "";
 
+/**
+ * Branded hero backdrop — the splash artwork (`/magnet-bg.png`) behind a page header box,
+ * with a dark scrim so text/effects stay legible. Drop as the FIRST child of a hero container
+ * (which must be `relative overflow-hidden`); page content renders on top in DOM order.
+ */
+export function HeroBackdrop() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+      <div className="absolute inset-0 bg-[url('/magnet-bg.png')] bg-cover bg-center opacity-30" />
+      <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/45 to-black/65" />
+    </div>
+  );
+}
+
 /** Glassy panel with the brand's top gradient hairline (matches the landing cards). */
 export function Panel({
   children,
