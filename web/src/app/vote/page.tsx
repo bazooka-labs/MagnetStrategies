@@ -56,7 +56,7 @@ export default function VotePage() {
             <div>
               <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">UVote</h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Founder-led governance. Lock $U to help shape protocol direction.
+                Founder-led governance. Use $U tokens to help shape protocol direction.
               </p>
             </div>
           </div>
@@ -70,52 +70,53 @@ export default function VotePage() {
         </div>
       </div>
 
-      {/* Treasury tracker */}
-      <Panel className="mb-8 p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/40">
-              <Landmark className="h-5 w-5 text-magnet-400" />
-            </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-500">Treasury</p>
-              <a
-                href={`https://allo.info/account/${TREASURY_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 font-mono text-[11px] text-gray-500 hover:text-gray-300"
-              >
-                {TREASURY_ADDRESS.slice(0, 6)}…{TREASURY_ADDRESS.slice(-4)}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
+      {/* How it works + treasury */}
+      <Panel className="mb-8 p-6 sm:p-8">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* How it works */}
+          <div className="lg:col-span-2">
+            <h2 className="mb-3 font-display text-lg font-semibold text-white">How it works</h2>
+            <p className="text-sm leading-relaxed text-gray-400">
+              The Founder posts an open question that impacts a particular outcome of Magnet Strategies.
+              Holders can then exercise their voice by utilizing held $U tokens, signaling their preference
+              on the open proposal. For voting, only whole $U tokens can be used, where one token is equal
+              to one vote in weight. Tokens are accepted as voting power by being locked within the voting
+              contract, and remain locked for the remainder of the voting window duration. Your $U (and a
+              small refundable box deposit) come back in full when the vote closes.
+            </p>
+
+            {isConnected && (
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-magnet-500/20 bg-magnet-950/40 px-3 py-1.5 text-xs">
+                <Lock className="h-3.5 w-3.5 text-magnet-400" />
+                <span className="text-gray-400">Your voting power</span>
+                <span className="font-mono font-semibold text-white">{formatU(uBalance)} $U</span>
+              </div>
+            )}
           </div>
-          <div className="text-right">
-            <p className="font-mono text-2xl font-bold text-white">
+
+          {/* Treasury tracker */}
+          <div className="flex flex-col rounded-xl border border-white/10 bg-black/30 p-5">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/40">
+                <Landmark className="h-4 w-4 text-magnet-400" />
+              </div>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500">Treasury</p>
+            </div>
+            <p className="mt-4 font-mono text-3xl font-bold text-white">
               {treasuryUsdc === null ? "…" : `$${formatUsdc(treasuryUsdc)}`}
             </p>
-            <p className="text-[11px] text-gray-500">USDC available for liquidity</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">USDC available for liquidity</p>
+            <a
+              href={`https://allo.info/account/${TREASURY_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-auto inline-flex items-center gap-1 pt-4 font-mono text-[11px] text-gray-500 hover:text-gray-300"
+            >
+              {TREASURY_ADDRESS.slice(0, 6)}…{TREASURY_ADDRESS.slice(-4)}
+              <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
         </div>
-      </Panel>
-
-      {/* How it works */}
-      <Panel className="mb-8 p-6 sm:p-8">
-        <h2 className="mb-3 font-display text-lg font-semibold text-white">How it works</h2>
-        <p className="max-w-2xl text-sm leading-relaxed text-gray-400">
-          The admin posts a direction question — liquidity, parameters, or where the protocol invests next.
-          Holders signal by locking whole $U for the 7-day window; your $U (and a small refundable box
-          deposit) come back in full when the vote closes. Votes are <span className="text-gray-300">advisory</span>:
-          they guide the founder, who executes under the protocol&apos;s existing safeguards.
-        </p>
-
-        {isConnected && (
-          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-magnet-500/20 bg-magnet-950/40 px-3 py-1.5 text-xs">
-            <Lock className="h-3.5 w-3.5 text-magnet-400" />
-            <span className="text-gray-400">Your voting power</span>
-            <span className="font-mono font-semibold text-white">{formatU(uBalance)} $U</span>
-          </div>
-        )}
       </Panel>
 
       {/* Admin */}
