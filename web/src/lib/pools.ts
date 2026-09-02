@@ -49,7 +49,7 @@ export const POOLS: Pool[] = [
   },
   {
     id: "u-hay", pair: "U / HAY", partner: "HAY", dex: "pact",
-    ref: "3214038100", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3214038100",
+    ref: "3692640639", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3692640639",
   },
   // ── Pending pool identification ──
   // U / FOLKS — pool not yet located on Pact or Tinyman (it runs the active farm).
