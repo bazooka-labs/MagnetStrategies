@@ -45,7 +45,7 @@ export const POOLS: Pool[] = [
   },
   {
     id: "u-compx", pair: "U / COMPX", partner: "COMPX", dex: "pact",
-    ref: "3277903617", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3277903617",
+    ref: "3692558822", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3692558822",
   },
   {
     id: "u-hay", pair: "U / HAY", partner: "HAY", dex: "pact",
