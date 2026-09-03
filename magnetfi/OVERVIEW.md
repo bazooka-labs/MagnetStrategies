@@ -18,7 +18,7 @@ Two-pool lending market (USDC Pool + $U Pool). Deposit assets to earn yield; bor
 ### v2 — LP Vault + mUSD *(primary focus)*
 LP-collateral borrowing protocol with mUSD, an Algorand-native stablecoin. Borrow mUSD against Tinyman LP positions. Interest-only payments with a 4-month grace period. Peg guaranteed by protocol-owned Peg Stability Module.
 
-**Status:** Built, audited (24 passes + executable tests), testnet-deployed. mUSD live on mainnet (`3615600399`). Mainnet launch pending.
+**Status:** **Live on mainnet** — LP vaults + mUSD + PSMv3 operating on U/tALGO and U/USDC collateral. mUSD ASA `3615600399`.
 
 → [`v2/`](./v2/OVERVIEW.md)
 
@@ -28,10 +28,10 @@ LP-collateral borrowing protocol with mUSD, an Algorand-native stablecoin. Borro
 
 ```
 Magnet Strategies
-├── MagnetDAO   ← liquidity governance, quarterly voting cycles
+├── UVote      ← advisory, founder-led governance over $U
 └── MagnetFi   ← lending & borrowing
     ├── v1      ← USDC/U two-pool lending (code complete, superseded)
-    └── v2      ← LP vault + mUSD stablecoin (built, testnet-deployed)
+    └── v2      ← LP vault + mUSD stablecoin (LIVE on mainnet)
 ```
 
 ---

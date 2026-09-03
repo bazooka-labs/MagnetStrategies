@@ -18,8 +18,9 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
 | `/token` | $U token dashboard (price, holders, TVL, charts, swap) |
 | `/magnetfi` | **The Bank** — tabbed app (below) |
 | `/musd` | mUSD hub — live PSM metrics + the mint/redeem **Exchange** |
+| `/pools` | $U liquidity pools (Tinyman & Pact) — live fee/farm APRs + add-liquidity deep-links |
+| `/vote` | **UVote** — advisory founder-led governance; proposals, vote/reclaim, treasury tracker, gated admin |
 | `/contact` | Contact |
-| `/dao`, `/dao/*` | DAO pages |
 
 ## The Bank (`/magnetfi`) — `src/app/magnetfi/page.tsx`
 - **Overview** (`OverviewTab`) — the landing: plain explanations of Single Token Markets and LP

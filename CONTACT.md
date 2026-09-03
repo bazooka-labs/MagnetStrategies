@@ -101,9 +101,9 @@ receiver — so one query per viewer returns everything relevant to them:
 - **Admin panel:** same call against the admin wallet → every incoming ticket, every
   reply the admin has sent, every subscribe/unsubscribe signal, every broadcast sent.
 
-Uses the same `INDEXER_URLS` REST endpoints already used elsewhere in this repo
-(`app/dao/proposals`, `app/dao/treasury`) — not algosdk's `Indexer` client class, which
-exists in `lib/algorand.ts` but is unused dead code.
+Uses the same `INDEXER_URLS` REST endpoints already used elsewhere in this repo —
+not algosdk's `Indexer` client class, which exists in `lib/algorand.ts` but is unused
+dead code.
 
 ---
 
