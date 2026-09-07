@@ -58,3 +58,70 @@ export const POOLS: Pool[] = [
 ];
 
 export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "Pact" };
+
+// Live per-pool metrics, shared by /api/pools (per-pool cards) and the site-wide Total TVL
+// stat. Summing these (rather than trusting a third-party asset-level aggregate) is what
+// keeps Total TVL correct the moment a pool migrates to a new pool id — e.g. the Pact pools
+// above, which moved to Pact's new platform and got new pool ids.
+export type PoolMetrics = Pick<PoolData, "tvlUsd" | "feeApr" | "farmApr" | "totalApr">;
+const EMPTY_METRICS: PoolMetrics = { tvlUsd: null, feeApr: null, farmApr: null, totalApr: null };
+
+const TINYMAN_POOLS_API = "https://mainnet.analytics.tinyman.org/api/v1/pools";
+const PACT_POOLS_API = "https://api.pact.fi/api/pools";
+const UA = { "User-Agent": "Mozilla/5.0 (compatible; MagnetStrategies/1.0)" };
+const pct = (v: unknown) => (v == null ? null : Number(v) * 100);
+
+async function fetchTinymanMetrics(addr: string): Promise<PoolMetrics> {
+  const r = await fetch(`${TINYMAN_POOLS_API}/${addr}/`, { headers: UA, next: { revalidate: 60 } });
+  if (!r.ok) return EMPTY_METRICS;
+  const p = await r.json();
+  return {
+    tvlUsd: Number(p.liquidity_in_usd) || 0,
+    feeApr: pct(p.annual_percentage_rate),
+    farmApr: pct(p.staking_total_annual_percentage_rate), // null when no farm
+    totalApr: pct(p.total_annual_percentage_rate),
+  };
+}
+
+async function fetchPactMetrics(id: string): Promise<PoolMetrics> {
+  const r = await fetch(`${PACT_POOLS_API}/${id}`, { headers: UA, next: { revalidate: 60 } });
+  if (!r.ok) return EMPTY_METRICS;
+  const p = await r.json();
+  const feeApr = pct(p.apr_7d);
+  const totalApr = pct(p.apr_7d_all);
+  // Pact folds farm rewards into apr_7d_all; the excess over the fee APR is the farm APR.
+  const farmApr =
+    feeApr != null && totalApr != null && totalApr - feeApr > 0.01 ? totalApr - feeApr : null;
+  return { tvlUsd: Number(p.tvl_usd) || 0, feeApr, farmApr, totalApr };
+}
+
+export async function fetchPoolMetrics(pool: Pick<Pool, "dex" | "ref">): Promise<PoolMetrics> {
+  try {
+    return pool.dex === "tinyman" ? await fetchTinymanMetrics(pool.ref) : await fetchPactMetrics(pool.ref);
+  } catch {
+    return EMPTY_METRICS;
+  }
+}
+
+// Real but dust-sized $U pools (each under $150 as of 2026-09-05) — found by querying
+// Vestige's full pool index for every pool pairing $U (asset_1_id/asset_2_id = 3081853135)
+// and filtering out empty pools (0 or the ~1000-unit locked-minimum LP supply). Folded into
+// Total TVL for accuracy but deliberately left off /pools — not worth a card.
+export const DUST_POOLS: Pick<Pool, "dex" | "ref">[] = [
+  { dex: "tinyman", ref: "337NDU6Z65P2MYHMLFEXIFAACENAN2Q6PW2PDAS3QHNUR6YN7OLBOBIRNY" }, // U/WBTC
+  { dex: "tinyman", ref: "32IGIQSVVKUTBNII2QVGXI4QMSCGI6HOI44KDLSFF6VFEJ45ANSWHPCQOU" }, // U/Finite
+  { dex: "tinyman", ref: "642N7PH6LA7SHU4TH6WFABDXFBQCBURJMOPRYP2UG3ESOQDTIAG3C5RO4Q" }, // GAAL/U
+  { dex: "tinyman", ref: "MBUZA6DBHL4OHFKCMWLQ5NGUVQ7FOZMBOF74BKL2IQU3AYFLXMNINGO2UM" }, // CORVID/U
+  { dex: "tinyman", ref: "HRW6O43JJVSLP2FRFYJRTH5U4FUNSVZZBV5WRJFLTESYOIQAY6CDO73LXU" }, // Bytes/U
+  { dex: "tinyman", ref: "FHPHRJ4ABBNUGKJWF3QIUIRKL7GEDKLO3WSWXR5ITJNIYBN3R3JLFMBNLY" }, // U/COMPX (separate Tinyman pool; not the Pact one above)
+  { dex: "tinyman", ref: "5CV7UJ7KST2G4ZSBGRSDONQRGXTELVJBKOMNKPLKEJKI6CX5OHYJJW3BWM" }, // $RAPTOR/U
+  { dex: "pact", ref: "3188310827" }, // U/HOG
+];
+
+/** Sum of live per-pool TVL across every tracked Tinyman + Pact pool, including dust pools not shown on /pools. Null only if every pool fetch failed. */
+export async function fetchTotalTvlUsd(): Promise<number | null> {
+  const metrics = await Promise.all([...POOLS, ...DUST_POOLS].map(fetchPoolMetrics));
+  const values = metrics.map((m) => m.tvlUsd).filter((v): v is number => v != null);
+  if (values.length === 0) return null;
+  return values.reduce((sum, v) => sum + v, 0);
+}

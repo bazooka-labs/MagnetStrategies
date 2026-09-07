@@ -1,3 +1,6 @@
+import { fetchTotalTvlUsd } from "@/lib/pools";
+import { AGGREGATE_TVL_ENABLED, fetchAggregateTvlUsd } from "@/lib/tvlAggregate";
+
 export const MAGNET_ASA_ID = 3081853135;
 
 export async function fetchHolderCount(): Promise<string> {
@@ -22,26 +25,34 @@ export async function fetchHolderCount(): Promise<string> {
   }
 }
 
+async function fetchAlgoUSD(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd",
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Number(data?.algorand?.usd) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchMagnetPriceUSDC(): Promise<string> {
   try {
-    const [vestigeRes, algoRes] = await Promise.all([
+    const [vestigeRes, algoUSD] = await Promise.all([
       fetch(
         `https://api.vestigelabs.org/assets/price?asset_ids=${MAGNET_ASA_ID}&network_id=0`,
         { next: { revalidate: 300 } }
       ),
-      fetch(
-        "https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd",
-        { next: { revalidate: 300 } }
-      ),
+      fetchAlgoUSD(),
     ]);
-    if (!vestigeRes.ok || !algoRes.ok) return "—";
+    if (!vestigeRes.ok || !algoUSD) return "—";
     const vestigeData = await vestigeRes.json();
-    const algoData = await algoRes.json();
     const entry = Array.isArray(vestigeData) ? vestigeData[0] : null;
     if (!entry?.price) return "—";
-    const algoUSD = algoData?.algorand?.usd;
-    if (!algoUSD) return "—";
-    const priceUSDC = Number(entry.price) * Number(algoUSD);
+    const priceUSDC = Number(entry.price) * algoUSD;
     return `$${priceUSDC.toFixed(6)}`;
   } catch {
     return "—";
@@ -49,18 +60,30 @@ export async function fetchMagnetPriceUSDC(): Promise<string> {
 }
 
 export async function fetchTVL(): Promise<string> {
-  try {
-    const res = await fetch(
-      `https://api.vestigelabs.org/assets/price?asset_ids=${MAGNET_ASA_ID}&network_id=0`,
-      { next: { revalidate: 3600 } }
+  // The aggregate runs alongside the hardcoded sum. While AGGREGATE_TVL_ENABLED is false it
+  // is shadow-only: computed and logged for comparison, never displayed. fetchAggregateTvlUsd
+  // never throws and never returns a value below the hardcoded floor, so this cannot regress
+  // the displayed number or fail the build. See ASA_TVL_SPEC.md.
+  const [floorUsd, algoUSD, agg] = await Promise.all([
+    fetchTotalTvlUsd(),
+    fetchAlgoUSD(),
+    fetchAggregateTvlUsd(),
+  ]);
+
+  if (agg) {
+    const delta = floorUsd ? ((agg.usdTotal - floorUsd) / floorUsd) * 100 : null;
+    console.log(
+      `[tvl] floor=$${floorUsd?.toFixed(2) ?? "n/a"} aggregate=$${agg.usdTotal.toFixed(2)}` +
+        `${delta === null ? "" : ` (${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%)`}` +
+        ` pools=${agg.poolsCounted} discovered=${agg.fromDiscovery} unresolved=${agg.floorUnresolved}` +
+        `${agg.guardsFired.length ? ` guards=[${agg.guardsFired.join(",")}]` : ""}`,
     );
-    if (!res.ok) return "—";
-    const data = await res.json();
-    const entry = Array.isArray(data) ? data[0] : null;
-    if (!entry?.total_lockup) return "—";
-    const tvl = Math.round(Number(entry.total_lockup) * Number(entry.price) * 2);
-    return `${tvl.toLocaleString("en-US")} ALGO`;
-  } catch {
-    return "—";
   }
+
+  // Never display less than the hardcoded floor: understating TVL reads as liquidity leaving.
+  const chosen = AGGREGATE_TVL_ENABLED && agg ? Math.max(agg.usdTotal, floorUsd ?? 0) : floorUsd;
+
+  if (chosen == null || !algoUSD) return "—";
+  const tvlAlgo = Math.round(chosen / algoUSD);
+  return `${tvlAlgo.toLocaleString("en-US")} ALGO`;
 }
