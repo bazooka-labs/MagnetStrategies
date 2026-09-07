@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { Panel, Stat } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
+import { TvlRankStat } from "@/components/TvlRankStat";
 import { MAGNET_ASA_ID, fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL } from "@/lib/tokenStats";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
@@ -72,10 +73,11 @@ export default async function TokenPage() {
       </Panel>
 
       {/* Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Price" value={price} sub="USDC" />
         <Stat label="Holders" value={holders} sub="Active wallets" />
-        <Stat label="Total TVL" value={tvl} sub="$U pools via Vestige" accent="purple" />
+        <Stat label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" accent="purple" />
+        <TvlRankStat />
       </div>
 
       {/* Chart + Swap */}
