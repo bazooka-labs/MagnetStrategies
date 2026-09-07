@@ -58,10 +58,9 @@ export function TvlRankStat() {
 
   const rank = board?.magnet?.rank ?? null;
   const value = failed ? "—" : rank !== null ? `#${rank}` : "…";
-  const sub =
-    failed ? "Unavailable"
-    : board ? `of ${board.eligible.toLocaleString("en-US")} ranked ASAs`
-    : "Loading";
+  // No denominator in the box by request — the eligible count stays in the modal header,
+  // where it reads as methodology rather than a claim.
+  const sub = failed ? "Unavailable" : board ? null : "Loading";
 
   const outsideTop100 = board?.magnet != null && board.magnet.rank > 100;
 
@@ -77,7 +76,7 @@ export function TvlRankStat() {
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
         <p className="text-xs font-medium uppercase tracking-wider text-gray-500">TVL Rank</p>
         <p className="mt-2 font-mono text-2xl font-bold text-magnet-300">{value}</p>
-        <p className="mt-0.5 text-xs text-gray-500">{sub}</p>
+        {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
         {board && (
           <span className="absolute bottom-3 right-4 inline-flex items-center gap-1 font-mono text-[10px] tracking-wide text-magnet-400 transition-colors group-hover:text-magnet-300">
             See Top 100

@@ -11,6 +11,20 @@ const INDEXER = "https://mainnet-idx.algonode.cloud";
 const PACT_WEIGHTED_FACTORY_ADDR =
   "H2XDAFUDTEPTN24HNUAZI6RCKQ2KDIIO45U767FEHGSGSEGCWWOK4QEIXM";
 
+/** Venues that are NOT DEX liquidity pools. A dualstake mint contract holds staked/locked
+ *  supply, not two-sided swappable liquidity, and cannot be withdrawn against like an LP
+ *  position — so it does not belong on a board measuring DEX liquidity. Folks Lend and the
+ *  xALGO/tALGO mint contracts are already dropped by the rate-encoded guard (their reserve
+ *  fields hold an exchange rate); dualstake is not rate-encoded, so it needs naming here.
+ *  Measured 2026-09-07: including these inflated ORA by 38% and COOP by 42%, and moved 75
+ *  of the top 100. */
+const NON_LP_VENUES = new Set([
+  "dualstake mint",
+  "xALGO mint/burn",
+  "tALGO mint/burn",
+  "Folks Lend",
+]);
+
 /** Eligibility floor. Vestige used 80%, which is the exact point where junk disappears;
  *  85% adds margin. Tightening past 90% starts excluding legitimate thin tokens. */
 const MIN_ASSET_CONFIDENCE_BPS = 8500;
@@ -131,6 +145,7 @@ async function loadPools(): Promise<{ pools: RawPool[]; round: number }> {
       if (!p) continue;
       // Same guards as the $U aggregation, all failing closed: rate-encoded pools hold an
       // exchange rate rather than a balance, and single-sided pricing is circular.
+      if (typeof p.dex_name !== "string" || NON_LP_VENUES.has(p.dex_name)) continue;
       if (p.tvl_rate_encoded !== false) continue;
       if (p.tvl_priced_sides !== 2) continue;
       const conf = num(p.tvl_confidence_bps);
