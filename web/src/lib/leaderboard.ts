@@ -43,6 +43,30 @@ const UA = { "User-Agent": "Mozilla/5.0 (compatible; MagnetStrategies/1.0)" };
 
 export const MAGNET_ASA_ID = 3081853135;
 
+/** The Folks Finance GOVERNANCE token — a normal traded asset. Must never be excluded. */
+const FOLKS_GOVERNANCE_ASA = 3203964481;
+/** Folks v1 receipt tokens, which predate the "Folks V2 " naming convention. */
+const FOLKS_V1_RECEIPTS = new Set([
+  "Folks Algo",
+  "Folks USDC",
+  "Folks Tether USDt",
+  "Folks Governance Algo",
+]);
+
+/** Folks lending receipt tokens (fAssets) are excluded from the ranking. They are claims on
+ *  a deposit, not independently traded assets: every fAsset pool pairs against another fAsset
+ *  (fGOLD$ trades only vs fALGO and fUSDC, never vs ALGO or USDC), you can only obtain one by
+ *  depositing the underlying into Folks, and crediting both double counts the same exposure.
+ *  Much of that liquidity is also inert — measured 2026-09-08, 45% of fGOLD$'s TVL sat in a
+ *  Pact pool with no trade since 2024-04-10, and two fSILVER$ pools had none since 2023-11.
+ *  Matched by name so new fAssets are covered automatically; the governance token is exempt
+ *  by id, and impostors named "folks finance" are unaffected. */
+function isFolksReceipt(assetId: number, name: string | null): boolean {
+  if (assetId === FOLKS_GOVERNANCE_ASA) return false;
+  if (!name) return false;
+  return name.startsWith("Folks V2 ") || FOLKS_V1_RECEIPTS.has(name);
+}
+
 export type BoardRow = {
   rank: number;
   assetId: number;
@@ -236,6 +260,7 @@ export async function fetchBoard(): Promise<Board | null> {
     for (const p of pools) {
       for (const id of [p.a, p.b]) {
         if (lpTokens.has(id) || meta.get(id)?.lp) continue;
+        if (isFolksReceipt(id, meta.get(id)?.name ?? null)) continue;
         tvl.set(id, (tvl.get(id) ?? 0) + p.tvlAlgo);   // two-sided: full pool value per side
         count.set(id, (count.get(id) ?? 0) + 1);
       }

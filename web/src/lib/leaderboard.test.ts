@@ -119,3 +119,61 @@ describe("confidence gate is 80%, matching Vestige", () => {
     expect(b?.top.some((r) => r.assetId === A)).toBe(false);
   });
 });
+
+describe("Folks receipt tokens (fAssets) are excluded, governance token is not", () => {
+  const FOLKS_GOV = 3203964481;
+
+  function withAssets(assets: unknown[], pairId: number) {
+    vi.stubGlobal("fetch", async (input: string | URL) => {
+      const url = String(input);
+      const json =
+        url.includes("/analytics/prices")
+          ? { algo_usd: 0.1, as_of_round: 1,
+              prices: { [String(pairId)]: { price_algo: 1, confidence_bps: 9500 },
+                        [String(B)]: { price_algo: 1, confidence_bps: 9500 } } }
+        : url.includes("/assets") ? { assets }
+        : url.includes("/pools")
+          ? { pools: [lhPool({ pool_id: 1, asset_a: pairId, asset_b: B }),
+                      lhPool({ pool_id: 2, lp_asset_id: 9_000_002, asset_a: pairId, asset_b: B })],
+              as_of_round: 1 }
+        : url.includes("algonode") ? { applications: [] }
+        : {};
+      return { ok: true, status: 200, json: async () => json };
+    });
+  }
+  const onBoard = async (id: number) =>
+    (await fetchBoard())?.top.some((r) => r.assetId === id) ?? false;
+
+  it.each([
+    ["Folks V2 Algo", 971381860],
+    ["Folks V2 USDC", 971384592],
+    ["Folks V2 Meld Gold (g)", 1258524377],
+    ["Folks V2 Meld Silver (g)", 1258524381],
+    ["Folks V2 Wrapped BTC", 1067295154],
+    ["Folks Algo", 686505742],
+    ["Folks USDC", 686508050],
+    ["Folks Tether USDt", 686509463],
+    ["Folks Governance Algo", 794060802],
+  ])("excludes %s", async (name, id) => {
+    withAssets([asset(id, "fX", { name }), asset(B, "PAIR")], id);
+    expect(await onBoard(id)).toBe(false);
+  });
+
+  it("KEEPS the FOLKS governance token", async () => {
+    withAssets([asset(FOLKS_GOV, "FOLKS", { name: "Folks Finance" }), asset(B, "PAIR")], FOLKS_GOV);
+    expect(await onBoard(FOLKS_GOV)).toBe(true);
+  });
+
+  it("keeps the governance token even if it were renamed to match the pattern", async () => {
+    // exempt by asset id, not by name — a rename must not delist it
+    withAssets([asset(FOLKS_GOV, "FOLKS", { name: "Folks V2 Something" }), asset(B, "PAIR")], FOLKS_GOV);
+    expect(await onBoard(FOLKS_GOV)).toBe(true);
+  });
+
+  it("does not exclude unrelated names that merely mention folks", async () => {
+    for (const [id, name] of [[557264326, "folks finance"], [2280345909, "Poor folks"], [1010645919, "Friday"]] as const) {
+      withAssets([asset(id, "X", { name }), asset(B, "PAIR")], id);
+      expect(await onBoard(id), name).toBe(true);
+    }
+  });
+});
