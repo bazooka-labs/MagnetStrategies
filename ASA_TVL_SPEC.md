@@ -1,7 +1,9 @@
 # ASA TVL Aggregation — Spec v2
 
-**Status:** IMPLEMENTED in shadow mode (`AGGREGATE_TVL_ENABLED = false`). Awaiting a 48h comparison before display is switched over.
-**Scope:** analytics/display only. Adds LiquiHog + Pact-weighted enumeration to the TVL shown on `/token`.
+**Status:** **LIVE.** The top-100 leaderboard and the TVL Rank box ship on `/token`. The $U TVL
+aggregation remains in shadow mode (`AGGREGATE_TVL_ENABLED = false`) pending a 48h comparison
+before the Total TVL box switches over. See [Where it stands today](#where-it-stands-today).
+**Scope:** analytics/display only — a cross-DEX ASA liquidity tracker. Sections 1-6 cover the $U TVL aggregation; the top-100 leaderboard built on it is documented below.
 **MagnetFi:** no protocol impact — see [MagnetFi Impact Review](#magnetfi-impact-review). One real coupling exists (**shared deployment**), mitigated in §6.
 
 ---
@@ -77,7 +79,7 @@ Both third-party paths — LiquiHog **and** the indexer — must apply all of th
 | `Number.isFinite(v) && v >= 0` | `NaN`/`Infinity` poisons `reduce`. Never `Number(x) \|\| 0` — that coerces garbage to a contributing 0. |
 | `tvl_rate_encoded === false` (**present and false**) | Fail-open on absence was a v1 bug. This field's absence is what produced 1.7 trillion ALGO in testing. |
 | `tvl_priced_sides === 2` | Single-sided pricing is circular; produced 355 billion ALGO. |
-| `tvl_confidence_bps >= 8500` | Excludes manipulated/unpriceable pools. Costs $0.03 on $U — measured. |
+| `tvl_confidence_bps >= 8000` | Excludes manipulated/unpriceable pools. Lowered from 8500 on 2026-09-08 to match Vestige's model — see [Where it stands today](#where-it-stands-today). |
 | Per-pool cap: reject any single discovered pool > the **entire hardcoded floor** | No fabricated pool may dominate the headline. A 40%-of-floor cap was tried first and was **wrong**: measured, the largest legitimate $U pool (u-talgo `3163770927`) is ~48% of the floor alone, so 40% rejected a real pool. |
 | Weighted-pool path: `bootstrapped === 1`, both reserves non-zero, **both sides independently priced**, and `next-token` pagination honoured | The Pact factory is **permissionless** — anyone can create a $U pool and choose weights/reserves to inflate a naive formula. Un-paginated `limit=1000` silently truncates, i.e. understates. |
 | `AbortSignal.timeout(5000)` on every fetch | A hang stalls `/token` ISR regeneration to the function limit. |
@@ -198,3 +200,90 @@ The +$182.71 delta is the STAMM pool the old code could not see, plus quote drif
 
 - Watch shadow logs ~48h; confirm the delta stays near +0.4% and no guard beyond the five known dust pools fires.
 - Consider deleting `components/LiveStats.tsx` (dead code) and `contracts/lending/oracle_bot.py` (dormant, both HTTP sources dead, unchecked single-source post at `:194`).
+
+---
+
+# Where it stands today
+
+*Last verified 2026-09-08, round ~64,850,975.*
+
+## Live
+
+| Surface | State |
+|---|---|
+| `/api/leaderboard` | **Live** — top 100 ASAs by TVL, cached 300s, `maxDuration` 60 |
+| **TVL Rank** box + Top 100 modal on `/token` | **Live** |
+| Total TVL box | Still the hardcoded floor — `AGGREGATE_TVL_ENABLED = false` |
+
+Current standings: `FOLKS #6 · GOLD$ #19 · SILVER$ #20 · $U #24` of **623** eligible assets.
+Shadow log at last build: `floor=$43,631 aggregate=$43,814 (+0.42%)` — the delta is the STAMM pool.
+
+## Eligibility rules, as shipped
+
+An asset is ranked when it clears **all** of:
+
+| Rule | Value | Why |
+|---|---|---|
+| Price confidence | **≥ 8000 bps (80%)** | Matched to Vestige's model so rankings stay familiar. Also the measured point at which junk disappears — below it, AlgoBrent (1 pool, 1 bps) reaches the top 100. |
+| Independent pools | **≥ 2** | Breadth is the signal confidence alone cannot give. |
+| Not an LP token | via `lp_asset_id` from the pool set | A pool's own LP token must never rank as a traded asset. |
+| Not a non-LP venue | `dualstake mint`, `xALGO`/`tALGO mint/burn`, `Folks Lend` | Staked/locked supply, not two-sided swappable liquidity. |
+| Not a Folks receipt | name `Folks V2 …` + four v1 names | fAssets pair only against other fAssets and double-count the underlying. |
+
+Pool-level guards (rate-encoded, single-sided, pool confidence ≥ 3000 bps, ≥10 ALGO) are unchanged
+from §4.
+
+## Decisions made after the original spec
+
+**Confidence floor 85% → 80%** *(2026-09-08)*. 85% excluded Meld's RWA tokens — GOLD$ at 8306 bps
+across 48 pools ($54.8k) and SILVER$ at 8149 across 40 ($53.4k). Breadth like that cannot be cheaply
+manipulated whatever the score says, so 85% cost more than it bought. Applied to the $U aggregation's
+pool floor too, so one confidence policy governs the product. Cost: $U #22 → #26 at the time.
+
+**Non-LP venues excluded** *(2026-09-07)*. `dualstake mint` is **not rate-encoded**, so it passed every
+data-quality guard. 18 contracts held 1.92M ALGO — only 2.7% of the universe but heavily concentrated:
+42% of COOP's TVL, 38% of ORA's, 17% of ALPHA's. Excluding them moved **75 of the top 100**
+(ORA #23 → #30, ALC #80 → #128). `Folks Lend` / `xALGO` / `tALGO` were already caught by the
+rate-encoded guard. This is a **denylist, not an allowlist** — an unrecognised `dex_name` still counts,
+so a newly launched DEX is never silently dropped, which is the exact failure that made Vestige stale.
+A *missing* `dex_name` is dropped, failing closed.
+
+**Folks lending receipts excluded** *(2026-09-08)*. fAssets are claims on a deposit, not independently
+traded assets: fGOLD$ trades only against fALGO and fUSDC, never ALGO or USDC, and the only way to hold
+one is depositing the underlying. Much of that liquidity is also inert — **45% of fGOLD$'s TVL sat in a
+Pact pool with no trade since 2024-04-10 (881 days)**, and two fSILVER$ pools none since November 2023.
+Removed 10 entries (fALGO #7, fUSDC #8, fLINK, fGOLD$, fgoETH, fSILVER$, fWBTC, fxALGO, fgALGO, fWETH).
+The **FOLKS governance token is exempt by asset id**, not by name, so a rename could never delist it.
+Matching is deliberately narrow: an impostor `folks finance` (`557264326`, creator `H7WLV3ZS…`) exists
+alongside the real `Folks Finance` (`3203964481`, creator `RKBPWO3M…`).
+
+**Pool floor 10 ALGO** *(2026-09-07)*. A 100 ALGO floor halved the eligible count 791 → 396 **without
+moving a single rank**. Ranks are insensitive to the tail; the denominator is not.
+
+**Rank denominator removed from the metric box** *(2026-09-07)*. Founder's call. The eligible count
+stays in the modal header, where it reads as methodology rather than a claim on the card.
+
+## Known gaps
+
+- **No rank delta.** The mockup's `▲2` needs an hourly snapshot table; there is no datastore in this
+  project. This is also the one thing that makes a leaderboard worth re-checking.
+- **Dormant liquidity counts.** The fGOLD$ finding is not fAsset-specific: any pool with parked
+  reserves and no trades in years inflates its assets' TVL. A staleness filter would fix the class,
+  board-wide. Needs a cached liveness map — an indexer call per pool is too expensive inline.
+- **`PACT_WEIGHTED_FACTORY_ADDR` is declared twice**, in `tvlAggregate.ts` and `leaderboard.ts`. It was
+  typo'd once during the build (an extra `4`, 59 chars instead of 58), which silently returned zero
+  weighted pools — 44% of $U's TVL. Extract to one shared constant.
+- **`web/package.json` + lockfile are uncommitted**, since they also carry an unrelated `@compx/sdk`
+  bump. `npm i -D vitest` is needed on a fresh clone to run the 74 tests.
+- **`components/LiveStats.tsx` is dead code** — rendered nowhere.
+
+## Files
+
+| File | Role |
+|---|---|
+| `web/src/lib/leaderboard.ts` | Board computation (server-only) |
+| `web/src/app/api/leaderboard/route.ts` | Cached read API |
+| `web/src/components/TvlRankStat.tsx` | Rank box + Top 100 modal (client) |
+| `web/src/lib/tvlAggregate.ts` | $U TVL aggregation (server-only) |
+| `web/src/lib/leaderboard.test.ts` | 28 tests — gate boundaries, venue and Folks exclusion |
+| `web/src/lib/tvlAggregate.test.ts` | 46 tests — dedupe, precedence, poison, never-throws, isolation |

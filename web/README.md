@@ -15,12 +15,13 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
 |---|---|
 | `/` | Landing splash → "Attract Liquidity" + a link to `/about` |
 | `/about` | The thesis + how the products fit together (a hub linking to each product page) |
-| `/token` | $U token dashboard (price, holders, TVL, charts, swap) |
+| `/token` | $U token dashboard (price, holders, TVL, **TVL Rank** + Top 100 ASA modal, charts, swap) |
 | `/magnetfi` | **The Bank** — tabbed app (below) |
 | `/musd` | mUSD hub — live PSM metrics + the mint/redeem **Exchange** |
 | `/pools` | $U liquidity pools (Tinyman & Pact) — live fee/farm APRs + add-liquidity deep-links |
 | `/vote` | **UVote** — advisory founder-led governance; proposals, vote/reclaim, treasury tracker, gated admin |
 | `/contact` | Contact |
+| `/api/leaderboard` | Read API: top 100 ASAs by TVL (cached 300s) — powers the TVL Rank box |
 
 ## The Bank (`/magnetfi`) — `src/app/magnetfi/page.tsx`
 - **Overview** (`OverviewTab`) — the landing: plain explanations of Single Token Markets and LP
@@ -59,6 +60,44 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
   to use them again.
 
 ## Frontend architecture — `src/lib/`
+- **`pools.ts`** — `POOLS` (the Tinyman + Pact pools shown as cards on `/pools`) and `DUST_POOLS`
+  (real but sub-$150 $U pools found on both DEXes, folded into Total TVL but not worth a card).
+  `fetchPoolMetrics(pool)` hits Tinyman's/Pact's own pool API per pool (TVL, fee APR, farm APR);
+  `fetchTotalTvlUsd()` sums `tvlUsd` across `POOLS` + `DUST_POOLS` — the shared source for both
+  `/api/pools` and the site-wide Total TVL stat, so a pool migrating to a new pool id (e.g. Pact's
+  2026 platform move) only needs updating here to flow everywhere. Both arrays are now also the
+  **permanent floor** under `tvlAggregate.ts` — discovery only ever adds to them, never replaces.
+- **`tvlAggregate.ts`** (server-only) — `fetchAggregateTvlUsd()`: $U TVL across *every* venue, not
+  just the hardcoded pools. Discovers pools via **LiquiHog** (`hogswap-v1.liquihog.dev`) plus the
+  **Pact managed-weighted factory** (enumerated from its application address; reserves live in pool
+  global state, not the pool account — which is why Vestige and LiquiHog both read them as empty).
+  Adds the **STAMM** venue nothing else queried. Uses **source precedence, not `max()`**: our own
+  Tinyman/Pact fetch wins, and a third party is used only to discover a pool we lack or to backstop
+  one whose fetch failed. Guards fail closed (rate-encoded pools hold an exchange rate, not a
+  balance; single-sided pricing is circular). **Never throws** — `/token` is prerendered at build
+  with no try/catch, so a throw here would fail `next build`. Gated by `AGGREGATE_TVL_ENABLED`;
+  while false it shadow-logs `[tvl] floor=… aggregate=…` and the displayed number is unchanged.
+- **`leaderboard.ts`** (server-only) — `fetchBoard()`: ranks every ASA by **two-sided TVL** (the full
+  value of each pool containing it, matching the Total TVL box). Eligibility: **80% price confidence**
+  (matched to Vestige's model so rankings stay familiar) and **≥2 pools**. Excludes LP tokens
+  (via `lp_asset_id` collected from the pool set itself), **non-LP venues** (`dualstake mint`,
+  `xALGO`/`tALGO mint/burn`, `Folks Lend` — staked supply, not swappable liquidity), and **Folks
+  lending receipts** (fAssets pair only against other fAssets and double-count the underlying; the
+  **FOLKS governance token is exempt by asset id**, so a rename could never delist it).
+- **`tokenStats.ts`** — `/token` + homepage `LiveStats` metrics: `fetchHolderCount` (Indexer),
+  `fetchMagnetPriceUSDC` ($U/ALGO from Vestige × ALGO/USD from CoinGecko), `fetchTVL` (converts
+  `fetchTotalTvlUsd()`'s USD sum to ALGO via the same CoinGecko rate). Vestige is used only for the
+  $U/ALGO price quote — Total TVL is **not** sourced from Vestige's asset-level aggregate, since it
+  lagged behind pool migrations. `fetchTVL` also runs `fetchAggregateTvlUsd()` alongside the floor and
+  logs both; it displays the aggregate only when `AGGREGATE_TVL_ENABLED` is true, and never below the
+  floor (understating TVL reads as liquidity leaving).
+
+  > **Price-source caveat:** Vestige is online but no longer updating its pool index. It reports
+  > `total_lockup` of ~91k $U against ~163k actually pooled — it sees ~56% of the liquidity, blind to
+  > the same Pact weighted pools, while reporting *higher* confidence than LiquiHog. It also returns
+  > no round or timestamp, so staleness is undetectable from the payload. Accepted deliberately:
+  > price is coverage-insensitive (arbitrage keeps venues aligned; measured spread vs LiquiHog 0.07%)
+  > whereas TVL is a sum and needs every pool. Revisit if arbitrage visibly breaks down.
 - **`magnetfi.ts`** — config + pure helpers. `DEPLOYMENTS` (per-network app/asset IDs), `ACTIVE`,
   `ACTIVE_FOLKS`, `MAGNETFI_ADMIN_ADDRESS`, `VAULT_TYPES`, **`POOL_WIRING` / `poolWiring(id)`** (per-pool
   on-chain ids — which collateral vaults are live), and `healthFactor` / `maxBorrow` /
@@ -80,6 +119,16 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
   badges.
 
 ## Notable UI behaviors (and where they live)
+- **Total TVL** (`/token`, homepage `LiveStats`) = live sum of every tracked Tinyman + Pact pool's
+  own reported TVL (`fetchTotalTvlUsd`, `lib/pools.ts`), including `DUST_POOLS`, converted to ALGO
+  via CoinGecko's ALGO/USD rate. Not a third-party asset-level aggregate — summing our own known
+  pools is what keeps it correct the moment a pool migrates to a new pool id.
+- **TVL Rank + Top 100 modal** (`components/TvlRankStat.tsx`, client) — fetches `/api/leaderboard`
+  so `/token` stays static. The **whole card** is the hit target, not just the "See Top 100" corner
+  label (a 10px corner link fails on touch). The modal **pins $U's row and scrolls to it** rather
+  than landing at rank 1 — which is also what makes it work on the day $U falls outside the top 100
+  (its row is then appended below a separator with its true rank). No rank delta yet: that needs an
+  hourly snapshot table and there is no datastore in this project.
 - **Live-projected accrued interest** — the on-chain `accrued_interest` is lazy (only written on a
   vault interaction), so the UI projects it client-side (`projectedAccruedInterest`, `VaultsTab`, 60s
   tick). The estimate is always ≥ the on-chain value, so health factor is never overstated.

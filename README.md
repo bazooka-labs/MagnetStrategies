@@ -15,7 +15,8 @@ and partner money markets — and reinvests returns into the token's underlying 
 - **mUSD:** https://magnetstrategies.io/musd
 - **UVote (governance):** https://magnetstrategies.io/vote
 - **Pools:** https://magnetstrategies.io/pools
-- **$U token:** https://magnetstrategies.io/token
+- **$U token (+ ASA TVL Rank):** https://magnetstrategies.io/token
+- **Top 100 ASA leaderboard (API):** https://magnetstrategies.io/api/leaderboard
 
 ## Products
 
@@ -39,6 +40,22 @@ tokens to signal a preference; the founder acts on the mandate. **Live on mainne
 $U liquidity pools across Tinyman & Pact with live fee/farm APRs and deep-links to add
 liquidity (`/pools`).
 
+### ASA TVL Tracker
+Cross-DEX liquidity analytics for the whole Algorand ASA ecosystem: the **top 100 ASAs by
+TVL**, surfaced as the **TVL Rank** metric box on `/token` (with a scrollable Top 100 modal)
+and as a public read API at `/api/leaderboard`. **Live.**
+
+Built because Vestige — long the ecosystem's ASA index — stopped keeping up with new pool
+contracts. Most notably it does not see **Pact's managed-weighted pools**, whose reserves live
+in pool global state rather than the pool account, so every escrow-balance indexer reads them
+as empty. That is ~44% of $U's real liquidity. This tracker reads them directly, which makes
+it the only correct source for several assets.
+
+**Analytics only.** Nothing here feeds MagnetFi, mUSD, vault LTVs, or liquidation — it is not
+an oracle, and no protocol code path reads it.
+
+→ [`ASA_TVL_SPEC.md`](./ASA_TVL_SPEC.md)
+
 ## Token
 
 | Field        | Value                         |
@@ -58,6 +75,7 @@ liquidity (`/pools`).
 ```
 MagnetStrategies/
 ├── README.md
+├── ASA_TVL_SPEC.md     ← ASA TVL tracker: sources, conventions, eligibility rules
 ├── magnetdao/          ← Org overview, $U tokenomics, treasury, UVote governance docs
 │                          (UVOTE.md + UVOTE_SPEC.md)
 ├── magnetfi/           ← MagnetFi protocol docs
