@@ -88,3 +88,34 @@ describe("board basics", () => {
     await expect(fetchBoard()).resolves.not.toThrow();
   });
 });
+
+describe("confidence gate is 80%, matching Vestige", () => {
+  const withConf = (bps: number) =>
+    vi.stubGlobal("fetch", async (input: string | URL) => {
+      const url = String(input);
+      const json =
+        url.includes("/analytics/prices")
+          ? { algo_usd: 0.1, as_of_round: 1,
+              prices: { [String(A)]: { price_algo: 1, confidence_bps: bps },
+                        [String(B)]: { price_algo: 1, confidence_bps: 9500 } } }
+        : url.includes("/assets") ? { assets: [asset(A, "RWA"), asset(B, "ALGO")] }
+        : url.includes("/pools")
+          ? { pools: [lhPool({ pool_id: 1 }), lhPool({ pool_id: 2, lp_asset_id: 9_000_002 })], as_of_round: 1 }
+        : url.includes("algonode") ? { applications: [] }
+        : {};
+      return { ok: true, status: 200, json: async () => json };
+    });
+
+  // GOLD$ 8306 and SILVER$ 8149 were excluded by the old 8500 floor despite 48 and 40 pools.
+  it.each([8306, 8149, 8000])("admits an asset at %i bps", async (bps) => {
+    withConf(bps);
+    const b = await fetchBoard();
+    expect(b?.top.some((r) => r.assetId === A)).toBe(true);
+  });
+
+  it.each([7999, 6726, 10])("still excludes an asset at %i bps", async (bps) => {
+    withConf(bps);
+    const b = await fetchBoard();
+    expect(b?.top.some((r) => r.assetId === A)).toBe(false);
+  });
+});

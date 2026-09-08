@@ -169,7 +169,7 @@ export function TvlRankStat() {
             </div>
 
             <p className="border-t border-white/10 px-5 py-3 text-[11px] text-gray-500">
-              Two-sided TVL — the full value of every pool containing the asset. 85% price-confidence
+              Two-sided TVL — the full value of every pool containing the asset. 80% price-confidence
               floor, minimum 2 pools. Per-asset figures double count, so the column is not an
               ecosystem total.
             </p>

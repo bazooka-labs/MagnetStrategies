@@ -25,9 +25,13 @@ const NON_LP_VENUES = new Set([
   "Folks Lend",
 ]);
 
-/** Eligibility floor. Vestige used 80%, which is the exact point where junk disappears;
- *  85% adds margin. Tightening past 90% starts excluding legitimate thin tokens. */
-const MIN_ASSET_CONFIDENCE_BPS = 8500;
+/** Eligibility floor, deliberately matched to Vestige's 80% model so rankings stay familiar
+ *  to anyone who used it. 80% is also the measured point at which junk disappears: below it,
+ *  entries like AlgoBrent (1 pool, 1 bps) reach the top 100.
+ *  Raising it to 85% excluded the Meld RWA tokens — GOLD$ at 8306 bps across 48 pools and
+ *  SILVER$ at 8149 across 40 — which are plainly legitimate, so 85% cost more than it bought.
+ *  Also admits fGOLD$/fSILVER$, consistent with fALGO/fUSDC already ranking. */
+const MIN_ASSET_CONFIDENCE_BPS = 8000;
 const MIN_POOL_CONFIDENCE_BPS = 3000;
 const MIN_POOLS = 2;
 /** Pool floor, kept low so the eligible count (the rank denominator) reflects the real

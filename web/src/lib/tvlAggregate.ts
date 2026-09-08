@@ -34,7 +34,8 @@ const INDEXER = "https://mainnet-idx.algonode.cloud";
 const PACT_WEIGHTED_FACTORY_ADDR =
   "H2XDAFUDTEPTN24HNUAZI6RCKQ2KDIIO45U767FEHGSGSEGCWWOK4QEIXM";
 
-const MIN_CONFIDENCE_BPS = 8500;
+// Aligned with the leaderboard's 80% floor so one confidence policy governs the product.
+const MIN_CONFIDENCE_BPS = 8000;
 const TIMEOUT_MS = 5000;
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; MagnetStrategies/1.0)" };
 
