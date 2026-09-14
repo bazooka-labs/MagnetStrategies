@@ -16,7 +16,16 @@ type Row = {
   pools: number;
   confidenceBps: number;
 };
-type Board = { asOfRound: number; eligible: number; top: Row[]; magnet: Row | null };
+type Board = { asOfRound: number; eligible: number; top: Row[]; magnet: Row | null; generatedAt?: number };
+
+/** Relative age of the board data, so staleness is visible rather than implied. */
+function ageLabel(generatedAt: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - generatedAt) / 1000));
+  if (secs < 60) return `updated ${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `updated ${mins}m ago`;
+  return `updated ${Math.round(mins / 60)}h ago`;
+}
 
 const fmtUsd = (v: number) =>
   v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M`
@@ -30,14 +39,39 @@ export function TvlRankStat() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const magnetRowRef = useRef<HTMLTableRowElement>(null);
 
+  // cache: "no-store" so the browser never serves its own copy — that was the "needs a hard
+  // refresh" symptom. Freshness is bounded by the route's short s-maxage instead.
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch("/api/leaderboard", { cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      setBoard(await r.json());
+      setFailed(false);
+    } catch {
+      setBoard((prev) => prev);          // keep the last good board rather than blanking
+      setFailed((prev) => prev || false);
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    fetch("/api/leaderboard")
+    fetch("/api/leaderboard", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: Board) => alive && setBoard(d))
       .catch(() => alive && setFailed(true));
     return () => { alive = false; };
   }, []);
+
+  // Refetch when the tab regains focus, so a page left open does not show a stale rank.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [load]);
 
   // Land on $U rather than at rank 1 — this is also what makes the modal work on the day
   // $U sits outside the top 100.
@@ -102,7 +136,9 @@ export function TvlRankStat() {
               <div>
                 <h2 className="font-display text-lg font-semibold text-white">Top 100 ASAs by TVL</h2>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  Round {board.asOfRound.toLocaleString("en-US")} · {board.eligible.toLocaleString("en-US")} assets meet the eligibility floor
+                  Round {board.asOfRound.toLocaleString("en-US")}
+                  {board.generatedAt ? ` · ${ageLabel(board.generatedAt)}` : ""} ·{" "}
+                  {board.eligible.toLocaleString("en-US")} assets meet the eligibility floor
                 </p>
               </div>
               <button
