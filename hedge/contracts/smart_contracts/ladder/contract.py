@@ -28,7 +28,7 @@ from algopy import (
     Bytes,
     Global,
     GlobalState,
-    OnCompleteAction,
+    OpUpFeeSource,
     StateTotals,
     Txn,
     UInt64,
@@ -36,9 +36,17 @@ from algopy import (
     gtxn,
     itxn,
     op,
+    ensure_budget,
     subroutine,
     urange,
 )
+
+# mUSD on Algorand mainnet. Hardcoded rather than trusted from the bootstrap argument:
+# bootstrap is one-shot and irreversible in a non-upgradeable contract, so a transposed
+# asset id would brick the deployment permanently. The property checks below (decimals,
+# unit name, clawback, freeze) catch a typo on their own, but a literal makes the
+# intended asset auditable from the source. A testnet deploy rebuilds with its own id.
+MUSD_ASSET_ID = 3_615_600_399
 
 # ── Ladder shape ──────────────────────────────────────────────────────────────
 BAND_COUNT = 9
@@ -105,10 +113,24 @@ MAX_REFERENCE_PRICE = 100_000_000_000_000  # $100M
 # The amount actually collected is stored in the box and refunded exactly.
 DEFAULT_BOX_MBR = 41_700
 BOX_MBR_CAP = 200_000
+# A FLOOR matters more than the cap. Set below the true consensus MBR, every enter()
+# under-funds its own box: the app's min_balance rises by the real 41,700 while the
+# entrant paid less, so free ALGO bleeds per box. Driven hard enough the app falls to
+# its minimum balance and EVERY inner transaction fails — settlements and refunds for
+# all concurrent rounds. The cap protects users from over-charging; the floor protects
+# the contract from under-collecting. Over-collecting is harmless: mbr_paid is refunded
+# exactly, so a later drop in consensus MBR costs nothing.
+BOX_MBR_FLOOR = 41_700
 DEFAULT_PAYOUT_FEE = 8_000  # covers <=3 inner txns + the bounty, with margin
 PAYOUT_FEE_CAP = 50_000
+# Worst case is settle-by-a-third-party: 3 inner fees + the bounty. Below that a
+# position stops pre-funding its own terminal call, fee_reserve under-states the real
+# commitment, and withdraw_operating_algo is then authorised to take ALGO that is owed.
+PAYOUT_FEE_FLOOR = 6_000
 CLOSE_BOUNTY = 3_000
-ROUND_BOX_MBR = 128_100  # reserved in the withdraw floor so create_round can't be starved
+# RoundBox serialises to 307 bytes; key is b"r" + 8 = 9. MBR = 2500 + 400*(9+307).
+# Reserved in the withdraw floor so an honest sweep cannot starve create_round.
+ROUND_BOX_MBR = 128_900
 
 # ── Status / void reasons ─────────────────────────────────────────────────────
 STATUS_OPEN = 0
@@ -129,6 +151,81 @@ Bytes64 = arc4.StaticArray[arc4.Byte, typing.Literal[64]]
 BandStakes = arc4.StaticArray[arc4.UInt64, typing.Literal[9]]
 BandBounds = arc4.StaticArray[arc4.UInt16, typing.Literal[8]]
 Sources = arc4.StaticArray[arc4.UInt64, typing.Literal[4]]
+
+
+# ── ARC-28 events ─────────────────────────────────────────────────────────────
+# Logs are block data: permanent, indexable, and — crucially — they survive
+# cleanup_round deleting the round box. Without them a settled round becomes
+# unauditable from chain state after CLEANUP_GRACE, which would gut the public
+# verifiability this product's whole trust model rests on.
+
+
+class RoundCreated(arc4.Struct):
+    round_id: arc4.UInt64
+    open_time: arc4.UInt64
+    lock_time: arc4.UInt64
+    resolve_time: arc4.UInt64
+    rake_bps: arc4.UInt64
+
+
+class Entered(arc4.Struct):
+    round_id: arc4.UInt64
+    owner: arc4.Address
+    band: arc4.UInt8
+    stake: arc4.UInt64
+
+
+class Locked(arc4.Struct):
+    round_id: arc4.UInt64
+    reference_price: arc4.UInt64
+    sources: Sources
+    source_count: arc4.UInt64
+    total_stake: arc4.UInt64
+
+
+class Resolved(arc4.Struct):
+    round_id: arc4.UInt64
+    settlement_price: arc4.UInt64
+    sources: Sources
+    source_count: arc4.UInt64
+    winning_band: arc4.UInt8
+    payable_pot: arc4.UInt64
+
+
+class Voided(arc4.Struct):
+    round_id: arc4.UInt64
+    reason: arc4.UInt8
+    total_stake: arc4.UInt64
+
+
+class Settled(arc4.Struct):
+    round_id: arc4.UInt64
+    owner: arc4.Address
+    band: arc4.UInt8
+    payout: arc4.UInt64
+
+
+class Closed(arc4.Struct):
+    round_id: arc4.UInt64
+    owner: arc4.Address
+    band: arc4.UInt8
+
+
+class Refunded(arc4.Struct):
+    round_id: arc4.UInt64
+    owner: arc4.Address
+    band: arc4.UInt8
+    stake: arc4.UInt64
+
+
+class Purged(arc4.Struct):
+    round_id: arc4.UInt64
+    owner: arc4.Address
+    band: arc4.UInt8
+
+
+class RakeSwept(arc4.Struct):
+    amount: arc4.UInt64
 
 
 class RoundBox(arc4.Struct, kw_only=True):
@@ -154,6 +251,11 @@ class RoundBox(arc4.Struct, kw_only=True):
     payable_pot: arc4.UInt64
     remaining_payable: arc4.UInt64
     position_count: arc4.UInt64
+    # When the round reached RESOLVED or VOID. The bounty is gated on this, not on
+    # resolve_time: a VOID(no_lock) opens refunds at lock_time+120 but resolve_time can
+    # be up to 24h later, and third-party help being unpaid for that whole window is
+    # exactly when users who cannot transact themselves need it.
+    finalized_at: arc4.UInt64
     winning_band: arc4.UInt8
     status: arc4.UInt8
     void_reason: arc4.UInt8
@@ -198,6 +300,12 @@ class Ladder(
         # Previous round's settlement. Bounds the next reference against a global scale
         # or pair error. 0 until the first resolve.
         self.last_settlement_price = GlobalState(UInt64(0), key=b"last_px")
+        # Which round last wrote it. Rounds overlap (lock clears open_round_id so N+1
+        # can be created while N is still LOCKED, and RESOLVE_DEADLINE is 72h), so
+        # without this a stale attestation relayed at a chosen moment could set the
+        # basis for a newer round's drift check. Not profitable — the payoff is a VOID
+        # that refunds the attacker too — but it is a liveness hazard for free.
+        self.last_settled_round = GlobalState(UInt64(0), key=b"last_rid")
 
         # mUSD owed to users across ALL rounds. Makes solvency checkable on-chain and
         # bounds sweep_excess_musd. See the identity in _obligation invariants below.
@@ -231,8 +339,12 @@ class Ladder(
     @subroutine
     def _position_key(self, round_id: UInt64, owner: Account, band: UInt64) -> Bytes:
         """round_id(8) || owner(32) || band(1). Full key, never a truncated hash —
-        a 64-bit hash is grindable against thousands of known positions."""
-        assert band < BAND_COUNT, "band"
+        a 64-bit hash is grindable against thousands of known positions.
+
+        No band-range assert here: the batch helpers must SKIP a bad entry, not revert
+        the whole group, and an assert inside the key builder fires before any skip
+        logic can run. Callers that need the check do it themselves.
+        """
         return op.itob(round_id) + owner.bytes + op.extract(op.itob(band), 7, 1)
 
     @subroutine
@@ -323,6 +435,7 @@ class Ladder(
         """
         self._only_admin()
         assert self.musd_asset_id.value == UInt64(0), "already bootstrapped"
+        assert musd_asset.id == UInt64(MUSD_ASSET_ID), "wrong asset"
         assert musd_asset.decimals == UInt64(6), "decimals"
         assert musd_asset.unit_name == Bytes(b"mUSD"), "unit name"
         assert musd_asset.clawback == Global.zero_address, "clawback must be zero"
@@ -441,12 +554,14 @@ class Ladder(
     @arc4.abimethod
     def set_box_mbr(self, v: arc4.UInt64) -> None:
         self._only_admin()
+        assert v.native >= BOX_MBR_FLOOR, "mbr floor"
         assert v.native <= BOX_MBR_CAP, "cap"
         self.box_mbr.value = v.native
 
     @arc4.abimethod
     def set_payout_fee(self, v: arc4.UInt64) -> None:
         self._only_admin()
+        assert v.native >= PAYOUT_FEE_FLOOR, "fee floor"
         assert v.native <= PAYOUT_FEE_CAP, "cap"
         self.payout_fee.value = v.native
 
@@ -472,6 +587,7 @@ class Ladder(
         amount = self.rake_owed.value
         self.rake_owed.value = UInt64(0)
         self._pay_musd(self.treasury.value, amount)
+        arc4.emit(RakeSwept(arc4.UInt64(amount)))
 
     @arc4.abimethod
     def sweep_excess_musd(self, amount: arc4.UInt64) -> None:
@@ -572,11 +688,16 @@ class Ladder(
             payable_pot=arc4.UInt64(0),
             remaining_payable=arc4.UInt64(0),
             position_count=arc4.UInt64(0),
+            finalized_at=arc4.UInt64(0),
             winning_band=arc4.UInt8(0),
             status=arc4.UInt8(STATUS_OPEN),
             void_reason=arc4.UInt8(0),
         )
         self.open_round_id.value = rid
+        arc4.emit(RoundCreated(
+            arc4.UInt64(rid), arc4.UInt64(ot), arc4.UInt64(lt), arc4.UInt64(rt),
+            arc4.UInt64(self.default_rake_bps.value),
+        ))
         return arc4.UInt64(rid)
 
     @arc4.abimethod
@@ -609,9 +730,14 @@ class Ladder(
         rnd.status = arc4.UInt8(STATUS_VOID)
         rnd.void_reason = arc4.UInt8(VOID_ADMIN)
         rnd.remaining_payable = arc4.UInt64(rnd.total_stake.native)
+        rnd.finalized_at = arc4.UInt64(Global.latest_timestamp)
         self.rounds[rid] = rnd.copy()
         if self.open_round_id.value == rid:
             self.open_round_id.value = UInt64(0)
+        arc4.emit(Voided(
+            arc4.UInt64(rid), arc4.UInt8(VOID_ADMIN),
+            arc4.UInt64(rnd.total_stake.native),
+        ))
 
     @arc4.abimethod
     def void_round(self, round_id: arc4.UInt64) -> None:
@@ -636,9 +762,13 @@ class Ladder(
             rnd.void_reason = arc4.UInt8(VOID_NO_RESOLVE)
         rnd.status = arc4.UInt8(STATUS_VOID)
         rnd.remaining_payable = arc4.UInt64(rnd.total_stake.native)
+        rnd.finalized_at = arc4.UInt64(now)
         self.rounds[rid] = rnd.copy()
         if self.open_round_id.value == rid:
             self.open_round_id.value = UInt64(0)
+        arc4.emit(Voided(
+            arc4.UInt64(rid), rnd.void_reason, arc4.UInt64(rnd.total_stake.native),
+        ))
 
     # ────────────────────────────────────────────────────────────────────────
     #  Entry
@@ -676,7 +806,7 @@ class Ladder(
         assert now < rnd.lock_time.native, "entry closed"
 
         band = band_index.native
-        assert band < BAND_COUNT, "band"
+        assert band < BAND_COUNT, "band"  # _position_key no longer checks
 
         assert payment.group_index == Txn.group_index - 1, "axfer position"
         assert payment.xfer_asset.id == self.musd_asset_id.value, "wrong asset"
@@ -726,6 +856,9 @@ class Ladder(
         rnd.total_stake = arc4.UInt64(rnd.total_stake.native + stake)
         self.rounds[rid] = rnd.copy()
         self.total_obligations.value += stake
+        arc4.emit(Entered(
+            arc4.UInt64(rid), arc4.Address(sender), arc4.UInt8(band), arc4.UInt64(stake),
+        ))
 
     @arc4.abimethod
     def set_payout_recipient(
@@ -733,6 +866,7 @@ class Ladder(
     ) -> None:
         """Lets a winner who is not opted into mUSD redirect their payout rather than
         forfeit it. Owner only."""
+        assert band_index.native < BAND_COUNT, "band"
         key = self._position_key(round_id.native, Txn.sender, band_index.native)
         pos = self.positions[key].copy()
         pos.recipient = recipient.copy()
@@ -752,7 +886,7 @@ class Ladder(
         prices: Sources,
         timestamps: Sources,
         sig: Bytes,
-    ) -> UInt64:
+    ) -> tuple[UInt64, UInt64, Sources]:
         """Verify one aggregate attestation and return the median price.
 
         ONE signature over the whole vector including the mask — not four independent
@@ -765,6 +899,13 @@ class Ladder(
         the round's snapshot. Taking any of those from arguments would make the binding
         decorative.
         """
+        # ed25519verify_bare alone costs 1900 opcodes against a 700 budget per app
+        # call, so this method cannot run in a bare single-transaction call. Budget is
+        # drawn from GROUP CREDIT, never the app account: lock/resolve are permissionless,
+        # and letting the app fund opup for anyone would be a drain vector. The caller
+        # over-pays fees; the keeper does this by default and a relayer must too.
+        ensure_budget(3_000, OpUpFeeSource.GroupCredit)
+
         assert present_mask > UInt64(0), "empty mask"
         assert present_mask <= PRESENT_MASK_MAX, "mask range"
 
@@ -822,9 +963,18 @@ class Ladder(
         # Price is from the checkpoint; the submission may be late.
         assert Global.latest_timestamp >= checkpoint, "before checkpoint"
 
+        # Absent slots are published as 0, never the keeper's submitted value —
+        # otherwise a three-source settlement is indistinguishable on-chain from a
+        # four-source one, and the published record no longer supports the claim that
+        # anyone can recompute the median.
+        clean = Sources.from_bytes(op.bzero(32))
+        for i in urange(SOURCE_COUNT):
+            if present_mask & (UInt64(1) << i) != UInt64(0):
+                clean[i] = prices[i]
+
         if n == UInt64(4):
-            return a1 + (a2 - a1) // UInt64(2)  # cannot underflow: sorted
-        return a1
+            return a1 + (a2 - a1) // UInt64(2), n, clean.copy()  # no underflow: sorted
+        return a1, n, clean.copy()
 
     # ────────────────────────────────────────────────────────────────────────
     #  Lock / resolve
@@ -849,7 +999,7 @@ class Ladder(
         assert now >= rnd.lock_time.native, "too early"
         assert now <= rnd.lock_time.native + LOCK_DEADLINE, "lock window closed"
 
-        reference = self._verify_attestation(
+        reference, n_present, clean_sources = self._verify_attestation(
             rnd.copy(),
             rid,
             UInt64(CHECKPOINT_LOCK),
@@ -885,7 +1035,7 @@ class Ladder(
         ), "venue spread"
 
         rnd.reference_price = arc4.UInt64(reference)
-        rnd.ref_sources = prices.copy()
+        rnd.ref_sources = clean_sources.copy()
 
         # Boundaries must stay strictly increasing after truncation.
         prev = UInt64(0)
@@ -911,7 +1061,17 @@ class Ladder(
             rnd.status = arc4.UInt8(STATUS_VOID)
             rnd.void_reason = arc4.UInt8(VOID_THIN)
             rnd.remaining_payable = arc4.UInt64(rnd.total_stake.native)
+        rnd.finalized_at = arc4.UInt64(Global.latest_timestamp)
         self.rounds[rid] = rnd.copy()
+        arc4.emit(Locked(
+            arc4.UInt64(rid), arc4.UInt64(reference), rnd.ref_sources.copy(),
+            arc4.UInt64(n_present), arc4.UInt64(rnd.total_stake.native),
+        ))
+        if rnd.status.native == UInt64(STATUS_VOID):
+            arc4.emit(Voided(
+                arc4.UInt64(rid), arc4.UInt8(VOID_THIN),
+                arc4.UInt64(rnd.total_stake.native),
+            ))
 
     @arc4.abimethod
     def resolve(
@@ -933,7 +1093,7 @@ class Ladder(
         assert now >= rnd.resolve_time.native, "too early"
         assert now <= rnd.resolve_time.native + RESOLVE_DEADLINE, "resolve window closed"
 
-        settlement = self._verify_attestation(
+        settlement, n_present, clean_sources = self._verify_attestation(
             rnd.copy(),
             rid,
             UInt64(CHECKPOINT_RESOLVE),
@@ -961,9 +1121,11 @@ class Ladder(
                 winning = i + UInt64(1)
 
         rnd.settlement_price = arc4.UInt64(settlement)
-        rnd.settle_sources = prices.copy()
+        rnd.settle_sources = clean_sources.copy()
         rnd.winning_band = arc4.UInt8(winning)
-        self.last_settlement_price.value = settlement
+        if rid > self.last_settled_round.value:
+            self.last_settlement_price.value = settlement
+            self.last_settled_round.value = rid
 
         if rnd.band_stake[winning].native > UInt64(0):
             payable = self._muldiv(
@@ -975,6 +1137,7 @@ class Ladder(
             rnd.payable_pot = arc4.UInt64(payable)
             rnd.remaining_payable = arc4.UInt64(payable)
             rnd.status = arc4.UInt8(STATUS_RESOLVED)
+            rnd.finalized_at = arc4.UInt64(Global.latest_timestamp)
             # Rake accrues to a counter; it is NEVER transferred here. A direct transfer
             # would revert the whole call if the treasury were not opted into mUSD.
             self.rake_owed.value += rake
@@ -984,8 +1147,19 @@ class Ladder(
             rnd.remaining_payable = arc4.UInt64(rnd.total_stake.native)
             rnd.status = arc4.UInt8(STATUS_VOID)
             rnd.void_reason = arc4.UInt8(VOID_EMPTY_BAND)
+            rnd.finalized_at = arc4.UInt64(Global.latest_timestamp)
             # No rake on a round that pays nobody.
         self.rounds[rid] = rnd.copy()
+        arc4.emit(Resolved(
+            arc4.UInt64(rid), arc4.UInt64(settlement), clean_sources.copy(),
+            arc4.UInt64(n_present), arc4.UInt8(winning),
+            arc4.UInt64(rnd.payable_pot.native),
+        ))
+        if rnd.status.native == UInt64(STATUS_VOID):
+            arc4.emit(Voided(
+                arc4.UInt64(rid), arc4.UInt8(VOID_EMPTY_BAND),
+                arc4.UInt64(rnd.total_stake.native),
+            ))
 
     # ────────────────────────────────────────────────────────────────────────
     #  Terminal operations
@@ -1018,7 +1192,7 @@ class Ladder(
         """Only for a third party, and only once the keeper's own window has passed."""
         if Txn.sender == owner:
             return UInt64(0)
-        if Global.latest_timestamp <= rnd.resolve_time.native + BOUNTY_DELAY:
+        if Global.latest_timestamp <= rnd.finalized_at.native + BOUNTY_DELAY:
             return UInt64(0)
         return UInt64(CLOSE_BOUNTY)
 
@@ -1027,8 +1201,15 @@ class Ladder(
         self, rid: UInt64, owner: Account, band: UInt64, expected_payee: Account
     ) -> bool:
         """Returns False (skip) rather than reverting, so batches degrade gracefully."""
+        if band >= BAND_COUNT:
+            return False
         key = self._position_key(rid, owner, band)
         if key not in self.positions:
+            return False
+        # The forfeit branch of cleanup_round deletes the round box while position
+        # boxes survive. Reading it unguarded would assert instead of skipping, and a
+        # retrying keeper or bounty bot would loop on a revert forever.
+        if rid not in self.rounds:
             return False
         rnd = self.rounds[rid].copy()
         if rnd.status.native != UInt64(STATUS_RESOLVED):
@@ -1063,12 +1244,22 @@ class Ladder(
         self._pay_musd(payee, payout)
         self._pay_algo(payee, pos.mbr_paid.native)
         self._pay_algo(Txn.sender, bounty)
+        arc4.emit(Settled(
+            arc4.UInt64(rid), arc4.Address(owner), arc4.UInt8(band),
+            arc4.UInt64(payout),
+        ))
         return True
 
     @subroutine
-    def _close_one(self, rid: UInt64, owner: Account, band: UInt64) -> bool:
+    def _close_one(
+        self, rid: UInt64, owner: Account, band: UInt64, expected_payee: Account
+    ) -> bool:
+        if band >= BAND_COUNT:
+            return False
         key = self._position_key(rid, owner, band)
         if key not in self.positions:
+            return False
+        if rid not in self.rounds:
             return False
         rnd = self.rounds[rid].copy()
         if rnd.status.native != UInt64(STATUS_RESOLVED):
@@ -1077,6 +1268,18 @@ class Ladder(
             return False
         pos = self.positions[key].copy()
         payee = self._payee(pos.copy(), owner)
+        # Same guard as settle/refund, and it is load-bearing here too even though this
+        # path moves only ALGO. Without expected_payee, an owner sets recipient to an
+        # address the keeper did not put in the resource array and the whole batch
+        # reverts. The opt-in read does double duty: it needs the account available
+        # (which expected_payee guarantees) AND it proves the account exists with a
+        # funded minimum balance — an inner pay of mbr_paid to a never-funded address
+        # is invalid, and that failure is not catchable by any skip logic.
+        if payee != expected_payee:
+            return False
+        _bal, opted = op.AssetHoldingGet.asset_balance(payee, self.musd_asset_id.value)
+        if not opted:
+            return False
 
         rnd.position_count = arc4.UInt64(rnd.position_count.native - UInt64(1))
         self.rounds[rid] = rnd.copy()
@@ -1087,14 +1290,19 @@ class Ladder(
         del self.positions[key]
         self._pay_algo(payee, pos.mbr_paid.native)
         self._pay_algo(Txn.sender, bounty)
+        arc4.emit(Closed(arc4.UInt64(rid), arc4.Address(owner), arc4.UInt8(band)))
         return True
 
     @subroutine
     def _refund_one(
         self, rid: UInt64, owner: Account, band: UInt64, expected_payee: Account
     ) -> bool:
+        if band >= BAND_COUNT:
+            return False
         key = self._position_key(rid, owner, band)
         if key not in self.positions:
+            return False
+        if rid not in self.rounds:
             return False
         rnd = self.rounds[rid].copy()
         if rnd.status.native != UInt64(STATUS_VOID):
@@ -1120,6 +1328,9 @@ class Ladder(
         self._pay_musd(payee, stake)
         self._pay_algo(payee, pos.mbr_paid.native)
         self._pay_algo(Txn.sender, bounty)
+        arc4.emit(Refunded(
+            arc4.UInt64(rid), arc4.Address(owner), arc4.UInt8(band), arc4.UInt64(stake),
+        ))
         return True
 
     @arc4.abimethod
@@ -1133,10 +1344,11 @@ class Ladder(
 
     @arc4.abimethod
     def close_position(
-        self, round_id: arc4.UInt64, owner: arc4.Address, band_index: arc4.UInt8
+        self, round_id: arc4.UInt64, owner: arc4.Address, band_index: arc4.UInt8,
+        expected_payee: arc4.Address,
     ) -> None:
         assert self._close_one(
-            round_id.native, owner.native, band_index.native
+            round_id.native, owner.native, band_index.native, expected_payee.native
         ), "close failed"
 
     @arc4.abimethod
@@ -1162,11 +1374,13 @@ class Ladder(
         """
         rid = round_id.native
         assert rid not in self.rounds, "round still live"
+        assert band_index.native < BAND_COUNT, "band"
         key = self._position_key(rid, owner.native, band_index.native)
         pos = self.positions[key].copy()
         self.fee_reserve.value -= pos.fee_paid.native
         del self.positions[key]
         self._pay_algo(Txn.sender, pos.mbr_paid.native)
+        arc4.emit(Purged(round_id, owner, band_index))
 
     # ────────────────────────────────────────────────────────────────────────
     #  Batches — skip, never revert
@@ -1189,6 +1403,7 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
+        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
@@ -1206,12 +1421,17 @@ class Ladder(
         round_id: arc4.UInt64,
         owners: arc4.DynamicArray[arc4.Address],
         bands: arc4.DynamicArray[arc4.UInt8],
+        payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
+        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
+        assert owners.length == payees.length, "length"
         bitmap = UInt64(0)
         for i in urange(owners.length):
-            if self._close_one(round_id.native, owners[i].native, bands[i].native):
+            if self._close_one(
+                round_id.native, owners[i].native, bands[i].native, payees[i].native
+            ):
                 bitmap = bitmap | (UInt64(1) << i)
         return arc4.UInt64(bitmap)
 
@@ -1223,6 +1443,7 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
+        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"

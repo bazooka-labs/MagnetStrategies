@@ -65,7 +65,7 @@ Queries run just after the checkpoint minute closes, since OHLC4 needs the compl
 | `MIN_REFERENCE_PRICE` / `MAX` | 1_000_000 / 100_000_000_000_000 | $1 – $100M. Overflow bounds, not plausibility |
 | `BOX_MBR` | 41_700 µALGO | Position box. Admin-settable within a cap; the amount collected is stored in the box and refunded exactly |
 | `PAYOUT_FEE` | 8_000 µALGO | Charged once per box. Admin-settable within a cap; stored in the box |
-| `ROUND_BOX_MBR` | 138_500 µALGO | Reserved in the `withdraw_operating_algo` floor so `create_round` cannot be starved |
+| `ROUND_BOX_MBR` | 125_700 µALGO | Reserved in the `withdraw_operating_algo` floor so `create_round` cannot be starved |
 | `CLOSE_BOUNTY` | 3_000 µALGO | Paid to a third party who calls a terminal method for someone else, after `BOUNTY_DELAY` |
 
 ```
@@ -154,11 +154,11 @@ Authoritative for every state-mutating method. Read-only methods (`get_round`, `
 | `resolve` | **anyone** | LOCKED | `now >= resolve_time`; `now <= resolve_time + RESOLVE_DEADLINE`; attestation valid, `checkpoint_kind == RESOLVE`; price sanity vs reference | `settlement_price`; `settle_sources[4]`; `winning_band`; see branches | **RESOLVED** or **VOID** |
 | `void_round` | anyone | OPEN or LOCKED | OPEN: `now > lock_time + LOCK_DEADLINE`<br>LOCKED: `now > resolve_time + RESOLVE_DEADLINE` | `status ← VOID`; `void_reason ← no_lock`/`no_resolve`; `remaining_payable ← total_stake`; `if open_round_id == round_id: open_round_id ← 0` | **VOID** |
 | `settle_position` | anyone | RESOLVED | box exists; `band == winning_band`; `expected_payee` matches; payee opted into mUSD | payout + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= payout`; **`total_obligations −= payout`**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
-| `close_position` | anyone | RESOLVED | box exists; `band != winning_band` | `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; **`total_obligations` unchanged**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
+| `close_position` | anyone | RESOLVED | box exists; `band != winning_band`; `expected_payee` matches; payee receivable | `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; **`total_obligations` unchanged**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
 | `refund_position` | anyone | VOID | box exists; `stake <= remaining_payable`; `expected_payee` matches; payee opted into mUSD | stake + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= stake`; **`total_obligations −= stake`**; `position_count −=`; `fee_reserve −=`; **deletes box** | VOID |
 | `set_payout_recipient` | position owner | OPEN/LOCKED/RESOLVED/VOID | box exists | `box.recipient` | unchanged |
 | `purge_position` | anyone | — | round box absent; position box exists | `box.mbr_paid` → **`Txn.sender`**; `fee_reserve −=`; deletes box | — |
-| `*_batch` | anyone | as above | **skips** invalid entries; asserts ≥1 succeeded | as above per entry | unchanged |
+| `*_batch` | anyone | as above | **skips** invalid entries; an all-skipped batch is a successful no-op | as above per entry | unchanged |
 | `cleanup_round` | anyone | RESOLVED or VOID | `now > resolve_time + CLEANUP_GRACE`; `position_count == 0` **or** `now > resolve_time + FORFEIT_PERIOD` | `remaining_payable → rake_owed`; `total_obligations −= remaining_payable`; **deletes round box, then** pays bounty → caller | round box deleted; no stored status |
 
 **`payee` = `box.recipient` if set, else `owner`** — applied identically by all three value-returning terminal methods. Revision 4 had `close_position` pay `owner` while the others paid `recipient`, which stranded a box permanently when an owner closed their account.
@@ -410,7 +410,15 @@ Inner fees use `Global.min_txn_fee`, not a hardcoded constant. `fee_reserve` dec
 
 > **No `≥1 succeeded` assert.** A batch whose entries were all already settled by bounty-collecting third parties would otherwise revert, and a keeper retry loop written the obvious way would resubmit it forever. Burning a fee on an empty batch is the caller's problem; a reverting keeper path is not.
 
-Algorand allows 8 total references per transaction of which at most 4 may be accounts, expandable by group resource sharing. A batch therefore needs the group padded with no-op app calls, and the achievable size is a property of the group shape rather than a constant — the keeper derives it and the contract caps the array at 8.
+**A full batch of 8 needs at least 3 top-level app calls in the group.** Three limits bind, and the tightest is not the one you would guess:
+
+| Limit | Per top-level app call | A batch of 8 needs |
+|---|---|---|
+| Inner transactions | 16 | up to 24 (settle emits 3 each) |
+| References | 8, of which ≤4 accounts | 1 round box + 8 position boxes + up to 8 payees + the asset |
+| Opcode budget | 700 | ~900 |
+
+Three app calls give 48 inner transactions, 24 references and 2,100 of budget, which clears all three — and at 2,100 the `ensure_budget` call becomes a no-op, saving the opup fees. With a single app call the batch dies at the fifth entry on the inner-transaction limit, after opup has already consumed two. The contract caps the array at 8; the keeper pads the group. There is no bare no-op method, so padding uses a cheap real one such as `get_solvency`.
 
 ---
 
@@ -419,10 +427,16 @@ Algorand allows 8 total references per transaction of which at most 4 may be acc
 ```
 UpdateApplication   rejected unconditionally, no admin exemption
 DeleteApplication   rejected unconditionally
-OptIn / CloseOut / ClearState   rejected (no local state)
+(ClearState cannot be rejected on Algorand — the clear program is `int 1` by
+ protocol. Moot here: the contract has no local state to clear.)
+OptIn / CloseOut                rejected (no local state)
 ```
 
-The contract issues **no inner `appl` and no inner `acfg`, ever** — only `axfer` and `pay`. The app address is not mUSD's manager, reserve, freeze or clawback address.
+The contract issues **no inner `acfg` ever**, and the only inner `appl` it can issue is an opcode-budget bump (`ensure_budget`), whose program is the constant `#pragma 6; int 1` — it cannot reference, call, or read any other application.
+
+> Stated precisely because the earlier absolute claim was false. `ed25519verify_bare` costs 1900 opcodes against a 700-opcode budget per app call, so `lock` and `resolve` cannot execute in a bare single-transaction call; the budget is raised by opup, which is an inner app create-and-delete. Budget is drawn from **group credit, never the app account** — these methods are permissionless, and letting the app fund opup for any caller would bleed its ALGO balance until every payout failed.
+>
+> **Callers must over-pay fees.** A lone `lock` needs 4 opup inner transactions, so the group must carry ~5,000 µALGO of fee, not the 1,000 minimum. Nothing in the ABI signals this, and `lock`'s window is only `LOCK_DEADLINE` wide — a relayer that pays the minimum fee fails and may not have time to diagnose it. The keeper does this by default; a relay implementation must too. The app address is not mUSD's manager, reserve, freeze or clawback address.
 
 **Asserted at bootstrap, not merely verified once:** mUSD (`3615600399`) must have freeze and clawback set to the zero address — permanent and irreversible on Algorand once set. MagnetFi cannot freeze or claw back Hedge's escrow, so isolation holds in both directions. Revision 5 rested this on a human's off-chain check protecting a non-upgradeable contract; decimals and a unit name are trivially forgeable by any third party's ASA, while clawback and freeze are the properties that actually matter.
 
@@ -462,7 +476,7 @@ Backed by the readonly methods `get_round`, `get_position`, `get_ladder` plus th
 7. **Entries are terminal.** Settled, closed, or refunded — never withdrawn.
 8. **Exactly one open round.**
 9. **No stranded funds.** Every reachable state has a permissionless exit within a bounded deadline; every position box has a terminal call that returns its MBR unconditionally; and any mUSD reaching the app outside an entry group is recoverable via `sweep_excess_musd`.
-10. **Ring-fenced.** No mint, no burn, no inner application call, no shared oracle key, non-upgradeable.
+10. **Ring-fenced.** No mint, no burn, no shared oracle key, non-upgradeable. The only inner application call is a constant no-op opup for opcode budget; no path can reach a MagnetFi app.
 
 ## Residual Trust
 
