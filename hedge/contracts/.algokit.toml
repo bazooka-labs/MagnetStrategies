@@ -1,0 +1,15 @@
+[algokit]
+min_version = "v2.0.0"
+
+[generate.smart_contract]
+description = "Adds a new smart contract"
+path = ".algokit/generators/create_contract"
+
+[project]
+type = 'contract'
+name = 'hedge-contracts'
+artifacts = 'smart_contracts/artifacts'
+
+[project.run]
+build = { commands = ['poetry run python -m smart_contracts build'], description = 'Build contracts' }
+test = { commands = ['poetry run pytest'], description = 'Run tests' }

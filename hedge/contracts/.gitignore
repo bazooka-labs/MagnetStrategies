@@ -1,0 +1,8 @@
+.venv/
+.venv-test/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+smart_contracts/artifacts/
