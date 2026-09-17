@@ -107,20 +107,21 @@ MAX_REFERENCE_PRICE = 100_000_000_000_000  # $100M
 # The amount actually collected is stored in the box and refunded exactly.
 DEFAULT_BOX_MBR = 41_700
 BOX_MBR_CAP = 200_000
-# A FLOOR matters more than the cap. Set below the true consensus MBR, every enter()
-# under-funds its own box: the app's min_balance rises by the real 41,700 while the
-# entrant paid less, so free ALGO bleeds per box. Driven hard enough the app falls to
-# its minimum balance and EVERY inner transaction fails — settlements and refunds for
-# all concurrent rounds. The cap protects users from over-charging; the floor protects
-# the contract from under-collecting. Over-collecting is harmless: mbr_paid is refunded
-# exactly, so a later drop in consensus MBR costs nothing.
+# Both a floor and a cap, and NEITHER direction is free. Under-collecting bleeds the
+# app's free ALGO per box (min_balance rises by the real consensus figure while the
+# entrant paid less). Over-collecting looks harmless but is not: the surplus is owed
+# back on close while min_balance releases only the consensus amount, so without a
+# reserve it shows up as withdrawable free balance and an honest sweep takes money the
+# contract has to pay out later — after which every terminal method reverts on an
+# insufficient inner payment. `mbr_reserve` tracks what was actually collected so the
+# withdraw floor sees it, which makes the two-sided exposure safe rather than assumed.
 BOX_MBR_FLOOR = 41_700
 DEFAULT_PAYOUT_FEE = 8_000  # covers <=3 inner txns + the bounty, with margin
 PAYOUT_FEE_CAP = 50_000
 # Worst case is settle-by-a-third-party: 3 inner fees + the bounty. Below that a
 # position stops pre-funding its own terminal call, fee_reserve under-states the real
 # commitment, and withdraw_operating_algo is then authorised to take ALGO that is owed.
-PAYOUT_FEE_FLOOR = 6_000
+PAYOUT_FEE_FLOOR = 8_000
 CLOSE_BOUNTY = 3_000
 # RoundBox serialises to 307 bytes; key is b"r" + 8 = 9. MBR = 2500 + 400*(9+307).
 # Reserved in the withdraw floor so an honest sweep cannot starve create_round.
@@ -222,6 +223,15 @@ class RakeSwept(arc4.Struct):
     amount: arc4.UInt64
 
 
+class RoundCleaned(arc4.Struct):
+    round_id: arc4.UInt64
+    forfeited: arc4.UInt64
+
+
+class RoundCancelled(arc4.Struct):
+    round_id: arc4.UInt64
+
+
 class RoundBox(arc4.Struct, kw_only=True):
     """One day's ladder. Everything defining the round's terms is snapshotted at
     creation, so no admin action can change the terms of a round already underway."""
@@ -268,7 +278,7 @@ class PositionBox(arc4.Struct, kw_only=True):
 
 class Ladder(
     ARC4Contract,
-    state_totals=StateTotals(global_uints=14, global_bytes=6),
+    state_totals=StateTotals(global_uints=15, global_bytes=6),
 ):
     """Daily parimutuel BTC ladder. Non-upgradeable, non-deletable."""
 
@@ -307,6 +317,10 @@ class Ladder(
         self.rake_owed = GlobalState(UInt64(0), key=b"rake_owed")
         # µALGO committed to live position boxes; floors withdraw_operating_algo.
         self.fee_reserve = GlobalState(UInt64(0), key=b"fee_res")
+        # µALGO of box deposits collected and owed back. Tracked separately from
+        # min_balance because box_mbr is settable and need not equal the consensus
+        # per-box MBR in either direction.
+        self.mbr_reserve = GlobalState(UInt64(0), key=b"mbr_res")
         self.paused = GlobalState(UInt64(0), key=b"paused")
 
         self.rounds = BoxMap(UInt64, RoundBox, key_prefix=b"r")
@@ -610,6 +624,7 @@ class Ladder(
         floor = (
             Global.current_application_address.min_balance
             + self.fee_reserve.value
+            + self.mbr_reserve.value
             + UInt64(ROUND_BOX_MBR)
             + UInt64(CLOSE_BOUNTY)
         )
@@ -710,6 +725,7 @@ class Ladder(
         del self.rounds[rid]
         if self.open_round_id.value == rid:
             self.open_round_id.value = UInt64(0)
+        arc4.emit(RoundCancelled(arc4.UInt64(rid)))
 
     @arc4.abimethod
     def admin_void_round(self, round_id: arc4.UInt64) -> None:
@@ -782,10 +798,18 @@ class Ladder(
     ) -> None:
         """Three-transaction group: ALGO for box MBR + payout fee, mUSD stake, app call.
 
-        Both value legs are index-pinned. An ARC-4 transaction parameter is a group-index
-        REFERENCE, not an exclusive claim — without pinning, one 1,000 mUSD transfer can
-        be cited by nine enter() calls in the same group, crediting 9,000 of stake across
-        every band and guaranteeing the attacker holds the winner.
+        What actually makes this safe is the ARC-4 calling convention plus the TYPE of
+        each parameter. Transaction arguments are resolved positionally by the compiler
+        — `payment` IS `group[GroupIndex-1]` and `mbr` IS `group[GroupIndex-2]`, not an
+        index the caller supplies — so a group cannot cite one transfer from several
+        `enter` calls. The declared `gtxn.PaymentTransaction` / `AssetTransferTransaction`
+        types then reject any group whose preceding two transactions are the wrong shape.
+
+        (The two `group_index` asserts below compile to comparisons of a value against
+        itself. They are kept as executable documentation of the required shape, but
+        they are not what stops anything — a reader should not mistake them for a
+        defence, and a future refactor that took an index parameter instead would need
+        a real check here.)
 
         `stake` is read from the transfer, never passed as a parameter.
         """
@@ -841,6 +865,7 @@ class Ladder(
             )
             rnd.position_count = arc4.UInt64(rnd.position_count.native + UInt64(1))
             self.fee_reserve.value += rnd.payout_fee.native
+            self.mbr_reserve.value += rnd.box_mbr.native
         else:
             assert mbr.amount == UInt64(0), "no mbr on top-up"
             pos = self.positions[key].copy()
@@ -1148,15 +1173,18 @@ class Ladder(
             rnd.finalized_at = arc4.UInt64(Global.latest_timestamp)
             # No rake on a round that pays nobody.
         self.rounds[rid] = rnd.copy()
-        arc4.emit(Resolved(
-            arc4.UInt64(rid), arc4.UInt64(settlement), clean_sources.copy(),
-            arc4.UInt64(n_present), arc4.UInt8(winning),
-            arc4.UInt64(rnd.payable_pot.native),
-        ))
+        # Resolved XOR Voided, never both: an indexer counting Resolved must not count
+        # a voided round, and payable_pot == 0 is too weak a signal to distinguish them.
         if rnd.status.native == UInt64(STATUS_VOID):
             arc4.emit(Voided(
                 arc4.UInt64(rid), arc4.UInt8(VOID_EMPTY_BAND),
                 arc4.UInt64(rnd.total_stake.native),
+            ))
+        else:
+            arc4.emit(Resolved(
+                arc4.UInt64(rid), arc4.UInt64(settlement), clean_sources.copy(),
+                arc4.UInt64(n_present), arc4.UInt8(winning),
+                arc4.UInt64(rnd.payable_pot.native),
             ))
 
     # ────────────────────────────────────────────────────────────────────────
@@ -1186,12 +1214,25 @@ class Ladder(
         return pos.recipient.native
 
     @subroutine
-    def _bounty_due(self, rnd: RoundBox, owner: Account) -> UInt64:
-        """Only for a third party, and only once the keeper's own window has passed."""
+    def _bounty_due(self, rnd: RoundBox, owner: Account, fee_paid: UInt64) -> UInt64:
+        """Only for a third party, and only once the keeper's own window has passed.
+
+        Clamped to what THIS position actually pre-funded, after the inner fees its
+        terminal call will spend. A fixed bounty against fees that scale with
+        Global.min_txn_fee would, on any rise in the network fee floor, quietly make
+        every terminal operation net-negative for the app — the same zero-margin
+        failure the payout fee itself was raised to avoid.
+        """
         if Txn.sender == owner:
             return UInt64(0)
         if Global.latest_timestamp <= rnd.finalized_at.native + BOUNTY_DELAY:
             return UInt64(0)
+        reserved = UInt64(3) * Global.min_txn_fee
+        if fee_paid <= reserved:
+            return UInt64(0)
+        available = fee_paid - reserved
+        if available < CLOSE_BOUNTY:
+            return available
         return UInt64(CLOSE_BOUNTY)
 
     @subroutine
@@ -1236,8 +1277,9 @@ class Ladder(
         self.rounds[rid] = rnd.copy()
         self.total_obligations.value -= payout
         self.fee_reserve.value -= pos.fee_paid.native
+        self.mbr_reserve.value -= pos.mbr_paid.native
 
-        bounty = self._bounty_due(rnd.copy(), owner)
+        bounty = self._bounty_due(rnd.copy(), owner, pos.fee_paid.native)
         del self.positions[key]
         self._pay_musd(payee, payout)
         self._pay_algo(payee, pos.mbr_paid.native)
@@ -1266,25 +1308,42 @@ class Ladder(
             return False
         pos = self.positions[key].copy()
         payee = self._payee(pos.copy(), owner)
-        # Same guard as settle/refund, and it is load-bearing here too even though this
-        # path moves only ALGO. Without expected_payee, an owner sets recipient to an
-        # address the keeper did not put in the resource array and the whole batch
-        # reverts. The opt-in read does double duty: it needs the account available
-        # (which expected_payee guarantees) AND it proves the account exists with a
-        # funded minimum balance — an inner pay of mbr_paid to a never-funded address
-        # is invalid, and that failure is not catchable by any skip logic.
+        # expected_payee is load-bearing here too: without it an owner redirects to an
+        # address the caller did not put in its resource array and the whole batch
+        # hard-reverts, which no skip logic can catch.
+        #
+        # The receivability test is EXISTENCE, not mUSD opt-in. This path moves only
+        # ALGO, so an opt-in check would be a proxy — sound in one direction (opted-in
+        # implies funded) but strictly narrower than the property needed, and the gap is
+        # exactly the funded, non-opted-in account. A loser who tidies their wallet by
+        # opting out of mUSD after the round would otherwise never be able to close, and
+        # would forfeit their box deposit to a purge bot at the forfeit period.
         if payee != expected_payee:
             return False
-        _bal, opted = op.AssetHoldingGet.asset_balance(payee, self.musd_asset_id.value)
-        if not opted:
-            return False
+        _mb, exists = op.AcctParamsGet.acct_balance(payee)
+        if not exists:
+            # After the cleanup grace a position whose payee cannot receive would pin
+            # the whole round until FORFEIT_PERIOD — 180 days of the round box's MBR
+            # and this box's deposit frozen, for the price of one redirect. Past the
+            # grace, escheat the deposit (it is ALGO the app already holds; deleting
+            # the box releases the matching min_balance) and let the round finish.
+            if Global.latest_timestamp <= rnd.resolve_time.native + CLEANUP_GRACE:
+                return False
+            rnd.position_count = arc4.UInt64(rnd.position_count.native - UInt64(1))
+            self.rounds[rid] = rnd.copy()
+            self.fee_reserve.value -= pos.fee_paid.native
+            self.mbr_reserve.value -= pos.mbr_paid.native
+            del self.positions[key]
+            arc4.emit(Closed(arc4.UInt64(rid), arc4.Address(owner), arc4.UInt8(band)))
+            return True
 
         rnd.position_count = arc4.UInt64(rnd.position_count.native - UInt64(1))
         self.rounds[rid] = rnd.copy()
         self.fee_reserve.value -= pos.fee_paid.native
+        self.mbr_reserve.value -= pos.mbr_paid.native
         # total_obligations deliberately unchanged — see the identity above.
 
-        bounty = self._bounty_due(rnd.copy(), owner)
+        bounty = self._bounty_due(rnd.copy(), owner, pos.fee_paid.native)
         del self.positions[key]
         self._pay_algo(payee, pos.mbr_paid.native)
         self._pay_algo(Txn.sender, bounty)
@@ -1320,8 +1379,9 @@ class Ladder(
         self.rounds[rid] = rnd.copy()
         self.total_obligations.value -= stake
         self.fee_reserve.value -= pos.fee_paid.native
+        self.mbr_reserve.value -= pos.mbr_paid.native
 
-        bounty = self._bounty_due(rnd.copy(), owner)
+        bounty = self._bounty_due(rnd.copy(), owner, pos.fee_paid.native)
         del self.positions[key]
         self._pay_musd(payee, stake)
         self._pay_algo(payee, pos.mbr_paid.native)
@@ -1376,6 +1436,7 @@ class Ladder(
         key = self._position_key(rid, owner.native, band_index.native)
         pos = self.positions[key].copy()
         self.fee_reserve.value -= pos.fee_paid.native
+        self.mbr_reserve.value -= pos.mbr_paid.native
         del self.positions[key]
         self._pay_algo(Txn.sender, pos.mbr_paid.native)
         arc4.emit(Purged(round_id, owner, band_index))
@@ -1401,7 +1462,14 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
+        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
+        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
+        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
+        # merely putting the padding calls before the batch consumed enough of the
+        # shared pool to trip it. Firing opup then demands group fee credit the keeper
+        # may not have supplied, and the whole batch reverts with nothing pointing at
+        # transaction ordering.
+        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
@@ -1421,7 +1489,14 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
+        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
+        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
+        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
+        # merely putting the padding calls before the batch consumed enough of the
+        # shared pool to trip it. Firing opup then demands group fee credit the keeper
+        # may not have supplied, and the whole batch reverts with nothing pointing at
+        # transaction ordering.
+        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
@@ -1441,7 +1516,14 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        ensure_budget(2_000, OpUpFeeSource.GroupCredit)
+        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
+        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
+        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
+        # merely putting the padding calls before the batch consumed enough of the
+        # shared pool to trip it. Firing opup then demands group fee credit the keeper
+        # may not have supplied, and the whole batch reverts with nothing pointing at
+        # transaction ordering.
+        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
@@ -1482,11 +1564,25 @@ class Ladder(
         self.rake_owed.value += residual
         self.total_obligations.value -= residual
         del self.rounds[rid]
+        # The last accounting fact about this round, and the only one that would
+        # otherwise be deleted along with the box.
+        arc4.emit(RoundCleaned(arc4.UInt64(rid), arc4.UInt64(residual)))
         self._pay_algo(Txn.sender, UInt64(CLOSE_BOUNTY))
 
     # ────────────────────────────────────────────────────────────────────────
     #  Readonly
     # ────────────────────────────────────────────────────────────────────────
+
+    @arc4.abimethod
+    def noop(self) -> None:
+        """Group padding.
+
+        A full batch needs at least three top-level app calls — for box references,
+        for the 16-inner-transaction-per-call limit, and for pooled opcode budget.
+        Readonly methods cannot serve as padding: clients route them through simulate,
+        so they never land in the submitted group and a keeper that pads with one ships
+        a single-call group that dies partway through the batch.
+        """
 
     @arc4.abimethod(readonly=True)
     def get_round(self, round_id: arc4.UInt64) -> RoundBox:

@@ -28,6 +28,11 @@ BOX_MBR = 41_700
 PAYOUT_FEE = 8_000
 MIN_ENTRY_WINDOW = 3_600
 MIN_SESSION = 7_200
+RESOLVE_DEADLINE = 259_200
+CLEANUP_GRACE = 604_800
+FORFEIT_PERIOD = 15_552_000
+BOUNTY_DELAY = 300
+CLOSE_BOUNTY = 3_000
 
 
 @pytest.fixture(scope="session")
@@ -44,6 +49,20 @@ def dispenser(algorand: AlgorandClient) -> SigningAccount:
 def admin(algorand: AlgorandClient, dispenser: SigningAccount) -> SigningAccount:
     acct = algorand.account.random()
     algorand.account.ensure_funded(acct.address, dispenser, algokit_utils.AlgoAmount(algo=200))
+    return acct
+
+
+@pytest.fixture(scope="session")
+def keeper(algorand: AlgorandClient, dispenser: SigningAccount) -> SigningAccount:
+    acct = algorand.account.random()
+    algorand.account.ensure_funded(acct.address, dispenser, algokit_utils.AlgoAmount(algo=20))
+    return acct
+
+
+@pytest.fixture(scope="session")
+def treasury(algorand: AlgorandClient, dispenser: SigningAccount) -> SigningAccount:
+    acct = algorand.account.random()
+    algorand.account.ensure_funded(acct.address, dispenser, algokit_utils.AlgoAmount(algo=20))
     return acct
 
 

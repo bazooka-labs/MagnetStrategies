@@ -65,7 +65,7 @@ Queries run just after the checkpoint minute closes, since OHLC4 needs the compl
 | `MIN_REFERENCE_PRICE` / `MAX` | 1_000_000 / 100_000_000_000_000 | $1 – $100M. Overflow bounds, not plausibility |
 | `BOX_MBR` | 41_700 µALGO | Position box. Admin-settable within a cap; the amount collected is stored in the box and refunded exactly |
 | `PAYOUT_FEE` | 8_000 µALGO | Charged once per box. Admin-settable within a cap; stored in the box |
-| `ROUND_BOX_MBR` | 125_700 µALGO | Reserved in the `withdraw_operating_algo` floor so `create_round` cannot be starved |
+| `ROUND_BOX_MBR` | 128_900 µALGO | Reserved in the `withdraw_operating_algo` floor so `create_round` cannot be starved |
 | `CLOSE_BOUNTY` | 3_000 µALGO | Paid to a third party who calls a terminal method for someone else, after `BOUNTY_DELAY` |
 
 ```
@@ -154,7 +154,7 @@ Authoritative for every state-mutating method. Read-only methods (`get_round`, `
 | `resolve` | **anyone** | LOCKED | `now >= resolve_time`; `now <= resolve_time + RESOLVE_DEADLINE`; attestation valid, `checkpoint_kind == RESOLVE`; price sanity vs reference | `settlement_price`; `settle_sources[4]`; `winning_band`; see branches | **RESOLVED** or **VOID** |
 | `void_round` | anyone | OPEN or LOCKED | OPEN: `now > lock_time + LOCK_DEADLINE`<br>LOCKED: `now > resolve_time + RESOLVE_DEADLINE` | `status ← VOID`; `void_reason ← no_lock`/`no_resolve`; `remaining_payable ← total_stake`; `if open_round_id == round_id: open_round_id ← 0` | **VOID** |
 | `settle_position` | anyone | RESOLVED | box exists; `band == winning_band`; `expected_payee` matches; payee opted into mUSD | payout + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= payout`; **`total_obligations −= payout`**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
-| `close_position` | anyone | RESOLVED | box exists; `band != winning_band`; `expected_payee` matches; payee receivable | `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; **`total_obligations` unchanged**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
+| `close_position` | anyone | RESOLVED | box exists; `band != winning_band`; `expected_payee` matches; payee account exists (**existence, not mUSD opt-in** — this path moves only ALGO, and an opt-in test would lock out funded non-opted-in accounts); past `CLEANUP_GRACE` an unreceivable payee's deposit escheats so one redirect cannot pin the round to `FORFEIT_PERIOD` | `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; **`total_obligations` unchanged**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
 | `refund_position` | anyone | VOID | box exists; `stake <= remaining_payable`; `expected_payee` matches; payee opted into mUSD | stake + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= stake`; **`total_obligations −= stake`**; `position_count −=`; `fee_reserve −=`; **deletes box** | VOID |
 | `set_payout_recipient` | position owner | OPEN/LOCKED/RESOLVED/VOID | box exists | `box.recipient` | unchanged |
 | `purge_position` | anyone | — | round box absent; position box exists | `box.mbr_paid` → **`Txn.sender`**; `fee_reserve −=`; deletes box | — |
@@ -293,7 +293,11 @@ message = sha256( app_id ‖ round_id ‖ checkpoint_kind ‖ present_mask
 verify  = ed25519verify_bare(message, sig, round.oracle_pubkey)
 ```
 
-One aggregate attestation, not four signatures. With per-source signatures and an unsigned mask, the signatures become public the moment they reach the mempool and anyone can resubmit them with a different mask, selecting from a menu of medians after seeing every value. Signing the vector and mask together leaves exactly one valid submission.
+One aggregate attestation, not four signatures. With per-source signatures and an unsigned mask, the signatures become public the moment they reach the mempool and anyone can resubmit them with a different mask, selecting from a menu of medians after seeing every value. Signing the vector and mask together leaves exactly one valid submission **per signature**.
+
+> **That last part is a keeper obligation, not a contract guarantee.** The contract accepts any signature valid for the checkpoint, so if the keeper signs twice for one `(round_id, kind)` — a retry after a failed submission, with a venue that has since dropped out — both attestations verify, both are public, and `resolve` is permissionless, so a participant picks whichever median falls in their band. It only decides a round when the settlement sits within roughly the inter-venue spread of a boundary, but the party choosing is the one who profits.
+>
+> **The keeper must sign once per `(round_id, checkpoint)`, persist that signature, and resubmit the identical bytes on every retry — never re-sign.**
 
 **Field provenance is part of the specification, not an implementation detail.** When the contract reconstructs the message:
 
@@ -418,7 +422,11 @@ Inner fees use `Global.min_txn_fee`, not a hardcoded constant. `fee_reserve` dec
 | References | 8, of which ≤4 accounts | 1 round box + 8 position boxes + up to 8 payees + the asset |
 | Opcode budget | 700 | ~900 |
 
-Three app calls give 48 inner transactions, 24 references and 2,100 of budget, which clears all three — and at 2,100 the `ensure_budget` call becomes a no-op, saving the opup fees. With a single app call the batch dies at the fifth entry on the inner-transaction limit, after opup has already consumed two. The contract caps the array at 8; the keeper pads the group. There is no bare no-op method, so padding uses a cheap real one such as `get_solvency`.
+Three app calls give 48 inner transactions, 24 references and 2,100 of pooled budget, which clears all three. With a single app call the batch dies at the fifth entry on the inner-transaction limit, after opup has already consumed two.
+
+**Pad with `noop`, not a readonly method.** Clients route readonly calls through simulate, so they never land in the submitted group — a keeper padding with `get_solvency` ships a one-call group and fails partway through. `noop` exists for this.
+
+**`ensure_budget` is set to 1,500, not the measured ceiling.** `global OpcodeBudget` reads what *remains* of the pooled budget, so padding calls placed before the batch consume some of it first — at a 2,000 threshold the same three transactions passed or failed depending only on their order, and failing meant firing opup, which needs group fee credit the keeper may not have supplied.
 
 ---
 

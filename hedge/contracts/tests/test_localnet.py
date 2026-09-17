@@ -7,7 +7,7 @@ from algosdk.atomic_transaction_composer import TransactionWithSigner
 from algosdk.abi import Method
 
 from tests.conftest import (
-    BANDS, BOX_MBR, MIN_ENTRY_WINDOW, MIN_SESSION, MIN_STAKE, PAYOUT_FEE, RAKE_BPS,
+    BANDS, CLOSE_BOUNTY, BOX_MBR, MIN_ENTRY_WINDOW, MIN_SESSION, MIN_STAKE, PAYOUT_FEE, RAKE_BPS,
     player, sign_attestation,
 )
 
@@ -27,7 +27,7 @@ def _client(algorand, app_spec, sender):
 
 
 @pytest.fixture(scope="module")
-def deployed(algorand, admin, musd, app_spec, oracle_key):
+def deployed(algorand, admin, musd, app_spec, oracle_key, keeper, treasury):
     """create -> fund -> bootstrap. Two steps on purpose: the app must hold enough
     ALGO for its own min balance plus the mUSD opt-in before bootstrap's inner
     opt-in can succeed."""
@@ -52,8 +52,8 @@ def deployed(algorand, admin, musd, app_spec, oracle_key):
     ))
     client.send.call(algokit_utils.AppClientMethodCallParams(
         method="bootstrap",
-        args=[musd, FEED_ID, admin.address, bytes(oracle_key.verify_key),
-              admin.address, RAKE_BPS, MIN_STAKE, list(BANDS)],
+        args=[musd, FEED_ID, treasury.address, bytes(oracle_key.verify_key),
+              keeper.address, RAKE_BPS, MIN_STAKE, list(BANDS)],
         asset_references=[musd],
         extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000),
     ))
@@ -147,6 +147,12 @@ def test_setters_have_floors_not_just_caps(deployed):
             deployed.send.call(algokit_utils.AppClientMethodCallParams(
                 method=method, args=[bad]
             ))
+    # control: an in-range value is accepted, so the rejections above are the bounds
+    # doing their job and not the method being broken
+    for method, ok in [("set_box_mbr", BOX_MBR), ("set_payout_fee", PAYOUT_FEE)]:
+        deployed.send.call(algokit_utils.AppClientMethodCallParams(
+            method=method, args=[ok]
+        ))
 
 
 def test_band_bounds_reject_a_transposed_digit(deployed):
@@ -157,6 +163,10 @@ def test_band_bounds_reject_a_transposed_digit(deployed):
         deployed.send.call(algokit_utils.AppClientMethodCallParams(
             method="set_band_bounds", args=[bad]
         ))
+    # control: the real template is accepted
+    deployed.send.call(algokit_utils.AppClientMethodCallParams(
+        method="set_band_bounds", args=[list(BANDS)]
+    ))
 
 
 def _enter(client, algorand, acct, musd, round_id, band, stake, box_mbr=BOX_MBR,
@@ -203,6 +213,9 @@ def test_full_round_lifecycle(algorand, admin, dispenser, musd, app_spec, oracle
     alice = player(algorand, dispenser, admin, musd)
     bob = player(algorand, dispenser, admin, musd)
     carol = player(algorand, dispenser, admin, musd)
+
+    _, _, rake_before = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
 
     rid, open_t, lock_t, resolve_t = _create_round(client, algorand, admin)
     print(f"\n[t] created rid={rid} open={open_t} lock={lock_t} resolve={resolve_t}")
@@ -275,27 +288,33 @@ def test_full_round_lifecycle(algorand, admin, dispenser, musd, app_spec, oracle
         ))
 
     # ── the invariant that matters ───────────────────────────────────────────
-    bal, oblig, rake = client.send.call(algokit_utils.AppClientMethodCallParams(
+    bal, oblig, rake_after = client.send.call(algokit_utils.AppClientMethodCallParams(
         method="get_solvency", args=[])).abi_return
-    assert bal >= oblig + rake, "solvency"
-    assert rake == total - payable, "rake accrued exactly once, on the resolved branch"
+    assert bal >= oblig + rake_after, "solvency"
+    # delta, not absolute — rake_owed is global and other tests resolve rounds too
+    assert rake_after - rake_before == total - payable, \
+        "rake accrued exactly once, on the resolved branch"
 
 
-def test_one_payment_cannot_fund_two_entries(algorand, admin, dispenser, musd,
-                                             deployed):
-    """The attack the index pinning exists to stop.
+def test_entry_group_must_have_the_right_shape(algorand, admin, dispenser, musd,
+                                              deployed):
+    """A real negative for the entry group.
 
-    An ARC-4 transaction parameter is a group-index REFERENCE, not an exclusive claim.
-    Without pinning, one mUSD transfer cited by several enter() calls in the same group
-    would credit its stake several times over — enough to hold every band and guarantee
-    the winner. Here a second enter tries to cite the first group's legs.
+    The earlier version of this test tried to cite one payment from two `enter` calls.
+    That attack is not constructible: ARC-4 resolves transaction arguments positionally,
+    so `payment` IS the transaction immediately before the app call. The old test went
+    green because the group it built contained two byte-identical transactions and the
+    node rejected it for duplicate txids — never reaching the contract at all.
+
+    What IS worth testing is the type assertion: swap the two value legs and the
+    declared parameter types must reject the group.
     """
     from algosdk.atomic_transaction_composer import TransactionWithSigner
     from tests.conftest import advance_to
 
     client = deployed
     mallory = player(algorand, dispenser, admin, musd)
-    rid, open_t, lock_t, _ = _create_round(client, algorand, admin)
+    rid, open_t, _, _ = _create_round(client, algorand, admin)
     advance_to(algorand, dispenser, open_t)
 
     pay = algorand.create_transaction.payment(algokit_utils.PaymentParams(
@@ -308,36 +327,56 @@ def test_one_payment_cannot_fund_two_entries(algorand, admin, dispenser, musd,
             asset_id=musd, amount=10_000_000,
         )
     )
-    # two enter calls, both naming the same pay + axfer
+    # legs swapped: the contract expects [pay, axfer, call]
     composer = algorand.new_group()
-    for band in (0, 1):
-        composer.add_app_call_method_call(client.params.call(
-            algokit_utils.AppClientMethodCallParams(
-                method="enter",
-                args=[TransactionWithSigner(pay, mallory.signer),
-                      TransactionWithSigner(axfer, mallory.signer), rid, band],
-                sender=mallory.address, signer=mallory.signer,
-                asset_references=[musd],
-            )
-        ))
+    composer.add_app_call_method_call(client.params.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="enter",
+            args=[TransactionWithSigner(axfer, mallory.signer),
+                  TransactionWithSigner(pay, mallory.signer), rid, 0],
+            sender=mallory.address, signer=mallory.signer,
+            asset_references=[musd],
+        )
+    ))
     with pytest.raises(Exception):
         composer.send()
+
+    # control: correctly ordered, same account, same round
+    _enter(client, algorand, mallory, musd, rid, 0, 10_000_000)
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["total_stake"] == 10_000_000, "only the well-formed group landed"
 
     client.send.call(algokit_utils.AppClientMethodCallParams(
         method="admin_void_round", args=[rid]))
 
 
-def test_operator_addresses_cannot_enter(algorand, admin, dispenser, musd, deployed):
+def test_operator_addresses_cannot_enter(algorand, admin, dispenser, musd, deployed,
+                                        keeper, treasury):
     """Hygiene against the lazy case — trivially Sybil-defeated and not claimed
-    as a defence, but it should at least do what it says."""
-    from tests.conftest import advance_to, fund_musd
+    as a defence, but it should at least do what it says.
+
+    The positive control is the point: a normal player succeeds with IDENTICAL
+    parameters on the same round, so the only difference is who is calling. Without
+    it this test would pass if enter failed for any unrelated reason.
+    """
+    from tests.conftest import advance_to
 
     client = deployed
     rid, open_t, _, _ = _create_round(client, algorand, admin)
     advance_to(algorand, dispenser, open_t)
-    fund_musd(algorand, admin, admin, musd, 0) if False else None
-    with pytest.raises(Exception):
-        _enter(client, algorand, admin, musd, rid, 4, 10_000_000)
+
+    # all three are distinct accounts, so all three branches are exercised
+    for op_acct in (admin, keeper, treasury):
+        with pytest.raises(Exception):
+            _enter(client, algorand, op_acct, musd, rid, 4, 10_000_000)
+
+    normal = player(algorand, dispenser, admin, musd)
+    _enter(client, algorand, normal, musd, rid, 4, 10_000_000)  # control: same args
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["total_stake"] == 10_000_000, "only the non-operator entry landed"
+
     client.send.call(algokit_utils.AppClientMethodCallParams(
         method="admin_void_round", args=[rid]))
 
@@ -531,3 +570,146 @@ def test_redirected_recipient_skips_instead_of_reverting_the_batch(
     pos = client.send.call(algokit_utils.AppClientMethodCallParams(
         method="get_round", args=[rid])).abi_return
     assert pos["position_count"] == 2, "winner + mallory still open"
+
+
+def test_void_cleanup_purge_and_bounty(algorand, admin, dispenser, musd, deployed,
+                                       oracle_key):
+    """The whole stranded-funds chain, which nothing previously touched:
+    keeper never resolves -> void_round -> refund -> cleanup_round -> purge_position,
+    plus the CLOSE_BOUNTY path (every earlier test settled inside BOUNTY_DELAY, so
+    the third inner transaction in the terminal helpers had never fired)."""
+    from tests.conftest import CLEANUP_GRACE, RESOLVE_DEADLINE, advance_to
+
+    client = deployed
+    alice = player(algorand, dispenser, admin, musd)
+    bob = player(algorand, dispenser, admin, musd)
+    bot = player(algorand, dispenser, admin, musd)
+
+    rid, open_t, lock_t, resolve_t = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    _enter(client, algorand, alice, musd, rid, 4, 40_000_000)
+    _enter(client, algorand, bob, musd, rid, 6, 10_000_000)
+
+    advance_to(algorand, dispenser, lock_t)
+    ref = 79_000_000_000
+    p4, t4 = [ref] * 4, [lock_t] * 4
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="lock", args=[rid, 0b1111, p4, t4,
+                             sign_attestation(oracle_key, client.app_id, rid,
+                                              CHECKPOINT_LOCK, 0b1111, FEED_ID, p4, t4)],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    # keeper never resolves — void only opens after the full deadline
+    advance_to(algorand, dispenser, resolve_t + 10)
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="void_round", args=[rid]))
+
+    advance_to(algorand, dispenser, resolve_t + RESOLVE_DEADLINE + 60)
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="void_round", args=[rid]))
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["status"] == 3 and rnd["void_reason"] == 3, "VOID(no_resolve)"
+
+    # past BOUNTY_DELAY, so a third party is actually paid for the work. Inside the
+    # delay the bounty is correctly zero — the keeper's own window is free.
+    from tests.conftest import BOUNTY_DELAY, chain_now
+    advance_to(algorand, dispenser, chain_now(algorand) + BOUNTY_DELAY + 60)
+
+    # a third party refunds alice and is paid the bounty; alice gets stake + her deposit
+    algo_before = algorand.account.get_information(alice.address).amount.micro_algo
+    musd_before = algorand.asset.get_account_information(alice.address, musd).balance
+    bot_before = algorand.account.get_information(bot.address).amount.micro_algo
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="refund_position", args=[rid, alice.address, 4, alice.address],
+        sender=bot.address, signer=bot.signer,
+        account_references=[alice.address], asset_references=[musd],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=4_000),
+    ))
+    assert algorand.asset.get_account_information(alice.address, musd).balance \
+        - musd_before == 40_000_000, "stake refunded in full"
+    assert algorand.account.get_information(alice.address).amount.micro_algo \
+        - algo_before == BOX_MBR, "box deposit returned — never asserted before"
+    # The caller supplied 5,000 µALGO of fee (1,000 base + 4,000 extra, which funds the
+    # app's inner transactions), so the delta is bounty minus that. Back it out and
+    # assert the bounty itself, which is the thing under test.
+    bot_delta = algorand.account.get_information(bot.address).amount.micro_algo - bot_before
+    assert bot_delta + 5_000 == CLOSE_BOUNTY, \
+        f"third-party caller earns exactly CLOSE_BOUNTY, got {bot_delta + 5_000}"
+
+    # bob never claims. cleanup is blocked until the forfeit period, then proceeds
+    advance_to(algorand, dispenser, resolve_t + CLEANUP_GRACE + 60)
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="cleanup_round", args=[rid]))
+
+    from tests.conftest import FORFEIT_PERIOD
+    advance_to(algorand, dispenser, resolve_t + FORFEIT_PERIOD + 60)
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="cleanup_round", args=[rid],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000)))
+
+    # the round box is gone, so bob's orphaned box is purgeable — and pays the caller,
+    # which is what makes "every box is unconditionally deletable" true
+    purger_before = algorand.account.get_information(bot.address).amount.micro_algo
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="purge_position", args=[rid, bob.address, 6],
+        sender=bot.address, signer=bot.signer,
+        account_references=[bob.address],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000)))
+    assert algorand.account.get_information(bot.address).amount.micro_algo > purger_before
+
+    bal, oblig, rake = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    assert bal >= oblig + rake, "solvency after the full stranded-funds chain"
+
+
+def test_three_source_quorum_with_a_non_contiguous_mask(algorand, admin, dispenser,
+                                                        musd, deployed, oracle_key):
+    """Only 0b1111 had ever been submitted. This exercises the compaction path with a
+    gap in the mask, the 3-source median, and the zeroing of absent slots — the code
+    both reviews flagged as highest-risk."""
+    from tests.conftest import advance_to
+
+    client = deployed
+    alice = player(algorand, dispenser, admin, musd)
+    bob = player(algorand, dispenser, admin, musd)
+    rid, open_t, lock_t, _ = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    _enter(client, algorand, alice, musd, rid, 4, 20_000_000)
+    _enter(client, algorand, bob, musd, rid, 6, 20_000_000)
+
+    advance_to(algorand, dispenser, lock_t)
+    # sources 0, 1 and 3 present; slot 2 absent
+    mask = 0b1011
+    prices = [79_000_000_000, 79_000_500_000, 12_345, 79_001_000_000]
+    ts = [lock_t, lock_t, 999, lock_t]
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="lock", args=[rid, mask, prices, ts,
+                             sign_attestation(oracle_key, client.app_id, rid,
+                                              CHECKPOINT_LOCK, mask, FEED_ID,
+                                              prices, ts)],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["reference_price"] == 79_000_500_000, "median of the three present"
+    assert rnd["ref_sources"][2] == 0, "absent slot zeroed by the contract, not trusted"
+    assert rnd["ref_sources"][0] == prices[0] and rnd["ref_sources"][3] == prices[3]
+
+    # two sources is below quorum
+    rid2, open2, lock2, _ = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open2)
+    _enter(client, algorand, alice, musd, rid2, 4, 20_000_000)
+    _enter(client, algorand, bob, musd, rid2, 6, 20_000_000)
+    advance_to(algorand, dispenser, lock2)
+    m2 = 0b0011
+    p2 = [79_000_000_000, 79_000_500_000, 0, 0]
+    t2 = [lock2, lock2, 0, 0]
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="lock", args=[rid2, m2, p2, t2,
+                                 sign_attestation(oracle_key, client.app_id, rid2,
+                                                  CHECKPOINT_LOCK, m2, FEED_ID, p2, t2)],
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))

@@ -31,10 +31,13 @@ algokit localnet start
 poetry run pytest
 ```
 
-21 tests. `test_obligations.py` pins the payout arithmetic in pure Python;
-`test_localnet.py` deploys the **compiled** contract to a local chain and drives it
-through real transaction groups — which is the only level at which opcode budget,
-inner-transaction limits, fee pooling and inner-payment failure are observable.
+14 tests, all against the **compiled** contract on a local chain, driven through real
+transaction groups — the only level at which opcode budget, inner-transaction limits,
+fee pooling and inner-payment failure are observable.
+
+An earlier `test_obligations.py` re-implemented the payout arithmetic in pure Python
+and asserted the re-implementation agreed with itself. It was deleted: it would have
+passed against a contract that had been removed entirely.
 
 Rounds span hours, so the suite moves the chain clock with algod's dev-mode block
 offset. That offset is the delta applied to *each* new block, not an offset from wall
@@ -45,11 +48,11 @@ subsequent block and runs the chain away.
 
 | | |
 |---|---|
-| Approval bytecode | 5,835 bytes — 2 extra pages (limit 3) |
-| Global state | 14 uints, 6 byte slices |
+| Approval bytecode | 6,075 bytes — 2 extra pages (limit 3) |
+| Global state | 15 uints, 6 byte slices |
 | Position box | key 42 B, value 56 B → 41,700 µALGO MBR |
 | Round box | key 9 B, value 307 B → 128,900 µALGO MBR |
-| ARC-28 events | 10 |
+| ARC-28 events | 12 |
 
 ## Calling notes
 
@@ -60,8 +63,14 @@ fee, not the 1,000 minimum. Nothing in the ABI signals this and `lock`'s window 
 only `LOCK_DEADLINE` wide, so a relayer paying the minimum fee will fail.
 
 **A full batch of 8 needs ≥3 top-level app calls.** The binding limit is inner
-transactions (16 per app call; settle emits 3 per entry), not references. Pad the
-group with a cheap method such as `get_solvency`.
+transactions (16 per app call; settle emits 3 per entry), not references. Pad with
+`noop` — readonly methods do not work, because clients route them through simulate
+and they never reach the submitted group.
+
+**The keeper must sign once per (round, checkpoint) and resubmit identical bytes on
+retry.** The contract accepts any valid signature for the checkpoint, so two
+attestations for one checkpoint means two valid medians and a permissionless relayer
+picks between them.
 
 **`MUSD_ASSET_ID` is a deploy-time template variable.** One artifact serves every
 network; the chosen asset is substituted at deploy and baked permanently into the
