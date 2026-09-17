@@ -996,3 +996,66 @@ def test_keeper_may_lock_late_but_a_relayer_may_not(algorand, admin, dispenser, 
     assert rnd["reference_price"] == ref, "the backfilled reference is the 09:00 candle"
 
 
+
+
+def test_keeper_module_signature_is_accepted_by_the_contract(
+    algorand, admin, dispenser, musd, deployed, oracle_key
+):
+    """The keeper's preimage must match the contract's reconstruction byte for byte.
+
+    This is the only test that proves it. If the two ever drift, every submission fails
+    signature verification and every round voids — so rather than asserting the two
+    implementations look alike, this builds an attestation with the keeper module and
+    has the deployed contract accept it.
+
+    It also exercises AttestationStore's sign-once guarantee: a second request for the
+    same (round, checkpoint) must return the ORIGINAL bytes, because two valid
+    signatures for one checkpoint hand a permissionless relayer a choice of medians.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "keeper"))
+    from vplkeeper.attest import CHECKPOINT_LOCK, AttestationStore
+    from tests.conftest import advance_to
+
+    client = deployed
+    alice = player(algorand, dispenser, admin, musd)
+    bob = player(algorand, dispenser, admin, musd)
+    rid, open_t, lock_t, _ = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    _enter(client, algorand, alice, musd, rid, 4, 20_000_000)
+    _enter(client, algorand, bob, musd, rid, 6, 20_000_000)
+    advance_to(algorand, dispenser, lock_t)
+
+    store = AttestationStore()
+    prices = [79_000_000_000, 79_000_400_000, 79_000_800_000, 79_001_200_000]
+    ts = [lock_t] * 4
+    att = store.get_or_sign(
+        oracle_key, app_id=client.app_id, round_id=rid,
+        checkpoint_kind=CHECKPOINT_LOCK, price_feed_id=FEED_ID,
+        prices=prices, timestamps=ts, present_mask=0b1111,
+    )
+
+    # sign-once: a second call returns the same object, not a fresh signature
+    again = store.get_or_sign(
+        oracle_key, app_id=client.app_id, round_id=rid,
+        checkpoint_kind=CHECKPOINT_LOCK, price_feed_id=FEED_ID,
+        prices=prices, timestamps=ts, present_mask=0b1111,
+    )
+    assert again.signature == att.signature, "the store must never re-sign"
+
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="lock",
+        args=[rid, att.present_mask, att.prices, att.timestamps, att.signature],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["status"] == 1, "contract accepted the keeper's signature"
+    # the contract's own median of four, independently derived
+    assert rnd["reference_price"] == prices[1] + (prices[2] - prices[1]) // 2
+
+    from vplkeeper.prices import median
+    assert median(prices, 0b1111) == rnd["reference_price"], \
+        "keeper's median mirrors the contract's sorting network"
