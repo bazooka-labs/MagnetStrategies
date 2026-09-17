@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "hedge-contracts"
 version = "0.1.0"
-description = "Hedge — daily BTC option ladder on Algorand"
+description = "Hedge — daily BTC ladder on Algorand"
 authors = ["bazookacreate-8771 <bazooka.create@gmail.com>"]
 readme = "README.md"
 package-mode = false

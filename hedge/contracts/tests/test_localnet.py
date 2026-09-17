@@ -946,3 +946,53 @@ def test_reference_drift_gate_does_not_catch_a_small_scale_error(deployed):
     settlement is visible on-chain against four published candles.
     """
     assert 5_000 < 9_200 < 20_000, "0.92x is inside the drift band, by design"
+
+
+def test_keeper_may_lock_late_but_a_relayer_may_not(algorand, admin, dispenser, musd,
+                                                    deployed, oracle_key, keeper):
+    """Two windows, split by sender.
+
+    A keeper that crashes at 09:00 and returns 20 minutes later reads the SAME 09:00
+    candle — attestations are pinned to the checkpoint, and a candle is historical
+    data — so the round proceeds at the correct reference instead of being thrown away.
+    A participant relaying at that point would instead be choosing whether the round
+    commits, having watched a fifth of an hour of price action, so they are held to 120s.
+    """
+    from tests.conftest import advance_to
+
+    client = deployed
+    alice = player(algorand, dispenser, admin, musd)
+    bob = player(algorand, dispenser, admin, musd)
+    rid, open_t, lock_t, _ = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    _enter(client, algorand, alice, musd, rid, 4, 20_000_000)
+    _enter(client, algorand, bob, musd, rid, 6, 20_000_000)
+
+    # 20 minutes past lock_time: well outside the relay window, inside the keeper's
+    advance_to(algorand, dispenser, lock_t + 1_200)
+    ref = 79_000_000_000
+    p4, t4 = [ref] * 4, [lock_t] * 4          # still the 09:00 candle
+    sig = sign_attestation(oracle_key, client.app_id, rid, CHECKPOINT_LOCK, 0b1111,
+                           FEED_ID, p4, t4)
+
+    with pytest.raises(Exception):            # a third party is out of time
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="lock", args=[rid, 0b1111, p4, t4, sig],
+            sender=alice.address, signer=alice.signer,
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    with pytest.raises(Exception):            # and nobody can void yet either
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="void_round", args=[rid]))
+
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="lock", args=[rid, 0b1111, p4, t4, sig],
+        sender=keeper.address, signer=keeper.signer,
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["status"] == 1, "LOCKED by the keeper, late"
+    assert rnd["reference_price"] == ref, "the backfilled reference is the 09:00 candle"
+
+

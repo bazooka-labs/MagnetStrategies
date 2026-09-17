@@ -4,7 +4,7 @@ Hedge is the price-markets arm of Magnet Strategies: a daily intraday ladder on 
 
 Hedge is admin-managed. The protocol admin creates rounds, sets rake, and operates the keeper that posts settlement prices. There is no governance token. Trust is placed in Bazooka Labs as operator, and mitigated by open-sourcing every contract (see [Open Source Policy](#open-source-policy)).
 
-**Status:** Design stage. One product scoped — the Option Ladder. Nothing is built or deployed.
+**Status:** Design stage. One product scoped — VPL. Nothing is built or deployed.
 
 ---
 
@@ -115,9 +115,9 @@ The reasoning is not ideological:
 
 | | |
 |---|---|
-| [OPTIONSLADDER.md](./OPTIONSLADDER.md) | Product design — conveyor, bands, payouts, rules, and the reasoning behind each |
-| [OPTIONSLADDER_SPEC.md](./OPTIONSLADDER_SPEC.md) | Implementation spec — state, ABI, math, invariants, edge cases |
+| [VPL.md](./VPL.md) | Product design — conveyor, bands, payouts, rules, and the reasoning behind each |
+| [VPL_SPEC.md](./VPL_SPEC.md) | Implementation spec — state, ABI, math, invariants, edge cases |
 | [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model |
 | [perps/OVERVIEW.md](./perps/OVERVIEW.md) | Perps — PEX integration: platform facts, verified constants, integration paths considered |
 
-**Product name is not final.** "Option Ladder" describes the mechanism; the shipped name is undecided. Everything is built under `hedge/` in the meantime.
+**Product name is not final.** "VPL" describes the mechanism; the shipped name is undecided. Everything is built under `hedge/` in the meantime.

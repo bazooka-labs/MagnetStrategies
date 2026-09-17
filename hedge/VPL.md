@@ -1,10 +1,10 @@
-# Option Ladder
+# VPL — Volatility Prediction Ladder
 
 A daily intraday ladder on BTC. Each morning a reference price is set, the day's trading session runs, and players who picked the band the price finished in split the entire pot.
 
 Entry is open 24 hours a day. Stakes are in mUSD. Payouts are funded by everyone who was wrong — no counterparty has to volunteer for the other side, and no order can fail to fill.
 
-**Status:** Design complete. No contract written, no deployment. Implementation detail in [OPTIONSLADDER_SPEC.md](./OPTIONSLADDER_SPEC.md).
+**Status:** Design complete. No contract written, no deployment. Implementation detail in [VPL_SPEC.md](./VPL_SPEC.md).
 
 ---
 
@@ -225,4 +225,4 @@ Parimutuel has neither problem. Every entry fills, because there is nothing to m
 |---|---|
 | Data provider terms | All four exchanges are free and keyless at 8 calls/day. Confirming that on-chain publication of a signed reference price is permitted is being handled separately. |
 | Band template review cadence | Quarterly assumed. First review after ~90 rounds. |
-| Naming | "Option Ladder" is a working title. Current positioning is intraday speculation, not hedging, and the name should follow. |
+| Naming | "VPL" is a working title. Current positioning is intraday speculation, not hedging, and the name should follow. |

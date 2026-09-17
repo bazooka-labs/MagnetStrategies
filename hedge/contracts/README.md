@@ -1,15 +1,15 @@
 # Hedge contracts
 
-Algorand Python (PuyaPy) implementation of the daily BTC option ladder.
+Algorand Python (PuyaPy) implementation of the daily BTC ladder.
 
-- Design: [`../OPTIONSLADDER.md`](../OPTIONSLADDER.md)
-- Spec (rev 6): [`../OPTIONSLADDER_SPEC.md`](../OPTIONSLADDER_SPEC.md)
+- Design: [`../VPL.md`](../VPL.md)
+- Spec (rev 6): [`../VPL_SPEC.md`](../VPL_SPEC.md)
 - Oracle: [`../ORACLE.md`](../ORACLE.md)
 
 ## Layout
 
 ```
-smart_contracts/ladder/contract.py   the contract
+smart_contracts/vpl/contract.py   the contract
 smart_contracts/__main__.py          build entrypoint
 tests/                               pytest
 ```
@@ -21,7 +21,7 @@ poetry install
 poetry run python -m smart_contracts build
 ```
 
-Artifacts land in `smart_contracts/artifacts/ladder/`. PuyaPy is pinned to 5.9.0 to
+Artifacts land in `smart_contracts/artifacts/vpl/`. PuyaPy is pinned to 5.9.0 to
 match `magnetfi/v2/contracts`, so TEAL output is reproducible.
 
 ## Test

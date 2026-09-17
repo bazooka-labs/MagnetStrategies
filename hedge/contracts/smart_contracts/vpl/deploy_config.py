@@ -1,4 +1,4 @@
-"""Deployment notes for the Ladder contract.
+"""Deployment notes for the VPL contract.
 
 Deployment is a two-step handshake, matching the UVote pattern:
 

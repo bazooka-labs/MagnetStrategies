@@ -24,6 +24,8 @@ Not the candle *open*: the open is the first executed trade of the minute, so mo
 
 The keeper reads just after the checkpoint minute closes, since OHLC4 needs a completed candle.
 
+**Candles are very stable, not immutable.** Exchanges occasionally bust a trade and restate historical OHLC, so a keeper reading the 16:00 candle at 16:00:30 and one backfilling it two days later could in principle see different values. Two consequences, both small: a late resolve is not bit-identical to an on-time one, and a settlement checked against a chart months later may not match if that venue has since restated. What bounds it is that the **attestation is published at signing time** — a timestamped record of what the keeper actually saw, independent of what a venue serves later — and that the median of four means one venue's restatement cannot move the settlement unless a second moves with it.
+
 **Derivation is off-chain keeper policy.** The contract verifies a signature over a value and has no opinion on provenance, so the method can be tightened further — VWAP, a longer window — without touching the non-upgradeable contract.
 
 ## Attestation Format

@@ -1,6 +1,6 @@
-# Option Ladder — Technical Spec
+# VPL — Technical Spec
 
-Implementation specification. Rationale lives in [OPTIONSLADDER.md](./OPTIONSLADDER.md); this covers state, transitions, math, and invariants.
+Implementation specification. Rationale lives in [VPL.md](./VPL.md); this covers state, transitions, math, and invariants.
 
 **Revision 6.** Fixes the `total_obligations` accounting defect, pins checkpoints to minute boundaries, adds a reference-price plausibility gate, and specifies attestation field provenance. Settlement derivation moves from the candle open to OHLC4 — an off-chain keeper change with no contract impact.
 
@@ -51,9 +51,10 @@ Queries run just after the checkpoint minute closes, since OHLC4 needs the compl
 | `MAX_POSITION_STAKE` | 1_000_000_000_000 | 1M mUSD per position box. An overflow bound, **not** a concentration limit |
 | `MIN_OCCUPIED_BANDS` | 2 | Liveness check only — see [Viability](#viability) |
 | `MIN_ENTRY_WINDOW` / `MAX_ENTRY_WINDOW` | 3600 / 172_800 | |
-| `MIN_SESSION` / `MAX_SESSION` | 7_200 / 86_400 | `MIN_SESSION > LOCK_DEADLINE` |
+| `MIN_SESSION` / `MAX_SESSION` | 7_200 / 86_400 | `MIN_SESSION > KEEPER_LOCK_DEADLINE` |
 | `MAX_SCHEDULE_AHEAD` | 172_800 | 2 days |
-| `LOCK_DEADLINE` | 120 s | |
+| `LOCK_DEADLINE` | 120 s | Relay window — anyone may submit a published attestation |
+| `KEEPER_LOCK_DEADLINE` | 3_600 s | Keeper's own window. Backfill, not discretion — see below |
 | `BOUNTY_DELAY` | 300 s | After resolve/void before `CLOSE_BOUNTY` is payable |
 | `RESOLVE_DEADLINE` | 259_200 s | 72h |
 | `CLEANUP_GRACE` | 7 days | |
@@ -150,9 +151,9 @@ Authoritative for every state-mutating method. Read-only methods (`get_round`, `
 | `cancel_empty_round` | `admin` | OPEN | `position_count == 0`; `total_stake == 0` | deletes round box; `open_round_id ← 0` | — |
 | `admin_void_round` | `admin` | OPEN | — | `status ← VOID`; `void_reason ← admin_void`; `remaining_payable ← total_stake`; `open_round_id ← 0` | **VOID** |
 | `enter` | not `admin`/`keeper`/`treasury` | OPEN | `!paused` (**global, read live**); `round_id == open_round_id`; `open_time <= now < lock_time`; 3-txn group asserts; `min_stake <= stake`; `stake <= MAX_POSITION_STAKE − box.stake`; `band < 9` | `band_stake[b] +=`; `total_stake +=`; `total_obligations +=`; box create-or-add; on create: `position_count +=`, `fee_reserve += PAYOUT_FEE` | OPEN |
-| `lock` | **anyone** | OPEN | `now >= lock_time`; `now <= lock_time + LOCK_DEADLINE`; attestation valid, `checkpoint_kind == LOCK`; `MIN_REFERENCE_PRICE <= ref <= MAX_REFERENCE_PRICE`; **reference within `REF_DRIFT` of `last_settlement_price` when non-zero**; **venue spread `<= LOCK_SPREAD_CAP_BPS`**; boundaries strictly increasing | `reference_price`; `ref_sources[4]`; `open_round_id ← 0`; **≥2 bands:** `status ← LOCKED` · **<2:** `status ← VOID`, `void_reason ← thin`, `remaining_payable ← total_stake` | **LOCKED** or **VOID** |
+| `lock` | **anyone** | OPEN | `now >= lock_time`; keeper: `now <= lock_time + KEEPER_LOCK_DEADLINE`, anyone else: `+ LOCK_DEADLINE`; attestation valid, `checkpoint_kind == LOCK`; `MIN_REFERENCE_PRICE <= ref <= MAX_REFERENCE_PRICE`; **reference within `REF_DRIFT` of `last_settlement_price` when non-zero**; **venue spread `<= LOCK_SPREAD_CAP_BPS`**; boundaries strictly increasing | `reference_price`; `ref_sources[4]`; `open_round_id ← 0`; **≥2 bands:** `status ← LOCKED` · **<2:** `status ← VOID`, `void_reason ← thin`, `remaining_payable ← total_stake` | **LOCKED** or **VOID** |
 | `resolve` | **anyone** | LOCKED | `now >= resolve_time`; `now <= resolve_time + RESOLVE_DEADLINE`; attestation valid, `checkpoint_kind == RESOLVE`; price sanity vs reference | `settlement_price`; `settle_sources[4]`; `winning_band`; see branches | **RESOLVED** or **VOID** |
-| `void_round` | anyone | OPEN or LOCKED | OPEN: `now > lock_time + LOCK_DEADLINE`<br>LOCKED: `now > resolve_time + RESOLVE_DEADLINE` | `status ← VOID`; `void_reason ← no_lock`/`no_resolve`; `remaining_payable ← total_stake`; `if open_round_id == round_id: open_round_id ← 0` | **VOID** |
+| `void_round` | anyone | OPEN or LOCKED | OPEN: `now > lock_time + KEEPER_LOCK_DEADLINE` (the longer window, so a void cannot race a recovering keeper)<br>LOCKED: `now > resolve_time + RESOLVE_DEADLINE` | `status ← VOID`; `void_reason ← no_lock`/`no_resolve`; `remaining_payable ← total_stake`; `if open_round_id == round_id: open_round_id ← 0` | **VOID** |
 | `settle_position` | anyone | RESOLVED | box exists; `band == winning_band`; `expected_payee` matches; payee opted into mUSD | payout + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= payout`; **`total_obligations −= payout`**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
 | `close_position` | anyone | RESOLVED | box exists; `band != winning_band`; `expected_payee` matches; payee account exists (**existence, not mUSD opt-in** — this path moves only ALGO, and an opt-in test would lock out funded non-opted-in accounts); past `CLEANUP_GRACE` an unreceivable payee's deposit escheats so one redirect cannot pin the round to `FORFEIT_PERIOD` | `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; **`total_obligations` unchanged**; `position_count −=`; `fee_reserve −=`; **deletes box** | RESOLVED |
 | `refund_position` | anyone | VOID | box exists; `stake <= remaining_payable`; `expected_payee` matches; payee opted into mUSD | stake + `box.mbr_paid` → payee; bounty → caller if caller ≠ owner and past `BOUNTY_DELAY`; `remaining_payable −= stake`; **`total_obligations −= stake`**; `position_count −=`; `fee_reserve −=`; **deletes box** | VOID |

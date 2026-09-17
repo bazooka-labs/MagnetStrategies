@@ -95,7 +95,7 @@ def app_spec() -> dict:
     assert build(out_dir=BUILD_DIR) == 0
     import json  # noqa: PLC0415
 
-    return json.loads((BUILD_DIR / "ladder" / "Ladder.arc56.json").read_text())
+    return json.loads((BUILD_DIR / "vpl" / "VPL.arc56.json").read_text())
 
 
 @pytest.fixture(scope="session")

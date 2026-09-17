@@ -1,14 +1,15 @@
 # ruff: noqa: N802
 """
-Hedge — daily BTC option ladder.
+VPL — Volatility Prediction Ladder. A daily BTC ladder, the first product in the
+Hedge sector.
 
 A parimutuel ladder. Each day a reference price is set at 09:00 ET, the US session
 runs, and at 16:00 ET the band containing the settlement price takes the entire pot,
 pro-rata by stake. Entry for the *next* round is always open, so exactly one round
 accepts entries at any moment.
 
-Design and rationale: hedge/OPTIONSLADDER.md
-Specification (rev 6):  hedge/OPTIONSLADDER_SPEC.md
+Design and rationale: hedge/VPL.md
+Specification (rev 6):  hedge/VPL_SPEC.md
 
 Threat model: the operator is assumed honest; the deterrent against a dishonest one
 is public verifiability (settlements are OHLC4 of published 1-minute candles on four
@@ -57,13 +58,26 @@ MAX_POSITION_STAKE = 1_000_000_000_000  # 1M mUSD per box — an overflow bound,
 # ── Round scheduling ──────────────────────────────────────────────────────────
 MIN_ENTRY_WINDOW = 3_600
 MAX_ENTRY_WINDOW = 172_800
-MIN_SESSION = 7_200  # must exceed LOCK_DEADLINE, so the settlement checkpoint can
-# never be knowable while lock() is still open
+MIN_SESSION = 7_200  # must exceed KEEPER_LOCK_DEADLINE, so the settlement checkpoint
+# can never be knowable while lock() is still open
 MAX_SESSION = 86_400
 MAX_SCHEDULE_AHEAD = 172_800  # 2 days. Without this an admin typo (a millisecond
 # timestamp) pins open_round_id forever with no recovery in a non-upgradeable contract.
 
+# Two windows, split by sender. A published attestation can be RELAYED by anyone for
+# 120s — that path exists for one failure, a keeper that signed but could not submit,
+# which is a seconds-to-minutes problem. The KEEPER itself has an hour, because the
+# attestation is pinned to the checkpoint and a candle is historical data: a keeper that
+# crashes at 09:00 and returns at 09:45 reads the same 09:00 candle and the round
+# proceeds at the correct reference rather than throwing the day away.
+#
+# The split matters because whoever relays chooses WHETHER the round commits, having
+# watched some of the session — at an hour, ~14% of its variance. A participant holding
+# the band the price drifted toward would submit; one holding the centre would not. The
+# keeper gains no power it lacks (it can already decline to sign); a participant is held
+# to 120s.
 LOCK_DEADLINE = 120
+KEEPER_LOCK_DEADLINE = 3_600
 RESOLVE_DEADLINE = 259_200  # 72h — a winner has three days to relay a published
 # attestation before anyone can void the round
 BOUNTY_DELAY = 300  # the keeper's own settlement window is bounty-free
@@ -276,11 +290,11 @@ class PositionBox(arc4.Struct, kw_only=True):
     fee_paid: arc4.UInt64
 
 
-class Ladder(
+class VPL(
     ARC4Contract,
     state_totals=StateTotals(global_uints=15, global_bytes=6),
 ):
-    """Daily parimutuel BTC ladder. Non-upgradeable, non-deletable."""
+    """VPL — daily parimutuel BTC ladder. Non-upgradeable, non-deletable."""
 
     def __init__(self) -> None:
         self.admin = GlobalState(Account(), key=b"admin")
@@ -768,7 +782,10 @@ class Ladder(
         st = rnd.status.native
         now = Global.latest_timestamp
         if st == UInt64(STATUS_OPEN):
-            assert now > rnd.lock_time.native + LOCK_DEADLINE, "lock window open"
+            # the longer of the two windows, so a void cannot race a recovering keeper
+            assert (
+                now > rnd.lock_time.native + KEEPER_LOCK_DEADLINE
+            ), "lock window open"
             rnd.void_reason = arc4.UInt8(VOID_NO_LOCK)
         else:
             assert st == UInt64(STATUS_LOCKED), "not voidable"
@@ -1020,7 +1037,12 @@ class Ladder(
         assert rnd.status.native == STATUS_OPEN, "not open"
         now = Global.latest_timestamp
         assert now >= rnd.lock_time.native, "too early"
-        assert now <= rnd.lock_time.native + LOCK_DEADLINE, "lock window closed"
+        if Txn.sender == self.keeper.value:
+            assert (
+                now <= rnd.lock_time.native + KEEPER_LOCK_DEADLINE
+            ), "keeper lock window closed"
+        else:
+            assert now <= rnd.lock_time.native + LOCK_DEADLINE, "relay window closed"
 
         reference, n_present, clean_sources = self._verify_attestation(
             rnd.copy(),
