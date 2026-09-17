@@ -366,6 +366,8 @@ resolve:
     last_settlement_price ← settlement_price
 ```
 
+> **What the drift gate does and does not catch.** 50%–200% catches a decimal-scale error or an outright wrong asset. It does **not** catch a wrong *quote currency* — BTC-EUR for BTC-USD is roughly 0.92×, comfortably inside the band, while shifting every boundary by 8%: more than twice the widest band. Tightening enough to catch that (better than ~3%) would void legitimate rounds on a volatile day, which is the worse trade. What guards it instead is keeper configuration and the fact that a wrong-pair settlement is visible on-chain against four published candles.
+
 > **The reference needs a plausibility gate, and revision 5 had none.** `MIN`/`MAX_REFERENCE_PRICE` span $1 to $100M — an overflow bound wearing a sanity check's label. The whole ladder spans 7% of the reference, so *any* reference error above ~3.5% decides the round. A wrong quote currency (BTC-EUR for BTC-USD, ≈0.92×) shifts every boundary 8% — 2.3× the widest band — and a flat session settles in the tail. All four venues agree, the median is clean, and the 20–500% settlement check passes comfortably. Binding the reference to the previous round's settlement catches every global scale and pair error.
 
 > **There is a spread gate at `lock` and deliberately none at `resolve`.** The argument against spread-gating — that it makes a VOID purchasable by a participant facing a total loss — is correct at `resolve` and does not hold at `lock`, where no outcome exists yet and buying a void means paying to refund your own stake. At 2% the gate sits ~130× above the observed inter-venue agreement of 0.015%; it is an operator-error detector, not a manipulation defence.
@@ -414,7 +416,7 @@ Inner fees use `Global.min_txn_fee`, not a hardcoded constant. `fee_reserve` dec
 
 > **No `≥1 succeeded` assert.** A batch whose entries were all already settled by bounty-collecting third parties would otherwise revert, and a keeper retry loop written the obvious way would resubmit it forever. Burning a fee on an empty batch is the caller's problem; a reverting keeper path is not.
 
-**A full batch of 8 needs at least 3 top-level app calls in the group.** Three limits bind, and the tightest is not the one you would guess:
+**A full batch of 8 needs FOUR top-level app calls.** Three limits bind, and the tightest is not the one you would guess:
 
 | Limit | Per top-level app call | A batch of 8 needs |
 |---|---|---|
@@ -422,11 +424,11 @@ Inner fees use `Global.min_txn_fee`, not a hardcoded constant. `fee_reserve` dec
 | References | 8, of which ≤4 accounts | 1 round box + 8 position boxes + up to 8 payees + the asset |
 | Opcode budget | 700 | ~900 |
 
-Three app calls give 48 inner transactions, 24 references and 2,100 of pooled budget, which clears all three. With a single app call the batch dies at the fifth entry on the inner-transaction limit, after opup has already consumed two.
+Three app calls give 48 inner transactions, 24 reference slots and 12 account slots — enough on paper, and still not enough in practice, because references are pooled for *use* but each transaction may only *declare* 8 of them. Measured: a full batch places in four calls and fails in three. With a single app call it dies at the fifth entry on the inner-transaction limit.
 
 **Pad with `noop`, not a readonly method.** Clients route readonly calls through simulate, so they never land in the submitted group — a keeper padding with `get_solvency` ships a one-call group and fails partway through. `noop` exists for this.
 
-**`ensure_budget` is set to 1,500, not the measured ceiling.** `global OpcodeBudget` reads what *remains* of the pooled budget, so padding calls placed before the batch consume some of it first — at a 2,000 threshold the same three transactions passed or failed depending only on their order, and failing meant firing opup, which needs group fee credit the keeper may not have supplied.
+**`ensure_budget` scales with the batch, rather than being a constant.** A flat figure is wrong in both directions: too low and a full batch dies mid-loop on "dynamic cost budget exceeded" — 8 settles measured well over 2,000, not the ~1,400 a static reading of the source suggests — and too high makes every small batch pay for opup it does not need. `global OpcodeBudget` also reads what *remains* of the pooled budget, so a constant made the same transactions pass or fail on ordering alone.
 
 ---
 

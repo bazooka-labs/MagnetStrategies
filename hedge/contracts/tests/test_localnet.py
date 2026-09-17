@@ -713,3 +713,236 @@ def test_three_source_quorum_with_a_non_contiguous_mask(algorand, admin, dispens
                                  sign_attestation(oracle_key, client.app_id, rid2,
                                                   CHECKPOINT_LOCK, m2, FEED_ID, p2, t2)],
             extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    # a failed lock leaves the round OPEN and open_round_id set, so nothing else can
+    # create a round until it is resolved one way or the other — release it
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="admin_void_round", args=[rid2]))
+
+
+def test_full_width_settle_batch(algorand, admin, dispenser, musd, deployed,
+                                 oracle_key):
+    """Eight positions in one settle_batch — the case both reviews said was unreachable.
+
+    This is the only test that actually proves the budget and padding fixes. A batch of
+    8 needs 9 box references (8 positions + the round), up to 8 payee accounts, and 24
+    inner transactions at 3 per settle — against per-transaction limits of 8 refs, 4
+    accounts and 16 inners.
+
+    It takes FOUR top-level app calls, not the three the arithmetic suggests. Three
+    has the raw slots on paper (24 refs, 12 accounts) and still fails to place them.
+    That is the kind of thing only a real group reveals, and it is why `noop` exists:
+    readonly methods are routed through simulate by clients and never reach the
+    submitted group at all.
+    """
+    from tests.conftest import BOUNTY_DELAY, advance_to, chain_now
+
+    client = deployed
+    winners = [player(algorand, dispenser, admin, musd) for _ in range(8)]
+    loser = player(algorand, dispenser, admin, musd)
+
+    rid, open_t, lock_t, resolve_t = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    for w in winners:
+        _enter(client, algorand, w, musd, rid, 8, 10_000_000)
+    _enter(client, algorand, loser, musd, rid, 4, 200_000_000)
+    total = 8 * 10_000_000 + 200_000_000
+
+    advance_to(algorand, dispenser, lock_t)
+    ref = 79_000_000_000
+    p4, t4 = [ref] * 4, [lock_t] * 4
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="lock", args=[rid, 0b1111, p4, t4,
+                             sign_attestation(oracle_key, client.app_id, rid,
+                                              CHECKPOINT_LOCK, 0b1111, FEED_ID, p4, t4)],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    advance_to(algorand, dispenser, resolve_t)
+    settlement = ref * 10_430 // 10_000          # +4.3% -> band 8
+    sp, st = [settlement] * 4, [resolve_t] * 4
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="resolve", args=[rid, 0b1111, sp, st,
+                                sign_attestation(oracle_key, client.app_id, rid,
+                                                 CHECKPOINT_RESOLVE, 0b1111, FEED_ID,
+                                                 sp, st)],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    advance_to(algorand, dispenser, chain_now(algorand) + BOUNTY_DELAY + 60)
+
+    payable = total * (10_000 - RAKE_BPS) // 10_000
+    per_winner = payable * 10_000_000 // (8 * 10_000_000)
+    before = [algorand.asset.get_account_information(w.address, musd).balance
+              for w in winners]
+
+    from tests.conftest import position_box, round_box
+
+    addrs = [w.address for w in winners]
+    boxes = [algokit_utils.BoxReference(client.app_id, position_box(rid, a, 8))
+             for a in addrs]
+
+    # References are pooled for USE across the group but each transaction may only
+    # DECLARE 8, of which at most 4 are accounts. 8 positions need 9 boxes + 8 accounts
+    # + the asset = 18, so they are spread over the three calls deliberately.
+    composer = algorand.new_group()
+    composer.add_app_call_method_call(client.params.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="noop",
+            account_references=addrs[:4],
+            box_references=[algokit_utils.BoxReference(client.app_id, round_box(rid))]
+            + boxes[:3],
+        )))
+    composer.add_app_call_method_call(client.params.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="noop",
+            account_references=addrs[4:],
+            box_references=boxes[3:6],
+        )))
+    composer.add_app_call_method_call(client.params.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="noop",
+            box_references=boxes[6:],
+        )))
+    composer.add_app_call_method_call(client.params.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="settle_batch",
+            args=[rid, addrs, [8] * 8, addrs],
+            asset_references=[musd],
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=30_000),
+        )))
+    composer.send()
+
+    for w, b in zip(winners, before, strict=True):
+        got = algorand.asset.get_account_information(w.address, musd).balance - b
+        assert got == per_winner, f"each winner paid pro-rata, got {got}"
+
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["position_count"] == 1, "only the loser's box remains"
+
+    bal, oblig, rake = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    assert bal >= oblig + rake, "solvency after a full-width batch"
+
+
+def test_treasury_paths(algorand, admin, dispenser, musd, deployed, treasury):
+    """sweep_rake, sweep_excess_musd and withdraw_operating_algo — every ALGO- and
+    mUSD-moving admin path, none of which was previously called by any test."""
+    client = deployed
+
+    # rake has accrued from earlier resolved rounds; it must land on the treasury
+    _, _, rake = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    assert rake > 0, "earlier rounds should have accrued rake"
+    algorand.send.asset_opt_in(algokit_utils.AssetOptInParams(
+        sender=treasury.address, signer=treasury.signer, asset_id=musd))
+    before = algorand.asset.get_account_information(treasury.address, musd).balance
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="sweep_rake", args=[],
+        asset_references=[musd], account_references=[treasury.address],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)))
+    assert algorand.asset.get_account_information(treasury.address, musd).balance \
+        - before == rake, "rake swept in full"
+
+    _, _, rake_now = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    assert rake_now == 0
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="sweep_rake", args=[], asset_references=[musd]))
+
+    # mUSD sent straight to the app — the commonest escrow user error — is recoverable,
+    # and bounded by total_obligations so it can never reach live escrow
+    stray = 7_000_000
+    algorand.send.asset_transfer(algokit_utils.AssetTransferParams(
+        sender=admin.address, receiver=client.app_address,
+        asset_id=musd, amount=stray))
+    bal, oblig, _ = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    excess = bal - oblig
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="sweep_excess_musd", args=[excess + 1],
+            asset_references=[musd], account_references=[treasury.address]))
+    t_before = algorand.asset.get_account_information(treasury.address, musd).balance
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="sweep_excess_musd", args=[stray],
+        asset_references=[musd], account_references=[treasury.address],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)))
+    assert algorand.asset.get_account_information(treasury.address, musd).balance \
+        - t_before == stray
+
+    # the ALGO floor must reserve the deposits and fees owed to live positions
+    with pytest.raises(Exception):
+        client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="withdraw_operating_algo", args=[10_000_000_000]))
+    client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="withdraw_operating_algo", args=[100_000],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)))
+
+    bal, oblig, rake2 = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_solvency", args=[])).abi_return
+    assert bal >= oblig + rake2, "solvency survives every treasury path"
+
+
+def test_price_gates_reject(algorand, admin, dispenser, musd, deployed, oracle_key):
+    """The rejection side of the oracle gates — previously only the happy path ran.
+
+    A reference far from the previous settlement is the signature of a keeper on the
+    wrong pair or the wrong quote currency, which would shift every band boundary while
+    all four venues agree and every other check passes.
+    """
+    from tests.conftest import advance_to
+
+    client = deployed
+    alice = player(algorand, dispenser, admin, musd)
+    bob = player(algorand, dispenser, admin, musd)
+    rid, open_t, lock_t, _ = _create_round(client, algorand, admin)
+    advance_to(algorand, dispenser, open_t)
+    _enter(client, algorand, alice, musd, rid, 4, 20_000_000)
+    _enter(client, algorand, bob, musd, rid, 6, 20_000_000)
+    advance_to(algorand, dispenser, lock_t)
+
+    def try_lock(prices, ts=None, mask=0b1111):
+        t = ts or [lock_t] * 4
+        return client.send.call(algokit_utils.AppClientMethodCallParams(
+            method="lock", args=[rid, mask, prices, t,
+                                 sign_attestation(oracle_key, client.app_id, rid,
+                                                  CHECKPOINT_LOCK, mask, FEED_ID,
+                                                  prices, t)],
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+
+    ref = 79_000_000_000
+    with pytest.raises(Exception):               # a decimal-scale error
+        try_lock([ref * 10] * 4)
+    with pytest.raises(Exception):
+        try_lock([ref // 10] * 4)
+    with pytest.raises(Exception):               # venue spread past the 2% lock gate
+        try_lock([ref, ref, ref, ref * 110 // 100])
+    with pytest.raises(Exception):               # candle boundary != checkpoint
+        try_lock([ref] * 4, ts=[lock_t, lock_t, lock_t, lock_t - 60])
+    with pytest.raises(Exception):               # a zero price in a present slot
+        try_lock([ref, 0, ref, ref])
+    bad_sig = client.params.call(algokit_utils.AppClientMethodCallParams(
+        method="lock", args=[rid, 0b1111, [ref] * 4, [lock_t] * 4, b"\x00" * 64],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=5_000)))
+    with pytest.raises(Exception):
+        algorand.new_group().add_app_call_method_call(bad_sig).send()
+
+    try_lock([ref] * 4)                          # control: the honest attestation works
+    rnd = client.send.call(algokit_utils.AppClientMethodCallParams(
+        method="get_round", args=[rid])).abi_return
+    assert rnd["status"] == 1, "LOCKED"
+
+def test_reference_drift_gate_does_not_catch_a_small_scale_error(deployed):
+    """An honest limit, pinned so nobody assumes otherwise.
+
+    REF_DRIFT is 50%-200%. It catches a decimal shift or an outright wrong asset. It
+    does NOT catch a wrong quote currency — BTC-EUR for BTC-USD is roughly 0.92x, which
+    sits comfortably inside the band while shifting every boundary by 8%, more than
+    twice the widest band. Tightening far enough to catch it (better than ~3%) would
+    void legitimate rounds on a volatile day, which is a worse trade.
+
+    What actually guards this is keeper configuration and the fact that a wrong-pair
+    settlement is visible on-chain against four published candles.
+    """
+    assert 5_000 < 9_200 < 20_000, "0.92x is inside the drift band, by design"

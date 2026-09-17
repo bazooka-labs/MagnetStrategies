@@ -31,7 +31,7 @@ algokit localnet start
 poetry run pytest
 ```
 
-14 tests, all against the **compiled** contract on a local chain, driven through real
+18 tests, all against the **compiled** contract on a local chain, driven through real
 transaction groups — the only level at which opcode budget, inner-transaction limits,
 fee pooling and inner-payment failure are observable.
 
@@ -48,7 +48,7 @@ subsequent block and runs the chain away.
 
 | | |
 |---|---|
-| Approval bytecode | 6,075 bytes — 2 extra pages (limit 3) |
+| Approval bytecode | 6,095 bytes — 2 extra pages (limit 3) |
 | Global state | 15 uints, 6 byte slices |
 | Position box | key 42 B, value 56 B → 41,700 µALGO MBR |
 | Round box | key 9 B, value 307 B → 128,900 µALGO MBR |
@@ -62,10 +62,10 @@ transactions funded from **group credit**. A lone `lock` needs ~5,000 µALGO of 
 fee, not the 1,000 minimum. Nothing in the ABI signals this and `lock`'s window is
 only `LOCK_DEADLINE` wide, so a relayer paying the minimum fee will fail.
 
-**A full batch of 8 needs ≥3 top-level app calls.** The binding limit is inner
-transactions (16 per app call; settle emits 3 per entry), not references. Pad with
-`noop` — readonly methods do not work, because clients route them through simulate
-and they never reach the submitted group.
+**A full batch of 8 needs 4 top-level app calls** — measured, not derived. Three has
+the reference slots on paper and still fails to place them, because references are
+pooled for *use* while each transaction may only *declare* 8. Pad with `noop`;
+readonly methods are routed through simulate and never reach the group.
 
 **The keeper must sign once per (round, checkpoint) and resubmit identical bytes on
 retry.** The contract accepts any valid signature for the checkpoint, so two

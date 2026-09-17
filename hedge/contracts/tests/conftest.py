@@ -209,3 +209,15 @@ def tick(algorand, dispenser) -> None:
             note=os.urandom(8),
         )
     )
+
+
+def round_box(round_id: int) -> bytes:
+    return b"r" + round_id.to_bytes(8, "big")
+
+
+def position_box(round_id: int, owner: str, band: int) -> bytes:
+    """p || round_id(8) || owner(32) || band(1) — the full key, never a truncated hash."""
+    from algosdk import encoding
+
+    return (b"p" + round_id.to_bytes(8, "big")
+            + encoding.decode_address(owner) + bytes([band]))

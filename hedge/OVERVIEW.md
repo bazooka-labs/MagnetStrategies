@@ -118,5 +118,6 @@ The reasoning is not ideological:
 | [OPTIONSLADDER.md](./OPTIONSLADDER.md) | Product design — conveyor, bands, payouts, rules, and the reasoning behind each |
 | [OPTIONSLADDER_SPEC.md](./OPTIONSLADDER_SPEC.md) | Implementation spec — state, ABI, math, invariants, edge cases |
 | [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model |
+| [perps/OVERVIEW.md](./perps/OVERVIEW.md) | Perps — PEX integration: platform facts, verified constants, integration paths considered |
 
 **Product name is not final.** "Option Ladder" describes the mechanism; the shipped name is undecided. Everything is built under `hedge/` in the meantime.

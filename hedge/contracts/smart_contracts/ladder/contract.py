@@ -1450,9 +1450,12 @@ class Ladder(
     #  forever. Burning a fee on an empty batch is the caller's problem; a reverting
     #  keeper path is not.
     #
-    #  Algorand allows 8 references per transaction, at most 4 of them accounts, so the
-    #  achievable batch size is a property of the group shape (padding no-op app calls
-    #  expand the shared pool) rather than a constant. The array is capped at 8.
+    #  Group shape, measured rather than derived: a FULL batch of 8 needs FOUR
+    #  top-level app calls, not three. References are pooled for USE across a group but
+    #  each transaction may only DECLARE 8, of which at most 4 are accounts — and 8
+    #  entries need 8 payee accounts, 9 boxes (8 positions + the round) and the asset.
+    #  Three calls have the raw slots on paper and still fail in practice. Pad with
+    #  `noop`; readonly methods never reach the submitted group.
 
     @arc4.abimethod
     def settle_batch(
@@ -1462,15 +1465,15 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
-        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
-        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
-        # merely putting the padding calls before the batch consumed enough of the
-        # shared pool to trip it. Firing opup then demands group fee credit the keeper
-        # may not have supplied, and the whole batch reverts with nothing pointing at
-        # transaction ordering.
-        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
+        # Scaled to the batch, not a constant. A flat figure is wrong in both
+        # directions: too low and a full batch dies mid-loop on "dynamic cost budget
+        # exceeded" (measured: 8 settles cost well over 2,000, not the ~1,400 a static
+        # reading suggests), too high and every small batch pays for opup it does not
+        # need. `global OpcodeBudget` also reads what REMAINS of the pooled budget, so
+        # a constant made the same three transactions pass or fail on ordering alone.
+        ensure_budget(UInt64(500) + UInt64(400) * owners.length,
+                      OpUpFeeSource.GroupCredit)
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
         bitmap = UInt64(0)
@@ -1489,15 +1492,15 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
-        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
-        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
-        # merely putting the padding calls before the batch consumed enough of the
-        # shared pool to trip it. Firing opup then demands group fee credit the keeper
-        # may not have supplied, and the whole batch reverts with nothing pointing at
-        # transaction ordering.
-        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
+        # Scaled to the batch, not a constant. A flat figure is wrong in both
+        # directions: too low and a full batch dies mid-loop on "dynamic cost budget
+        # exceeded" (measured: 8 settles cost well over 2,000, not the ~1,400 a static
+        # reading suggests), too high and every small batch pays for opup it does not
+        # need. `global OpcodeBudget` also reads what REMAINS of the pooled budget, so
+        # a constant made the same three transactions pass or fail on ordering alone.
+        ensure_budget(UInt64(500) + UInt64(400) * owners.length,
+                      OpUpFeeSource.GroupCredit)
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
         bitmap = UInt64(0)
@@ -1516,15 +1519,15 @@ class Ladder(
         bands: arc4.DynamicArray[arc4.UInt8],
         payees: arc4.DynamicArray[arc4.Address],
     ) -> arc4.UInt64:
-        # 1_500, not 2_000. Measured worst case for 8 entries is ~1,400 plus ~70 of
-        # routing and arg decoding. At 2_000 a three-app-call group (2,100 pooled) had
-        # ~18 opcodes of headroom — and `global OpcodeBudget` reads what REMAINS, so
-        # merely putting the padding calls before the batch consumed enough of the
-        # shared pool to trip it. Firing opup then demands group fee credit the keeper
-        # may not have supplied, and the whole batch reverts with nothing pointing at
-        # transaction ordering.
-        ensure_budget(1_500, OpUpFeeSource.GroupCredit)
         assert owners.length <= 8, "batch cap"
+        # Scaled to the batch, not a constant. A flat figure is wrong in both
+        # directions: too low and a full batch dies mid-loop on "dynamic cost budget
+        # exceeded" (measured: 8 settles cost well over 2,000, not the ~1,400 a static
+        # reading suggests), too high and every small batch pays for opup it does not
+        # need. `global OpcodeBudget` also reads what REMAINS of the pooled budget, so
+        # a constant made the same three transactions pass or fail on ordering alone.
+        ensure_budget(UInt64(500) + UInt64(400) * owners.length,
+                      OpUpFeeSource.GroupCredit)
         assert owners.length == bands.length, "length"
         assert owners.length == payees.length, "length"
         bitmap = UInt64(0)
