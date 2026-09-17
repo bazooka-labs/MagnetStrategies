@@ -30,6 +30,7 @@ from algopy import (
     GlobalState,
     OpUpFeeSource,
     StateTotals,
+    TemplateVar,
     Txn,
     UInt64,
     arc4,
@@ -40,13 +41,6 @@ from algopy import (
     subroutine,
     urange,
 )
-
-# mUSD on Algorand mainnet. Hardcoded rather than trusted from the bootstrap argument:
-# bootstrap is one-shot and irreversible in a non-upgradeable contract, so a transposed
-# asset id would brick the deployment permanently. The property checks below (decimals,
-# unit name, clawback, freeze) catch a typo on their own, but a literal makes the
-# intended asset auditable from the source. A testnet deploy rebuilds with its own id.
-MUSD_ASSET_ID = 3_615_600_399
 
 # ── Ladder shape ──────────────────────────────────────────────────────────────
 BAND_COUNT = 9
@@ -435,7 +429,11 @@ class Ladder(
         """
         self._only_admin()
         assert self.musd_asset_id.value == UInt64(0), "already bootstrapped"
-        assert musd_asset.id == UInt64(MUSD_ASSET_ID), "wrong asset"
+        # Substituted at DEPLOY time and baked permanently into the deployed program,
+        # not trusted from this call's argument: bootstrap is one-shot and irreversible
+        # in a non-upgradeable contract, so a transposed asset id would brick the
+        # deployment. mainnet mUSD is 3615600399.
+        assert musd_asset.id == TemplateVar[UInt64]("MUSD_ASSET_ID"), "wrong asset"
         assert musd_asset.decimals == UInt64(6), "decimals"
         assert musd_asset.unit_name == Bytes(b"mUSD"), "unit name"
         assert musd_asset.clawback == Global.zero_address, "clawback must be zero"

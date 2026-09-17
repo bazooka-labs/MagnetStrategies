@@ -6,3 +6,4 @@ __pycache__/
 .env
 .env.*
 smart_contracts/artifacts/
+smart_contracts/artifacts_test/

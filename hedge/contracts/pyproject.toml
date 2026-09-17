@@ -17,6 +17,8 @@ algorand-python-testing = "^1"
 algokit-client-generator = "^2.1.0"
 puyapy = "==5.9.0"   # pinned to match magnetfi/v2 — reproducible TEAL
 pytest = "^8"
+algokit-utils = "^4.2.3"
+pynacl = "^1.6.2"
 
 [build-system]
 requires = ["poetry-core"]

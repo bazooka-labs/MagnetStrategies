@@ -27,8 +27,19 @@ match `magnetfi/v2/contracts`, so TEAL output is reproducible.
 ## Test
 
 ```sh
+algokit localnet start
 poetry run pytest
 ```
+
+21 tests. `test_obligations.py` pins the payout arithmetic in pure Python;
+`test_localnet.py` deploys the **compiled** contract to a local chain and drives it
+through real transaction groups — which is the only level at which opcode budget,
+inner-transaction limits, fee pooling and inner-payment failure are observable.
+
+Rounds span hours, so the suite moves the chain clock with algod's dev-mode block
+offset. That offset is the delta applied to *each* new block, not an offset from wall
+clock, so it is set, consumed by one block, and reset — leaving it set compounds every
+subsequent block and runs the chain away.
 
 ## Current build
 
@@ -52,7 +63,10 @@ only `LOCK_DEADLINE` wide, so a relayer paying the minimum fee will fail.
 transactions (16 per app call; settle emits 3 per entry), not references. Pad the
 group with a cheap method such as `get_solvency`.
 
-**`MUSD_ASSET_ID` is hardcoded to mainnet.** A testnet deploy rebuilds with its own id.
+**`MUSD_ASSET_ID` is a deploy-time template variable.** One artifact serves every
+network; the chosen asset is substituted at deploy and baked permanently into the
+deployed program. `bootstrap` is one-shot and irreversible in a non-upgradeable
+contract, so the asset must not be trusted from a call argument.
 
 ## Status
 
@@ -60,6 +74,7 @@ Compiles. Arithmetic invariants under test.
 
 Two adversarial reviews have run against this code (correctness and exploit lenses,
 fresh context, reading the compiled TEAL as well as the source); their findings are
-applied. **Not deployed.** No AVM-level tests yet — every finding about resource
-limits, inner-transaction counts and fee pooling came from review, not from a test
-that would have caught them, and that gap is the next thing to close.
+applied, and the ones that could be pinned by a test now are.
+
+**Not deployed.** Next: the keeper (4-venue candle read, OHLC4, sign, publish, submit,
+batch payouts), then the frontend.
