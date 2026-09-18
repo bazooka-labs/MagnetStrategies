@@ -99,7 +99,7 @@ The funding split is **not a constant**. `opposing_trader_share_bps` lives on-ch
 | Decrease/close method flat fee | 37,000 |
 | Liquidation method flat fee | 28,000 |
 
-A position with an attached bracket costs roughly **0.30 ALGO** in MBR and fees. Negligible in dollars; fatal if the user's spendable ALGO is short. This is the single most common cause of a failed first transaction.
+A position with an attached take profit costs roughly **0.40 ALGO** all-in (position box 70,900 + order box 96,500 + trader box 29,300 + method flat fees + per-transaction minimums). Negligible in dollars; fatal if the user's spendable ALGO is short. This is the single most common cause of a failed first transaction.
 
 **On-chain state** is readable from boxes with these key prefixes:
 
@@ -135,14 +135,65 @@ Because the fee is recorded on-chain and publicly readable, it must be disclosed
 
 Recorded so that no one re-discovers these the hard way:
 
-- **No public API.** The deployment manifest — which carries application IDs and asset mappings — is served from `GET /v2/networks/mainnet/deployments` on a backend *we* run. Six plausible public CDN paths were probed and all returned 404.
-- **No published application IDs.** They must be obtained from the deployment manifest or extracted from the live PEX web bundle.
+- **A public API exists, but is unsupported for builders.** `api.ppls.exchange` answers `GET /v2/networks/mainnet/deployments` and `GET /v2/protocol` with HTTP 200, and `app.ppls.exchange/api/...` mirrors it. *(An earlier draft said no public API existed — that was wrong; only the public **artifact CDN** lacks these paths.)* The SDK still states that no fallback selects a PEX-operated backend, so treat this as convenient for extraction, **not** as infrastructure to depend on at runtime.
+- **Application IDs are recoverable** and are recorded below. Pin them; do not fetch them at runtime.
 - **No published MainNet risk parameters.** Leverage, fees, margin, caps and yield settings are explicitly described as varying by market and changing with configuration.
 - **No published borrowing or funding rates.** Readable on-chain from `mf2:` / `ma2:` once application IDs are known. **Measure these before designing any UI that quotes holding cost.**
 - **No audit reference** in the README, LICENSE, or integration guides. Absence of advertisement, not proof of absence.
-- **No protocol manifest without a backend.** Box decoding requires the manifest from `GET /v2/protocol`. This is our one unavoidable server dependency, and a stale manifest across a PEX upgrade means silently wrong decoding. Version-check it.
+- **The protocol manifest supplies more than decoding.** It carries the ABI method signatures used to *encode* transaction args as well as the box formats used to decode state — so whoever controls it controls both what we send and what we display. Pin the method signatures and a manifest hash as build-time constants; a version check is not sufficient.
 
 PEX's own README is candid about its limits: *"not a complete backend implementation or a claim that all response schemas fully specify the financial calculations. Qualify your backend and frontend together against the current contracts."* Take that at face value.
+
+---
+
+## MainNet Deployment
+
+Recovered from `GET https://api.ppls.exchange/v2/networks/mainnet/deployments`. **These are build-time constants, not runtime values** — see the pinning requirement in [COVER_SPEC.md](./COVER_SPEC.md#critical-the-backend-supplies-fund-destinations).
+
+| App | ID |
+|---|---|
+| PDexV2AdminControl | 3690306989 |
+| PDexV2Math | 3690309158 |
+| PDexV2Markets | 3690309159 |
+| **PDexV2Trading** | **3690309160** |
+| PDexV2TradingRiskOps | 3690309161 |
+| PDexV2AdminOps | 3690309162 |
+| PDexV2SwapOps | 3690309163 |
+| PDexV2SingleTokenOps | 3690309164 |
+| PDexV2SingleTokenTrading | 3690309165 |
+| PDexV2OrderOps | 3690309166 |
+| PDexV2CvaVault | 3690309167 |
+| PDexV2MarketYieldVault | 3690309168 |
+| PDexV2MarketXAlgoYieldVault | 3690309169 |
+
+Assets: USDC `31566704` · xALGO `1134696561` · fUSDC `971384592` · frUSDC `971384593` · BTC index `9000000000000000` (synthetic placeholder, not an ASA).
+
+The fUSDC/frUSDC and xALGO asset IDs confirm the yield strategies concretely: pool assets are deployed into **Folks Finance lending** and **xALGO consensus staking**.
+
+---
+
+## Governance and Upgradeability — read this before building
+
+Established from chain on 2026-09-17. This is the single most important fact about PEX for our purposes.
+
+**`PDexV2Trading` is upgradeable, and it has been upgraded.** One `update` transaction on app 3690309160, at round 64979227, **2026-09-12 17:24 UTC**. `PDexV2AdminControl` has been updated 8 times.
+
+An Algorand app update replaces the contract's logic while everything inside it — user collateral, open positions — stays put. Whoever holds the upgrade key can change settlement, margin and payout logic on a live protocol holding real funds.
+
+**Authority lives in `PDexV2AdminControl` global state**, as two 88-byte structs laid out `[current(32) | pending(32) | 3×uint64]`:
+
+| Role | Address | Pending |
+|---|---|---|
+| `admin` | `EADFT4IMWIRKMN5KJGIKJA2U6CHXU3N43LZCLGV2GPEVEBM74MPZ4MZ3D4` | none |
+| `upgrade` | `34BIJNZIPXEKAUYAYKVECRBI4V7VXJ4IDXADX3ZTFT7HBCWHER3MKQTEH4` | none |
+
+**Both are single-signature accounts** — checked against their transaction histories, 24 and 8 outgoing transactions respectively, zero multisig. The upgrade address is the sender of the 2026-09-12 update. The pending slots and three zeroed uint64s imply a deliberate two-step handover design, but nothing observable enforces a delay.
+
+What this means concretely:
+
+> `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not captured when a position opens. So the liquidation buffer we disclose to a user at purchase is not a property of their position — it is a live parameter under the control of a single key we do not hold. Raising it liquidates open positions with no price movement at all.
+
+Separation of the admin and upgrade roles into two keys is genuinely good practice. Single-signature control of both, with no advertised audit and a live upgrade five days before this was written, is the risk to weigh. Questions for Ultrade are listed in [COVER_SPEC.md](./COVER_SPEC.md#open-questions).
 
 ---
 
