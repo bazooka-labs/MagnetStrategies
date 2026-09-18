@@ -71,7 +71,9 @@ The exploitable questions are therefore:
 | PEX protocol | Everything within its own contracts, including ADL | — |
 | PEX oracle signer | Set the price range all execution derives from | — |
 | PEX keeper network | Execute stored orders, liquidate, ADL | Open positions on a user's behalf |
-| **PEX admin / governance** | **Change every risk parameter including `maintenance_margin_bps`, `liquidation_fee_bps`, `close_fee_bps`, `max_pnl_factor_for_traders_bps`; pause markets; possibly upgrade contracts** | **Unknown** |
+| PEX admin / governance | Change every risk parameter including `maintenance_margin_bps`, `liquidation_fee_bps`, `close_fee_bps`, `max_pnl_factor_for_traders_bps`; pause markets; upgrade `PDexV2Trading` | — |
+
+*This row documents **capability**, not expectation. Magnet Strategies assumes Ultrade operates in good faith and changes parameters with notice; see [Residual Trust](#residual-trust). A threat model that omits a dependency's powers because the dependency is trusted is decorative.*
 | Third-party liquidator | Liquidate any position below maintenance | Liquidate a healthy position |
 | Network observer | Read every position, order, fee and builder address on-chain | — |
 
@@ -520,6 +522,7 @@ Display accuracy is a security property here, because there is no contract to ex
 4. **Funding share is read, never assumed.** `opposing_trader_share_bps` is live on-chain state. Hardcoding 25% is a defect.
 5. **Quotes refuse to render on a stale oracle.** Payloads carry a ~30s validity window. Past `ORACLE_MAX_AGE_SEC`, show a stale state rather than a stale number.
 6. **The builder fee is disclosed.** It is publicly readable on-chain; concealing it in the UI is the same category of problem as a closed price feed.
+   **And one line of settlement disclosure**, not a warning banner: Cover settles on PEX, a third-party protocol, whose risk parameters can change. Brief, true, and cheap now.
 7. **The payoff table is labelled as subject to the trader PnL cap.** `checkTraderPnlCap` pushes `trader_pnl_cap` when **this close's own payout** exceeds `max_pnl_factor_for_traders_bps ×` the side pool in USD (`src/v2Quotes.ts:4222-4230`); a pushed reason makes the quote **not ok**, so the voluntary close is *rejected*, not reduced. *(An earlier draft claimed this binds on aggregate side PnL versus other traders, and named the wrong reason strings — `long_pnl_cap`/`short_pnl_cap` are LP deposit/withdraw reasons. At $10-unit sizes an individual payout cannot approach a fraction of the pool, so this effectively never binds on the voluntary-close path.)*
    **The aggregate-side-PnL exposure is real, but it is ADL, not this.** `sidePositivePnlUsd` against `sidePnlCapUsd` drives ADL eligibility (`src/v2Quotes.ts:2565-2570`), and `effectiveProfitUsd = profitUsd × traderPnlCapUsd / sidePositivePnlUsd` scales the payout down. That is where correlated one-sided hedging demand actually lands, and where `side_positive_pnl_usd`, `side_pnl_cap_usd` and `adl_threshold_breached` should be surfaced.
 8. **The displayed liquidation buffer is computed after fees**, from the SDK's `liquidation_price_estimate` — never from `1/leverage − maintenance_margin_rate`, which ignores that open fees and the builder fee are deducted from collateral first.
@@ -566,7 +569,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 | Trusted party | For what | Our mitigation |
 |---|---|---|
 | PEX contracts | Correct settlement, margin, liquidation, ADL | None available. No audit is advertised. Disclose. |
-| PEX admin key | Not liquidating users at will. `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not snapshotted at open — so the buffer disclosed at purchase is not a property of the user's position but a live parameter a third party controls. Raising it liquidates open positions with no price move. | None. Upgradeability and key custody are **undetermined** — see [Open Questions](#open-questions). If the trading app is upgradeable by a single unaudited key, that fact outranks everything else in this document. |
+| PEX admin & upgrade keys | Acting in good faith and changing risk parameters with notice. `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not snapshotted at open, so the buffer disclosed at purchase is a live parameter Ultrade controls. | **This is an accepted trust, recorded deliberately.** Both keys are single-signature and `PDexV2Trading` is upgradeable (see [OVERVIEW](./OVERVIEW.md#governance-and-upgradeability--read-this-before-building)). Magnet Strategies assumes good-faith operation with notice — the normal posture for a third-party dependency. Note that this assumption addresses *intent* only: key compromise, operational error, and a well-intentioned upgrade introducing a bug are unaffected by it. Mitigation is limited to reading parameters live and never caching a disclosed buffer. |
 | PEX oracle signer | The price range all execution derives from | Freshness and target validation; refuse stale payloads |
 | PEX keeper network | Executing stored orders and ADL | None available |
 | Folks Finance, xALGO | Pool assets are partly deployed there via `lent_qty` | Transitive and unavoidable while trading against these pools. Disclose. |
@@ -634,7 +637,9 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 
 ## Open Questions
 
-- **Is `PDexV2Trading` upgradeable, who holds the admin key, is it a multisig, and is there a timelock?** `PDexV2AdminControl` gates every trading call but exposes no admin method in the public SDK. Since `maintenance_margin_bps` is read live at liquidation time, that key can liquidate every Cover user without a price move. **Ask Ultrade directly before building.** Also ask whether a PEX audit exists.
+**These are informational, not blocking.** Build proceeds in parallel; the answers refine disclosure and inform how much exposure to allow, they do not gate the work.
+
+- **Governance roadmap.** Answered from chain already: `PDexV2Trading` is upgradeable and was upgraded 2026-09-12; admin and upgrade are separate single-signature keys. The open part is forward-looking — is a multisig planned, is a timelock planned, what is the change-notice process, and does a PEX audit exist?
 - Do the PEX **contracts** enforce oracle freshness, and with what tolerance? The SDK performs no staleness check anywhere — `max_age_seconds` and `valid_until_timestamp` are inert data. If the contracts do not enforce it either, a backend compromise becomes a direct execution-price attack rather than a display-only one.
 - Is `max_pnl_factor_for_traders_bps` enforced on-chain identically to the SDK's client-side `checkTraderPnlCap`? The README disclaims that the SDK fully specifies the financial calculations.
 - Is a duplicate `ownerOrderId` rejected or does it overwrite the box? Allocate `baseOrderId` in strides of 3 (children are `base+1` / `base+2`) derived from the highest existing `o2:` box read live from chain, never from local state.

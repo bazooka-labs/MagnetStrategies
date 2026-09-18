@@ -172,9 +172,9 @@ The fUSDC/frUSDC and xALGO asset IDs confirm the yield strategies concretely: po
 
 ---
 
-## Governance and Upgradeability — read this before building
+## Governance and Upgradeability
 
-Established from chain on 2026-09-17. This is the single most important fact about PEX for our purposes.
+Established from chain on 2026-09-17, and recorded as **accepted counterparty risk**. Magnet Strategies assumes Ultrade operates in good faith and changes risk parameters with notice — the normal posture for building on a third-party protocol, and not a controversial one. What follows is the factual basis for that assumption, not an argument against it.
 
 **`PDexV2Trading` is upgradeable, and it has been upgraded.** One `update` transaction on app 3690309160, at round 64979227, **2026-09-12 17:24 UTC**. `PDexV2AdminControl` has been updated 8 times.
 
@@ -193,7 +193,13 @@ What this means concretely:
 
 > `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not captured when a position opens. So the liquidation buffer we disclose to a user at purchase is not a property of their position — it is a live parameter under the control of a single key we do not hold. Raising it liquidates open positions with no price movement at all.
 
-Separation of the admin and upgrade roles into two keys is genuinely good practice. Single-signature control of both, with no advertised audit and a live upgrade five days before this was written, is the risk to weigh. Questions for Ultrade are listed in [COVER_SPEC.md](./COVER_SPEC.md#open-questions).
+Separation of the admin and upgrade roles into two keys is genuinely good practice, and single-signature control is unremarkable for a protocol at this stage — most young protocols look like this, and refusing to integrate on that basis would rule out most of the ecosystem.
+
+**What the good-faith assumption does and does not cover.** It addresses *intent*. It does not address key compromise (where Ultrade's intent is irrelevant), operational error, or a well-intentioned upgrade that introduces a bug. Those three remain unbounded under single-signature control, which is why the one technical consequence below holds regardless of trust:
+
+> **Never cache a disclosed liquidation buffer.** `maintenance_margin_bps` is read live at liquidation time, so a cached buffer silently becomes wrong the moment a parameter changes — with or without notice, honestly or otherwise. Read it live, every time.
+
+Forward-looking questions for Ultrade — multisig plans, timelock plans, change-notice process, audit status — are listed in [COVER_SPEC.md](./COVER_SPEC.md#open-questions) and are **informational rather than blocking**.
 
 ---
 

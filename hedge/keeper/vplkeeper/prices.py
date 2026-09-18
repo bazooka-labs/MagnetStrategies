@@ -105,6 +105,26 @@ FETCHERS = {
 }
 
 
+def _rehearsal(checkpoint: int) -> tuple[list[int], list[int], int] | None:
+    """Synthesised candles for localnet rehearsal, and ONLY localnet.
+
+    A time-shifted chain asks for a checkpoint no exchange has a candle for, so the
+    script path (sign -> publish -> submit) cannot otherwise be exercised end to end.
+    Refuses to run anywhere but localnet, so it cannot be left on by accident.
+    """
+    import os
+
+    raw = os.environ.get("VPL_REHEARSE_PRICE")
+    if not raw:
+        return None
+    if os.environ.get("VPL_NETWORK", "localnet") != "localnet":
+        raise SystemExit("VPL_REHEARSE_PRICE is localnet-only; refusing to fabricate "
+                         "prices on a real network")
+    base = int(float(raw) * 1_000_000)
+    prices = [base + i * 400_000 for i in range(SOURCE_COUNT)]   # ~0.5 bps apart
+    return prices, [checkpoint] * SOURCE_COUNT, 0b1111
+
+
 def read_all(checkpoint: int) -> tuple[list[int], list[int], int]:
     """Read every venue for `checkpoint`, returning (prices, timestamps, present_mask)
     in the contract's slot order. A venue that fails or has no candle is left absent —
@@ -114,6 +134,10 @@ def read_all(checkpoint: int) -> tuple[list[int], list[int], int]:
     Raises if fewer than MIN_SOURCES respond; the caller retries rather than signing a
     submission the contract would reject.
     """
+    rehearsed = _rehearsal(checkpoint)
+    if rehearsed is not None:
+        return rehearsed
+
     prices = [0] * SOURCE_COUNT
     timestamps = [0] * SOURCE_COUNT
     mask = 0
