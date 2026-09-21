@@ -786,22 +786,36 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 
 ## Open Questions
 
-**These are informational, not blocking.** Build proceeds in parallel; the answers refine disclosure and inform how much exposure to allow, they do not gate the work.
+**Informational, not blocking.** Build proceeds in parallel.
 
-- **Governance — largely answered 2026-09-18.** Maintenance margin is raisable on open positions and applies immediately. A fixed delay window plus on-chain pending-change readability are in progress, ~1 week out, proposed at 48h. Long-term intent is staker governance via token sale. **Still open:** does the delay cover **contract upgrades** as well as parameters? An upgrade replaces program logic while keeping the app ID, so a parameter delay is only as strong as the upgrade path beneath it. Also still open: multisig timeline, and whether a PEX audit exists.
-- Do the PEX **contracts** enforce oracle freshness, and with what tolerance? The SDK performs no staleness check anywhere — `max_age_seconds` and `valid_until_timestamp` are inert data. If the contracts do not enforce it either, a backend compromise becomes a direct execution-price attack rather than a display-only one.
-- Is `max_pnl_factor_for_traders_bps` enforced on-chain identically to the SDK's client-side `checkTraderPnlCap`? The README disclaims that the SDK fully specifies the financial calculations.
-- Is a duplicate `ownerOrderId` rejected or does it overwrite the box? Allocate `baseOrderId` in strides of 3 (children are `base+1` / `base+2`) derived from the highest existing `o2:` box read live from chain, never from local state.
-- What happens when a PEX keeper cannot complete a yield recall — privileged bypass, or simple failure? It is the only failure mode that blocks both the take profit **and** the manual close.
-- **Do the PEX contracts cap `keeperFeeAmount`?** The SDK does not validate it anywhere. Determines whether an unbounded escrow is possible.
-- **Does a PEX redeploy migrate existing position state, or leave it in the old app?** Low priority — Ultrade indicate no app ID change is expected, so the two-state degraded mode is insurance against an unplanned event rather than a live design constraint.
-- **Is the oracle signer public key readable from on-chain state, and at what layout?** No SDK path exists; without one, pinning it requires Ultrade to supply the key out-of-band.
-- **What is MainNet maximum leverage?** `BAND_AGGRESSIVE_CEILING` is set to 20× on the assumption it matches TestNet. If MainNet differs, every buffer figure in this document moves.
-- **Answered 2026-09-18 by Ultrade and verified on chain 2026-09-21:** liquidation (`v2_position_liquidated`, 153) and ADL (`v2_position_adl`, 154) are distinct receipt types; voluntary closes emit `v2_position_decreased_with_output_swap`; `collateral_output`, `pnl_output`, `fee_amount` and `unpaid_cost_usd` are all present. **Still open: what triggers `v2_order_bracket_cleanup` (235) and what its `reason` codes are** — if PEX cleans orphaned brackets itself and refunds storage and keeper fee, our orphan requirements shrink. **No close receipt carries an execution price**, so exit price must be derived from the group's oracle payload.
-- **Does `cancel_order` refund the 96,500 µALGO order-box MBR and the escrowed keeper fee to the owner?** The SDK does not demonstrate it. Do not promise "one-tap reclaim" of a specific amount in the UI until confirmed on chain.
-- **Does a market pause gate `PDexV2OrderOps` cancellation?** Determines whether the orphan refusal can become a hard lockout on a key.
-- **Product question, deferred not decided:** should there be an unleveraged (1×) option? A product called Cover with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
+**Answered and retired:** MainNet maximum leverage (20×, `initial_margin_bps = 500`), the MainNet value of every TestNet parameter, and the receipt questions — all settled on chain or by Ultrade, see [Measured MainNet State](#measured-mainnet-state--2026-09-21).
+
+### Only Ultrade can answer
+
+Policy, roadmap, or internal semantics we cannot observe.
+
+1. **Does the parameter delay window cover contract upgrades, or only parameters?** The sharpest remaining question. `PDexV2Trading` was upgraded 2026-09-12, an upgrade keeps the app ID, and Ultrade indicate no app ID change is expected — so **every** future change reaches us through the upgrade path. A 48h delay on parameters is only as strong as the upgrade path beneath it.
+2. **What triggers `v2_order_bracket_cleanup` (235), and what are its `reason` codes?** It carries `storage_refund_microalgo` and `keeper_fee_refund`. If PEX cleans orphaned brackets itself, two requirements and one invariant in this document are redundant and the "one-tap reclaim" promise is unnecessary. **Ask before building orphan handling.**
+3. **What is the oracle signer public key?** We intend to pin it rather than trust the `pubkey_hex` that arrives inside the payload it signs. No SDK path reads it from chain; they can simply send it.
+4. **What happens when a keeper cannot complete a yield recall** — privileged bypass, or simple failure? The only failure mode that blocks the take profit *and* the manual close. Hard to induce in simulation.
+5. **Is there a published or private PEX audit, and is a multisig on the roadmap?** Both already asked; answers pending.
+
+### Determinable by simulation — do not spend Ultrade's time on these
+
+Each can be settled with `simulate_transactions` against MainNet at zero cost, and a simulated answer is more reliable than a remembered one. **Settle in Build Order step 1.**
+
+- Do the PEX contracts enforce oracle freshness, and with what tolerance? *(Simulate with a deliberately stale payload.)*
+- Do the contracts cap `keeperFeeAmount`? *(Simulate an order with an absurd escrow.)*
+- Is `max_pnl_factor_for_traders_bps` enforced on-chain identically to the SDK's `checkTraderPnlCap`? *(Simulate a close whose payout exceeds the cap.)*
+- Does `cancel_order` refund the 96,500 µALGO order-box MBR and the escrowed keeper fee? *(Simulate a cancel and read the balance deltas.)*
+- Is a duplicate `ownerOrderId` rejected, or does it overwrite the box?
+- Does a market pause gate `PDexV2OrderOps` cancellation?
 - Can an ALGO→USDC swap and a position open fit in one signed group within resource-reference limits?
-- Do resting limit orders pre-reserve open-interest capacity, or only the storage escrow? Affects whether parked conditional orders consume the capacity gating reads.
-- What is the MainNet value of every TestNet parameter in [OVERVIEW.md](./OVERVIEW.md#verified-parameters)?
-- Is there a published PEX audit? Not advertised in the repo; worth asking directly given the relationship.
+- Do resting limit orders pre-reserve open-interest capacity, or only the storage escrow?
+- Does a 1-unit Cover clear `position_quantization`, `zero_tokens` and any dynamic minimum at every band? *(Product-viability question at $10 units — settle early.)*
+- Does the increase-flow group — cancel + `open_or_increase` + `submit_linked_order` + carriers — fit under 16 transactions in practice?
+
+### Ours to decide, not to ask
+
+- **Should there be an unleveraged (1×) option?** A product called Cover with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
+- **Does a PEX redeploy migrate existing position state?** Low priority — no app ID change is expected, so the two-state degraded mode is insurance against an unplanned event.
