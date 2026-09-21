@@ -124,7 +124,11 @@ Impact: total loss of collateral for every open initiated during the compromise 
 - **Degrade in two states, not one.** A redeploy does not migrate existing positions — they stay in the *old* app, which is the one we pinned. A blanket hard-fail would strand every open position at the moment the protocol is in flux. So on mismatch: **block all opens and increases**, and **keep close, partial close, add-collateral and cancel-order live against the pinned IDs**, with a banner. Whether PEX migrates state on redeploy is an [Open Question](#open-questions).
 - **Pin the ABI, not just the IDs.** This is the half an earlier draft missed. ABI *encoding* does not use pinned constants: `buildAppCall` calls `encodeAppArgs(appName, methodName, args, manifest)`, and `method.signature` and each `args[].type` come from the **protocol manifest** fetched by `loadManifestFromUrl` → `GET /v2/protocol` (`src/manifest.ts:32-41`) — also unsigned, unpinned, unversioned. An attacker controlling that manifest controls the encoder *and* the decoder, so the full-group assertion round-trips through a poisoned spec and passes while the bytes mean something else to the real app. The same manifest decodes `mp2:`/`mo2:`/`mf2:`/`ma2:`, so every displayed quote, liquidation price and buffer is simultaneously theirs.
   **Required, in this order:** (a) pin a **SHA-256 of the whole protocol manifest** as the primary control — one constant, covering every method and every box format, impossible to enumerate incompletely. **Specify the bytes:** `loadManifestFromUrl` consumes and discards the raw response (`src/manifest.ts:32-41`), so either fetch with `.text()` and parse yourself (the hash then covers whitespace and key order, and a cosmetically reformatted PEX manifest hard-blocks all opens) or hash a canonical re-serialization under JCS. Pick one and state it, or the pin is not reproducible; (b) additionally embed the `signature` string and arg type list for `open_or_increase`, `decrease_or_close`, `submit_linked_order` and `cancel_order`, deriving selectors locally. Per-method pins alone are insufficient: the group also contains `fund_storage`, one to four `PDexV2Math.noop` carriers, OrderOps budget carriers and `PDexV2AdminOps` settlement-maintenance calls, all encoded through the same path — so a poisoned manifest could aim a call at a *different method* on a correctly-pinned app. A hash pin means a legitimate PEX manifest revision requires an MS release, the same trade already accepted for app IDs.
-- **Pin the oracle signer public key as a build-time constant**, verified out-of-band with Ultrade. `oraclePayloadFromBackend` copies `pubkey` straight out of `payload.pubkey_hex` (`src/oracle.ts:150-170`) and `verifyOraclePayload` verifies against whatever it is handed — checking that a message signed itself. Note there is **no SDK path to read the signer key from chain**, so "read it from on-chain state" is not implementable today; see [Open Questions](#open-questions).
+- **Pin the oracle signer public key as a build-time constant.** **Obtained 2026-09-21** — readable on chain from `PDexV2OrderOps` (3690309166) global key `"oc"` (`b2M=`), first 32 bytes of the value, and cross-checked against `PDexV2Trading` (3690309160) global key `"q"`, which carries the identical 48 bytes:
+  ```
+  4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb
+  ```
+  The trailing 16 bytes of that entry are `0x1e` (30) and `0`, consistent with the ~30-second payload validity window observed on the artifact CDN — i.e. **the freshness tolerance appears to be on-chain configuration, not merely a publishing convention.** Confirm by simulation before relying on it. `oraclePayloadFromBackend` copies `pubkey` straight out of `payload.pubkey_hex` (`src/oracle.ts:150-170`) and `verifyOraclePayload` verifies against whatever it is handed — checking that a message signed itself. Note there is **no SDK path to read the signer key from chain**, so "read it from on-chain state" is not implementable today; see [Open Questions](#open-questions).
   Additionally assert, on every payload decoded via `decodeV2OracleSnapshotMessage`: `targetAppId == PINNED_TRADING_APP_ID`, `genesisHash == mainnet`, `magic == PDX2`, `messageVersion == 3`, and `publishedAt` within `ORACLE_MAX_AGE_SEC`.
 > **Ultrade indicate no app ID change is expected from the current version.** That does not relax this section — it reweights it. If IDs are stable, the deployment-manifest mismatch check will essentially never fire, and **every** protocol change reaches us through the upgrade path instead: same application ID, new approval program. Program-hash monitoring is therefore the primary change detector, not a supplement to ID pinning. ID pinning remains worth keeping as cheap insurance against a redeploy nobody is planning.
 
@@ -274,7 +278,7 @@ Show the implied shape next to the field as plain information, the way the liqui
 
 **Why no stop loss.** Simplicity is the product. Hedge is meant to read as a product, not a trade screen, and a forced profit target guides users to realise gains at a point they chose. Active downside management stays with the user via manual close on the management surface — subject to the availability limits below.
 
-> **But "manual close is always available" is false, and with no stop it carries the whole downside story — so state it accurately.** Close is available whenever PEX will accept a decrease, which is most of the time but not: during a market pause; while a yield recall is failing (which blocks the take profit *and* the manual close); when the wallet cannot pay the close group's ~37,000 µALGO flat fee plus carriers; when `price_slippage` rejects in a fast move — the exact move the user needs out of; when `trader_pnl_cap` rejects the payout; or when a partial would breach `position_health_breach` / `collateral_too_small`. And an unavailable frontend or a sleeping user is the same outcome. **There is no exit guaranteed to be available.**
+> **But "manual close is always available" is false, and with no stop it carries the whole downside story — so state it accurately.** Close is available whenever PEX will accept a decrease, which is most of the time but not: during a market pause; while a yield recall inside the close itself is failing (recall is atomic within the action that needs it, so the action fails with it — though per Ultrade 2026-09-21 a manual close does **not** depend on a *keeper* recall, so this is a per-action failure rather than a shared dependency); when the wallet cannot pay the close group's ~37,000 µALGO flat fee plus carriers; when `price_slippage` rejects in a fast move — the exact move the user needs out of; when `trader_pnl_cap` rejects the payout; or when a partial would breach `position_health_breach` / `collateral_too_small`. And an unavailable frontend or a sleeping user is the same outcome. **There is no exit guaranteed to be available.**
 >
 > What the product does instead of a stop: make **distance to liquidation** a permanent first-class element and alert when the buffer is consumed past a threshold. That is the stop's function delivered as information rather than as an order — consistent with keeping responsibility with the trader.
 
@@ -440,6 +444,29 @@ This is also where orphaned take-profit orders surface. Since three outcomes orp
 
 ---
 
+## Target Version — build against 0.5.0, not 0.4.0
+
+**Decision (2026-09-21): retarget to SDK 0.5.0 on TestNet, and launch when it reaches MainNet.** Ultrade published 0.5.0 on 2026-09-20 — TestNet-only for a few days, MainNet shortly after — and it is a **breaking position-identity contract upgrade**. Continuing against 0.4.0/MainNet would mean rewriting the parts of this document that are most expensive to get wrong.
+
+### What 0.5.0 changes for us
+
+**`position_id` is introduced to distinguish position lifetimes**, and existing positions have ID zero. This is precisely the missing nonce this document flagged repeatedly: the `p2:` key is still `marketId ‖ collateralAssetId ‖ side ‖ owner` with no serial, and that is why a stale order could re-arm against a *new* position on the same key.
+
+**Existing-position TP/SL now requires `expectedPositionId`.** That makes the orphan protection **structural rather than policy** — a bracket bound to position lifetime *N* cannot fire against lifetime *N+1*. Consequences:
+
+- The purchase-flow refusal ("no open against a key holding a `position_missing` order") becomes belt-and-braces rather than load-bearing. Keep it; stop relying on it.
+- **Re-examine the whole orphan section against 0.5.0 before implementing any of it.** Several of its requirements may be redundant.
+
+**Old brackets retire with refunds at cutover**, rather than trading. Two consequences: this is very likely the mechanism behind `v2_order_bracket_cleanup`, and **"tell affected users to recreate protection"** becomes a launch-day requirement if we ever ship on 0.4.0 first — a further reason not to.
+
+**Direct decrease/close and order-submission ABIs changed.** ⚠️ **The argument lists in [The full-group assertion](#the-full-group-assertion) were derived from 0.4.0 and are stale.** Re-derive every field against 0.5.0 before implementing the assertion. This is the single largest piece of rework 0.5.0 imposes, and it is entirely avoided by retargeting now.
+
+**Other 0.5.0 notes:** entry/increase builders need the market's current yield registry; order storage funding and resource preparation move through SDK helpers; oracle args come from `v2OracleArgs()` with message and signature passed through unchanged. `quoteV2LiquidationPrice` is exported (since 0.3.2) and should be evaluated against the `liquidation_price_estimate == 0` handling in Quote Accuracy. `post_action_liquidatable` and `adl_survivor_contract_admissible` are distinct fields. And usefully: **falling below `min_collateral_usd` alone does not make an existing position liquidatable** — it is an admission requirement, which softens one Edge Case row.
+
+`v2OrderCrossedByOracle` remains unexported in 0.5.0, so the `quoteV2DecreaseOrder(...).submission_result` approach stands.
+
+---
+
 ## Measured MainNet State — 2026-09-21
 
 Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159) and from `GET /v2/protocol`. **This discharges Build Order steps 1 and 2 for risk parameters and receipts.** Pool and OI figures are a point-in-time snapshot and must be re-read live; risk parameters are configuration and change only by admin action.
@@ -562,7 +589,7 @@ Ship Option A. Duration is a reminder, honestly worded.
 
 **The automated exits are the take profit, liquidation and ADL.** With no stop loss, an adverse move that does not reach liquidation requires the user to act — which is the deliberate product choice recorded under [Take profit](#take-profit--mandatory-one-per-position). Manual close is the user's exit, subject to the availability limits in [Take profit](#take-profit--mandatory-one-per-position).
 
-Do not overstate this. Three of the four remaining exits can fail: ADL disarms nothing but closes the position outright, a market pause leaves no exit at all, a gap can skip the take-profit trigger, and a failed yield recall blocks **both** the take profit and the manual close — a state in which no exit path works. Bounded cost comes from the take profit and from live display of accrued holding cost, not from a clock we cannot enforce.
+Do not overstate this. Three of the four remaining exits can fail: ADL disarms nothing but closes the position outright, a market pause leaves no exit at all, a gap can skip the take-profit trigger, and a failed yield recall fails whichever action contains it. Note the correction: recall is atomic *within* an action, and keeper recalls are not required for direct user actions, so a recall failure does not take out the take profit and the manual close together as an earlier draft claimed. Bounded cost comes from the take profit and from live display of accrued holding cost, not from a clock we cannot enforce.
 
 ---
 
@@ -794,10 +821,11 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 
 Policy, roadmap, or internal semantics we cannot observe.
 
+0. **Confirm the 0.5.0 MainNet cutover date**, and whether old brackets retiring with refunds requires anything of integrators beyond telling users to recreate protection.
 1. **Does the parameter delay window cover contract upgrades, or only parameters?** The sharpest remaining question. `PDexV2Trading` was upgraded 2026-09-12, an upgrade keeps the app ID, and Ultrade indicate no app ID change is expected — so **every** future change reaches us through the upgrade path. A 48h delay on parameters is only as strong as the upgrade path beneath it.
 2. **What triggers `v2_order_bracket_cleanup` (235), and what are its `reason` codes?** It carries `storage_refund_microalgo` and `keeper_fee_refund`. If PEX cleans orphaned brackets itself, two requirements and one invariant in this document are redundant and the "one-tap reclaim" promise is unnecessary. **Ask before building orphan handling.**
-3. **What is the oracle signer public key?** We intend to pin it rather than trust the `pubkey_hex` that arrives inside the payload it signs. No SDK path reads it from chain; they can simply send it.
-4. **What happens when a keeper cannot complete a yield recall** — privileged bypass, or simple failure? The only failure mode that blocks the take profit *and* the manual close. Hard to induce in simulation.
+3. ~~**Oracle signer public key**~~ — **answered 2026-09-21.** `4cc6bcc8...d2e3dffb`, from `PDexV2OrderOps` (3690309166) global key `"oc"`, cross-checked against `PDexV2Trading` global key `"q"`. Pin it. Remaining sub-question: confirm the trailing `0x1e` is indeed an on-chain freshness tolerance of 30 seconds.
+4. ~~**Yield recall failure**~~ — **answered 2026-09-21.** Recall is atomic within whatever action requires it; if it fails, that action fails. Keeper recalls are not needed for direct user actions such as closing a position, so a manual close carries its own recall rather than depending on a keeper's.
 5. **Is there a published or private PEX audit, and is a multisig on the roadmap?** Both already asked; answers pending.
 
 ### Determinable by simulation — do not spend Ultrade's time on these
