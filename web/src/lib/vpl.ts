@@ -1,6 +1,6 @@
 // VPL — Volatility Prediction Ladder. Shared constants and read helpers.
 //
-// Product docs: hedge/VPL.md · spec: hedge/VPL_SPEC.md · ops: hedge/OPERATIONS.md
+// Product docs: predict/VPL.md · spec: predict/VPL_SPEC.md · ops: predict/OPERATIONS.md
 
 export const MUSD_ASA_ID_MAINNET = 3615600399;
 

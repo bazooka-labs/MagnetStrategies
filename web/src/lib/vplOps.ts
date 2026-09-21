@@ -1,6 +1,6 @@
 // VPL — browser transaction builders, signed by the connected admin wallet.
 //
-// Mirrors hedge/keeper/deploy.py and run.py, which were rehearsed end-to-end on
+// Mirrors predict/keeper/deploy.py and run.py, which were rehearsed end-to-end on
 // LocalNet. Building here means the admin mnemonic never has to exist in a file or on
 // the keeper host — admin is the key that can repoint oracle_pubkey, so keeping it in
 // a wallet is the single biggest custody improvement available.

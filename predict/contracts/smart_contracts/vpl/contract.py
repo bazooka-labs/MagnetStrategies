@@ -8,8 +8,8 @@ runs, and at 16:00 ET the band containing the settlement price takes the entire 
 pro-rata by stake. Entry for the *next* round is always open, so exactly one round
 accepts entries at any moment.
 
-Design and rationale: hedge/VPL.md
-Specification (rev 6):  hedge/VPL_SPEC.md
+Design and rationale: predict/VPL.md
+Specification (rev 6):  predict/VPL_SPEC.md
 
 Threat model: the operator is assumed honest; the deterrent against a dishonest one
 is public verifiability (settlements are OHLC4 of published 1-minute candles on four

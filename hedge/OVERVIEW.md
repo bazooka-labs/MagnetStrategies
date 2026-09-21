@@ -115,9 +115,11 @@ The reasoning is not ideological:
 
 | | |
 |---|---|
-| [VPL.md](./VPL.md) | Product design — conveyor, bands, payouts, rules, and the reasoning behind each |
-| [VPL_SPEC.md](./VPL_SPEC.md) | Implementation spec — state, ABI, math, invariants, edge cases |
 | [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model |
 | [perps/OVERVIEW.md](./perps/OVERVIEW.md) | Perps — PEX integration: platform facts, verified constants, integration paths considered |
+| [../predict/OVERVIEW.md](../predict/OVERVIEW.md) | **Predict** — the ladder product line, moved to its own tree |
 
-**Product name is not final.** "VPL" describes the mechanism; the shipped name is undecided. Everything is built under `hedge/` in the meantime.
+**VPL moved to [`predict/`](../predict/).** It shipped first and lives under the
+`/predict` route, so it has its own self-contained tree — docs, contract, keeper. The
+sector framing above is duplicated there rather than cross-linked, so neither tree
+depends on the other. Hedge keeps this overview and `ORACLE.md` for the perps work.
