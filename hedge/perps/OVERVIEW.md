@@ -67,7 +67,7 @@ Payloads carry a ~30-second validity window (`valid_from_timestamp` → `valid_u
 
 ## Verified Parameters
 
-These are the **TestNet** values published by PEX — the only ones they publish. MainNet risk configuration is not documented and PEX directs integrators to the live transaction preview. Treat every number here as shape, not truth, and read live state before relying on any of it.
+Originally the **TestNet** values — the only ones PEX publishes. **Every one was confirmed against live MainNet state on 2026-09-21** by reading the `mr2:` risk box on `PDexV2Markets` (3690309159). They are now measured, not assumed. Risk parameters remain admin-mutable, so read them live rather than hardcoding — see Invariant 8 in [COVER_SPEC.md](./COVER_SPEC.md#invariants).
 
 | Parameter | Value |
 |---|---|
@@ -137,9 +137,10 @@ Recorded so that no one re-discovers these the hard way:
 
 - **A public API exists, but is unsupported for builders.** `api.ppls.exchange` answers `GET /v2/networks/mainnet/deployments` and `GET /v2/protocol` with HTTP 200, and `app.ppls.exchange/api/...` mirrors it. *(An earlier draft said no public API existed — that was wrong; only the public **artifact CDN** lacks these paths.)* The SDK still states that no fallback selects a PEX-operated backend, so treat this as convenient for extraction, **not** as infrastructure to depend on at runtime.
 - **Application IDs are recoverable** and are recorded below. Pin them; do not fetch them at runtime.
-- **No published MainNet risk parameters.** Leverage, fees, margin, caps and yield settings are explicitly described as varying by market and changing with configuration.
-- **No published borrowing or funding rates.** Readable on-chain from `mf2:` / `ma2:` once application IDs are known. **Measure these before designing any UI that quotes holding cost.**
-- **No audit reference** in the README, LICENSE, or integration guides. Absence of advertisement, not proof of absence.
+- **No *documented* MainNet risk parameters** — but they are readable on chain from the `mr2:` box, and were read on 2026-09-21. Both markets run identical margin and fee settings; they differ on OI caps, reserve factors, PnL factors and impact factors. Full values in [COVER_SPEC.md](./COVER_SPEC.md#measured-mainnet-state--2026-09-21).
+- **No published borrowing or funding rates.** The *factors* are readable from `mr2:` (`funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps, 1h interval); realised rates accrue in `mf2:` / `ma2:` and still need observation over time before any UI quotes holding cost.
+- **No audit reference** in the README, LICENSE, or integration guides. Absence of advertisement, not proof of absence — asked directly of Ultrade, answer pending.
+- **Live depth is thin and that is expected of a new exchange.** On 2026-09-21: ALGO/USD pool ≈$1,388 with $960 per-side OI caps and $170 of open interest; BTC/USD pool ≈$1,715 with **zero** open interest. Cover is sized as a function of live depth rather than to a fixed constant, precisely so it scales as PEX grows — bringing flow to PEX is part of why the product exists.
 - **The protocol manifest supplies more than decoding.** It carries the ABI method signatures used to *encode* transaction args as well as the box formats used to decode state — so whoever controls it controls both what we send and what we display. Pin the method signatures and a manifest hash as build-time constants; a version check is not sufficient.
 
 PEX's own README is candid about its limits: *"not a complete backend implementation or a claim that all response schemas fully specify the financial calculations. Qualify your backend and frontend together against the current contracts."* Take that at face value.
@@ -194,6 +195,10 @@ What this means concretely:
 > `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not captured when a position opens. So the liquidation buffer we disclose to a user at purchase is not a property of their position — it is a live parameter under the control of a single key we do not hold. Raising it liquidates open positions with no price movement at all.
 
 Separation of the admin and upgrade roles into two keys is genuinely good practice, and single-signature control is unremarkable for a protocol at this stage — most young protocols look like this, and refusing to integrate on that basis would rule out most of the ecosystem.
+
+**Ultrade's response, 2026-09-18.** Asked directly, they confirmed maintenance margin can be raised on a market with open positions and applies immediately, that a number of parameters are mutable with bounds they intend to tighten, and that they are already building a **fixed delay window** before parameter changes take effect together with **on-chain readability of pending changes** — roughly a week out, proposed at 48h. Longer term they intend to transfer admin and roadmap control to Algorand stakers via a token sale. They also opened the door to amending implementations.
+
+That is a substantially better position than the one this section originally recorded, and it moves the primary mitigation from reactive (read live, never cache) to anticipatory (read the pending change, warn inside the window). **The remaining question is whether the delay covers contract upgrades or only parameters** — an upgrade replaces program logic while keeping the app ID, so a parameter delay is only as strong as the upgrade path beneath it.
 
 **What the good-faith assumption does and does not cover.** It addresses *intent*. It does not address key compromise (where Ultrade's intent is irrelevant), operational error, or a well-intentioned upgrade that introduces a bug. Those three remain unbounded under single-signature control, which is why the one technical consequence below holds regardless of trust:
 
