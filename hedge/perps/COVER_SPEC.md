@@ -304,7 +304,37 @@ The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decre
 
 ### Orphaned take-profit orders
 
-**A take profit that fires is consumed cleanly. A position closed any other way leaves it resting** — and GTC orders can only be cancelled by the owner. Of the five outcomes, three orphan the order outright and one leaves it stale-but-live:
+### How PEX cleans up — answered by Ultrade, 2026-09-21
+
+There are **two distinct cleanup mechanisms**, and the one that matters for Cover is not the one named `bracket_cleanup`.
+
+**`v2_order_bracket_cleanup` (235)** fires when OrderOps auto-cancels a linked child because of a lifecycle event on **another order**. One receipt per child actually removed. Four reasons:
+
+| Reason | Trigger | Applies to Cover? |
+|---|---|---|
+| `PARENT_CANCELLED` | Owner cancels a pending **entry** order; attached children removed | **No** — Cover opens at market, so there is no resting parent entry |
+| `PARENT_EXPIRED` | `cancel_expired_order` invoked on an expired entry order. **Expiry alone does not trigger it** | **No** — same reason |
+| `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **No** — Cover carries a single bracket, so there is no sibling |
+| `PARENT_RETIRED` | Position-identity upgrade: execution attempted on a legacy bracket entry; parent retired, children removed | Only at the 0.5.0 cutover |
+
+**None of the four covers our orphan case.** Dropping the stop loss also permanently removes `OCO_SIBLING_CANCELLED` from our surface.
+
+**Our case — a position closed while its take profit rests — is handled separately**, by `v2_order_cancelled` (232) with:
+
+- **status 7 — `POSITION_MISSING`**: the position is gone
+- **status 8 — `POSITION_REPLACED`**: a *different position lifetime* now occupies the key
+
+That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refunded on this path**. It also carries `keeper_fee_amount`.
+
+> **Status 8 is the structural fix for re-arming.** Under the position-identity upgrade, TP/SL attach to a position through its numeric id, so a stale bracket meets a replaced position and is **cancelled rather than executed**. The hazard this document built [Invariant 11](#invariants) around stops being ours to prevent.
+>
+> Keep Invariant 11 as belt-and-braces on 0.4.0 and as cheap insurance after; stop treating it as load-bearing. And **the outcome reader must handle `v2_order_cancelled` statuses 7 and 8 — not `v2_order_bracket_cleanup` — for every Cover flow.**
+
+**One question remains:** is status-7/8 cleanup **eager** (at close) or **lazy** (when a keeper next evaluates the order)? That decides whether MBR is locked in the interim and therefore whether Hedge History needs a reclaim affordance at all, or merely a record.
+
+---
+
+**A take profit that fires is consumed cleanly. A position closed any other way leaves it resting until PEX cleans it up as above** — and GTC orders can only be cancelled by the owner. Of the five outcomes, three orphan the order outright and one leaves it stale-but-live:
 
 | Exit | Orphan? |
 |---|---|
