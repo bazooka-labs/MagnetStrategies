@@ -407,19 +407,28 @@ A user who never opens the advanced surface must still learn that they are at ri
 > |---|---|---|
 > | `v2_position_liquidated` | 153 | `market_id, collateral_asset_id, side, size_usd_delta, remaining_size, remaining_collateral, collateral_output, pnl_output, fee_amount, unpaid_cost_usd` |
 > | `v2_position_adl` | 154 | *(identical field set)* |
-> | `v2_trading_position_decreased` | 151 | *(identical field set)* — manual close |
+> | `v2_position_decreased_with_output_swap` | — | **The voluntary close/reduce event**, emitted *even when no swap occurs*. Ultrade confirmed 2026-09-18; an earlier draft wrongly named `v2_trading_position_decreased` here. Reports **final primary and secondary outputs** — a different shape from the forced path's `collateral_output` / `pnl_output`. |
 > | `v2_order_executed` | 231 | `status, owner, owner_order_id, order_kind, target_kind, market_id, side, size_usd_delta, keeper_fee_amount, storage_refund_microalgo` |
 > | `v2_builder_fee_paid` | 247 | `action_kind, owner, builder, market_id_0/1, asset_id, builder_fee_bps, fee_base, assessed_amount, paid_amount, payment_status` |
 > | `v2_order_bracket_cleanup` | 235 | `reason, owner, base_order_id, child_order_id, storage_refund_microalgo, keeper_fee_refund, keeper_fee_paid` |
 >
 > Encoding is big-endian uint64 words, 8-byte words, with prefix fields `event_version, event_type, flags`.
 >
-> **Amount returned** = `collateral_output + pnl_output`; **`unpaid_cost_usd > 0`** identifies the genuine nothing-returned case; `remaining_size` separates partial from full. `v2_builder_fee_paid` carries `fee_base`, settling exactly what our fee is charged on, and `payment_status` confirms the paid/clipped/waived behaviour.
+> **Amount returned** differs by path: forced closes (liquidation, ADL) report `collateral_output + pnl_output`; voluntary closes report **final primary and secondary outputs**. Amounts are in **token atomic units**. `unpaid_cost_usd > 0` identifies the genuine nothing-returned case.
+>
+> **Partial vs full close** is `remaining_size` *together with a position-deleted flag* — the flag lives in the `flags` prefix word, so the prefix must be decoded, not skipped.
+>
+> **Funding payouts may land in separate settlement calls and transfers**, so a single close receipt is not the whole story for "what did I get back."** `v2_builder_fee_paid` carries `fee_base`, settling exactly what our fee is charged on, and `payment_status` confirms the paid/clipped/waived behaviour.
 >
 > **Two gaps remain:**
 >
-> 1. **No close receipt carries an execution price.** "Liquidated at $0.0801" must be derived from the oracle payload in the same transaction group, not read from the receipt. Record this as a derivation, not a field.
+> 1. **No close receipt carries an execution price**, confirmed by Ultrade. The oracle price *is* available in transaction data — but that is not the price the user got: an **effective price including impact requires reconstruction**.
+>    **Recommended approach:** do not reconstruct impact. Back the effective price out of figures we already have — `amount returned` against `size_usd_delta` yields an implied execution price directly. Show that, and label the oracle price separately if shown at all. Reconstructing impact is work with a wrong-answer failure mode; division is not.
 > 2. **`v2_order_bracket_cleanup` exists and carries `storage_refund_microalgo` and `keeper_fee_refund`** — so PEX has its own bracket-cleanup path with refunds, which the SDK never references. **If it fires automatically on close, the orphan problem this document builds two requirements around is narrower than assumed, and the "one-tap reclaim" promise may be unnecessary.** Ask Ultrade what triggers it and what the `reason` codes are, before building orphan handling.
+>
+> **Fee breakdown is partially explicit.** Receipts carry the close or liquidation fee, output-swap fees, and their pool / protocol / insurance split. Builder fees are a **separate** `v2_builder_fee_paid` receipt. A complete funding, borrowing and fee-allocation breakdown needs additional inner-call data and calculation — so Hedge History's itemised fee line is partly reconstruction, not a direct read. Size that work accordingly, or show a coarser breakdown in v1.
+>
+> > **Build requirement — walk inner transactions.** `decodeReceiptFromConfirmation()` returns **one** receipt and does **not** recurse into inner transactions (Ultrade, 2026-09-18). **For keeper-executed take-profits the position close happens *inside* the orders transaction**, so a naive single-receipt decode returns the order event and silently misses the close. Any outcome reader must inspect all relevant logs and inner calls. This applies to every third-party close — take profit, liquidation and ADL alike, i.e. every notification we promise.
 >
 > Decoding still requires the protocol manifest, so it remains inside the poisoned-manifest blast radius — the manifest hash pin covers it.
 
@@ -769,7 +778,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 5. **Group construction.** Single audited module. Per-method ABI assertions plus asset-movement assertions on `(asset, amount, receiver)`. Simulation as a pre-flight check. `baseOrderId` allocated in strides of 3 from the highest existing `o2:` box read live from chain, never from local state.
 6. **Purchase surface.** Units → band → target price → confirm, with entry-time routing to the increase flow.
 7. **Management surface.** Liquidation price, take-profit state, accrued holding cost, add / add-collateral / partial close / close, orphan reclaim.
-8. **Outcomes.** Receipt decoding, the five distinct close notifications, Hedge History.
+8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close. Decode the `flags` prefix word for the position-deleted flag. Derive effective exit price by dividing amount returned by size rather than reconstructing impact. Then the five close notifications and Hedge History.
 
 Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec marked TestNet is a placeholder until step 2 replaces it.
 
@@ -788,7 +797,7 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 - **Does a PEX redeploy migrate existing position state, or leave it in the old app?** Low priority — Ultrade indicate no app ID change is expected, so the two-state degraded mode is insurance against an unplanned event rather than a live design constraint.
 - **Is the oracle signer public key readable from on-chain state, and at what layout?** No SDK path exists; without one, pinning it requires Ultrade to supply the key out-of-band.
 - **What is MainNet maximum leverage?** `BAND_AGGRESSIVE_CEILING` is set to 20× on the assumption it matches TestNet. If MainNet differs, every buffer figure in this document moves.
-- **Answered 2026-09-21:** liquidation (`v2_position_liquidated`, 153) and ADL (`v2_position_adl`, 154) are distinct receipt types; `collateral_output`, `pnl_output`, `fee_amount` and `unpaid_cost_usd` are all present. **Still open: what triggers `v2_order_bracket_cleanup` (235) and what its `reason` codes are** — if PEX cleans orphaned brackets itself and refunds storage and keeper fee, our orphan requirements shrink. **No close receipt carries an execution price**, so exit price must be derived from the group's oracle payload.
+- **Answered 2026-09-18 by Ultrade and verified on chain 2026-09-21:** liquidation (`v2_position_liquidated`, 153) and ADL (`v2_position_adl`, 154) are distinct receipt types; voluntary closes emit `v2_position_decreased_with_output_swap`; `collateral_output`, `pnl_output`, `fee_amount` and `unpaid_cost_usd` are all present. **Still open: what triggers `v2_order_bracket_cleanup` (235) and what its `reason` codes are** — if PEX cleans orphaned brackets itself and refunds storage and keeper fee, our orphan requirements shrink. **No close receipt carries an execution price**, so exit price must be derived from the group's oracle payload.
 - **Does `cancel_order` refund the 96,500 µALGO order-box MBR and the escrowed keeper fee to the owner?** The SDK does not demonstrate it. Do not promise "one-tap reclaim" of a specific amount in the UI until confirmed on chain.
 - **Does a market pause gate `PDexV2OrderOps` cancellation?** Determines whether the orphan refusal can become a hard lockout on a key.
 - **Product question, deferred not decided:** should there be an unleveraged (1×) option? A product called Cover with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
