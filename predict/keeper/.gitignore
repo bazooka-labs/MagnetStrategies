@@ -1,0 +1,10 @@
+# secrets and local state — never commit
+*.key
+oracle.key
+attestations.json
+attestation-*.json
+.env
+.env.*
+.venv/
+__pycache__/
+*.pyc

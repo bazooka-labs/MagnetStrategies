@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "vpl-keeper"
+version = "0.1.0"
+description = "VPL keeper — price reads, attestation signing, round operations"
+authors = ["bazookacreate-8771 <bazooka.create@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+algokit-utils = "^4.0.0"
+pynacl = "^1.5.0"
+python-dotenv = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "hedge-contracts"
+version = "0.1.0"
+description = "Hedge — daily BTC ladder on Algorand"
+authors = ["bazookacreate-8771 <bazooka.create@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+algokit-utils = "^4.0.0"
+python-dotenv = "^1.0.0"
+algorand-python = "^3"
+algorand-python-testing = "^1"
+
+[tool.poetry.group.dev.dependencies]
+algokit-client-generator = "^2.1.0"
+puyapy = "==5.9.0"   # pinned to match magnetfi/v2 — reproducible TEAL
+pytest = "^8"
+algokit-utils = "^4.2.3"
+pynacl = "^1.6.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

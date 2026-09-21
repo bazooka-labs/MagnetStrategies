@@ -19,3 +19,6 @@ contracts/build/
 .env.*
 *.mnemonic
 tests/.env.testnet
+
+# private working notes (research, prior art) — never commit
+*.private.md
