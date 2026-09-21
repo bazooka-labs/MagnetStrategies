@@ -85,14 +85,15 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 - `builderAddress == BUILDER_ADDRESS` and `builderFeeBps == POSITION_BUILDER_FEE_BPS` (assert **equality**, per Invariant 7 — `<= 10` catches nothing, since `normalizeBuilderFee` already throws above the cap at `src/transactions.ts:6482-6484`)
 - `|acceptablePrice − displayedIndexPrice| / displayedIndexPrice <= userSlippageBps` (the SDK validates only that it is a positive Price12 — there is no upper bound on looseness)
 
-**`decrease_or_close` args** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount]` (`src/transactions.ts:1409-1424`). **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
+**`decrease_or_close` args (0.5.0, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts:1430-1448`).
+- **`expectedPositionId` must be a real id, never the wildcard.** `expectedClosePositionId(undefined)` yields `(1n << 64n) - 1n`, which closes whatever position occupies the key. Valid range is `0 ≤ id < 2^48`. **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
 - `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Cover" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
 - `outputSwapMode == 0`, and `minPrimary == minSecondary == 0` given mode 0
 - `yieldRecallMode`, `maxLongReceiptAmount`, `maxShortReceiptAmount` against the values from `prepareV2DecreaseOrCloseInput`
 
 **Group-wide:** box references, `foreignApps`, `foreignAssets` and `accounts` on every app call against expected values — `open_or_increase` carries **no `collateralAssetId` arg**, so the collateral asset is determined solely by the axfer and by `v2TradingLocalBoxes`, i.e. a box reference; note also `accounts: builderFeeBps > 0n ? [builderAddress] : []` (`:2090`). Plus: no `rekeyTo`, no `closeRemainderTo`, no `assetCloseTo` on any transaction; total fee below a cap; and every transaction is either an enumerated economic leg or an app call to a **pinned** PEX app ID with a **pinned** selector, sender == user. (A fixed transaction count is not assertable — settlement-maintenance calls, the trading resource carrier, yield-freshness carriers and the `builderFeeBps > 0n` dynamic-OI carrier all vary with pool state.)
 
-**`submit_linked_order` args** — 22 positions (`src/transactions.ts:2055-2083`): `ownerOrderId, orderKind, targetKind, marketId, side, collateralAssetId, sizeUsdDelta, collateralAmount, triggerPrice, acceptablePrice, keeperFeeAssetId, keeperFeeAmount, outputSwapMode, minPrimary, minSecondary, timeInForce, expiryTime, linkMode, linkBaseOrderId, [builderAddress, builderFeeBps], oracleMessage, oracleSignature`. **This leg is on every single Cover, so assert all of it:**
+**`submit_linked_order` args (0.5.0, 24 positions)** — `src/transactions.ts:2139-2165`. Two new fields, `expectedPositionId` and `entryGroupOffset`, sit between `linkBaseOrderId` and the builder tuple: `ownerOrderId, orderKind, targetKind, marketId, side, collateralAssetId, sizeUsdDelta, collateralAmount, triggerPrice, acceptablePrice, keeperFeeAssetId, keeperFeeAmount, outputSwapMode, minPrimary, minSecondary, timeInForce, expiryTime, linkMode, linkBaseOrderId, [builderAddress, builderFeeBps], oracleMessage, oracleSignature`. **This leg is on every single Cover, so assert all of it:**
 - `triggerPrice` equals the displayed target **exactly**. Unasserted, a frontend shows $0.12 and submits $0.40 — never fires, user believes they are protected
 - `sizeUsdDelta` equals the post-open (or post-increase) position size
 - `acceptablePrice` within `userSlippageBps` of `triggerPrice`. `v2OrderPriceCoherenceFailure` only checks the *side*, with no distance bound — a loose value lets the keeper fill arbitrarily far from the target
@@ -100,6 +101,15 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 - `keeperFeeAmount == CHILD_KEEPER_FEE_USDC` and `> 0`
 - `timeInForce == GTC` and `expiryTime == 0` (Invariant 10 — the SDK default is correct, an override is not caught)
 - `outputSwapMode == 0`, `linkMode`, `linkBaseOrderId`, `collateralAssetId`
+- **`expectedPositionId` / `entryGroupOffset`** — the binding pair, and the rules are exact (`v2OrderSubmissionBinding`, `src/transactions.ts:1946-1965`):
+
+  | Case | Required values |
+  |---|---|
+  | Same-group open + attached TP (Cover's normal path) | `entryGroupOffset` = the entry's index in the group (1–15), `expectedPositionId` = 0 |
+  | TP re-placed onto an existing position (increase flow) | `entryGroupOffset` = 0, `expectedPositionId` = the live id — **the SDK throws if omitted** |
+  | `OPEN_LIMIT` or `CHILD_WAIT_PARENT` | both 0 |
+
+  Assert the pair matches the flow. A mismatch is how a bracket ends up bound to the wrong position lifetime.
 
 > `encodeAppArgs` packs everything from index 14 onward into a trailing tuple when there are more than 15 args (`src/transactions.ts:930-951`) — 22 args triggers this, and the packing boundary comes from the **manifest's** arg type list. The assertion must decode the packed tuple, which makes the manifest hash pin load-bearing for this leg.
 
@@ -489,7 +499,21 @@ This is also where orphaned take-profit orders surface. Since three outcomes orp
 
 **Old brackets retire with refunds at cutover**, rather than trading — this is the `PARENT_RETIRED` reason on `v2_order_bracket_cleanup`, the one of its four triggers that touches us, and only at the cutover itself. Consequence: **"tell affected users to recreate protection"** becomes a launch-day requirement if we ever ship on 0.4.0 first — a further reason not to.
 
-**Direct decrease/close and order-submission ABIs changed.** ⚠️ **The argument lists in [The full-group assertion](#the-full-group-assertion) were derived from 0.4.0 and are stale.** Re-derive every field against 0.5.0 before implementing the assertion. This is the single largest piece of rework 0.5.0 imposes, and it is entirely avoided by retargeting now.
+**Direct decrease/close and order-submission ABIs changed.** **Re-derived against 0.5.0 on 2026-09-21** — see [The full-group assertion](#the-full-group-assertion), now current. Summary of what moved:
+
+| Method | 0.4.0 | 0.5.0 |
+|---|---|---|
+| `open_or_increase` | 7 args | **unchanged** |
+| `decrease_or_close` | 14 args | **15** — `expectedPositionId` appended |
+| `submit_linked_order` | 22 positions | **24** — `expectedPositionId` and `entryGroupOffset` inserted after `linkBaseOrderId` |
+
+> **The two paths default differently, and that asymmetry is a security finding.**
+>
+> On **order submission**, `v2OrderSubmissionBinding` **throws** — *"expectedPositionId is required for an existing position"* — when binding an order to a position that already exists. The SDK enforces it.
+>
+> On **close**, `expectedClosePositionId(undefined)` returns `(1n << 64n) - 1n` — a **wildcard sentinel meaning "close whatever position is there."** Valid ids are `0 ≤ id < 2^48`, so the sentinel is unmistakable. Omit the field and the close is unbound: it will close whichever position lifetime currently occupies the key, not necessarily the one the user was looking at.
+>
+> **Assert on every close that `expectedPositionId` is a real id and never the sentinel.** This is new in 0.5.0 and has no 0.4.0 equivalent.
 
 **Other 0.5.0 notes:** entry/increase builders need the market's current yield registry; order storage funding and resource preparation move through SDK helpers; oracle args come from `v2OracleArgs()` with message and signature passed through unchanged. `quoteV2LiquidationPrice` is exported (since 0.3.2) and should be evaluated against the `liquidation_price_estimate == 0` handling in Quote Accuracy. `post_action_liquidatable` and `adl_survivor_contract_admissible` are distinct fields. And usefully: **falling below `min_collateral_usd` alone does not make an existing position liquidatable** — it is an admission requirement, which softens one Edge Case row.
 
@@ -759,8 +783,9 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts:6379-6380`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a reduce order in state `position_missing`.** Orphans re-arm; the position key has no nonce. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
 12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).submission_result !== "execute_immediately"`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`. (`v2OrderCrossedByOracle` is unexported and cannot be called.) PEX does not validate a target against the market; a wrong-side target executes immediately.
-13. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
-14. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
+13. **No close is signed with `expectedPositionId` unset or equal to the wildcard sentinel `(1<<64)-1`.** An unbound close closes whichever position lifetime occupies the key. Valid ids are `0 ≤ id < 2^48`. *(0.5.0 and later.)*
+14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
+15. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
 
 ---
 
