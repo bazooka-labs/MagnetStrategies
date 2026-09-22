@@ -284,4 +284,4 @@ Nothing in Cover conflicts with these terms. Our own contracts and frontend rema
 |---|---|
 | [COVER_SPEC.md](./COVER_SPEC.md) | Cover — product definition and architecture spec |
 | [../OVERVIEW.md](../OVERVIEW.md) | Hedge arm — what the arm is for, the three commitments, open-source policy |
-| [../ORACLE.md](../ORACLE.md) | Hedge oracle — sources, attestation, trust model |
+| [../ORACLE.md](../ORACLE.md) | Hedge price doctrine — the dependency-coupling rule, the shared four-venue feed, trust model |
