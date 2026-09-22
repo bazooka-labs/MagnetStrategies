@@ -376,7 +376,13 @@ Worked at $50 and 6×: a stop at mid-buffer returns roughly **$27**; riding to l
 >
 > All of it came from one chat message. Per this document's own citation policy those symbols are **UNVERIFIED**, and the spec then made one of them load-bearing for new surface — the exact over-trust pattern six passes have now flagged.
 >
-> **This is in the simulate-it-yourself bucket, not the ask-Ultrade bucket.** Settle it before Protection ships, and handle the case the chat message itself describes: OCO firing *"even on a partial reduction"* means a partial execution of either bracket cancels the other and leaves the surviving position **with no brackets at all** — a state no section currently addresses.
+> **Simulated 2026-09-22. Partially settled — and the part that did not settle is informative.**
+>
+> **What is now confirmed from chain.** `v2_order_bracket_cleanup` (235) is real and fires on MainNet — **48 occurrences** across 450 OrderOps transactions. It refunds storage: every sample carries `storage_refund_microalgo = 96,500`, the pre-cutover order-box MBR, which independently corroborates that MainNet has not cut over. Both child slots appear in the wild — `base+1` and `base+2` pairs such as `(1, 2)`, `(5, 6)` — confirming the stride-of-3 allocation. Exactly **two reason codes occur: 1 (×30) and 3 (×18)**.
+>
+> **What could not be settled, and why.** `v2_order_executed` (231) appears **zero times** in those 450 transactions. **No order has ever executed on MainNet** — unsurprising at $913 of ALGO/USD open interest and none at all on BTC/USD. So execution-triggered cancellation cannot be observed here, and every `reason=3` event occurred **alone**, with no execution in the same transaction. The reason→name mapping therefore rests on assuming Ultrade listed them in enum order, which is not evidence.
+>
+> **Protection stays blocked.** Ask Ultrade for the `reason` enum directly — it is two lines for them and unguessable for us — and settle OCO-on-execution on **TestNet**, where an order can actually be made to fire. The partial-reduction case the chat message describes (OCO firing *"even on a partial reduction"*, leaving the surviving position with no brackets) remains entirely unobserved.
 >
 > Until then the orphan section below is written for **one** bracket and does not cover Protection. Two brackets means two order boxes, two keeper-fee escrows, and a cancel group that must cancel both.
 
@@ -445,6 +451,17 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    - `reduce_size_exceeds_position` is a **live comparison** (`src/orders.ts`), not a terminal state. A take profit made stale by a partial close or partial ADL becomes **executable again** if the position grows back past its size — firing at the old trigger for the old size.
    - `v2AttachedChildInput` defaults the child size to `leg.sizeUsdDelta ?? rawParent.sizeUsdDelta` (`src/transactions.ts`). On an increase the parent's value is the **delta**, not the merged total, so a bracket attached without an explicit override covers only the newly-added size while rendering as fully armed. **`leg.sizeUsdDelta` must be set to the post-increase position size** — it is on the assertion list.
 
+   > **Simulated 2026-09-22: the single-bracket path is clean.** Built against 0.6.1 with the live protocol manifest:
+   >
+   > | Case | Result |
+   > |---|---|
+   > | One bracket, no attached-child id | 1 txn, 1 distinct — ok |
+   > | Two brackets, no attached-child ids | 2 txns, 2 distinct — ok |
+   > | One bracket + attached-child id | 2 txns, 2 distinct — **ok** |
+   > | Two brackets + attached-child ids | 4 txns, **3 distinct — 1 duplicate** |
+   >
+   > So the collision needs **both** two brackets and the attached-child ids passed through. **The mandatory close path with a single take profit is unaffected**, which was an open question. This is a Protection blocker only.
+   >
    > **Assert distinct transaction IDs on every group before presenting it.** `new Set(txns.map(t => t.txID())).size === txns.length`, in the single audited module. This is cheap and catches a live upstream bug: with two brackets, `planV2CancelRelatedReduceOrders` appends a `PDexV2Math.noop` budget carrier per cancel, and two such carriers are **byte-identical** — no args, no boxes, no foreign apps, no note. The planner routes through `regroup`, which clears group IDs and re-assigns without the de-duplication `grouped()` applies. Reproduced against 0.6.1: a two-reduce-order cancel builds 4 transactions with **3 distinct IDs**, succeeds at build time, and is rejected at submission. `planV2CloseWithOrderCleanup` merges through the same path, so this sits on the mandatory close route. Report it to Ultrade.
 
    > **No SDK builder produces this group.** `buildV2MarketOpenWithAttachedOrdersTransactions` does open + brackets only; `planV2CloseWithOrderCleanup` is the close analogue with no increase equivalent. The grouping helpers are private — `grouped` (`transactions.ts:5949`), `regroup` / `splitGrouped` (`orders.ts:500-513`) — and that matters beyond inconvenience: `grouped()` applies `applyV2LargeProgramReadBudgetToTransactions` and `distinguishRepeatedMathCarriers` before `assignGroupID` while `regroup()` does neither, so a hand-assembled group under-allocates the box-read budget and can collide on duplicate `PDexV2Math.noop` carriers.
