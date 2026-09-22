@@ -1,10 +1,10 @@
 # Perps
 
-Perps is the PEX-integrated arm of Hedge: leveraged directional positions on Algorand, wrapped in a product surface that deliberately does not look like a trading terminal.
+Perps is the PEX-integrated arm of Perps: leveraged directional positions on Algorand, wrapped in a product surface that deliberately does not look like a trading terminal.
 
 Magnet Strategies does not operate an exchange here. PEX is a third-party protocol built by Ultrade. Everything in this section is an **integration**, not a deployment. We write no exchange contracts, custody no user funds, and hold no protocol role.
 
-**Status:** Design stage. One product scoped — Cover. Nothing is built or deployed.
+**Status:** Design stage. One product scoped — Perps. Nothing is built or deployed.
 
 ---
 
@@ -61,13 +61,13 @@ https://pub-1e72beea87f04ebfafce248132310425.r2.dev/mainnet
 
 Payloads carry a ~30-second validity window (`valid_from_timestamp` → `valid_until_timestamp`) and are fetched `no-store`. Source is `exchange-median`.
 
-> Oracle payloads are **target-bound**. They are signed for a specific PEX application and must be rejected on target mismatch. They cannot be consumed on-chain by any Magnet Strategies contract. They may be used off-chain as a free independent cross-check in our own keeper aggregation — see [../ORACLE.md](../ORACLE.md).
+> Oracle payloads are **target-bound**. They are signed for a specific PEX application and must be rejected on target mismatch. They cannot be consumed on-chain by any Magnet Strategies contract. They may be used off-chain as a free independent cross-check in our own keeper aggregation — see [./ORACLE.md](./ORACLE.md).
 
 ---
 
 ## Verified Parameters
 
-Originally the **TestNet** values — the only ones PEX publishes. **Every one was confirmed against live MainNet state on 2026-09-21** by reading the `mr2:` risk box on `PDexV2Markets` (3690309159). They are now measured, not assumed. Risk parameters remain admin-mutable, so read them live rather than hardcoding — see Invariant 8 in [COVER_SPEC.md](./COVER_SPEC.md#invariants).
+Originally the **TestNet** values — the only ones PEX publishes. **Every one was confirmed against live MainNet state on 2026-09-21** by reading the `mr2:` risk box on `PDexV2Markets` (3690309159). They are now measured, not assumed. Risk parameters remain admin-mutable, so read them live rather than hardcoding — see Invariant 8 in [SPEC.md](./SPEC.md#invariants).
 
 | Parameter | Value |
 |---|---|
@@ -137,10 +137,10 @@ Recorded so that no one re-discovers these the hard way:
 
 - **A public API exists, but is unsupported for builders.** `api.ppls.exchange` answers `GET /v2/networks/mainnet/deployments` and `GET /v2/protocol` with HTTP 200, and `app.ppls.exchange/api/...` mirrors it. *(An earlier draft said no public API existed — that was wrong; only the public **artifact CDN** lacks these paths.)* The SDK still states that no fallback selects a PEX-operated backend, so treat this as convenient for extraction, **not** as infrastructure to depend on at runtime.
 - **Application IDs are recoverable** and are recorded below. Pin them; do not fetch them at runtime.
-- **No *documented* MainNet risk parameters** — but they are readable on chain from the `mr2:` box, and were read on 2026-09-21. Both markets run identical margin and fee settings; they differ on OI caps, reserve factors, PnL factors and impact factors. Full values in [COVER_SPEC.md](./COVER_SPEC.md#measured-mainnet-state--2026-09-21).
+- **No *documented* MainNet risk parameters** — but they are readable on chain from the `mr2:` box, and were read on 2026-09-21. Both markets run identical margin and fee settings; they differ on OI caps, reserve factors, PnL factors and impact factors. Full values in [SPEC.md](./SPEC.md#measured-mainnet-state--2026-09-21).
 - **No published borrowing or funding rates.** The *factors* are readable from `mr2:` (`funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps, 1h interval); realised rates accrue in `mf2:` / `ma2:` and still need observation over time before any UI quotes holding cost.
 - **No audit reference** in the README, LICENSE, or integration guides. Absence of advertisement, not proof of absence — asked directly of Ultrade, answer pending.
-- **Live depth is thin and that is expected of a new exchange.** On 2026-09-21: ALGO/USD pool ≈$1,388 with $960 per-side OI caps and $170 of open interest; BTC/USD pool ≈$1,715 with **zero** open interest. Cover is sized as a function of live depth rather than to a fixed constant, precisely so it scales as PEX grows — bringing flow to PEX is part of why the product exists.
+- **Live depth is thin and that is expected of a new exchange.** On 2026-09-21: ALGO/USD pool ≈$1,388 with $960 per-side OI caps and $170 of open interest; BTC/USD pool ≈$1,715 with **zero** open interest. Perps is sized as a function of live depth rather than to a fixed constant, precisely so it scales as PEX grows — bringing flow to PEX is part of why the product exists.
 - **The protocol manifest supplies more than decoding.** It carries the ABI method signatures used to *encode* transaction args as well as the box formats used to decode state — so whoever controls it controls both what we send and what we display. Pin the method signatures and a manifest hash as build-time constants; a version check is not sufficient.
 
 PEX's own README is candid about its limits: *"not a complete backend implementation or a claim that all response schemas fully specify the financial calculations. Qualify your backend and frontend together against the current contracts."* Take that at face value.
@@ -149,7 +149,7 @@ PEX's own README is candid about its limits: *"not a complete backend implementa
 
 ## MainNet Deployment
 
-Recovered from `GET https://api.ppls.exchange/v2/networks/mainnet/deployments`. **These are build-time constants, not runtime values** — see the pinning requirement in [COVER_SPEC.md](./COVER_SPEC.md#critical-the-backend-supplies-fund-destinations).
+Recovered from `GET https://api.ppls.exchange/v2/networks/mainnet/deployments`. **These are build-time constants, not runtime values** — see the pinning requirement in [SPEC.md](./SPEC.md#critical-the-backend-supplies-fund-destinations).
 
 | App | ID |
 |---|---|
@@ -204,7 +204,7 @@ That is a substantially better position than the one this section originally rec
 
 > **Never cache a disclosed liquidation buffer.** `maintenance_margin_bps` is read live at liquidation time, so a cached buffer silently becomes wrong the moment a parameter changes — with or without notice, honestly or otherwise. Read it live, every time.
 
-Forward-looking questions for Ultrade — multisig plans, timelock plans, change-notice process, audit status — are listed in [COVER_SPEC.md](./COVER_SPEC.md#open-questions) and are **informational rather than blocking**.
+Forward-looking questions for Ultrade — multisig plans, timelock plans, change-notice process, audit status — are listed in [SPEC.md](./SPEC.md#open-questions) and are **informational rather than blocking**.
 
 ---
 
@@ -212,9 +212,9 @@ Forward-looking questions for Ultrade — multisig plans, timelock plans, change
 
 Four ways Magnet Strategies could layer on PEX were examined. Recording all of them, including the rejected ones, so the reasoning survives.
 
-### Selected — trading interface (Cover)
+### Selected — trading interface (Perps)
 
-A simplified product surface over PEX positions. No custom contract, no protocol risk, no change to MagnetFi's solvency surface, monetized natively through builder fees from day one. Specified in [COVER_SPEC.md](./COVER_SPEC.md).
+A simplified product surface over PEX positions. No custom contract, no protocol risk, no change to MagnetFi's solvency surface, monetized natively through builder fees from day one. Specified in [SPEC.md](./SPEC.md).
 
 This is first because it is the only path with no balance-sheet exposure.
 
@@ -250,7 +250,7 @@ PSM v3 productive reserves carry real exposure today. PEX is the first on-chain 
 
 Explicitly excluded, and the reasoning stands on its own: routing mUSD → USDC through the PSM would incur the **1% redemption fee on every entry**, making the mUSD path the most expensive way to fund a position in our own app. It would also build a convenient exit ramp out of mUSD inside our own product — mUSD's entry is friction-free and its exit is not, deliberately, and a one-tap exit erodes that asymmetry.
 
-*(An earlier draft justified this by citing float and dwell-time metrics in the Hedge arm overview. Those metrics belong to VPL, which now lives in [`predict/`](../../predict/); the exclusion does not depend on them.)*
+*(An earlier draft justified this by citing float and dwell-time metrics in the Perps overview. Those metrics belong to VPL, which now lives in [`predict/`](../predict/); the exclusion does not depend on them.)*
 
 **Do not reintroduce this without a PSM change.** The version worth pursuing instead is mUSD accepted as a PEX collateral asset, which requires a configured market-pool asset on their side. That is a conversation with PEX, not an integration we can build.
 
@@ -258,13 +258,13 @@ Explicitly excluded, and the reasoning stands on its own: routing mUSD → USDC 
 
 ## The Dependency Coupling Rule
 
-Hedge's founding rule is that Hedge must never read the oracle MagnetFi liquidations depend on, because manipulating a payout and manipulating solvency would become one action.
+Perps's founding rule is that Perps must never read the oracle MagnetFi liquidations depend on, because manipulating a payout and manipulating solvency would become one action.
 
-That rule names a specific oracle. The property it protects is more general, and PEX makes the gap visible: if PEX state ever feeds MagnetFi solvency (via LP collateral) *and* a Hedge product also depends on PEX state, the failure mode returns with PEX as the shared dependency.
+That rule names a specific oracle. The property it protects is more general, and PEX makes the gap visible: if PEX state ever feeds MagnetFi solvency (via LP collateral) *and* a Perps product also depends on PEX state, the failure mode returns with PEX as the shared dependency.
 
-> **Extended rule: no Hedge product may depend on a price or state source that MagnetFi solvency depends on.**
+> **Extended rule: no Perps product may depend on a price or state source that MagnetFi solvency depends on.**
 
-Under that rule, Cover is safe — it reads PEX state and touches no MagnetFi state at all. It also means taking PEX LP as MagnetFi collateral would foreclose PEX-based Hedge products, and vice versa. That dependency can be spent once. Cover does not spend it.
+Under that rule, Perps is safe — it reads PEX state and touches no MagnetFi state at all. It also means taking PEX LP as MagnetFi collateral would foreclose PEX-based Perps products, and vice versa. That dependency can be spent once. Perps does not spend it.
 
 ---
 
@@ -274,7 +274,7 @@ Under that rule, Cover is safe — it reads PEX state and touches no MagnetFi st
 
 Forbidden: using the Software to implement, operate or support *other* protocols. An anti-fork clause states that copying code, parameters, names or metadata does not make a deployment official.
 
-Nothing in Cover conflicts with these terms. Our own contracts and frontend remain under Magnet Strategies' existing terms; the PEX SDK stays under theirs.
+Nothing in Perps conflicts with these terms. Our own contracts and frontend remain under Magnet Strategies' existing terms; the PEX SDK stays under theirs.
 
 ---
 
@@ -282,6 +282,6 @@ Nothing in Cover conflicts with these terms. Our own contracts and frontend rema
 
 | | |
 |---|---|
-| [COVER_SPEC.md](./COVER_SPEC.md) | Cover — product definition and architecture spec |
-| [../OVERVIEW.md](../OVERVIEW.md) | Hedge arm — what the arm is for, the three commitments, open-source policy |
-| [../ORACLE.md](../ORACLE.md) | Hedge price doctrine — the dependency-coupling rule and trust model. The shared four-venue feed is available to Cover **only as an off-chain cross-check**; Cover settles on PEX's signed payloads |
+| [SPEC.md](./SPEC.md) | Perps — product definition and architecture spec |
+| [./OVERVIEW.md](./OVERVIEW.md) | Perps — what the arm is for, the three commitments, open-source policy |
+| [./ORACLE.md](./ORACLE.md) | Perps price doctrine — the dependency-coupling rule and trust model. The shared four-venue feed is available to Perps **only as an off-chain cross-check**; Perps settles on PEX's signed payloads |

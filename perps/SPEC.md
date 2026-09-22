@@ -1,24 +1,24 @@
-# Cover — Product Definition and Architecture Spec
+# Perps — Product Definition and Architecture Spec
 
-Cover is a simplified product surface over PEX perpetual positions. A user buys a number of fixed-size units, chooses how aggressively to size them, sets a mandatory profit target and an optional reminder duration, and signs one transaction. No chart, no order book, no trading vocabulary.
+Perps is a simplified product surface over PEX perpetual positions. A user buys a number of fixed-size units, chooses how aggressively to size them, sets a mandatory profit target and an optional reminder duration, and signs one transaction. No chart, no order book, no trading vocabulary.
 
-**Product name is not final.** "Cover" is the working name for both the product and its unit. It was chosen over "contract" deliberately: *contract* plus a payout table is the vocabulary of a derivatives offering and is not worth borrowing.
+**Product name is not final.** "Perps" is the working name for both the product and its unit. It was chosen over "contract" deliberately: *contract* plus a payout table is the vocabulary of a derivatives offering and is not worth borrowing.
 
 **Status:** Design stage. Nothing is built or deployed.
 
-Read [OVERVIEW.md](./OVERVIEW.md) first for PEX platform facts, verified constants, and the integration paths that were rejected.
+Read [PEX.md](./PEX.md) first for PEX platform facts, verified constants, and the integration paths that were rejected.
 
 ---
 
 ## The Central Architectural Fact
 
-**Cover requires no smart contract of our own.**
+**Perps requires no smart contract of our own.**
 
 Every economic action is a PEX call signed by the user's wallet:
 
 | Action | Mechanism | Who executes |
 |---|---|---|
-| Open a Cover | `buildV2OpenOrIncreaseCall` | User's wallet |
+| Open a Perps | `buildV2OpenOrIncreaseCall` | User's wallet |
 | Attach profit target | `DECREASE_TAKE_PROFIT` bracket, same group | User's wallet |
 | Close early | `buildV2DecreaseOrCloseCall` | User's wallet |
 | Profit target fires | PEX stored order | PEX keeper network |
@@ -89,13 +89,13 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
 **`decrease_or_close` args (0.6.1, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts:1430-1448`).
 - **`expectedPositionId` must be a real id, never the wildcard.** `expectedClosePositionId(undefined)` yields `(1n << 64n) - 1n`, which closes whatever position occupies the key. Valid range is `0 ≤ id < 2^48`. **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
-- `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Cover" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
+- `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Perps" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
 - `outputSwapMode == 0`, and `minPrimary == minSecondary == 0` given mode 0
 - `yieldRecallMode`, `maxLongReceiptAmount`, `maxShortReceiptAmount` against the values from `prepareV2DecreaseOrCloseInput`
 
 **Group-wide:** box references, `foreignApps`, `foreignAssets` and `accounts` on every app call against expected values — `open_or_increase` carries **no `collateralAssetId` arg**, so the collateral asset is determined solely by the axfer and by `v2TradingLocalBoxes`, i.e. a box reference; note also `accounts: builderFeeBps > 0n ? [builderAddress] : []` (`:2090`). Plus: no `rekeyTo`, no `closeRemainderTo`, no `assetCloseTo` on any transaction; total fee below a cap; and every transaction is either an enumerated economic leg or an app call to a **pinned** PEX app ID with a **pinned** selector, sender == user. (A fixed transaction count is not assertable — settlement-maintenance calls, the trading resource carrier, yield-freshness carriers and the `builderFeeBps > 0n` dynamic-OI carrier all vary with pool state.)
 
-**`submit_linked_order` args (0.5.0, 24 positions)** — `src/transactions.ts:2139-2165`. Two new fields, `expectedPositionId` and `entryGroupOffset`, sit between `linkBaseOrderId` and the builder tuple: `ownerOrderId, orderKind, targetKind, marketId, side, collateralAssetId, sizeUsdDelta, collateralAmount, triggerPrice, acceptablePrice, keeperFeeAssetId, keeperFeeAmount, outputSwapMode, minPrimary, minSecondary, timeInForce, expiryTime, linkMode, linkBaseOrderId, [builderAddress, builderFeeBps], oracleMessage, oracleSignature`. **This leg is on every single Cover, so assert all of it:**
+**`submit_linked_order` args (0.5.0, 24 positions)** — `src/transactions.ts:2139-2165`. Two new fields, `expectedPositionId` and `entryGroupOffset`, sit between `linkBaseOrderId` and the builder tuple: `ownerOrderId, orderKind, targetKind, marketId, side, collateralAssetId, sizeUsdDelta, collateralAmount, triggerPrice, acceptablePrice, keeperFeeAssetId, keeperFeeAmount, outputSwapMode, minPrimary, minSecondary, timeInForce, expiryTime, linkMode, linkBaseOrderId, [builderAddress, builderFeeBps], oracleMessage, oracleSignature`. **This leg is on every single Perps, so assert all of it:**
 - `triggerPrice` equals the displayed target **exactly**. Unasserted, a frontend shows $0.12 and submits $0.40 — never fires, user believes they are protected
 - `sizeUsdDelta` equals the post-open (or post-increase) position size
 - `acceptablePrice` within `userSlippageBps` of `triggerPrice`. `v2OrderPriceCoherenceFailure` only checks the *side*, with no distance bound — a loose value lets the keeper fill arbitrarily far from the target
@@ -107,13 +107,13 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
   | Case | Required values |
   |---|---|
-  | Same-group open + attached TP (Cover's normal path) | `entryGroupOffset` = **(index of the TP's `submit_linked_order`) − (index of `open_or_increase`)**, range 1–15; `expectedPositionId` = 0 |
+  | Same-group open + attached TP (Perps's normal path) | `entryGroupOffset` = **(index of the TP's `submit_linked_order`) − (index of `open_or_increase`)**, range 1–15; `expectedPositionId` = 0 |
   | TP re-placed onto an existing position (increase flow) | `entryGroupOffset` = 0, `expectedPositionId` = the live id — **the SDK throws if omitted** |
   | `OPEN_LIMIT` or `CHILD_WAIT_PARENT` | both 0 |
 
   Assert the pair matches the flow. A mismatch is how a bracket ends up bound to the wrong position lifetime.
 
-  > **`entryGroupOffset` is a relative backward distance, not an absolute index.** Source: `entryGroupOffset = transactions.length + 2 − entryTransactionIndex`, where `entryTransactionIndex` is the index of the `open_or_increase` call. An earlier draft described it as "the entry's index in the group" — the two coincide only when the entry sits at index 0, which it never does, since settlement-maintenance calls and the collateral transfer precede it (`primaryIndex = maintenance.length + 1`). An assertion written from that wording rejects **every** valid Cover group, and the likely field response is to relax the check rather than correct it.
+  > **`entryGroupOffset` is a relative backward distance, not an absolute index.** Source: `entryGroupOffset = transactions.length + 2 − entryTransactionIndex`, where `entryTransactionIndex` is the index of the `open_or_increase` call. An earlier draft described it as "the entry's index in the group" — the two coincide only when the entry sits at index 0, which it never does, since settlement-maintenance calls and the collateral transfer precede it (`primaryIndex = maintenance.length + 1`). An assertion written from that wording rejects **every** valid Perps group, and the likely field response is to relax the check rather than correct it.
 
 > `encodeAppArgs` packs everything from index 14 onward into a trailing tuple when there are more than 15 args (`src/transactions.ts:930-951`) — 22 args triggers this, and the packing boundary comes from the **manifest's** arg type list. The assertion must decode the packed tuple, which makes the manifest hash pin load-bearing for this leg.
 
@@ -146,7 +146,7 @@ Impact: total loss of collateral for every open initiated during the compromise 
   Additionally assert, on every payload decoded via `decodeV2OracleSnapshotMessage`: `targetAppId == PINNED_TRADING_APP_ID`, `genesisHash == mainnet`, `magic == PDX2`, `messageVersion == 3`, and `publishedAt` within `ORACLE_MAX_AGE_SEC`.
 > **Ultrade indicate no app ID change is expected from the current version.** That does not relax this section — it reweights it. If IDs are stable, the deployment-manifest mismatch check will essentially never fire, and **every** protocol change reaches us through the upgrade path instead: same application ID, new approval program. Program-hash monitoring is therefore the primary change detector, not a supplement to ID pinning. ID pinning remains worth keeping as cheap insurance against a redeploy nobody is planning.
 
-- **Pin the approval program hash, not only the application ID.** An Algorand app *update* replaces the program while keeping the same ID — and that is the change mechanism actually observed: `PDexV2Trading` was updated 2026-09-12 (see [OVERVIEW](./OVERVIEW.md#governance-and-upgradeability)). Pinned IDs, the manifest-mismatch check, and pinned ABI signatures all key on identifiers that an upgrade leaves untouched, so an upgrade that changes settlement, margin or payout logic trips **none of them**. Record the SHA-256 of the approval and clear programs for `PDexV2Trading`, `PDexV2OrderOps` and `PDexV2TradingRiskOps` at release; poll `GET /v2/applications/{id}`; on a hash change enter the same two-state degradation as a manifest mismatch and alert. This costs nothing, needs nothing from Ultrade, and is fully compatible with assuming good faith — it observes the event, it does not impute motive.
+- **Pin the approval program hash, not only the application ID.** An Algorand app *update* replaces the program while keeping the same ID — and that is the change mechanism actually observed: `PDexV2Trading` was updated 2026-09-12 (see [OVERVIEW](./PEX.md#governance-and-upgradeability)). Pinned IDs, the manifest-mismatch check, and pinned ABI signatures all key on identifiers that an upgrade leaves untouched, so an upgrade that changes settlement, margin or payout logic trips **none of them**. Record the SHA-256 of the approval and clear programs for `PDexV2Trading`, `PDexV2OrderOps` and `PDexV2TradingRiskOps` at release; poll `GET /v2/applications/{id}`; on a hash change enter the same two-state degradation as a manifest mismatch and alert. This costs nothing, needs nothing from Ultrade, and is fully compatible with assuming good faith — it observes the event, it does not impute motive.
 - **Pin every app the SDK resolves**, not just the trading path: `PDexV2AdminControl`, `PDexV2AdminOps`, `PDexV2SwapOps`, `PDexV2SingleTokenOps`, `PDexV2SingleTokenTrading`, `PDexV2CvaVault`, `PDexV2MarketYieldVault`, `PDexV2MarketXAlgoYieldVault` — `resolvePdexV2AppRefs` reads them all from the same backend map (`src/integration.ts:90-104`) and several appear in `foreignApps`.
 
 ---
@@ -166,9 +166,9 @@ Magnet Strategies does **not** operate: the exchange, the price oracle, the liqu
 
 ## Constants
 
-PEX-side constants are listed in [OVERVIEW.md](./OVERVIEW.md#verified-parameters) and are **TestNet values**. MainNet risk configuration is undocumented and must be read live. Nothing in this spec may hardcode a PEX risk parameter.
+PEX-side constants are listed in [OVERVIEW.md](./PEX.md#verified-parameters) and are **TestNet values**. MainNet risk configuration is undocumented and must be read live. Nothing in this spec may hardcode a PEX risk parameter.
 
-Cover-side constants:
+Perps-side constants:
 
 | Constant | Value | Notes |
 |---|---|---|
@@ -186,8 +186,8 @@ Cover-side constants:
 | `POSITION_BUILDER_FEE_BPS` | 10 | Protocol cap is 10 |
 | `SWAP_BUILDER_FEE_BPS` | **0** for forced conversions | See [Revenue](#revenue) |
 | `DEFAULT_SLIPPAGE_BPS` | 50 | User-adjustable, disclosed |
-| `MAX_KEEPER_FEE_ESCROW_MULTIPLE` | `min(2× displayed, MAX_KEEPER_FEE_ESCROW_USDC)` | **Required.** `v2OrderEscrowAmount` returns `keeperFeeAmount` verbatim for decrease kinds and the SDK validates it nowhere (`src/transactions.ts:6389-6396`). Because the take profit is now mandatory, **every** Cover carries this transfer — so an unbounded value means a compromised frontend can escrow the wallet's entire USDC balance to a correctly-pinned OrderOps address, past every asset-movement check, on every open. |
-| `CROSS_MARGIN_BPS` (ε) | 50 initial | Minimum distance a take-profit trigger must sit from the crossing bound. Covers price movement in the ≤`ORACLE_MAX_AGE_SEC` window between `publishedAt` and submission. **Provisional** — derive from `ORACLE_MAX_AGE_SEC` × measured ALGO volatility in Build Order step 2. At a 2.3% buffer this is not a rounding detail. |
+| `MAX_KEEPER_FEE_ESCROW_MULTIPLE` | `min(2× displayed, MAX_KEEPER_FEE_ESCROW_USDC)` | **Required.** `v2OrderEscrowAmount` returns `keeperFeeAmount` verbatim for decrease kinds and the SDK validates it nowhere (`src/transactions.ts:6389-6396`). Because the take profit is now mandatory, **every** Perps carries this transfer — so an unbounded value means a compromised frontend can escrow the wallet's entire USDC balance to a correctly-pinned OrderOps address, past every asset-movement check, on every open. |
+| `CROSS_MARGIN_BPS` (ε) | 50 initial | Minimum distance a take-profit trigger must sit from the crossing bound. Perps positions price movement in the ≤`ORACLE_MAX_AGE_SEC` window between `publishedAt` and submission. **Provisional** — derive from `ORACLE_MAX_AGE_SEC` × measured ALGO volatility in Build Order step 2. At a 2.3% buffer this is not a rounding detail. |
 | `CHILD_KEEPER_FEE_USDC` | **read live**, floor 0.10 | **Required and non-zero.** `v2AttachedChildInput` defaults `keeperFeeAmount` to `leg.keeperFeeAmount ?? rawParent.childKeeperFeeAmount ?? rawParent.keeperFeeAmount ?? 0` (`src/transactions.ts:6377`), and `childKeeperFeeAmount` is **optional** on the open-with-attached-orders input. Leave it unset and the escrow is 0 — producing an order that passes every assertion, renders as armed, and **no keeper will ever execute**, silently removing the product's only automated upside exit. Nothing in the SDK enforces a minimum, but the contract does: `PDexV2OrderOps` global key `op` carries `min_keeper_fee_usd = 50_000` (\$0.05), `max_gtd_expiry_seconds = 2_592_000`, `max_order_size_usd = 1e12`. **These are admin-mutable order policy, so read them live per Invariant 8** — if the minimum is raised above our constant the escrow silently produces the never-executed order described above. |
 | `MAX_KEEPER_FEE_ESCROW_USDC` | 0.50 | Absolute cap on the escrow transfer. |
 | `ORACLE_MAX_AGE_SEC` | 20 | Reject quotes on payloads older than this. A deliberate conservative pin against PEX's ~30s window. Invariant 8 governs PEX *risk parameters* — margin, caps, fees, funding share, utilization — and payload age is not one, so no exception is needed. **Specify a re-fetch/re-quote loop**: hardware-wallet and mobile deep-link signing round trips routinely exceed 20s, and blocking at the prompt would fail for a meaningful share of users. |
@@ -196,7 +196,7 @@ Cover-side constants:
 
 > `MAX_POSITION_NOTIONAL_USD` is a **product guardrail with no on-chain enforcement** — a user can always go to PEX directly. It is not counted as a security control.
 >
-> **It is deliberately a function of live state, not a constant.** PEX is early and thin; a fixed cap either blocks users today or becomes meaningless as depth grows, and updating it by release is a standing tax. Deriving it from live per-side OI headroom and trader-PnL-cap headroom means Cover scales with the exchange automatically — which is the point, since bringing flow to PEX is part of why this product exists. The `LAUNCH_NOTIONAL_CEILING` stays as a deliberate brake on that automation.
+> **It is deliberately a function of live state, not a constant.** PEX is early and thin; a fixed cap either blocks users today or becomes meaningless as depth grows, and updating it by release is a standing tax. Deriving it from live per-side OI headroom and trader-PnL-cap headroom means Perps scales with the exchange automatically — which is the point, since bringing flow to PEX is part of why this product exists. The `LAUNCH_NOTIONAL_CEILING` stays as a deliberate brake on that automation.
 
 ---
 
@@ -204,13 +204,13 @@ Cover-side constants:
 
 ### Units
 
-A Cover is **$10 of committed collateral**. The user buys N of them; committed collateral is `N × 10` USD. That is not quite the maximum outlay — the user also escrows the keeper fee (≥$0.05, denominated in **USDC**) and ~0.40 ALGO of MBR and fees, and on liquidation the escrowed USDC stays locked in the orphaned order until they sign a cancel. **The pre-flight USDC check must therefore be `N × 10 + keeperFeeAmount`**, or the first open of every user holding exactly $10 per unit fails.
+A Perps is **$10 of committed collateral**. The user buys N of them; committed collateral is `N × 10` USD. That is not quite the maximum outlay — the user also escrows the keeper fee (≥$0.05, denominated in **USDC**) and ~0.40 ALGO of MBR and fees, and on liquidation the escrowed USDC stays locked in the orphaned order until they sign a cancel. **The pre-flight USDC check must therefore be `N × 10 + keeperFeeAmount`**, or the first open of every user holding exactly $10 per unit fails.
 
 > **Units are a purchase-sizing device, not independent positions.** The position box key is `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner` — there is **one position per (market, collateral asset, side, wallet)**. Buying more on the same side is `open_or_increase` on the existing position: blended entry price, blended leverage, and **a changed liquidation price on what the user already held**.
 
 Consequences, all of which the product must respect rather than paper over:
 
-- **One open Cover per (market, side) per wallet.** Quantity is chosen at purchase.
+- **One open Perps per (market, side) per wallet.** Quantity is chosen at purchase.
 - **Adding is a separate, explicit flow** on the management surface — never a second trip through the purchase screen. One code path for every merge.
 - **Route at entry, not at confirm.** Check for an existing position at the target key **before rendering any purchase input**. Routing at confirm would mean the user configures "10 units, Aggressive, closes if ALGO rises 2.5%", then signs an increase producing a blended leverage, blended entry and a new liquidation price matching nothing they were shown — the exact harm the group assertion exists to prevent, arriving through an intended code path. On routing, discard all purchase-screen state and re-derive every figure from live position state. A group containing `open_or_increase` against a non-empty `p2:` box may only be presented from the increase flow.
 - **One take profit per position, and no stop loss at all.** Multiple TPs accumulate against `pendingTpSizeUsd` and child order IDs are hardcoded `base+1` / `base+2`, so overlapping brackets collide. Per-unit targets are not expressible.
@@ -275,7 +275,7 @@ That last row is the one to get right. With a naive rule the only selectable ban
 
 ### Take profit — mandatory, one per position
 
-**Every Cover carries exactly one take-profit order. There is no stop loss.**
+**Every Perps carries exactly one take-profit order. There is no stop loss.**
 
 The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-chain in an order box and executed by **PEX's own keeper network**. It needs no keeper of ours and grants us no authority.
 
@@ -309,7 +309,7 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 
 Show the implied shape next to the field as plain information, the way the liquidation price already is. **Not a warning, not a gate, no confirmation friction** — the user typing their own target is entirely their call. Keep the default modest rather than optimistic, because that is the one number we choose on their behalf.
 
-**Why no stop loss.** Simplicity is the product. Hedge is meant to read as a product, not a trade screen, and a forced profit target guides users to realise gains at a point they chose. Active downside management stays with the user via manual close on the management surface — subject to the availability limits below.
+**Why no stop loss.** Simplicity is the product. Perps is meant to read as a product, not a trade screen, and a forced profit target guides users to realise gains at a point they chose. Active downside management stays with the user via manual close on the management surface — subject to the availability limits below.
 
 > **But "manual close is always available" is false, and with no stop it carries the whole downside story — so state it accurately.** Close is available whenever PEX will accept a decrease, which is most of the time but not: during a market pause; while a yield recall inside the close itself is failing (recall is atomic within the action that needs it, so the action fails with it — though per Ultrade 2026-09-21 a manual close does **not** depend on a *keeper* recall, so this is a per-action failure rather than a shared dependency); when the wallet cannot pay the close group's ~37,000 µALGO flat fee plus carriers; when `price_slippage` rejects in a fast move — the exact move the user needs out of; when `trader_pnl_cap` rejects the payout; or when a partial would breach `position_health_breach` / `collateral_too_small`. And an unavailable frontend or a sleeping user is the same outcome. **There is no exit guaranteed to be available.**
 >
@@ -341,15 +341,15 @@ The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decre
 
 ### How PEX cleans up — answered by Ultrade, 2026-09-21
 
-There are **two distinct cleanup mechanisms**, and the one that matters for Cover is not the one named `bracket_cleanup`.
+There are **two distinct cleanup mechanisms**, and the one that matters for Perps is not the one named `bracket_cleanup`.
 
 **`v2_order_bracket_cleanup` (235)** fires when OrderOps auto-cancels a linked child because of a lifecycle event on **another order**. One receipt per child actually removed. Four reasons:
 
-| Reason | Trigger | Applies to Cover? |
+| Reason | Trigger | Applies to Perps? |
 |---|---|---|
-| `PARENT_CANCELLED` | Owner cancels a pending **entry** order; attached children removed | **No** — Cover opens at market, so there is no resting parent entry |
+| `PARENT_CANCELLED` | Owner cancels a pending **entry** order; attached children removed | **No** — Perps opens at market, so there is no resting parent entry |
 | `PARENT_EXPIRED` | `cancel_expired_order` invoked on an expired entry order. **Expiry alone does not trigger it** | **No** — same reason |
-| `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **No** — Cover carries a single bracket, so there is no sibling |
+| `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **No** — Perps carries a single bracket, so there is no sibling |
 | `PARENT_RETIRED` | Position-identity upgrade: execution attempted on a legacy bracket entry; parent retired, children removed | Only at the 0.5.0 cutover |
 
 **None of the four covers our orphan case.** Dropping the stop loss also permanently removes `OCO_SIBLING_CANCELLED` from our surface.
@@ -363,9 +363,9 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 > **Status 8 is the structural fix for re-arming.** Under the position-identity upgrade, TP/SL attach to a position through its numeric id, so a stale bracket meets a replaced position and is **cancelled rather than executed**. The hazard this document built [Invariant 11](#invariants) around stops being ours to prevent.
 >
-> Keep Invariant 11 as belt-and-braces on 0.4.0 and as cheap insurance after; stop treating it as load-bearing. And **the outcome reader must handle `v2_order_cancelled` statuses 7 and 8 — not `v2_order_bracket_cleanup` — for every Cover flow.**
+> Keep Invariant 11 as belt-and-braces on 0.4.0 and as cheap insurance after; stop treating it as load-bearing. And **the outcome reader must handle `v2_order_cancelled` statuses 7 and 8 — not `v2_order_bracket_cleanup` — for every Perps flow.**
 
-**One question remains:** is status-7/8 cleanup **eager** (at close) or **lazy** (when a keeper next evaluates the order)? That decides whether MBR is locked in the interim and therefore whether Hedge History needs a reclaim affordance at all, or merely a record.
+**One question remains:** is status-7/8 cleanup **eager** (at close) or **lazy** (when a keeper next evaluates the order)? That decides whether MBR is locked in the interim and therefore whether Perps History needs a reclaim affordance at all, or merely a record.
 
 ---
 
@@ -381,9 +381,9 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 `planV2CancelRelatedReduceOrders` emits `related_reduce_orders_require_owner_cancel` and returns *separate* groups the owner must sign (`src/orders.ts:286-308`); `planV2CloseWithOrderCleanup` emits `related_order_cancels_require_followup_group` when close + cancel exceeds 16, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`). Handle both.
 
-**What V4 lifetime binding changes.** Cover launches **after** the position-identity cutover on SDK ≥ 0.6.1, so every bracket Cover creates is a V4 order bound to a `position_id`. A V4 bracket meeting a replaced position is **cancelled, not executed** — `v2_order_cancelled` status 8. The re-arm hazard is therefore structurally impossible **for our own orders**, and the requirements below shrink accordingly.
+**What V4 lifetime binding changes.** Perps launches **after** the position-identity cutover on SDK ≥ 0.6.1, so every bracket Perps creates is a V4 order bound to a `position_id`. A V4 bracket meeting a replaced position is **cancelled, not executed** — `v2_order_cancelled` status 8. The re-arm hazard is therefore structurally impossible **for our own orders**, and the requirements below shrink accordingly.
 
-**What it does not change.** Lifetime binding is V4-only. A user who traded PEX directly **before** cutover can still hold a **legacy V3 bracket** on the same `(market, collateralAsset, side, owner)` key — matched by coordinates, with no id binding. Per Ultrade: *"A legacy trigger can affect a reopened position at the same coordinates."* That order is not ours and we did not create it, but it can fire against a Cover position opened on that key.
+**What it does not change.** Lifetime binding is V4-only. A user who traded PEX directly **before** cutover can still hold a **legacy V3 bracket** on the same `(market, collateralAsset, side, owner)` key — matched by coordinates, with no id binding. Per Ultrade: *"A legacy trigger can affect a reopened position at the same coordinates."* That order is not ours and we did not create it, but it can fire against a Perps position opened on that key.
 
 **Three requirements:**
 
@@ -408,15 +408,15 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    >
    > So cleanup is **lazy and incentive-driven, not eager and automatic.** On an exchange this thin, a $0.05–0.10 keeper fee may motivate nobody, leaving 99,700 µALGO of MBR plus the USDC escrow locked indefinitely. **Non-execution is verified; prompt cancellation is not.**
    >
-   > Useful consequence: because the cleanup call takes an arbitrary sender, **Cover can build and submit it itself** rather than waiting for a third party. The spec previously knew only about owner-signed `cancel_order`.
+   > Useful consequence: because the cleanup call takes an arbitrary sender, **Perps can build and submit it itself** rather than waiting for a third party. The spec previously knew only about owner-signed `cancel_order`.
 
    Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain. Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`).
 
-**Hedge History records orphans and their locked MBR, and needs the reclaim button.** The question of eager-versus-lazy cleanup is answered by the source: cleanup is a paid, permissionless `execute_order` call, so nothing guarantees anyone makes it. Build the button — and since the call accepts an arbitrary sender, Cover can offer to submit it rather than only prompting the owner.
+**Perps History records orphans and their locked MBR, and needs the reclaim button.** The question of eager-versus-lazy cleanup is answered by the source: cleanup is a paid, permissionless `execute_order` call, so nothing guarantees anyone makes it. Build the button — and since the call accepts an arbitrary sender, Perps can offer to submit it rather than only prompting the owner.
 
 ### Worked example
 
-5 Covers, Moderate, protect against a drop, TestNet params, ALGO at $0.0866:
+5 Perps positions, Moderate, protect against a drop, TestNet params, ALGO at $0.0866:
 
 ```
 committed          $50
@@ -438,11 +438,11 @@ Illustrative payoff, net of fees. **These figures are computed by the SDK agains
 
 ## Two Surfaces
 
-Cover has two distinct UIs, and the split is what lets the entry flow stay simple without hiding the protocol's real complexity.
+Perps has two distinct UIs, and the split is what lets the entry flow stay simple without hiding the protocol's real complexity.
 
 **Surface 1 — Purchase.** Units, band, direction, target price, duration, confirm. Outcome-framed, no chart, no jargon. Used only for opening a *new* position.
 
-**Surface 2 — Position management.** Once a position is live, the UI becomes position-shaped rather than unit-shaped. This is the honest frame: the user now holds one position, not N discrete Covers, and pretending otherwise is what [Units](#units) warns against. The metaphor shift must be **visible** — a one-time explanation on first transition, not a silent swap.
+**Surface 2 — Position management.** Once a position is live, the UI becomes position-shaped rather than unit-shaped. This is the honest frame: the user now holds one position, not N discrete Perps positions, and pretending otherwise is what [Units](#units) warns against. The metaphor shift must be **visible** — a one-time explanation on first transition, not a silent swap.
 
 Available on Surface 2:
 
@@ -457,7 +457,7 @@ Available on Surface 2:
 **Four things must appear on the primary post-trade view regardless of how minimal it is**, because they are safety-critical rather than advanced:
 
 1. **Liquidation price**, always visible
-2. **Bracket state**, mapped explicitly from `executionBlockers` — never a static "protected" badge, and **never `executable` raw**. `analyzeV2OrderLifecycle` pushes `not_crossed` and sets `executable = false` for *every* correctly-placed take profit that is simply waiting for the price (`src/orders.ts:223`, `:249`) — i.e. 100% of healthy Covers. Rendering `executable` literally would read "unexecutable" on every live position. The SDK's own quote layer special-cases this (`submitFailures` skips `not_crossed`, `src/v2OrderQuotes.ts:485-493`). Required mapping:
+2. **Bracket state**, mapped explicitly from `executionBlockers` — never a static "protected" badge, and **never `executable` raw**. `analyzeV2OrderLifecycle` pushes `not_crossed` and sets `executable = false` for *every* correctly-placed take profit that is simply waiting for the price (`src/orders.ts:223`, `:249`) — i.e. 100% of healthy Perps positions. Rendering `executable` literally would read "unexecutable" on every live position. The SDK's own quote layer special-cases this (`submitFailures` skips `not_crossed`, `src/v2OrderQuotes.ts:485-493`). Required mapping:
 
    | Blocker | Display |
    |---|---|
@@ -478,7 +478,7 @@ A user who never opens the advanced surface must still learn that they are at ri
 
 ---
 
-## Outcomes, Notifications and Hedge History
+## Outcomes, Notifications and Perps History
 
 > **RESOLVED 2026-09-21 — the design is buildable. `GET /v2/protocol` carries 79 receipt types.** An earlier draft marked this section conditional because the *SDK* names no position-level receipt types. That was true of the SDK and false of the protocol.
 >
@@ -511,9 +511,9 @@ A user who never opens the advanced surface must still learn that they are at ri
 >    - Partial closes return pro-rata collateral, so the ratio moves with the close fraction independent of price.
 >
 >    **Options, pick one:** show no execution price at all; or reconstruct properly from `entry_price` read out of the `p2:` box *before* the close, combined with the receipt outputs, handling the loss case explicitly.
-> 2. **`v2_order_bracket_cleanup` is not our cleanup path** — resolved 2026-09-21. Its four reasons all concern a resting parent *entry* order or an OCO sibling, neither of which Cover has. Cover's orphans are cleaned by `v2_order_cancelled` status 7/8, which also refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21).
+> 2. **`v2_order_bracket_cleanup` is not our cleanup path** — resolved 2026-09-21. Its four reasons all concern a resting parent *entry* order or an OCO sibling, neither of which Perps has. Perps's orphans are cleaned by `v2_order_cancelled` status 7/8, which also refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21).
 >
-> **Fee breakdown is partially explicit.** Receipts carry the close or liquidation fee, output-swap fees, and their pool / protocol / insurance split. Builder fees are a **separate** `v2_builder_fee_paid` receipt. A complete funding, borrowing and fee-allocation breakdown needs additional inner-call data and calculation — so Hedge History's itemised fee line is partly reconstruction, not a direct read. Size that work accordingly, or show a coarser breakdown in v1.
+> **Fee breakdown is partially explicit.** Receipts carry the close or liquidation fee, output-swap fees, and their pool / protocol / insurance split. Builder fees are a **separate** `v2_builder_fee_paid` receipt. A complete funding, borrowing and fee-allocation breakdown needs additional inner-call data and calculation — so Perps History's itemised fee line is partly reconstruction, not a direct read. Size that work accordingly, or show a coarser breakdown in v1.
 >
 > > **Build requirement — walk inner transactions.** `decodeReceiptFromConfirmation()` returns **one** receipt and does **not** recurse into inner transactions (Ultrade, 2026-09-18). **For keeper-executed take-profits the position close happens *inside* the orders transaction**, so a naive single-receipt decode returns the order event and silently misses the close. Any outcome reader must inspect all relevant logs and inner calls. This applies to every third-party close — take profit, liquidation and ADL alike, i.e. every notification we promise.
 >
@@ -521,7 +521,7 @@ A user who never opens the advanced surface must still learn that they are at ri
 
 **Intended mechanism**, subject to the above: PEX receipts plus indexer reads of the user's `p2:` and `o2:` boxes, with a chain-watching service for third-party closes. This still avoids the enumeration problem that rules out the `ms:cover:` note approach in [State](#state), but it is **not** infrastructure-free — the Operating Model's notification service is load-bearing here, and the chain watcher needs its own Residual Trust row.
 
-This is also where orphaned take-profit orders surface. Since three outcomes orphan the order outright, a fourth leaves it stale-but-live, and only the owner can cancel it, Hedge History is the one place a user reliably sees locked MBR and can reclaim it.
+This is also where orphaned take-profit orders surface. Since three outcomes orphan the order outright, a fourth leaves it stale-but-live, and only the owner can cancel it, Perps History is the one place a user reliably sees locked MBR and can reclaim it.
 
 **Amount paid and amount returned are financial displays**, so they obey [Quote Accuracy](#quote-accuracy): derived from live chain state and receipts, never from cached client values.
 
@@ -537,7 +537,7 @@ This is also where orphaned take-profit orders surface. Since three outcomes orp
 
 > *"Fixes transaction resource budgeting when attaching only a TP or only an SL after an entry."*
 
-Cover attaches **only a take profit**. That is the case that was broken. **Pin ≥ 0.6.1; do not build against 0.5.x or 0.6.0.**
+Perps attaches **only a take profit**. That is the case that was broken. **Pin ≥ 0.6.1; do not build against 0.5.x or 0.6.0.**
 
 ### 0.6.0 closed the close-identity hole — upstream
 
@@ -656,19 +656,19 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 | Open interest | long $10.60 · short $159.92 | **zero** |
 | `unpaid_cost_usd` | 1 at 1e6 scale — i.e. \$0.000001, so a liquidation gap has occurred but is negligible in size | 0 |
 
-**PEX is new and thin, and that is understood: Cover exists partly to bring flow to it.** The requirement is not to wait for depth but to size against it honestly and scale automatically as it grows.
+**PEX is new and thin, and that is understood: Perps exists partly to bring flow to it.** The requirement is not to wait for depth but to size against it honestly and scale automatically as it grows.
 
 ### Consequences for sizing
 
-- **A fixed `MAX_POSITION_NOTIONAL_USD` of $1,500 exceeded the entire $960 per-side OI cap.** A single Cover at that cap could not open.
+- **A fixed `MAX_POSITION_NOTIONAL_USD` of $1,500 exceeded the entire $960 per-side OI cap.** A single Perps at that cap could not open.
 - **The trader PnL cap can bind, contrary to an earlier finding.** That analysis reasoned from unit size; the binding quantity is *pool* size. At 90% of a $796 short-side pool the payout ceiling is ≈**$716** — reachable by a $1,500 notional position on a 48% move. Correct the earlier conclusion that it "effectively never binds."
-- **Availability gating is the normal case, not an edge case.** A 5-unit Moderate Cover is $500 notional — over half the ALGO/USD OI cap — and `position_impact_factor_bps = 55` means a position that size moves its own execution price.
+- **Availability gating is the normal case, not an edge case.** A 5-unit Moderate Perps is $500 notional — over half the ALGO/USD OI cap — and `position_impact_factor_bps = 55` means a position that size moves its own execution price.
 
 ---
 
 ## Pending Parameter Changes
 
-Ultrade is shipping a fixed delay window on parameter changes plus on-chain readability of what is pending (~1 week from 2026-09-18). That converts our sharpest residual risk into a **user-facing safety feature**, and Cover should consume it as soon as it exists.
+Ultrade is shipping a fixed delay window on parameter changes plus on-chain readability of what is pending (~1 week from 2026-09-18). That converts our sharpest residual risk into a **user-facing safety feature**, and Perps should consume it as soon as it exists.
 
 Because there is no stop loss, the displayed liquidation price is the user's primary safety signal. Today the best available is reading `maintenance_margin_bps` live and never caching it — purely reactive. With pending changes readable and dated, the management surface shows **forward** state instead:
 
@@ -721,15 +721,15 @@ A delegated LogicSig, signed once by the user at open, authorising an MS keeper 
 
 **Two structural defects that no binding list fixes:**
 
-**The `lease` is not one-shot.** A lease blocks a duplicate `(sender, lease)` pair only until the first transaction's `lastValid` passes. Across a 7-day Cover that is ~200 independent windows — one execution *per window*, not one ever.
+**The `lease` is not one-shot.** A lease blocks a duplicate `(sender, lease)` pair only until the first transaction's `lastValid` passes. Across a 7-day Perps that is ~200 independent windows — one execution *per window*, not one ever.
 
-**The position key carries no nonce.** `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner` **is** the full set of "exact position coordinates." If the user closes their Cover and later opens a new position on the same side of the same market with the same collateral, the old LogicSig matches the new position and the keeper closes something it was never authorised to touch.
+**The position key carries no nonce.** `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner` **is** the full set of "exact position coordinates." If the user closes their Perps and later opens a new position on the same side of the same market with the same collateral, the old LogicSig matches the new position and the keeper closes something it was never authorised to touch.
 
 **And it fails at its own job.** If the user increased the position, the bound `sizeUsdDelta` only partially closes, leaving a residual with stale brackets. If they partially closed, `sizeUsdDelta > position_size_usd` and the call fails — so the "enforced" close silently does not happen, which is the worst outcome for a feature sold as a guarantee.
 
 **If this is ever revisited**, the program must assert, for every transaction in the group: `Fee <= CAP`, `RekeyTo == ZeroAddress`, `CloseRemainderTo == ZeroAddress`, `AssetCloseTo == ZeroAddress`, exact `GroupSize`, exact `TypeEnum` and `ApplicationID` per index, the complete ABI arg tuple, and `LastValid <= expiryRound`. Note that pinning `GroupSize` and per-index app IDs means any PEX upgrade silently bricks every outstanding LogicSig — the safe failure, but it degrades the feature to Option A on every upgrade anyway.
 
-> **This would be Magnet Strategies' first on-chain code in this product, it is entirely unsupported by the PEX SDK, and it would hold signing authority over every Cover user simultaneously. A keeper compromise is an attack on all open positions at once. It is not a small addition to Option A.**
+> **This would be Magnet Strategies' first on-chain code in this product, it is entirely unsupported by the PEX SDK, and it would hold signing authority over every Perps user simultaneously. A keeper compromise is an attack on all open positions at once. It is not a small addition to Option A.**
 
 ### Option C — Rekey
 
@@ -757,13 +757,13 @@ If the user holds only ALGO, offer an ALGO→USDC swap. Constraints:
 - **`SWAP_BUILDER_FEE_BPS` is 0 for a conversion the user did not seek.** The protocol permits 100 bps on swaps, ten times the position cap. Charging maximum on a conversion the product forced is indefensible for a brand whose sibling product's founding document treats operator trust as the binding constraint. If a swap fee is ever introduced here it is a deliberate, disclosed, separately-decided product choice.
 - Verify whether the swap and the position open fit in one signed group within Algorand's group size and resource-reference limits. PEX trading methods are resource-heavy and carry their own resource-carrier transactions. If they do not fit, it is two signatures, and the UI must set that expectation before the first prompt.
 
-**mUSD is explicitly out of scope as a funding path.** See [OVERVIEW.md](./OVERVIEW.md#out-of-scope--musd-as-a-funding-path).
+**mUSD is explicitly out of scope as a funding path.** See [OVERVIEW.md](./PEX.md#out-of-scope--musd-as-a-funding-path).
 
 ---
 
 ## Revenue
 
-Cover earns through PEX's native builder-fee rail. No contract of ours, no separate fee collection, no custody. `builder_address` and `builder_fee_bps` are fields on the PEX call, recorded in the order box and publicly readable on-chain.
+Perps earns through PEX's native builder-fee rail. No contract of ours, no separate fee collection, no custody. `builder_address` and `builder_fee_bps` are fields on the PEX call, recorded in the order box and publicly readable on-chain.
 
 ### Position fee — the primary line
 
@@ -789,7 +789,7 @@ The protocol permits **100 bps on swaps**, ten times the position cap. Two cases
 
 | Case | Recommendation |
 |---|---|
-| A conversion the product forces — user holds only ALGO and must reach USDC to use Cover | **0 bps.** Charging anything on a step the product forced is the same friction we rejected for the mUSD path, applied to our own users instead. |
+| A conversion the product forces — user holds only ALGO and must reach USDC to use Perps | **0 bps.** Charging anything on a step the product forced is the same friction we rejected for the mUSD path, applied to our own users instead. |
 | An elective swap the user initiates | **25–50 bps** is defensible and still well under the cap. |
 
 Whatever is chosen is disclosed in the UI. The fee is readable on-chain regardless; concealing it in the interface is the same category of problem as a closed price feed.
@@ -826,9 +826,9 @@ Two distinct unavailability states, with different messages and different user a
 
 | Side unavailable | `short_reserves_exceeded` / `long_reserves_exceeded` (`reserve_factor_bps × side OI` > side pool USD), or `max_open_interest_*` reached. **Not** a 70% utilization ceiling — no such gate exists | Nothing works on that side at any leverage — including Aggressive, despite its "always available" framing elsewhere, which refers only to capacity-constrained *leverage*, not to a closed side. Different message, different suggested action. |
 
-**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button: *"Max at Aggressive: 4 Covers."* It tells the user how to get to yes and costs nothing extra. Note the limit is now a **unit count** — with fixed multiples there is no leverage to solve down to, and units cannot restore a 5× band that capacity has closed.
+**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button: *"Max at Aggressive: 4 Perps positions."* It tells the user how to get to yes and costs nothing extra. Note the limit is now a **unit count** — with fixed multiples there is no leverage to solve down to, and units cannot restore a 5× band that capacity has closed.
 
-**Structural note for this product specifically.** Hedging demand is correlated — in an ALGO drawdown everyone wants the same side at the same time. Cover will systematically push into whichever side is already constrained, at exactly the moment users want it. Design the capacity messaging for that case rather than treating it as an edge case, and consider nudging users to open cover while capacity exists.
+**Structural note for this product specifically.** Hedging demand is correlated — in an ALGO drawdown everyone wants the same side at the same time. Perps will systematically push into whichever side is already constrained, at exactly the moment users want it. Design the capacity messaging for that case rather than treating it as an edge case, and consider nudging users to open cover while capacity exists.
 
 **Gating is a snapshot, not a guarantee.** State can shift between the read and the signature. Gating removes predictable failures; it does not remove all failures. A clean on-chain rejection handler is still required, and the acceptable-price bound is a separate rejection path gating cannot touch.
 
@@ -846,7 +846,7 @@ Display accuracy is a security property here, because there is no contract to ex
 4. **Funding share is read, never assumed.** `opposing_trader_share_bps` is live on-chain state. Hardcoding 25% is a defect.
 5. **Quotes refuse to render on a stale oracle.** Payloads carry a ~30s validity window. Past `ORACLE_MAX_AGE_SEC`, show a stale state rather than a stale number.
 6. **The builder fee is disclosed.** It is publicly readable on-chain; concealing it in the UI is the same category of problem as a closed price feed.
-   **And one line of settlement disclosure**, not a warning banner: Cover settles on PEX, a third-party protocol, whose risk parameters can change. Brief, true, and cheap now.
+   **And one line of settlement disclosure**, not a warning banner: Perps settles on PEX, a third-party protocol, whose risk parameters can change. Brief, true, and cheap now.
 7. **The payoff table is labelled as subject to the trader PnL cap.** `checkTraderPnlCap` pushes `trader_pnl_cap` when **this close's own payout** exceeds `max_pnl_factor_for_traders_bps ×` the side pool in USD (`src/v2Quotes.ts:4222-4230`); a pushed reason makes the quote **not ok**, so the voluntary close is *rejected*, not reduced. *(An earlier draft claimed this binds on aggregate side PnL versus other traders, and named the wrong reason strings — `long_pnl_cap`/`short_pnl_cap` are LP deposit/withdraw reasons. At $10-unit sizes an individual payout cannot approach a fraction of the pool, so this effectively never binds on the voluntary-close path.)*
    **The aggregate-side-PnL exposure is real, but it is ADL, not this.** `sidePositivePnlUsd` against `sidePnlCapUsd` drives ADL eligibility (`src/v2Quotes.ts:2565-2570`), and `effectiveProfitUsd = profitUsd × traderPnlCapUsd / sidePositivePnlUsd` scales the payout down. That is where correlated one-sided hedging demand actually lands, and where `side_positive_pnl_usd`, `side_pnl_cap_usd` and `adl_threshold_breached` should be surfaced.
 8. **The displayed liquidation buffer is computed after fees**, from the SDK's `liquidation_price_estimate` — never from `1/leverage − maintenance_margin_rate`, which ignores that open fees and the builder fee are deducted from collateral first.
@@ -856,17 +856,17 @@ Display accuracy is a security property here, because there is no contract to ex
 
 ## State
 
-Cover holds **no protocol state of its own**. Everything economically meaningful lives in PEX boxes: the position in `p2:`, the bracket order in `o2:`, market context in `mp2:` / `mo2:` / `mf2:` / `ma2:`.
+Perps holds **no protocol state of its own**. Everything economically meaningful lives in PEX boxes: the position in `p2:`, the bracket order in `o2:`, market context in `mp2:` / `mo2:` / `mf2:` / `ma2:`.
 
-The only Cover-specific data is **user intent** — declared duration and the unit count the position was composed from. Neither is required for correctness; both exist to drive reminders and display.
+The only Perps-specific data is **user intent** — declared duration and the unit count the position was composed from. Neither is required for correctness; both exist to drive reminders and display.
 
-**Do not use an on-chain note.** An earlier draft ranked a 0-ALGO self-payment carrying an `ms:cover:` prefix first, for cross-device durability. Redacting duration and unit count from it — necessary, because publishing them ranks leveraged retail wallets for liquidation hunters — removes the only thing that made it worth publishing, while the prefix still enumerates every Cover user permanently.
+**Do not use an on-chain note.** An earlier draft ranked a 0-ALGO self-payment carrying an `ms:cover:` prefix first, for cross-device durability. Redacting duration and unit count from it — necessary, because publishing them ranks leveraged retail wallets for liquidation hunters — removes the only thing that made it worth publishing, while the prefix still enumerates every Perps user permanently.
 
-**Use `localStorage`**, and accept the cross-device loss. It is the only Cover-specific state, it is not required for correctness, and Hedge History is reconstructed from chain regardless — so a user on a new device loses a duration reminder, not their record.
+**Use `localStorage`**, and accept the cross-device loss. It is the only Perps-specific state, it is not required for correctness, and Perps History is reconstructed from chain regardless — so a user on a new device loses a duration reminder, not their record.
 
 If a backend store is ever preferred instead, note that it makes the Operating Model's "read backend" a **write** surface and moves the target list from public to MS-held rather than eliminating it. That needs its own Residual Trust row.
 
-> **Testable invariant: no dollar figure rendered anywhere in Cover may be derived from client-stored values. Every financial display derives from live PEX state or a decoded receipt.**
+> **Testable invariant: no dollar figure rendered anywhere in Perps may be derived from client-stored values. Every financial display derives from live PEX state or a decoded receipt.**
 
 ---
 
@@ -875,8 +875,8 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 1. **The destination of every asset movement is a build-time constant**, never a runtime value from any API response. Magnet Strategies never custodies user funds, and no flow routes user assets to an address we control other than the disclosed builder fee. *(The earlier wording — "no flow routes user assets to an address we control" — was enforced by nothing, because the destination was derived from a backend-supplied app ID.)*
 2. **Magnet Strategies never holds authority to open or increase a position.** In v1 we hold no authority to close one either.
 3. **Every state-changing action is wallet-signed** by the position owner.
-4. **No MagnetFi state is read or written** by any Cover code path.
-5. **Cover reads no MagnetFi state and writes none**, and no Cover code path makes PEX state an input to a MagnetFi solvency decision. *(Stated as a constraint on Cover, which is what Cover can enforce. Whether MagnetFi ever accepts PEX-derived collateral is a MagnetFi policy decision, not something this codebase can assert.)* See the coupling rule in [OVERVIEW.md](./OVERVIEW.md#the-dependency-coupling-rule).
+4. **No MagnetFi state is read or written** by any Perps code path.
+5. **Perps reads no MagnetFi state and writes none**, and no Perps code path makes PEX state an input to a MagnetFi solvency decision. *(Stated as a constraint on Perps, which is what Perps can enforce. Whether MagnetFi ever accepts PEX-derived collateral is a MagnetFi policy decision, not something this codebase can assert.)* See the coupling rule in [OVERVIEW.md](./PEX.md#the-dependency-coupling-rule).
 6. **Displayed payout ≤ realistically achievable payout** under the quoted conditions, *including* ADL payout scaling, and with the buffer computed after fees. Round against the user — and verify the direction on every quantity that reaches the screen, since `builderFeeAmount` uses floor division, which rounds the fee against us rather than the payout against the user.
 7. **`builder_fee_bps` equals `POSITION_BUILDER_FEE_BPS`** on every **fee-bearing** call — asserted by equality on both the parent and the take-profit child, and disclosed in the UI. Scoped deliberately: the add-margin variant caps the builder fee at **0**, so an equality assertion against a non-zero constant would be impossible there.
 8. **No PEX risk parameter is hardcoded.** Margin rates, caps, fees, funding share and utilization limits are read live.
@@ -884,7 +884,7 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts:6379-6380`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a *legacy* (`schemaVersion: 3`) reduce order.** V4 orders are lifetime-bound and a stale one meets a replaced position as a cancellation, not an execution — so V4 orphans are harmless and this invariant does not cover them. Legacy orders match by coordinates only and can still fire against a new position. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
 12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).crossed === false`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`.
-    > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Cover's primary path** — proven by building 0.6.1 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
+    > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Perps's primary path** — proven by building 0.6.1 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
 13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
 15. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
@@ -893,12 +893,12 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 
 ## Residual Trust
 
-What a Cover user is trusting, stated plainly because the product's honesty depends on it:
+What a Perps user is trusting, stated plainly because the product's honesty depends on it:
 
 | Trusted party | For what | Our mitigation |
 |---|---|---|
 | PEX contracts | Correct settlement, margin, liquidation, ADL | None available. No audit is advertised. Disclose. |
-| PEX admin & upgrade keys | Acting in good faith. **Ultrade confirmed 2026-09-18** that maintenance margin can be raised on a market with open positions and **applies immediately**, that a number of parameters are mutable with bounds they intend to tighten, and that they are building (a) a **fixed delay window** before parameter changes take effect and (b) **on-chain readability of pending changes**, ~1 week out, proposed at 48h. Longer term they intend to hand admin to Algorand stakers via token governance. `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not snapshotted at open, so the buffer disclosed at purchase is a live parameter Ultrade controls. | **This is an accepted trust, recorded deliberately.** Both keys are single-signature and `PDexV2Trading` is upgradeable (see [OVERVIEW](./OVERVIEW.md#governance-and-upgradeability)). Magnet Strategies assumes good-faith operation with notice — the normal posture for a third-party dependency. Note that this assumption addresses *intent* only: key compromise, operational error, and a well-intentioned upgrade introducing a bug are unaffected by it. Until the delay ships, mitigation is limited to reading parameters live and never caching a disclosed buffer. Once it ships, we read the **pending** change and surface it — see [Pending parameter changes](#pending-parameter-changes). |
+| PEX admin & upgrade keys | Acting in good faith. **Ultrade confirmed 2026-09-18** that maintenance margin can be raised on a market with open positions and **applies immediately**, that a number of parameters are mutable with bounds they intend to tighten, and that they are building (a) a **fixed delay window** before parameter changes take effect and (b) **on-chain readability of pending changes**, ~1 week out, proposed at 48h. Longer term they intend to hand admin to Algorand stakers via token governance. `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not snapshotted at open, so the buffer disclosed at purchase is a live parameter Ultrade controls. | **This is an accepted trust, recorded deliberately.** Both keys are single-signature and `PDexV2Trading` is upgradeable (see [OVERVIEW](./PEX.md#governance-and-upgradeability)). Magnet Strategies assumes good-faith operation with notice — the normal posture for a third-party dependency. Note that this assumption addresses *intent* only: key compromise, operational error, and a well-intentioned upgrade introducing a bug are unaffected by it. Until the delay ships, mitigation is limited to reading parameters live and never caching a disclosed buffer. Once it ships, we read the **pending** change and surface it — see [Pending parameter changes](#pending-parameter-changes). |
 | PEX oracle signer | The price range all execution derives from | Freshness and target validation; refuse stale payloads |
 | PEX keeper network | Executing stored orders and ADL | None available |
 | Folks Finance, xALGO | Pool assets are partly deployed there via `lent_qty` | Transitive and unavoidable while trading against these pools. Disclose. |
@@ -930,7 +930,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 | Position **increased** | The take profit still covers only the prior size and remains executable — the SDK reports no blocker. Re-place it at the new size in the increase group, setting `leg.sizeUsdDelta` explicitly (the SDK default is the increase *delta*, not the merged total) |
 | User already holds a position on this side | Route to the increase flow on Surface 2, never the purchase flow |
 | Partial close blocked by min collateral or post-close health | Explain the floor; offer full close as the alternative |
-| Voluntary close rejected by `trader_pnl_cap` | Payout exceeded a fraction of the side pool. Explain as pool capacity, not user error. Rare at Cover unit sizes |
+| Voluntary close rejected by `trader_pnl_cap` | Payout exceeded a fraction of the side pool. Explain as pool capacity, not user error. Rare at Perps unit sizes |
 | Yield recall fails at close time | Neither the take profit nor a manual close can execute. Surface honestly — the user is temporarily unable to exit |
 | One-group construction exceeds 16 transactions | **Refuse to open, at every band.** Group size varies with settlement-maintenance calls, yield-freshness carriers and the `builderFeeBps > 0` dynamic-OI carrier — **not** with leverage, so a band-keyed rule is meaningless. And the take profit is mandatory: a fallback that opens a position without one contradicts the product definition. A first-time-trader open plus its bracket runs 11–15 transactions against a hard ceiling of 16, so this is a live constraint, not a theoretical one |
 | Close + cancel exceeds 16 transactions | `related_order_cancels_require_followup_group`, or `some_related_order_cancels_require_followup_group` when the close merges with the first group but others remain. Set the expectation before the first prompt; an unsigned follow-up is a blocking alarm state — cleanup is paid and permissionless, so nothing guarantees anyone else makes it |
@@ -941,7 +941,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 ## What Is Deliberately Not Here
 
 - **No custom smart contract.** If a proposal adds one, it changes the threat model in this document and requires re-review.
-- **No mUSD funding path.** Excluded by decision. See [OVERVIEW.md](./OVERVIEW.md#out-of-scope--musd-as-a-funding-path).
+- **No mUSD funding path.** Excluded by decision. See [OVERVIEW.md](./PEX.md#out-of-scope--musd-as-a-funding-path).
 - **No enforced time-based close in v1.** Not available without delegated authority.
 - **No chart.** PEX is oracle-priced; a chart would be decorative and would imply the user should be timing entries.
 - **No delegated close authority.** Option B is documented as rejected, not deferred.
@@ -954,7 +954,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 
 1. **Read path, pinning, and receipt discovery.** Fetch the deployment and protocol manifests; commit every app and asset ID, the four ABI method signatures, the oracle signer key, and the approval-program hashes as build-time constants. Decode `mp2:` / `mo2:` / `mf2:` / `ma2:` for both markets against live MainNet state.
    **Receipt discovery is DONE** — see [Measured MainNet State](#measured-mainnet-state--2026-09-21). 79 types; liquidation and ADL distinct. Remaining in this step: compute and commit the manifest SHA-256 and the approval-program hashes, and confirm `BUILDER_ADDRESS` USDC opt-in.
-2. **Measure.** Live borrowing and funding rates, real utilization, per-side capacity, `max_pnl_factor_for_traders_bps`, `liquidation_fee_bps`, `maintenance_margin_bps`, MainNet max leverage, and **`effective_min_position_size_usd` / `dynamic_min_position_size_usd` / `position_quantization_loss_usd`**. That last group is a product-viability question, not an edge case: Cover is the smallest position this exchange supports, `V2_MAX_POSITION_QUANTIZATION_BPS = 1n` (`src/v2Quotes.ts:48`) and `quoteV2OpenOrIncrease` pushes `position_quantization` and `zero_tokens` (`:2018-2022`). `COVER_MIN_UNITS = 1` is justified only against the **static TestNet** $5 floors — if a dynamic minimum or quantization rejects a 1-unit Cover on MainNet, the unit economics change. **Risk parameters are NOT done.** The `mr2:` values are confirmed and scale-correct, but the binding leverage constraint lives in the `doi:` box on `PDexV2TradingRiskOps`, which was never read — see the warning in [Measured MainNet State](#measured-mainnet-state--2026-09-21). **Re-derive the band model against `effective_max_leverage_bps` before anything downstream of leverage is trusted.** **Still to measure:** realised borrowing and funding *rates* over time (the factors are known: `funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps), ALGO volatility for `CROSS_MARGIN_BPS`, and whether a 1-unit Cover clears `position_quantization` and any dynamic minimum at every band.
+2. **Measure.** Live borrowing and funding rates, real utilization, per-side capacity, `max_pnl_factor_for_traders_bps`, `liquidation_fee_bps`, `maintenance_margin_bps`, MainNet max leverage, and **`effective_min_position_size_usd` / `dynamic_min_position_size_usd` / `position_quantization_loss_usd`**. That last group is a product-viability question, not an edge case: Perps is the smallest position this exchange supports, `V2_MAX_POSITION_QUANTIZATION_BPS = 1n` (`src/v2Quotes.ts:48`) and `quoteV2OpenOrIncrease` pushes `position_quantization` and `zero_tokens` (`:2018-2022`). `COVER_MIN_UNITS = 1` is justified only against the **static TestNet** $5 floors — if a dynamic minimum or quantization rejects a 1-unit Perps on MainNet, the unit economics change. **Risk parameters are NOT done.** The `mr2:` values are confirmed and scale-correct, but the binding leverage constraint lives in the `doi:` box on `PDexV2TradingRiskOps`, which was never read — see the warning in [Measured MainNet State](#measured-mainnet-state--2026-09-21). **Re-derive the band model against `effective_max_leverage_bps` before anything downstream of leverage is trusted.** **Still to measure:** realised borrowing and funding *rates* over time (the factors are known: `funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps), ALGO volatility for `CROSS_MARGIN_BPS`, and whether a 1-unit Perps clears `position_quantization` and any dynamic minimum at every band.
 3. **Pending-change reader**, once Ultrade ships it. Poll, recompute forward liquidation prices, notify inside the window. See [Pending Parameter Changes](#pending-parameter-changes).
 4. **Supply-chain controls.** Reproducible builds with published hashes, subresource integrity, a pinned deployment bundle. These — not the group assertion — are what raise the bar against full frontend compromise.
    **Operational prerequisite in the same step:** `BUILDER_ADDRESS` must be opted in to USDC (31566704) with sufficient ALGO MBR **before launch**. The builder fee is paid in the collateral asset and the address appears in `accounts` on every fee-bearing call — if it is not opted in, plausibly **every open fails for every user on day one**. *(Conditional: confirm on chain whether PEX pays via an axfer requiring the opt-in or via accrual.)*
@@ -962,7 +962,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 5. **Group construction.** Single audited module. Per-method ABI assertions plus asset-movement assertions on `(asset, amount, receiver)`. Simulation as a pre-flight check. `baseOrderId` allocated in strides of 3 from the highest existing `o2:` box read live from chain, never from local state.
 6. **Purchase surface.** Units → band → target price → confirm, with entry-time routing to the increase flow.
 7. **Management surface.** Liquidation price, take-profit state, accrued holding cost, add / add-collateral / partial close / close, orphan reclaim.
-8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close. Decode the `flags` prefix word for the position-deleted flag. Derive effective exit price by dividing amount returned by size rather than reconstructing impact. Then the five close notifications and Hedge History.
+8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close. Decode the `flags` prefix word for the position-deleted flag. Derive effective exit price by dividing amount returned by size rather than reconstructing impact. Then the five close notifications and Perps History.
 
 Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec marked TestNet is a placeholder until step 2 replaces it.
 
@@ -980,7 +980,7 @@ Policy, roadmap, or internal semantics we cannot observe.
 
 0. **Confirm the 0.5.0 MainNet cutover date**, and whether old brackets retiring with refunds requires anything of integrators beyond telling users to recreate protection.
 1. **Does the parameter delay window cover contract upgrades, or only parameters?** The sharpest remaining question. `PDexV2Trading` was upgraded 2026-09-12, an upgrade keeps the app ID, and Ultrade indicate no app ID change is expected — so **every** future change reaches us through the upgrade path. A 48h delay on parameters is only as strong as the upgrade path beneath it.
-2. ~~**`v2_order_bracket_cleanup` triggers and reason codes**~~ — **answered 2026-09-21.** Four reasons, none applying to Cover; our orphan case is `v2_order_cancelled` status 7/8, which refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21). **Narrowed sub-question:** is that cleanup **eager** at close or **lazy** on the next keeper evaluation? Decides whether Hedge History needs a reclaim affordance or only a record.
+2. ~~**`v2_order_bracket_cleanup` triggers and reason codes**~~ — **answered 2026-09-21.** Four reasons, none applying to Perps; our orphan case is `v2_order_cancelled` status 7/8, which refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21). **Narrowed sub-question:** is that cleanup **eager** at close or **lazy** on the next keeper evaluation? Decides whether Perps History needs a reclaim affordance or only a record.
 3. ~~**Oracle signer public key**~~ — **answered 2026-09-21.** `4cc6bcc8...d2e3dffb`, from `PDexV2OrderOps` (3690309166) global key `"oc"`, cross-checked against `PDexV2Trading` global key `"q"`. Pin it. Remaining sub-question: confirm the trailing `0x1e` is indeed an on-chain freshness tolerance of 30 seconds.
 4. ~~**Yield recall failure**~~ — **answered 2026-09-21.** Recall is atomic within whatever action requires it; if it fails, that action fails. Keeper recalls are not needed for direct user actions such as closing a position, so a manual close carries its own recall rather than depending on a keeper's.
 5. **Is there a published or private PEX audit, and is a multisig on the roadmap?** Both already asked; answers pending.
@@ -997,10 +997,10 @@ Each can be settled with `simulate_transactions` against MainNet at zero cost, a
 - Does a market pause gate `PDexV2OrderOps` cancellation?
 - Can an ALGO→USDC swap and a position open fit in one signed group within resource-reference limits?
 - Do resting limit orders pre-reserve open-interest capacity, or only the storage escrow?
-- Does a 1-unit Cover clear `position_quantization`, `zero_tokens` and any dynamic minimum at every band? *(Product-viability question at $10 units — settle early.)*
+- Does a 1-unit Perps clear `position_quantization`, `zero_tokens` and any dynamic minimum at every band? *(Product-viability question at $10 units — settle early.)*
 - Does the increase-flow group — cancel + `open_or_increase` + `submit_linked_order` + carriers — fit under 16 transactions in practice?
 
 ### Ours to decide, not to ask
 
-- **Should there be an unleveraged (1×) option?** A product called Cover with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
+- **Should there be an unleveraged (1×) option?** A product called Perps with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
 - **Does a PEX redeploy migrate existing position state?** Low priority — no app ID change is expected, so the two-state degraded mode is insurance against an unplanned event.
