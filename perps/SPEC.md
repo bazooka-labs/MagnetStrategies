@@ -179,8 +179,8 @@ Perps-side constants:
 | `MAX_POSITION_NOTIONAL_USD` | `min(LAUNCH_NOTIONAL_CEILING, 20% × live per-side OI headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band, which bound a single purchase and was bypassed by the increase flow — positions merge — while also delivering rising notional across bands, $1,250 → $1,500 → $2,000, the opposite of its own stated rationale.)* |
 | `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling on notional regardless of depth, for launch. Raise deliberately, not automatically. |
 | `MAX_UNITS_PER_PURCHASE` | 25 | UI convenience only; the notional cap is the binding control |
-| `RISK_BAR_MIN_LEVERAGE` | 1× | Left end — collateral equals notional, effectively unliquidatable |
-| `RISK_BAR_MAX_LEVERAGE` | solved live | Right end — from the quote's `effective_max_leverage_bps`, solved against the user's own order size. **Never `10000 / initial_margin_bps`** |
+| `RISK_BAR_MIN_LEVERAGE` | **solved live** | `max(min_position_size_usd, dynamic_min) / amount`. **Never a constant** — a pinned 1× sat above the ceiling on the short side today |
+| `RISK_BAR_MAX_LEVERAGE` | **solved live** | `min(N_margin, OI_headroom, MAX_POSITION_NOTIONAL_USD) / amount`, confirmed by a live quote returning `ok === true`. Never `10000 / initial_margin_bps`, and never the raw `effective_max_leverage_bps` — that field omits the fee term |
 | `PROTECTION_ENABLED` | conditional | Offer the optional stop only when the open + both brackets group builds under 16 transactions |
 
 | `BUILDER_ADDRESS` | MS treasury | Build-time constant |
@@ -219,30 +219,66 @@ The user types a **USDC amount** — their collateral, and their maximum loss on
 
 A single bar. Left is the least leverage, right is **whatever PEX currently allows on that side**. The resolved multiple is shown, but no band names, no fixed stops.
 
-**This is a structural answer, not a style choice.** Effective leverage is:
+**This is a structural answer, not a style choice** — but the arithmetic below is the part an earlier draft got wrong, and it was wrong in a way that made the bar's right end reject for every user on every open. Proven by executing 0.6.1 against live state.
+
+#### The ceiling is not `1 / initial_margin`
+
+Fees are deducted from collateral **before** the margin test:
 
 ```
-effectiveBps        = max(initial_margin_bps, dynamicBps)
-dynamicBps          = sideOiAfter × factor / V2_MATH_FACTOR_SCALE
-max leverage        = 10000 / effectiveBps
+positionCollateralDelta = max(0, collateralAmount − (openFee + builderFee))
+initial_margin_breach   if collateralValueAfter < feeFromBps(sizeAfter, effective_initial_margin_bps)
 ```
 
-With the live MainNet `doi:` config — enabled, both factors 1,000,000 — `dynamicBps` is approximately **side open interest in whole dollars**. So:
+Both fees are bps of **notional** — 6 bps open + 10 bps builder — so achievable leverage is `1 / (IM + 0.0016)`, never `1 / IM`. And the dynamic branch compounds it, because `dynamicBps` is computed on `sideOiAfter`, **including the user's own new size**: leverage depends on order size which depends on leverage.
 
-| Side OI | Max leverage |
-|---|---|
-| ≤ $500 | 20× |
-| $913 (ALGO/USD short, live) | 10.9× |
-| $1,667 | 6× |
-| $3,333 | 3× |
+> **Solving that fixed point on `effective_max_leverage_bps` is necessary but *not sufficient*.** An earlier draft required exactly that and still overshot, because the field itself carries no fee term. Executed: LONG at live OI solves to 12.484× and rejects; the true maximum is **12.240×**.
 
-**Any fixed multiple therefore has an open-interest level above which it cannot be delivered.** A 6× band dies above $1,667 of side OI; a 10× band dies above $1,000, which is below BTC/USD's own $1,560 cap. Named bands go dark with no story to tell the user. A bar whose ceiling tracks the venue never does — it just gets shorter.
+**Closed form.** With `C` = collateral in USD, `OI0` = current side OI in USD, `f = (open_fee_bps + builder_fee_bps) / 10000`, `IM0` = baseline initial margin as a fraction:
 
-**Requirements:**
+```
+baseline branch   N ≤ C / (IM0 + f)
+dynamic branch    N² + N·(OI0 + 10000f) − 10000·C = 0
+                  N = [ −(OI0 + 10000f) + √((OI0 + 10000f)² + 40000·C) ] / 2
+margin ceiling    N_margin = min(both branches)
+```
 
-- **Resolve from the quote's `effective_max_leverage_bps`, never from `initial_margin_bps`**, which is only the baseline. That requires reading `doi:` from **`PDexV2TradingRiskOps` (3690309161)** alongside the market boxes; without it every quote pushes `dynamic_oi_margin_missing`.
-- **`dynamicBps` is computed on `sideOiAfter` — including the user's own new size.** Available leverage is therefore a fixed point in order size: a larger order lowers the leverage available to it. The bar's ceiling must be **solved**, not looked up.
-- The bar trades reward against survival in both directions — more leverage means a larger payout at target *and* a nearer liquidation. Both move as it slides; that tension is the control's whole content.
+Verified against live MainNet: `OI0 = 189.10, C = 50` → **$611.95**, against $612.00 by binary search on the SDK.
+
+#### One ceiling expression, three constraints
+
+The margin solve is only one of three, and on the short side today it is **not** the binding one:
+
+```
+L_max = min( N_margin , OI_headroom , MAX_POSITION_NOTIONAL_USD ) / C
+```
+
+| Side, live, $50 collateral | Margin solve | OI headroom | Binding | Ceiling |
+|---|---|---|---|---|
+| LONG | $611.95 | $770.90 | margin | **12.24×** |
+| SHORT | $381.43 | **$46.56** | OI cap | **0.93×** |
+
+**Then step down one UI tick, and confirm by quoting the resolved size and requiring `ok === true` before enabling the right end.** Do not ship the closed form as the only gate — `dynamic_min_position_size_usd`, `position_quantization` and `impact_consumes_size` also sit on this path.
+
+#### The floor must be solved too
+
+```
+L_min = max(min_position_size_usd, dynamic_min_position_size_usd) / C
+```
+
+> **An earlier draft pinned `RISK_BAR_MIN_LEVERAGE = 1×` — a hardcoded fixed multiple, in the same change that removed fixed multiples on the grounds that they cannot always be delivered.** At $50 on the short side today, 1× is $50 of notional against $46.56 of headroom: it fails `short_oi_cap`, while 0.93× succeeds. The floor sat **above** the ceiling and no position on the bar was valid.
+
+**When `L_min > L_max`, the side is closed.** Render it as such — do not show a bar with no valid range.
+
+#### Field units
+
+`effective_max_leverage_bps = (V2_BPS × V2_BPS) / effectiveBps` — it is **leverage × 10,000**, so 20× reads as `200000`. Read it as a multiple only after dividing.
+
+#### Requirements
+
+- **Resolve from the quote, never from `initial_margin_bps`**, which is only the baseline. Read `doi:` from **`PDexV2TradingRiskOps`** alongside the market boxes; without it every quote pushes `dynamic_oi_margin_missing`.
+- **Read the `doi:` factor per market.** It is not a constant: ALGO/USD is 1,000,000 and BTC/USD is **641,026**. The "`dynamicBps` ≈ side OI in whole dollars" shortcut holds only on ALGO/USD.
+- The bar trades reward against survival in both directions — more leverage means a larger payout at target *and* a nearer liquidation. That tension is the control's whole content.
 
 ### Direction
 
@@ -273,6 +309,12 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 > - long (*protect against a rise*): `trigger > indexMaxPrice × (1 + ε)`
 >
 > with `ε = CROSS_MARGIN_BPS`, so a target one tick from crossing is also refused.
+>
+> **The stop-loss leg has mirrored semantics and needs its own rules.** `v2OrderCrossedByOracle` for `DECREASE_STOP_LOSS` is `crossed = side === LONG ? indexMin <= trigger : indexMax >= trigger`, so:
+> - long stop: `trigger < indexMinPrice × (1 − ε)`
+> - short stop: `trigger > indexMaxPrice × (1 + ε)`
+>
+> A crossed stop executes at submission exactly as a crossed target does — open and close in the same signed group, with the user paying both legs and **Magnet Strategies again the beneficiary of the error**. Worse here: the stop is anchored to a *computed* liquidation price rather than a typed number, so a sign or side error in that computation hits every Protection user at once. A marker constrained by the control is not an assertion.
 >
 > **Backstop, using an exported symbol.** `v2OrderCrossedByOracle` is declared without `export` (`src/transactions.ts`) and is therefore **not reachable** through `export * from "./transactions.js"` — an earlier draft named it and would not have compiled. Use instead:
 >
@@ -330,7 +372,17 @@ Worked at $50 and 6×: a stop at mid-buffer returns roughly **$27**; riding to l
 
 **Placement is constrained structurally, not by validation.** The stop must sit **between spot and the liquidation price**: past liquidation it never fires, past spot it fires immediately — the same wrong-side hazard as a mis-set take profit, now with a second order to get wrong. Present it as a marker on the liquidation scale rather than a free price field, so the constraint is expressed by the control.
 
-**Two things it buys us.** `OCO_SIBLING_CANCELLED` becomes live: when one bracket executes PEX cancels the other, which is cleanup we no longer build — the first of that event's four reasons that has ever applied here. And the child order slots `base+1` / `base+2` are both already reserved by the stride-of-3 allocation.
+> ⚠️ **BLOCKED — Protection does not ship until OCO is settled by simulation.**
+>
+> An earlier draft claimed `OCO_SIBLING_CANCELLED` "becomes live: when one bracket executes PEX cancels the other, which is cleanup we no longer build." **That symbol does not exist.** Grepping the pinned 0.6.1 source, its bundled docs, and the live `GET /v2/protocol` manifest returns **zero hits** for `OCO_SIBLING_CANCELLED`, `PARENT_RETIRED`, `PARENT_CANCELLED`, `PARENT_EXPIRED`, and for statuses 7/8 as `POSITION_MISSING`/`POSITION_REPLACED`. `v2_order_cancelled` declares `status: uint64` and `v2_order_bracket_cleanup` declares `reason: uint64`, both with **no enum registry anywhere**.
+>
+> All of it came from one chat message. Per this document's own citation policy those symbols are **UNVERIFIED**, and the spec then made one of them load-bearing for new surface — the exact over-trust pattern six passes have now flagged.
+>
+> **This is in the simulate-it-yourself bucket, not the ask-Ultrade bucket.** Settle it before Protection ships, and handle the case the chat message itself describes: OCO firing *"even on a partial reduction"* means a partial execution of either bracket cancels the other and leaves the surviving position **with no brackets at all** — a state no section currently addresses.
+>
+> Until then the orphan section below is written for **one** bracket and does not cover Protection. Two brackets means two order boxes, two keeper-fee escrows, and a cancel group that must cancel both.
+
+The child order slots `base+1` / `base+2` are both already reserved by the stride-of-3 allocation.
 
 **Costs:** a second order box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 µALGO in 0.6.1) and a second keeper-fee escrow in USDC. Both recoverable. Fold both into the quoted figures, and into the pre-flight balance check.
 
@@ -395,6 +447,8 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    - `reduce_size_exceeds_position` is a **live comparison** (`src/orders.ts`), not a terminal state. A take profit made stale by a partial close or partial ADL becomes **executable again** if the position grows back past its size — firing at the old trigger for the old size.
    - `v2AttachedChildInput` defaults the child size to `leg.sizeUsdDelta ?? rawParent.sizeUsdDelta` (`src/transactions.ts`). On an increase the parent's value is the **delta**, not the merged total, so a bracket attached without an explicit override covers only the newly-added size while rendering as fully armed. **`leg.sizeUsdDelta` must be set to the post-increase position size** — it is on the assertion list.
 
+   > **Assert distinct transaction IDs on every group before presenting it.** `new Set(txns.map(t => t.txID())).size === txns.length`, in the single audited module. This is cheap and catches a live upstream bug: with two brackets, `planV2CancelRelatedReduceOrders` appends a `PDexV2Math.noop` budget carrier per cancel, and two such carriers are **byte-identical** — no args, no boxes, no foreign apps, no note. The planner routes through `regroup`, which clears group IDs and re-assigns without the de-duplication `grouped()` applies. Reproduced against 0.6.1: a two-reduce-order cancel builds 4 transactions with **3 distinct IDs**, succeeds at build time, and is rejected at submission. `planV2CloseWithOrderCleanup` merges through the same path, so this sits on the mandatory close route. Report it to Ultrade.
+
    > **No SDK builder produces this group.** `buildV2MarketOpenWithAttachedOrdersTransactions` does open + brackets only; `planV2CloseWithOrderCleanup` is the close analogue with no increase equivalent. The grouping helpers are private — `grouped` (`transactions.ts:5949`), `regroup` / `splitGrouped` (`orders.ts:500-513`) — and that matters beyond inconvenience: `grouped()` applies `applyV2LargeProgramReadBudgetToTransactions` and `distinguishRepeatedMathCarriers` before `assignGroupID` while `regroup()` does neither, so a hand-assembled group under-allocates the box-read budget and can collide on duplicate `PDexV2Math.noop` carriers.
    >
    > **Size: 11–17 transactions against a hard ceiling of 16.** At the top of that range it is not buildable at all. **Build Order step 5 must measure the real combined size on MainNet and confirm hand-regrouping preserves the read budget.** If it does not, the atomic requirement is unbuildable and the increase flow needs redesigning — and every alternative leaves a position bracketless between signatures, which the product definition forbids.
@@ -427,7 +481,7 @@ liquidation        ~14.2% against you, before fees
 | +20% (take profit) | ~$109 returned |
 | +10% | ~$79 |
 | −14.2% | Liquidated — residual returned after the liquidation fee, typically a few dollars and sometimes nothing |
-| −7% with Protection on | ~$27 returned instead of ~$5 |
+| −7% with Protection on | ~$27 returned — against ~$28 still at risk in a live position without it. Protection's value at this point is ~$1; the $27-vs-$5 comparison holds at the **liquidation** boundary, not here |
 
 **Every figure here is computed by the SDK against live state, never by us, and never hardcoded.** The buffer shown is indicative; the user-facing number is `liquidation_price_estimate` from a live quote, which accounts for fees deducted from collateral at open.
 
@@ -646,7 +700,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 | | ALGO/USD | BTC/USD |
 |---|---|---|
 | Pool | 6,835 ALGO (~$592) + 796 USDC ≈ **$1,388** | 8,927 ALGO (~$773) + 942 USDC ≈ **$1,715** |
-| Open interest | long $10.60 · short $159.92 | **zero** |
+| Open interest | long **$189.10** · short **$913.44** *(re-read 2026-09-22; an earlier table said $10.60 / $159.92, understating short-side crowding by 5.7×)* | **zero** |
 | `unpaid_cost_usd` | 1 at 1e6 scale — i.e. \$0.000001, so a liquidation gap has occurred but is negligible in size | 0 |
 
 **PEX is new and thin, and that is understood: Perps exists partly to bring flow to it.** The requirement is not to wait for depth but to size against it honestly and scale automatically as it grows.
@@ -819,7 +873,8 @@ Two distinct unavailability states, with different messages and different user a
 
 | Side unavailable | `short_reserves_exceeded` / `long_reserves_exceeded` (`reserve_factor_bps × side OI` > side pool USD), or `max_open_interest_*` reached. **Not** a 70% utilization ceiling — no such gate exists | Nothing works on that side at any leverage — including Aggressive, despite its "always available" framing elsewhere, which refers only to capacity-constrained *leverage*, not to a closed side. Different message, different suggested action. |
 
-**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button — *"most you can open on this side right now: $46"*. It tells the user how to get to yes and costs nothing extra. With a continuum there are two ceilings to surface, and they are different: the **leverage** ceiling shortens the bar, while the **notional** ceiling caps the amount. A user blocked by the second can still open by typing less; a user blocked by the first cannot, and should be told the side is full.
+**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button — *"most you can open on this side right now: $46"*. It tells the user how to get to yes and costs nothing extra. With a continuum, `notional = amount × leverage`, so every constraint binds the **product** — there is no clean split between "shortens the bar" and "caps the amount", and an earlier draft's claim that a leverage block cannot be relieved by typing less is **inverted**: on the short side today $40 opens where $50 does not, because `short_oi_cap` is a notional cap.
+Surface one ceiling, `min(N_margin, OI_headroom, MAX_POSITION_NOTIONAL_USD) / amount`, and name which term is binding. When the solved floor exceeds the solved ceiling, the side is closed — say that, rather than rendering a bar with no valid range.
 
 **Structural note for this product specifically.** Directional demand is correlated — in an ALGO drawdown most users want the same side at the same time. Perps will systematically push into whichever side is already crowded, which is also the side whose leverage ceiling has already fallen, since `dynamicBps` tracks that side's open interest. **Both constraints tighten together, in the same event.** Design the capacity messaging for that case rather than treating it as an edge case.
 
@@ -876,7 +931,7 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 9. **No transaction group is presented for signature without passing the full-group ABI assertion** described in the Threat Model — every app-call argument verified against what the confirm screen displayed. Simulation runs too, but is a pre-flight failure detector, not a security control: a compromised frontend controls the simulation, the comparison, and the display. The wallet is the only real boundary.
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a *legacy* (`schemaVersion: 3`) reduce order.** V4 orders are lifetime-bound and a stale one meets a replaced position as a cancellation, not an execution — so V4 orphans are harmless and this invariant does not cover them. Legacy orders match by coordinates only and can still fire against a new position. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
-12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).crossed === false`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`.
+12. **No bracket leg — take-profit *or* stop-loss — is signed unless `quoteV2DecreaseOrder(...).crossed === false`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`.
     > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Perps's primary path** — proven by building 0.6.1 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
 13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
@@ -955,7 +1010,10 @@ What a Perps user is trusting, stated plainly because the product's honesty depe
 5. **Group construction.** Single audited module. Per-method ABI assertions plus asset-movement assertions on `(asset, amount, receiver)`. Simulation as a pre-flight check. `baseOrderId` allocated in strides of 3 from the highest existing `o2:` box read live from chain, never from local state.
 6. **Purchase surface.** Units → band → target price → confirm, with entry-time routing to the increase flow.
 7. **Management surface.** Liquidation price, take-profit state, accrued holding cost, add / add-collateral / partial close / close, orphan reclaim.
-8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close. Decode the `flags` prefix word for the position-deleted flag. Derive effective exit price by dividing amount returned by size rather than reconstructing impact. Then the five close notifications and Perps History.
+8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close.
+   **Read `position_deleted` as a named field** on `v2_position_decreased_with_output_swap`; it is not in the `flags` prefix word, and the manifest carries no flags registry, so `hasFlag()` throws. On `v2_position_liquidated` and `v2_position_adl` that field does not exist — use `remaining_size == 0`.
+   **Do not derive an exit price by division.** See [Outcomes](#outcomes-notifications-and-perps-history): the units do not produce a price and `pnl_output` is `uint64` with no sign bit. Either show no execution price, or reconstruct from `entry_price` read out of the `p2:` box before the close.
+   Then the five close notifications and Perps History.
 
 Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec marked TestNet is a placeholder until step 2 replaces it.
 
