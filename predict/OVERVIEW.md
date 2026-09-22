@@ -7,6 +7,9 @@ Predict products are mUSD-denominated, hosted inside the Magnet Strategies app, 
 built on the existing connect-wallet. They are user-to-user: the protocol never takes
 the other side of a position, holds no inventory, and carries no directional risk.
 
+**Status:** VPL shipped — contract, keeper and the `/predict` route are live. Contrast
+[Hedge](../hedge/OVERVIEW.md), still at design stage.
+
 > Shares its sector framing with [Hedge](../hedge/OVERVIEW.md), which houses a separate
 > product line. The overlapping sections below are duplicated rather than cross-linked
 > so this tree stands alone — the two will drift, and that is fine, because they

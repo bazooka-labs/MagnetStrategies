@@ -17,7 +17,8 @@ Each product's concrete instance lives with that product:
 
 The founding constraint, and the one that generalises:
 
-> **No Hedge product may share a price dependency with MagnetFi's solvency machinery.**
+> **No Hedge product may depend on a price *or state* source that MagnetFi's solvency
+> machinery depends on.**
 
 It was originally written narrowly — *Hedge must never read the oracle MagnetFi
 liquidations depend on* — because if a payout feed and a liquidation feed are the same
@@ -28,7 +29,11 @@ action.
 solvency (through LP collateral) *and* a Hedge product also depends on PEX state, the
 same failure mode returns with PEX as the shared dependency — no Magnet-run oracle
 involved anywhere. The rule is therefore about the *property*, not about a particular
-oracle app.
+oracle app — which is why the blockquote above says *price or state* rather than price
+alone. A price-only phrasing would permit exactly what [Invariant 5](./perps/COVER_SPEC.md#invariants)
+forbids: PEX state feeding MagnetFi solvency. The generalised form is stated identically
+in [OVERVIEW.md](./OVERVIEW.md) and [perps/OVERVIEW.md](./perps/OVERVIEW.md); this doc
+owns the price half of it.
 
 Two corollaries worth stating outright:
 
