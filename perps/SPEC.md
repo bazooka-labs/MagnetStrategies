@@ -174,13 +174,12 @@ Perps-side constants:
 |---|---|---|
 | `COVER_UNIT_USD` | 10 | Collateral committed per unit |
 | `COVER_MIN_UNITS` | 1 | $10 ≥ PEX $5 minimums at every band |
-| `MAX_POSITION_NOTIONAL_USD` | **dynamic** — `min(LAUNCH_NOTIONAL_CEILING, 20% × live per-side OI headroom, 25% × live trader-PnL-cap headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band, which bound a single purchase and was bypassed by the increase flow — positions merge — while also delivering rising notional across bands, $1,250 → $1,500 → $2,000, the opposite of its own stated rationale.)* |
-| `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling regardless of depth, for launch. Raise deliberately, not automatically. |
+| `MAX_POSITION_NOTIONAL_USD` | `min(LAUNCH_NOTIONAL_CEILING, 20% × live per-side OI headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band, which bound a single purchase and was bypassed by the increase flow — positions merge — while also delivering rising notional across bands, $1,250 → $1,500 → $2,000, the opposite of its own stated rationale.)* |
+| `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling on notional regardless of depth, for launch. Raise deliberately, not automatically. |
 | `MAX_UNITS_PER_PURCHASE` | 25 | UI convenience only; the notional cap is the binding control |
-| `BAND_LOW` | **3×** fixed | Deliverable while side OI < $3,333 |
-| `BAND_MODERATE` | **6×** fixed | Deliverable while side OI < $1,667 — validate against live `max_open_interest_*` at startup |
-| `BAND_AGGRESSIVE` | `min(maxAvailable, BAND_AGGRESSIVE_CEILING)` | |
-| `BAND_AGGRESSIVE_CEILING` | 20× | **Required.** MainNet max leverage is undocumented; without a ceiling the product makes an open-ended commitment to a number we do not know, and every buffer figure in this document assumes 20×. Revisit after step-2 measurement. |
+| `RISK_BAR_MIN_LEVERAGE` | 1× | Left end — collateral equals notional, effectively unliquidatable |
+| `RISK_BAR_MAX_LEVERAGE` | solved live | Right end — from the quote's `effective_max_leverage_bps`, solved against the user's own order size. **Never `10000 / initial_margin_bps`** |
+| `PROTECTION_ENABLED` | conditional | Offer the optional stop only when the open + both brackets group builds under 16 transactions |
 
 | `BUILDER_ADDRESS` | MS treasury | Build-time constant |
 | `POSITION_BUILDER_FEE_BPS` | 10 | Protocol cap is 10 |
@@ -196,74 +195,52 @@ Perps-side constants:
 
 > `MAX_POSITION_NOTIONAL_USD` is a **product guardrail with no on-chain enforcement** — a user can always go to PEX directly. It is not counted as a security control.
 >
+> **The PnL-cap and reserve terms were removed, because neither binds.** An earlier draft took a percentage of "trader-PnL-cap headroom", which is not a quantity that exists — `checkTraderPnlCap` recomputes a ceiling on *each close's own profit payout* against the side pool; it is not a consumable allowance, and at any size this product reaches it is unreachable (a 100% move on $250 pays $250 against a $717 ceiling). Reserves do not bind either: they permit **$4,977** of side OI against `max_open_interest`'s **$960**. **OI headroom is the only live constraint**, which makes the formula both simpler and honest.
+>
+> **It still needs a floor.** Live short-side headroom is **$46.56**; 20% of that is $9.31 of notional, below anything sellable. When the cap falls under the minimum viable order the UI must say the side is full, not offer an amount that cannot open.
+>
 > **It is deliberately a function of live state, not a constant.** PEX is early and thin; a fixed cap either blocks users today or becomes meaningless as depth grows, and updating it by release is a standing tax. Deriving it from live per-side OI headroom and trader-PnL-cap headroom means Perps scales with the exchange automatically — which is the point, since bringing flow to PEX is part of why this product exists. The `LAUNCH_NOTIONAL_CEILING` stays as a deliberate brake on that automation.
 
 ---
 
 ## Product Model
 
-### Units
+### Amount
 
-A Perps is **$10 of committed collateral**. The user buys N of them; committed collateral is `N × 10` USD. That is not quite the maximum outlay — the user also escrows the keeper fee (≥$0.05, denominated in **USDC**) and ~0.40 ALGO of MBR and fees, and on liquidation the escrowed USDC stays locked in the orphaned order until they sign a cancel. **The pre-flight USDC check must therefore be `N × 10 + keeperFeeAmount`**, or the first open of every user holding exactly $10 per unit fails.
+The user types a **USDC amount** — their collateral, and their maximum loss on the position. A `MAX` control fills it from the wallet balance. There are no fixed unit sizes; an earlier draft sold $10 units and that layer of indirection bought nothing once leverage became continuous.
 
-> **Units are a purchase-sizing device, not independent positions.** The position box key is `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner` — there is **one position per (market, collateral asset, side, wallet)**. Buying more on the same side is `open_or_increase` on the existing position: blended entry price, blended leverage, and **a changed liquidation price on what the user already held**.
+**Pre-flight balance check is `amount + keeperFeeAmount`**, not `amount` — every position escrows the keeper fee in USDC alongside the collateral, so a user with exactly their stated balance fails on the first open otherwise.
 
-Consequences, all of which the product must respect rather than paper over:
+> **Units are a purchase-sizing device only, and there are none now.** The position box key is `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner`, so a wallet holds **one position per (market, side)**. A second purchase on the same side is `open_or_increase` on the existing position — blended entry, blended leverage, and a changed liquidation price on what the user already held. Adding is an explicit flow on the management surface, routed at entry, never a second trip through the purchase screen.
 
-- **One open Perps per (market, side) per wallet.** Quantity is chosen at purchase.
-- **Adding is a separate, explicit flow** on the management surface — never a second trip through the purchase screen. One code path for every merge.
-- **Route at entry, not at confirm.** Check for an existing position at the target key **before rendering any purchase input**. Routing at confirm would mean the user configures "10 units, Aggressive, closes if ALGO rises 2.5%", then signs an increase producing a blended leverage, blended entry and a new liquidation price matching nothing they were shown — the exact harm the group assertion exists to prevent, arriving through an intended code path. On routing, discard all purchase-screen state and re-derive every figure from live position state. A group containing `open_or_increase` against a non-empty `p2:` box may only be presented from the increase flow.
-- **One take profit per position, and no stop loss at all.** Multiple TPs accumulate against `pendingTpSizeUsd` and child order IDs are hardcoded `base+1` / `base+2`, so overlapping brackets collide. Per-unit targets are not expressible.
-- **Per-unit duration is fiction.** "Close 3 of my 5" is a partial decrease of one merged position with no on-chain referent for which unit closed.
-- **Partial closes can be rejected**, when the remainder would fall below `min_collateral_usd` ($5 on TestNet) or would leave the position liquidatable (`position_health_breach`).
-- Per-unit P&L may be shown as contribution-weighted tracking derived from live position state, but the UI must never imply separate liquidation, because there is none.
+### Risk — a continuum, not named tiers
 
-### Aggressiveness bands
+A single bar. Left is the least leverage, right is **whatever PEX currently allows on that side**. The resolved multiple is shown, but no band names, no fixed stops.
 
-Three bands. Low and Moderate are **fixed multiples**. Aggressive is **whatever the maximum available leverage is** for that position size at that moment.
+**This is a structural answer, not a style choice.** Effective leverage is:
 
-| Band | Leverage | Buffer (gross / net) | Notional per $10 unit |
-|---|---|---|---|
-| Low | **3× fixed** | 30.8% / ~30.6% | $30 |
-| Moderate | **6× fixed** | 14.2% / ~13.9% | $60 |
-| Aggressive | max available | 2.5% / ~2.3% at 20× | up to $200 |
+```
+effectiveBps        = max(initial_margin_bps, dynamicBps)
+dynamicBps          = sideOiAfter × factor / V2_MATH_FACTOR_SCALE
+max leverage        = 10000 / effectiveBps
+```
 
-Fixed multiples mean Low and Moderate are deterministic: the same tap gives the same risk every time. Only the band named Aggressive maximises, which is what the word means.
+With the live MainNet `doi:` config — enabled, both factors 1,000,000 — `dynamicBps` is approximately **side open interest in whole dollars**. So:
 
-**These multiples are chosen against the dynamic OI margin, not in spite of it.** Effective leverage is `10000 / effectiveBps` with `effectiveBps = max(500, side OI in whole dollars)`, so every fixed band has a side-OI level above which it cannot be delivered:
-
-| Band | Dies above | ALGO/USD (cap $960) | BTC/USD (cap $1,560) |
-|---|---|---|---|
-| 3× | $3,333 side OI | ✅ | ✅ |
-| 6× | $1,667 side OI | ✅ | ✅ — **$107 of headroom** |
-| *10× (previous Moderate)* | *$1,000* | *✅* | ❌ **undeliverable** |
-| *5× (previous Low)* | *$2,000* | *✅* | *✅* |
-
-**Both fixed bands now survive to each market's OI cap**, which the previous 5×/10× pair did not: 10× dies above $1,000 of side OI while BTC/USD's cap is $1,560. Determinism is restored.
-
-Fee drag also falls sharply — round-trip fees take ~0.7% of the buffer at 3× and ~1.6% at 6×, against ~8.8% at 20×.
-
-> **The 6× guarantee is conditional on an admin-mutable cap.** BTC/USD has only $107 between its $1,560 OI cap and 6×'s $1,667 death point. If PEX raises that cap above $1,667, Moderate becomes undeliverable there. **Validate each band against the live `max_open_interest_*` at startup**, not against the figures printed here.
-
-**Buffer figures above are indicative only.** `1/leverage − maintenance_margin_rate` is *not* the user-facing number: open fees and the builder fee are deducted from collateral before the position opens (see [Revenue](#revenue)), so the real buffer is tighter. **Display the SDK's `liquidation_price_estimate` from a live quote, never a formula.**
-
-**And resolve every band from the quote's `effective_max_leverage_bps`, never from `initial_margin_bps`** — which is only the baseline. That requires reading the `doi:` box from `PDexV2TradingRiskOps` (3690309161) alongside the market boxes; without it every quote pushes `dynamic_oi_margin_missing`. Note `dynamicBps` is computed on side OI **including the user's own new size**, so for Aggressive the available leverage is a fixed point in order size and needs a solve rather than a lookup. The fixed bands avoid that problem entirely — another reason to prefer them.
-
-**Aggressive's resolved leverage and buffer must be displayed before signature.** It floats with capacity by design — 20× normally, less when open interest nears the per-side cap:
-
-> Aggressive → **20×** → closes if ALGO rises **2.5%**
-
-**At 20× the buffer is thin enough to state plainly.** Liquidation on a ~2.5% adverse move gross, **~2.3% after fees** (fees consume roughly **9%** of the margin buffer: open fee $0.12 + open builder fee $0.20 + close fee $0.12 against a $5 buffer on a $10 unit — the builder fee is charged on the open only, since liquidation forces it to zero) — inside ordinary daily movement for ALGO. The band is offered because it was asked for; the disclosure is not optional.
-
-**When capacity constrains the market, never present a band under a label its resolved leverage does not warrant.** Fixed bands cannot deliver a multiple above the current ceiling, so:
-
-| Max available | Offer |
+| Side OI | Max leverage |
 |---|---|
-| ≥ 10× | Low 5× · Moderate 10× · Aggressive `min(max, 20×)` |
-| 5× to <10× | Low 5× · Aggressive `max` · Moderate greyed out |
-| < 5× | **Low, capacity-limited to N×** — and Aggressive disabled |
+| ≤ $500 | 20× |
+| $913 (ALGO/USD short, live) | 10.9× |
+| $1,667 | 6× |
+| $3,333 | 3× |
 
-That last row is the one to get right. With a naive rule the only selectable band at a 4× ceiling would be the one labelled **Aggressive**, delivering 4× — the safest leverage in the product, under the most alarming name, at exactly the moment a drawdown has every user reaching for the same side. A fixed band never silently delivers a different multiple than its label, and no band is ever offered under a name that overstates its risk.
+**Any fixed multiple therefore has an open-interest level above which it cannot be delivered.** A 6× band dies above $1,667 of side OI; a 10× band dies above $1,000, which is below BTC/USD's own $1,560 cap. Named bands go dark with no story to tell the user. A bar whose ceiling tracks the venue never does — it just gets shorter.
+
+**Requirements:**
+
+- **Resolve from the quote's `effective_max_leverage_bps`, never from `initial_margin_bps`**, which is only the baseline. That requires reading `doi:` from **`PDexV2TradingRiskOps` (3690309161)** alongside the market boxes; without it every quote pushes `dynamic_oi_margin_missing`.
+- **`dynamicBps` is computed on `sideOiAfter` — including the user's own new size.** Available leverage is therefore a fixed point in order size: a larger order lowers the leverage available to it. The bar's ceiling must be **solved**, not looked up.
+- The bar trades reward against survival in both directions — more leverage means a larger payout at target *and* a nearer liquidation. Both move as it slides; that tension is the control's whole content.
 
 ### Direction
 
@@ -336,6 +313,22 @@ The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decre
 **Benefits of exactly one bracket** — deterministic group size (each bracket is four transactions against a 16-transaction ceiling), no child-order-ID collision (`base+1` / `base+2`), and half the orphan surface below.
 
 **Not guaranteed.** The trigger arms when the *oracle* crosses the level; a keeper then executes and can fill worse in a fast move. Oracle updates are discrete ~30s snapshots, not continuous.
+
+### Protection — an optional stop
+
+**Offered, never mandatory, and only when the group fits.**
+
+A second bracket (`DECREASE_STOP_LOSS`, order kind 3) placed between spot and the liquidation price. It exists because the no-stop-loss decision was made on hedging logic that no longer applies: a hedger manages downside through the asset they hold, and a directional trader holds nothing behind the position. Without it, liquidation is the only automated downside exit — and it fires with equity already at the maintenance margin, then takes up to **0.70% of position size** as a liquidation fee on top.
+
+Worked at $50 and 6×: a stop at mid-buffer returns roughly **$27**; riding to liquidation returns roughly **$5**.
+
+**Why optional is what makes it workable.** Each bracket is four transactions against a hard ceiling of 16, and open + take profit already runs 11–15. A second bracket takes it to 15–19, so it **does not always fit**. As a mandatory leg that is fragile; as an optional one it degrades cleanly — **offer it when the group builds, hide the control when it does not**, never fail at signature.
+
+**Placement is constrained structurally, not by validation.** The stop must sit **between spot and the liquidation price**: past liquidation it never fires, past spot it fires immediately — the same wrong-side hazard as a mis-set take profit, now with a second order to get wrong. Present it as a marker on the liquidation scale rather than a free price field, so the constraint is expressed by the control.
+
+**Two things it buys us.** `OCO_SIBLING_CANCELLED` becomes live: when one bracket executes PEX cancels the other, which is cleanup we no longer build — the first of that event's four reasons that has ever applied here. And the child order slots `base+1` / `base+2` are both already reserved by the stride-of-3 allocation.
+
+**Costs:** a second order box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 µALGO in 0.6.1) and a second keeper-fee escrow in USDC. Both recoverable. Fold both into the quoted figures, and into the pre-flight balance check.
 
 ### Orphaned take-profit orders
 
@@ -416,25 +409,23 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 ### Worked example
 
-5 Perps positions, Moderate, protect against a drop, TestNet params, ALGO at $0.0866:
+$50 committed, risk bar at 6×, long, live ALGO at $0.0866:
 
 ```
-committed          $50
-leverage           6×       (Moderate — fixed multiple)
+committed          $50        (collateral, and the maximum loss)
+leverage           6×         (bar position; ceiling today is 10.9× on the short side)
 notional           $300
-liquidation buffer ~14.2%   (ALGO rising ~14.2% ends the position)
+liquidation        ~14.2% against you, before fees
 ```
 
-Illustrative payoff, net of fees. **These figures are computed by the SDK against live state, never by us, and never hardcoded:**
-
-| ALGO moves | User receives |
+| ALGO moves | Result |
 |---|---|
-| −20% | ~$109 |
-| −10% | ~$79 |
-| −5% | ~$64 |
-| +14.2% | Liquidated — residual returned after the liquidation fee, typically a few dollars and sometimes nothing. See [Show the amount returned](#show-the-amount-returned-not-just-the-event) |
+| +20% (take profit) | ~$109 returned |
+| +10% | ~$79 |
+| −14.2% | Liquidated — residual returned after the liquidation fee, typically a few dollars and sometimes nothing |
+| −7% with Protection on | ~$27 returned instead of ~$5 |
 
----
+**Every figure here is computed by the SDK against live state, never by us, and never hardcoded.** The buffer shown is indicative; the user-facing number is `liquidation_price_estimate` from a live quote, which accounts for fees deducted from collateral at open.
 
 ## Two Surfaces
 
@@ -634,9 +625,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 > | $960 (ALGO/USD OI cap) | 960 bps | 10.4× |
 > | $1,560 (BTC/USD OI cap) | 1560 bps | 6.4× |
 >
-> Consequences, all unresolved: `BAND_AGGRESSIVE_CEILING = 20×` is reachable only on a side under $500 of OI; **Moderate's fixed 10× is undeliverable on BTC/USD above ~$1,000 side OI**; the Availability Gating read list omits `doi:` entirely, so every quote would push `dynamic_oi_margin_missing`; and `dynamicBps` is computed on OI **including the user's own new size**, making effective leverage a fixed point in order size that the band model has no solve for.
->
-> **Every leverage, buffer, notional and payoff figure in this document is downstream of this and must be re-derived from the quote's exported `effective_max_leverage_bps`, never from `initial_margin_bps`. Build Order step 2 is re-opened.**
+> **Resolved by design change, not mitigation.** Fixed leverage bands were removed entirely in favour of the [risk bar](#risk--a-continuum-not-named-tiers). A continuum has no threshold to cross, so no band can become undeliverable and no relabelling table is needed. Two requirements survive from the finding and are recorded there: resolve from `effective_max_leverage_bps` rather than `initial_margin_bps`, and **solve** the ceiling rather than look it up, because `dynamicBps` includes the user's own order size. `doi:` is now in the Availability Gating read list.
 
 ### Where the two markets differ
 
@@ -781,7 +770,7 @@ Capped by the protocol at **10 bps of notional** (`MAX_POSITION_BUILDER_FEE_BPS 
 
 This is a volume business. $1M of monthly notional returns roughly $2,000 at 20 bps round-trip.
 
-> **Incentive disclosure.** Revenue tracks notional, so Magnet Strategies earns up to **six** times more from an Aggressive position than a Low one at the same stake — wider than the four-times gap under the previous 5×/10× bands, because lowering the fixed multiples lowered the fee they generate — and the "resolve to the highest available leverage" rule maximises user risk and our fee at the same time. That alignment is real. It should be acknowledged here rather than discovered by an auditor, and it is the reason two things in this spec are non-negotiable: the resolved leverage is displayed before signature, and the liquidation price is a permanent, safety-critical element of the management surface — the more so because there is no stop loss behind it.
+> **Incentive disclosure.** Revenue tracks notional, and notional is `amount × leverage`, so **we earn in direct proportion to where the user leaves the risk bar** — up to ten times more at the right end than the left, on identical collateral. Our interest and the user's safety point in opposite directions along the one control the product is built around. That alignment is real. It should be acknowledged here rather than discovered by an auditor, and it is the reason two things in this spec are non-negotiable: the resolved leverage is displayed before signature, and the liquidation price is a permanent, safety-critical element of the management surface — the more so because there is no stop loss behind it.
 
 ### Swap fee — a separate decision
 
@@ -821,12 +810,12 @@ Two distinct unavailability states, with different messages and different user a
 
 | State | Cause | Message shape |
 |---|---|---|
-| Band unavailable | Dynamic margin tightened near the OI cap | "Moderate is unavailable right now — capacity is limited." Lower bands still work, relabelled per the table in [Aggressiveness bands](#aggressiveness-bands). |
+| Leverage ceiling lowered | Dynamic margin tightened as side OI rose | The risk bar simply gets shorter. No message needed — there is no named tier to report missing |
 > **Per-side OI is the sum of both collateral variants** — `short_oi_usd_with_long_collateral + short_oi_usd_with_short_collateral`. Reading only the USDC-collateral field overstates headroom.
 
 | Side unavailable | `short_reserves_exceeded` / `long_reserves_exceeded` (`reserve_factor_bps × side OI` > side pool USD), or `max_open_interest_*` reached. **Not** a 70% utilization ceiling — no such gate exists | Nothing works on that side at any leverage — including Aggressive, despite its "always available" framing elsewhere, which refers only to capacity-constrained *leverage*, not to a closed side. Different message, different suggested action. |
 
-**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button: *"Max at Aggressive: 4 Perps positions."* It tells the user how to get to yes and costs nothing extra. Note the limit is now a **unit count** — with fixed multiples there is no leverage to solve down to, and units cannot restore a 5× band that capacity has closed.
+**Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button — *"most you can open on this side right now: $46"*. It tells the user how to get to yes and costs nothing extra. With a continuum there are two ceilings to surface, and they are different: the **leverage** ceiling shortens the bar, while the **notional** ceiling caps the amount. A user blocked by the second can still open by typing less; a user blocked by the first cannot, and should be told the side is full.
 
 **Structural note for this product specifically.** Hedging demand is correlated — in an ALGO drawdown everyone wants the same side at the same time. Perps will systematically push into whichever side is already constrained, at exactly the moment users want it. Design the capacity messaging for that case rather than treating it as an edge case, and consider nudging users to open cover while capacity exists.
 
