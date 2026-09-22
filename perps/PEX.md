@@ -192,7 +192,7 @@ An Algorand app update replaces the contract's logic while everything inside it 
 
 What this means concretely:
 
-> `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts:2654`), not captured when a position opens. So the liquidation buffer we disclose to a user at purchase is not a property of their position — it is a live parameter under the control of a single key we do not hold. Raising it liquidates open positions with no price movement at all.
+> `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts`), not captured when a position opens. So the liquidation buffer we disclose to a user at purchase is not a property of their position — it is a live parameter under the control of a single key we do not hold. Raising it liquidates open positions with no price movement at all.
 
 Separation of the admin and upgrade roles into two keys is genuinely good practice, and single-signature control is unremarkable for a protocol at this stage — most young protocols look like this, and refusing to integrate on that basis would rule out most of the ecosystem.
 
