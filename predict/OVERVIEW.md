@@ -7,10 +7,11 @@ Predict products are mUSD-denominated, hosted inside the Magnet Strategies app, 
 built on the existing connect-wallet. They are user-to-user: the protocol never takes
 the other side of a position, holds no inventory, and carries no directional risk.
 
-> Shares its sector framing with [Hedge](../hedge/OVERVIEW.md), which houses a separate
-> product line. The overlapping sections below are duplicated rather than cross-linked
-> so this tree stands alone — the two will drift, and that is fine, because they
-> describe different products.
+> **This tree stands alone.** Predict shares its sector framing — the mUSD rationale,
+> the ring-fencing rule, the open-source policy — with a second product line developed
+> separately. Those sections are duplicated here rather than cross-linked, so nothing
+> in Predict depends on a tree outside it. The copies will drift, which is correct:
+> they describe different products.
 
 ---
 
