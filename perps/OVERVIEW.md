@@ -68,7 +68,7 @@ Note that PEX's own SDK is **source-available, not open source**, under the PEX 
 
 | | |
 |---|---|
-| [perps/OVERVIEW.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
+| [PEX.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
 | [perps/SPEC.md](./SPEC.md) | Perps — product definition, architecture, threat model, invariants |
 | [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model. Retained because perps cites it as the sector-level oracle doc for off-chain cross-checks in our own keeper aggregation |
 | [../predict/OVERVIEW.md](../predict/OVERVIEW.md) | **Predict** — the ladder product line, moved to its own tree |

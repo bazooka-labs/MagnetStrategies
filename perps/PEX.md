@@ -1,4 +1,4 @@
-# Perps
+# PEX — Platform Reference
 
 Perps is the PEX-integrated arm of Perps: leveraged directional positions on Algorand, wrapped in a product surface that deliberately does not look like a trading terminal.
 
@@ -71,12 +71,12 @@ Originally the **TestNet** values — the only ones PEX publishes. **Every one w
 
 | Parameter | Value |
 |---|---|
-| Maximum leverage | 20× |
+| ~~Maximum leverage 20×~~ | **Not achievable.** `initial_margin_bps = 500` is the baseline only: the dynamic OI margin raises it with side open interest, and fees are deducted from collateral before the margin test. True maximum at live state is ~12.24× long and ~0.93× short — see [SPEC.md](./SPEC.md#risk--a-continuum-not-named-tiers) |
 | Initial margin | 5.00% |
 | Maintenance margin | 2.50% |
 | Minimum position size | $5 |
 | Minimum collateral value | $5 |
-| Maximum pool utilization | 70% |
+| ~~Maximum pool utilization 70%~~ | **No such gate exists.** `optimal_usage_factor_*_bps = 7000` is the kink in the borrowing-rate curve and is never read as a limit. A side closes on `checkReserves` (`reserve_factor_bps × side OI` vs side pool USD) or `max_open_interest_*` |
 | Open / increase fee | 0.06% of changed size |
 | Decrease / close fee | 0.06% of changed size |
 | Liquidation fee | up to 0.70% of position size |
@@ -92,14 +92,14 @@ The funding split is **not a constant**. `opposing_trader_share_bps` lives on-ch
 | Item | µALGO |
 |---|---|
 | Position box MBR | 70,900 |
-| Order box MBR | 96,500 |
+| Order box MBR | **99,700** (0.6.1; `V2_LEGACY_ORDER_BOX_MBR_MICRO_ALGO = 96,500` is the pre-cutover twin — import the constant, never hardcode) |
 | Open-order execution escrow | 100,200 |
 | LP box MBR | 26,500 |
 | Trading method flat fee | 29,000 |
 | Decrease/close method flat fee | 37,000 |
 | Liquidation method flat fee | 28,000 |
 
-A position with an attached take profit costs roughly **0.40 ALGO** all-in (position box 70,900 + order box 96,500 + trader box 29,300 + method flat fees + per-transaction minimums). Negligible in dollars; fatal if the user's spendable ALGO is short. This is the single most common cause of a failed first transaction.
+A position with an attached take profit costs roughly **0.40 ALGO** all-in (position box 70,900 + order box 99,700 + trader box 29,300 + method flat fees + per-transaction minimums). Negligible in dollars; fatal if the user's spendable ALGO is short. This is the single most common cause of a failed first transaction.
 
 **On-chain state** is readable from boxes with these key prefixes:
 
@@ -228,13 +228,13 @@ It was deferred because the underlying asset can be drained through **correlated
 2. **Trader PnL.** The pool is the traders' counterparty. Verified in PEX's own NAV vectors: a single $100M long up ~20% subtracts 20,600,000 directly from `withdraw_value`. Bounded by PnL caps and ADL, but bounded is not small.
 3. **Basis risk** (BTC/USD only). Assets and liabilities uncorrelated.
 4. **Yield-source risk.** `lent_qty` is pool assets deployed into Folks Finance lending and xALGO consensus staking. Our users would inherit third-protocol risk they never chose.
-5. **Availability.** Utilization at the 70% ceiling, committed reserves, a binding PnL cap, or assets mid-recall can make the position solvent but un-redeemable.
+5. **Availability.** Committed reserves, the per-side OI cap, a binding PnL cap, or assets mid-recall can make the position solvent but un-redeemable.
 
-In a sharp ALGO drawdown, (1), (2) and (5) fire together: collateral value falls, falls again as shorts are paid, and becomes un-redeemable through a utilization spike — at exactly the moment MagnetFi borrowers need liquidating and liquidators need to realize it. That is a reflexive spiral, and it is categorically worse than Tinyman LP collateral, which can lose value but is always redeemable and has no counterparty leg.
+In a sharp ALGO drawdown, (1), (2) and (5) fire together: collateral value falls, falls again as shorts are paid, and becomes un-redeemable as reserves are committed against open positions — at exactly the moment MagnetFi borrowers need liquidating and liquidators need to realize it. That is a reflexive spiral, and it is categorically worse than Tinyman LP collateral, which can lose value but is always redeemable and has no counterparty leg.
 
 PEX ships a `liquidation_uncollectible` conformance vector. They have modelled uncollectible liquidations. Treat that as a warning aimed at integrators.
 
-**If this is ever revisited:** ALGO/USD pool only; LTV gated on live utilization headroom rather than price alone; a hard cap on PEX-backed collateral as a share of MagnetFi's total collateral base; liquidation paid from a buffer rather than requiring the liquidator to redeem; and a separate haircut for `lent_qty`.
+**If this is ever revisited:** ALGO/USD pool only; LTV gated on live reserve and OI headroom rather than price alone; a hard cap on PEX-backed collateral as a share of MagnetFi's total collateral base; liquidation paid from a buffer rather than requiring the liquidator to redeem; and a separate haircut for `lent_qty`.
 
 ### Deferred — delta-neutral farming vault
 

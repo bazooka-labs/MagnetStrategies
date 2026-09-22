@@ -32,7 +32,7 @@ involved anywhere. The rule is therefore about the *property*, not about a parti
 oracle app — which is why the blockquote above says *price or state* rather than price
 alone. A price-only phrasing would permit exactly what [Invariant 5](./SPEC.md#invariants)
 forbids: PEX state feeding MagnetFi solvency. The generalised form is stated identically
-in [OVERVIEW.md](./OVERVIEW.md) and [perps/OVERVIEW.md](./PEX.md); this doc
+in [OVERVIEW.md](./OVERVIEW.md) and [PEX.md](./PEX.md); this doc
 owns the price half of it.
 
 Two corollaries worth stating outright:
