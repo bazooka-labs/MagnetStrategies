@@ -85,7 +85,9 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 - `builderAddress == BUILDER_ADDRESS` and `builderFeeBps == POSITION_BUILDER_FEE_BPS` (assert **equality**, per Invariant 7 — `<= 10` catches nothing, since `normalizeBuilderFee` already throws above the cap at `src/transactions.ts:6482-6484`)
 - `|acceptablePrice − displayedIndexPrice| / displayedIndexPrice <= userSlippageBps` (the SDK validates only that it is a positive Price12 — there is no upper bound on looseness)
 
-**`decrease_or_close` args (0.5.0, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts:1430-1448`).
+**`open_or_increase` — add-margin variant.** "Add collateral" is `buildV2AddPositionMarginCall`, which calls `open_or_increase` with **`sizeUsdDelta = 0`** and a **zero** builder-fee cap. Assert `sizeUsdDelta == 0`, `builderFeeBps == 0`, and bound the collateral by the axfer alone; the leverage-ratio rule does not apply since it evaluates to 0. *(For later: `buildV2WithdrawPositionMarginCall` uses `decrease_or_close` with `sizeUsdDelta = 0` and carries the withdrawal amount in the **`minPrimary`** slot — so the `minPrimary == minSecondary == 0` rule is wrong for that path if partial withdrawal is ever surfaced.)*
+
+**`decrease_or_close` args (0.6.1, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts:1430-1448`).
 - **`expectedPositionId` must be a real id, never the wildcard.** `expectedClosePositionId(undefined)` yields `(1n << 64n) - 1n`, which closes whatever position occupies the key. Valid range is `0 ≤ id < 2^48`. **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
 - `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Cover" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
 - `outputSwapMode == 0`, and `minPrimary == minSecondary == 0` given mode 0
@@ -105,11 +107,13 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
   | Case | Required values |
   |---|---|
-  | Same-group open + attached TP (Cover's normal path) | `entryGroupOffset` = the entry's index in the group (1–15), `expectedPositionId` = 0 |
+  | Same-group open + attached TP (Cover's normal path) | `entryGroupOffset` = **(index of the TP's `submit_linked_order`) − (index of `open_or_increase`)**, range 1–15; `expectedPositionId` = 0 |
   | TP re-placed onto an existing position (increase flow) | `entryGroupOffset` = 0, `expectedPositionId` = the live id — **the SDK throws if omitted** |
   | `OPEN_LIMIT` or `CHILD_WAIT_PARENT` | both 0 |
 
   Assert the pair matches the flow. A mismatch is how a bracket ends up bound to the wrong position lifetime.
+
+  > **`entryGroupOffset` is a relative backward distance, not an absolute index.** Source: `entryGroupOffset = transactions.length + 2 − entryTransactionIndex`, where `entryTransactionIndex` is the index of the `open_or_increase` call. An earlier draft described it as "the entry's index in the group" — the two coincide only when the entry sits at index 0, which it never does, since settlement-maintenance calls and the collateral transfer precede it (`primaryIndex = maintenance.length + 1`). An assertion written from that wording rejects **every** valid Cover group, and the likely field response is to relax the check rather than correct it.
 
 > `encodeAppArgs` packs everything from index 14 onward into a trailing tuple when there are more than 15 args (`src/transactions.ts:930-951`) — 22 args triggers this, and the packing boundary comes from the **manifest's** arg type list. The assertion must decode the packed tuple, which makes the manifest hash pin load-bearing for this leg.
 
@@ -184,7 +188,7 @@ Cover-side constants:
 | `DEFAULT_SLIPPAGE_BPS` | 50 | User-adjustable, disclosed |
 | `MAX_KEEPER_FEE_ESCROW_MULTIPLE` | `min(2× displayed, MAX_KEEPER_FEE_ESCROW_USDC)` | **Required.** `v2OrderEscrowAmount` returns `keeperFeeAmount` verbatim for decrease kinds and the SDK validates it nowhere (`src/transactions.ts:6389-6396`). Because the take profit is now mandatory, **every** Cover carries this transfer — so an unbounded value means a compromised frontend can escrow the wallet's entire USDC balance to a correctly-pinned OrderOps address, past every asset-movement check, on every open. |
 | `CROSS_MARGIN_BPS` (ε) | 50 initial | Minimum distance a take-profit trigger must sit from the crossing bound. Covers price movement in the ≤`ORACLE_MAX_AGE_SEC` window between `publishedAt` and submission. **Provisional** — derive from `ORACLE_MAX_AGE_SEC` × measured ALGO volatility in Build Order step 2. At a 2.3% buffer this is not a rounding detail. |
-| `CHILD_KEEPER_FEE_USDC` | 0.10 provisional | **Required and non-zero.** `v2AttachedChildInput` defaults `keeperFeeAmount` to `leg.keeperFeeAmount ?? rawParent.childKeeperFeeAmount ?? rawParent.keeperFeeAmount ?? 0` (`src/transactions.ts:6377`), and `childKeeperFeeAmount` is **optional** on the open-with-attached-orders input. Leave it unset and the escrow is 0 — producing an order that passes every assertion, renders as armed, and **no keeper will ever execute**, silently removing the product's only automated upside exit. Nothing in the SDK enforces the published $0.05 minimum. |
+| `CHILD_KEEPER_FEE_USDC` | **read live**, floor 0.10 | **Required and non-zero.** `v2AttachedChildInput` defaults `keeperFeeAmount` to `leg.keeperFeeAmount ?? rawParent.childKeeperFeeAmount ?? rawParent.keeperFeeAmount ?? 0` (`src/transactions.ts:6377`), and `childKeeperFeeAmount` is **optional** on the open-with-attached-orders input. Leave it unset and the escrow is 0 — producing an order that passes every assertion, renders as armed, and **no keeper will ever execute**, silently removing the product's only automated upside exit. Nothing in the SDK enforces a minimum, but the contract does: `PDexV2OrderOps` global key `op` carries `min_keeper_fee_usd = 50_000` (\$0.05), `max_gtd_expiry_seconds = 2_592_000`, `max_order_size_usd = 1e12`. **These are admin-mutable order policy, so read them live per Invariant 8** — if the minimum is raised above our constant the escrow silently produces the never-executed order described above. |
 | `MAX_KEEPER_FEE_ESCROW_USDC` | 0.50 | Absolute cap on the escrow transfer. |
 | `ORACLE_MAX_AGE_SEC` | 20 | Reject quotes on payloads older than this. A deliberate conservative pin against PEX's ~30s window. Invariant 8 governs PEX *risk parameters* — margin, caps, fees, funding share, utilization — and payload age is not one, so no exception is needed. **Specify a re-fetch/re-quote loop**: hardware-wallet and mobile deep-link signing round trips routinely exceed 20s, and blocking at the prompt would fail for a meaningful share of users. |
 
@@ -275,8 +279,10 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 > **Backstop, using an exported symbol.** `v2OrderCrossedByOracle` is declared without `export` (`src/transactions.ts:905`) and is therefore **not reachable** through `export * from "./transactions.js"` — an earlier draft named it and would not have compiled. Use instead:
 >
 > ```
-> quoteV2DecreaseOrder({ ...childInput, market, prices }).submission_result !== "execute_immediately"
+> quoteV2DecreaseOrder({ ...childInput, market, prices }).crossed === false
 > ```
+>
+> **Not `submission_result`.** That field returns `"blocked"` for any failure, and a same-group open pushes `position_missing` because the position does not exist yet — so the check would pass on every purchase-flow open while the order was crossed. Verified by execution against 0.6.1.
 >
 > (`src/v2OrderQuotes.ts:158`, `:470`, `submissionResultFor` at `:518-523`; asserted for a take profit in `test/v2-order-quotes.test.ts:178`.) Derive `market` / `prices` from **the group's own oracle message** — `analyzeV2NewOrderIntent` is called with no `marketSnapshot` (`src/v2OrderQuotes.ts:162`), so prices must be supplied explicitly or the check is vacuous.
 >
@@ -300,11 +306,13 @@ Show the implied shape next to the field as plain information, the way the liqui
 
 | Component | Source | Amount |
 |---|---|---|
-| Order box MBR | pinned constant, exact | 96,500 µALGO |
+| Order box MBR | **import `V2_ORDER_BOX_MBR_MICRO_ALGO` from the pinned SDK — do not hardcode** | **99,700 µALGO** in 0.6.1 |
 | Group flat fees | `required_group_flat_fee_microalgos` (µALGO **flat fee only** — it contains no MBR) | varies with carriers |
 | Keeper fee escrow | `keeperFeeAmount`, denominated in **the collateral asset**, not µALGO | ≥ $0.05 |
 
-The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decrease kinds (`src/transactions.ts:6277-6281`).
+The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decrease kinds.
+
+> **The order-box MBR moved and an earlier draft missed it.** 0.6.1 carries **both** `V2_LEGACY_ORDER_BOX_MBR_MICRO_ALGO = 96_500` and `V2_ORDER_BOX_MBR_MICRO_ALGO = 99_700`; the 3,200 µALGO delta is the `position_id` word added to the order box at the cutover. `v2AttachedChildInput` defaults the storage payment to the **current** value. Hardcoding 96,500 — which this document did, calling it "exact", through two claimed re-derivations — makes the full-group assertion fail on the `pay` leg of every open, and paying 96,500 makes the contract reject the short payment. **Import the constant from the pinned SDK and assert against it.** Both order- and position-box MBR are layout-derived and move at cutover.
 
 **All-in for open plus one take profit: ~0.40 ALGO** — order box 96,500 + position box 70,900 + trader box 29,300 + trading flat fee 29,000 + OrderOps flat fee ~14,000 + per-transaction minimums across the group. *(An earlier draft cited 0.193 ALGO, which is the two-order-box figure in a design that no longer has two orders, compared against an all-in precheck. Under-prechecking causes the failure this document calls the most common one.)*
 
@@ -377,9 +385,17 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    >
    > **Size: 11–17 transactions against a hard ceiling of 16.** At the top of that range it is not buildable at all. **Build Order step 5 must measure the real combined size on MainNet and confirm hand-regrouping preserves the read budget.** If it does not, the atomic requirement is unbuildable and the increase flow needs redesigning — and every alternative leaves a position bracketless between signatures, which the product definition forbids.
 
-3. **Manual closes should build the cancel group — for promptness, not correctness.** PEX cancels the orphan itself via status 7/8 and refunds `storage_refund_microalgo` either way, so an unsigned follow-up is no longer the blocking alarm state an earlier draft made it. What proactive cancellation buys is a faster MBR return and no window where a dead order renders as live. Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`).
+3. **Every manual close builds the cancel group. This is a correctness requirement, and an unsigned follow-up is a blocking alarm state.**
 
-**Hedge History** records orphans and their MBR. Whether it needs a **reclaim button** or only a **record** depends on the one question still open — whether status-7/8 cleanup is eager at close or lazy on next keeper evaluation. Build the record; add the button only if cleanup proves lazy.
+   > **An earlier draft downgraded this to "promptness" on the strength of a chat message, and the source does not support it.** What 0.6.1 shows: `orders.ts` sets `cleanupReason = "position_replaced"` and pushes a blocker — that is a **client-side lifecycle classification** establishing the order will not *execute*. It says nothing about cancellation. `planV2CancelRelatedReduceOrders` still emits `related_reduce_orders_require_owner_cancel` and returns separate owner-signed groups; if closing auto-cancelled brackets that planner would be unnecessary. The only cleanup mechanism in the SDK is `buildV2OrderCleanupCall` — an `execute_order` call with `cleanup: "orphan"`, **arbitrary sender**, 20,000 µALGO flat fee — and the 0.5.0 notes describe orphans receiving **paid** cleanup.
+   >
+   > So cleanup is **lazy and incentive-driven, not eager and automatic.** On an exchange this thin, a $0.05–0.10 keeper fee may motivate nobody, leaving 99,700 µALGO of MBR plus the USDC escrow locked indefinitely. **Non-execution is verified; prompt cancellation is not.**
+   >
+   > Useful consequence: because the cleanup call takes an arbitrary sender, **Cover can build and submit it itself** rather than waiting for a third party. The spec previously knew only about owner-signed `cancel_order`.
+
+   Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain. Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`).
+
+**Hedge History records orphans and their locked MBR, and needs the reclaim button.** The question of eager-versus-lazy cleanup is answered by the source: cleanup is a paid, permissionless `execute_order` call, so nothing guarantees anyone makes it. Build the button — and since the call accepts an arbitrary sender, Cover can offer to submit it rather than only prompting the owner.
 
 ### Worked example
 
@@ -430,7 +446,9 @@ Available on Surface 2:
    |---|---|
    | `not_crossed` | **Armed** — the normal healthy state |
    | `reduce_size_exceeds_position` | **Stale** — re-arms at the old trigger if the position grows back |
-   | `position_missing` | **Orphaned** — PEX cancels it via `v2_order_cancelled` status 7/8 and refunds storage; show as resolved, not as a user action, unless cleanup proves lazy |
+   | `position_missing` | **Orphaned — funds still locked.** Never show as resolved: cleanup is a paid, permissionless call nobody is obliged to make. Offer reclaim |
+| `position_replaced` | **Orphaned (V4)** — will not execute, but the MBR and keeper-fee escrow remain locked until cleanup. Offer reclaim |
+| `unknown_position_state` | **Cannot determine protection state** — a loud state, never a silent fallthrough. This is the default whenever the decoder does not surface `position_id`, including against any pre-cutover manifest |
    | `order_expired`, `bad_order_price` | **Dead** |
 
    Also supply `marketSnapshot` with live `index_price_min` / `index_price_max`, and check the decoded `o2:` record for those fields: `mergedOrder = { ...(marketSnapshot ?? {}), ...order }` (`src/orders.ts:173`) lets **order-box fields win over the live snapshot**, so a shadowing field would evaluate crossing against prices frozen at placement time
@@ -462,14 +480,20 @@ A user who never opens the advanced surface must still learn that they are at ri
 >
 > **Amount returned** differs by path: forced closes (liquidation, ADL) report `collateral_output + pnl_output`; voluntary closes report **final primary and secondary outputs**. Amounts are in **token atomic units**. `unpaid_cost_usd > 0` identifies the genuine nothing-returned case.
 >
-> **Partial vs full close** is `remaining_size` *together with a position-deleted flag* — the flag lives in the `flags` prefix word, so the prefix must be decoded, not skipped.
+> **Partial vs full close** is path-dependent. `position_deleted` is an explicit **named field** on `v2_position_decreased_with_output_swap` — the voluntary path — and does **not** exist on `v2_position_liquidated` (153) or `v2_position_adl` (154), where only `remaining_size` is available. Use `remaining_size == 0` for finality on the forced paths and `position_deleted` on the voluntary one. *(An earlier draft placed it in the `flags` prefix word. It is not there, and the manifest carries no `receipts.flags` registry at all, so `hasFlag()` throws against it.)*
 >
 > **Funding payouts may land in separate settlement calls and transfers**, so a single close receipt is not the whole story for "what did I get back."** `v2_builder_fee_paid` carries `fee_base`, settling exactly what our fee is charged on, and `payment_status` confirms the paid/clipped/waived behaviour.
 >
 > **Two gaps remain:**
 >
 > 1. **No close receipt carries an execution price**, confirmed by Ultrade. The oracle price *is* available in transaction data — but that is not the price the user got: an **effective price including impact requires reconstruction**.
->    **Recommended approach:** do not reconstruct impact. Back the effective price out of figures we already have — `amount returned` against `size_usd_delta` yields an implied execution price directly. Show that, and label the oracle price separately if shown at all. Reconstructing impact is work with a wrong-answer failure mode; division is not.
+>    **An earlier draft proposed dividing amount returned by `size_usd_delta` to imply an execution price. That does not work and must not be built:**
+>    - **The units do not produce a price.** `size_usd_delta` is USD notional at 1e6; `collateral_output` and `pnl_output` are **token atomic units**. Their ratio is a dimensionless fraction of notional returned. An ALGO price needs `entry_price`, which no close receipt carries.
+>    - **The sign is unrecoverable.** `pnl_output` is `uint64`. On a losing close it is 0 and the loss comes out of `collateral_output`. There is no sign bit and no `pnl_sign` field anywhere in the manifest.
+>    - Accrued funding and borrowing are netted into the outputs, and funding may settle in separate calls entirely.
+>    - Partial closes return pro-rata collateral, so the ratio moves with the close fraction independent of price.
+>
+>    **Options, pick one:** show no execution price at all; or reconstruct properly from `entry_price` read out of the `p2:` box *before* the close, combined with the receipt outputs, handling the loss case explicitly.
 > 2. **`v2_order_bracket_cleanup` is not our cleanup path** — resolved 2026-09-21. Its four reasons all concern a resting parent *entry* order or an OCO sibling, neither of which Cover has. Cover's orphans are cleaned by `v2_order_cancelled` status 7/8, which also refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21).
 >
 > **Fee breakdown is partially explicit.** Receipts carry the close or liquidation fee, output-swap fees, and their pool / protocol / insurance split. Builder fees are a **separate** `v2_builder_fee_paid` receipt. A complete funding, borrowing and fee-allocation breakdown needs additional inner-call data and calculation — so Hedge History's itemised fee line is partly reconstruction, not a direct read. Size that work accordingly, or show a coarser breakdown in v1.
@@ -524,6 +548,10 @@ So the re-arm hazard is **not fully dead** — dead for newly created brackets, 
 
 Current MainNet approval-program SHA-256 prefixes are Trading `c6c2802f…`, OrderOps `492edbc1…`, AdminControl `08e7101a…`. **These change at the position-identity cutover**, so capture the pinning constants at release against the upgraded contracts rather than committing today's values.
 
+**The protocol-manifest SHA-256 belongs in the same bucket.** The served manifest still describes the *pre-cutover* generation: it declares `decrease_or_close` with 14 args and `submit_linked_order` with 22, against the 15 and 24 the 0.6.1 builders pass; its `position_state` and `order_state` formats carry no `position_id`; and its `approval_size` for Trading and OrderOps does not match the deployed programs. Pinning today's hash would pin an artifact **incompatible with the pinned SDK** — `encodeAppArgs` throws `decrease_or_close expects 14 app args`. Capture it at cutover.
+
+> The 7 / 15 / 24 argument lists are verified positionally against the 0.6.1 builders, but are **post-cutover and unverified against any served manifest**, because no cutover manifest exists yet.
+
 ### Superseded
 
 The original 0.5.0 retarget decision (2026-09-21) stands in substance — build against the position-identity contracts, not 0.4.0 — but 0.5.0 is no longer the right pin.
@@ -576,9 +604,22 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 | `liquidation_fee_bps` | 70 |
 | `max_liquidation_impact_bps` | 50 |
 | `funding_interval_seconds` | 3600 |
-| `optimal_usage_factor_*_bps` | 7000 — the 70% utilization figure |
+| `optimal_usage_factor_*_bps` | 7000 — **the kink in the borrowing-rate curve, not a utilization gate.** Grepping 0.6.1, it is never read as a limit. What actually closes a side is `checkReserves` (`reserve_factor_bps × side OI` vs side pool USD) and `checkOiAfter` (`max_open_interest_*`) |
 
-`BAND_AGGRESSIVE_CEILING = 20×` is therefore correct and no longer provisional.
+> ⚠️ **`initial_margin_bps` is the baseline, not the cap. An earlier draft concluded "20× confirmed" from it and that is wrong.**
+>
+> `dynamicOiMarginForOpen` computes `effectiveBps = max(baselineBps, dynamicBps)` where `dynamicBps` scales with **side open interest**, configured in a `doi:` box on **`PDexV2TradingRiskOps` (3690309161)** — a different app, and one this section never read. Live config: enabled, long and short factors both 1,000,000, which at 1e6 USD scale makes `dynamicBps ≈ side OI in whole dollars`.
+>
+> | Side OI | Effective initial margin | Max leverage |
+> |---|---|---|
+> | ≤ $500 | 500 bps | 20× |
+> | $913 (ALGO/USD short, live) | 913 bps | **10.95×** |
+> | $960 (ALGO/USD OI cap) | 960 bps | 10.4× |
+> | $1,560 (BTC/USD OI cap) | 1560 bps | 6.4× |
+>
+> Consequences, all unresolved: `BAND_AGGRESSIVE_CEILING = 20×` is reachable only on a side under $500 of OI; **Moderate's fixed 10× is undeliverable on BTC/USD above ~$1,000 side OI**; the Availability Gating read list omits `doi:` entirely, so every quote would push `dynamic_oi_margin_missing`; and `dynamicBps` is computed on OI **including the user's own new size**, making effective leverage a fixed point in order size that the band model has no solve for.
+>
+> **Every leverage, buffer, notional and payoff figure in this document is downstream of this and must be re-derived from the quote's exported `effective_max_leverage_bps`, never from `initial_margin_bps`. Build Order step 2 is re-opened.**
 
 ### Where the two markets differ
 
@@ -596,7 +637,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 |---|---|---|
 | Pool | 6,835 ALGO (~$592) + 796 USDC ≈ **$1,388** | 8,927 ALGO (~$773) + 942 USDC ≈ **$1,715** |
 | Open interest | long $10.60 · short $159.92 | **zero** |
-| `unpaid_cost_usd` | 1 — a liquidation gap has already occurred | 0 |
+| `unpaid_cost_usd` | 1 at 1e6 scale — i.e. \$0.000001, so a liquidation gap has occurred but is negligible in size | 0 |
 
 **PEX is new and thin, and that is understood: Cover exists partly to bring flow to it.** The requirement is not to wait for depth but to size against it honestly and scale automatically as it grows.
 
@@ -763,7 +804,9 @@ Two distinct unavailability states, with different messages and different user a
 | State | Cause | Message shape |
 |---|---|---|
 | Band unavailable | Dynamic margin tightened near the OI cap | "Moderate is unavailable right now — capacity is limited." Lower bands still work, relabelled per the table in [Aggressiveness bands](#aggressiveness-bands). |
-| Side unavailable | Pool utilization at ceiling, or reserves committed | Nothing works on that side at any leverage — including Aggressive, despite its "always available" framing elsewhere, which refers only to capacity-constrained *leverage*, not to a closed side. Different message, different suggested action. |
+> **Per-side OI is the sum of both collateral variants** — `short_oi_usd_with_long_collateral + short_oi_usd_with_short_collateral`. Reading only the USDC-collateral field overstates headroom.
+
+| Side unavailable | `short_reserves_exceeded` / `long_reserves_exceeded` (`reserve_factor_bps × side OI` > side pool USD), or `max_open_interest_*` reached. **Not** a 70% utilization ceiling — no such gate exists | Nothing works on that side at any leverage — including Aggressive, despite its "always available" framing elsewhere, which refers only to capacity-constrained *leverage*, not to a closed side. Different message, different suggested action. |
 
 **Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button: *"Max at Aggressive: 4 Covers."* It tells the user how to get to yes and costs nothing extra. Note the limit is now a **unit count** — with fixed multiples there is no leverage to solve down to, and units cannot restore a 5× band that capacity has closed.
 
@@ -815,14 +858,15 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 2. **Magnet Strategies never holds authority to open or increase a position.** In v1 we hold no authority to close one either.
 3. **Every state-changing action is wallet-signed** by the position owner.
 4. **No MagnetFi state is read or written** by any Cover code path.
-5. **No PEX state feeds MagnetFi solvency.** Cover does not spend the PEX dependency. See the coupling rule in [OVERVIEW.md](./OVERVIEW.md#the-dependency-coupling-rule).
+5. **Cover reads no MagnetFi state and writes none**, and no Cover code path makes PEX state an input to a MagnetFi solvency decision. *(Stated as a constraint on Cover, which is what Cover can enforce. Whether MagnetFi ever accepts PEX-derived collateral is a MagnetFi policy decision, not something this codebase can assert.)* See the coupling rule in [OVERVIEW.md](./OVERVIEW.md#the-dependency-coupling-rule).
 6. **Displayed payout ≤ realistically achievable payout** under the quoted conditions, *including* ADL payout scaling, and with the buffer computed after fees. Round against the user — and verify the direction on every quantity that reaches the screen, since `builderFeeAmount` uses floor division, which rounds the fee against us rather than the payout against the user.
-7. **`builder_fee_bps` equals `POSITION_BUILDER_FEE_BPS`**, a build-time constant within the protocol cap, asserted by equality on both the parent and the take-profit child, and disclosed in the UI.
+7. **`builder_fee_bps` equals `POSITION_BUILDER_FEE_BPS`** on every **fee-bearing** call — asserted by equality on both the parent and the take-profit child, and disclosed in the UI. Scoped deliberately: the add-margin variant caps the builder fee at **0**, so an equality assertion against a non-zero constant would be impossible there.
 8. **No PEX risk parameter is hardcoded.** Margin rates, caps, fees, funding share and utilization limits are read live.
 9. **No transaction group is presented for signature without passing the full-group ABI assertion** described in the Threat Model — every app-call argument verified against what the confirm screen displayed. Simulation runs too, but is a pre-flight failure detector, not a security control: a compromised frontend controls the simulation, the comparison, and the display. The wallet is the only real boundary.
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts:6379-6380`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a *legacy* (`schemaVersion: 3`) reduce order.** V4 orders are lifetime-bound and a stale one meets a replaced position as a cancellation, not an execution — so V4 orphans are harmless and this invariant does not cover them. Legacy orders match by coordinates only and can still fire against a new position. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
-12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).submission_result !== "execute_immediately"`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`. (`v2OrderCrossedByOracle` is unexported and cannot be called.) PEX does not validate a target against the market; a wrong-side target executes immediately.
+12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).crossed === false`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`.
+    > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Cover's primary path** — proven by building 0.6.1 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
 13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
 15. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
@@ -871,7 +915,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 | Voluntary close rejected by `trader_pnl_cap` | Payout exceeded a fraction of the side pool. Explain as pool capacity, not user error. Rare at Cover unit sizes |
 | Yield recall fails at close time | Neither the take profit nor a manual close can execute. Surface honestly — the user is temporarily unable to exit |
 | One-group construction exceeds 16 transactions | **Refuse to open, at every band.** Group size varies with settlement-maintenance calls, yield-freshness carriers and the `builderFeeBps > 0` dynamic-OI carrier — **not** with leverage, so a band-keyed rule is meaningless. And the take profit is mandatory: a fallback that opens a position without one contradicts the product definition. A first-time-trader open plus its bracket runs 11–15 transactions against a hard ceiling of 16, so this is a live constraint, not a theoretical one |
-| Close + cancel exceeds 16 transactions | `related_order_cancels_require_followup_group`. Set the expectation before the first prompt; treat an unsigned follow-up as an alarm state |
+| Close + cancel exceeds 16 transactions | `related_order_cancels_require_followup_group`, or `some_related_order_cancels_require_followup_group` when the close merges with the first group but others remain. Set the expectation before the first prompt; an unsigned follow-up is a blocking alarm state — cleanup is paid and permissionless, so nothing guarantees anyone else makes it |
 | **Legacy (V3) reduce order on the target key** | Refuse the purchase-flow open until cancelled — legacy orders match by coordinates and can fire against a new position. V4 orphans need no such check |
 
 ---
@@ -890,9 +934,9 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 
 ## Build Order
 
-1. **Read path, pinning, and receipt discovery.** Fetch the deployment and protocol manifests; commit every app and asset ID, the protocol-manifest SHA-256, the four ABI method signatures, the oracle signer key, and the approval-program hashes as build-time constants. Decode `mp2:` / `mo2:` / `mf2:` / `ma2:` for both markets against live MainNet state.
+1. **Read path, pinning, and receipt discovery.** Fetch the deployment and protocol manifests; commit every app and asset ID, the four ABI method signatures, the oracle signer key, and the approval-program hashes as build-time constants. Decode `mp2:` / `mo2:` / `mf2:` / `ma2:` for both markets against live MainNet state.
    **Receipt discovery is DONE** — see [Measured MainNet State](#measured-mainnet-state--2026-09-21). 79 types; liquidation and ADL distinct. Remaining in this step: compute and commit the manifest SHA-256 and the approval-program hashes, and confirm `BUILDER_ADDRESS` USDC opt-in.
-2. **Measure.** Live borrowing and funding rates, real utilization, per-side capacity, `max_pnl_factor_for_traders_bps`, `liquidation_fee_bps`, `maintenance_margin_bps`, MainNet max leverage, and **`effective_min_position_size_usd` / `dynamic_min_position_size_usd` / `position_quantization_loss_usd`**. That last group is a product-viability question, not an edge case: Cover is the smallest position this exchange supports, `V2_MAX_POSITION_QUANTIZATION_BPS = 1n` (`src/v2Quotes.ts:48`) and `quoteV2OpenOrIncrease` pushes `position_quantization` and `zero_tokens` (`:2018-2022`). `COVER_MIN_UNITS = 1` is justified only against the **static TestNet** $5 floors — if a dynamic minimum or quantization rejects a 1-unit Cover on MainNet, the unit economics change. **Risk parameters are DONE** — see [Measured MainNet State](#measured-mainnet-state--2026-09-21); every TestNet figure held, and `BAND_AGGRESSIVE_CEILING = 20×` is confirmed rather than provisional. **Still to measure:** realised borrowing and funding *rates* over time (the factors are known: `funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps), ALGO volatility for `CROSS_MARGIN_BPS`, and whether a 1-unit Cover clears `position_quantization` and any dynamic minimum at every band.
+2. **Measure.** Live borrowing and funding rates, real utilization, per-side capacity, `max_pnl_factor_for_traders_bps`, `liquidation_fee_bps`, `maintenance_margin_bps`, MainNet max leverage, and **`effective_min_position_size_usd` / `dynamic_min_position_size_usd` / `position_quantization_loss_usd`**. That last group is a product-viability question, not an edge case: Cover is the smallest position this exchange supports, `V2_MAX_POSITION_QUANTIZATION_BPS = 1n` (`src/v2Quotes.ts:48`) and `quoteV2OpenOrIncrease` pushes `position_quantization` and `zero_tokens` (`:2018-2022`). `COVER_MIN_UNITS = 1` is justified only against the **static TestNet** $5 floors — if a dynamic minimum or quantization rejects a 1-unit Cover on MainNet, the unit economics change. **Risk parameters are NOT done.** The `mr2:` values are confirmed and scale-correct, but the binding leverage constraint lives in the `doi:` box on `PDexV2TradingRiskOps`, which was never read — see the warning in [Measured MainNet State](#measured-mainnet-state--2026-09-21). **Re-derive the band model against `effective_max_leverage_bps` before anything downstream of leverage is trusted.** **Still to measure:** realised borrowing and funding *rates* over time (the factors are known: `funding_factor_milli_bps` 855, base borrowing 360 milli-bps, full-usage 1142, optimal usage 7000 bps), ALGO volatility for `CROSS_MARGIN_BPS`, and whether a 1-unit Cover clears `position_quantization` and any dynamic minimum at every band.
 3. **Pending-change reader**, once Ultrade ships it. Poll, recompute forward liquidation prices, notify inside the window. See [Pending Parameter Changes](#pending-parameter-changes).
 4. **Supply-chain controls.** Reproducible builds with published hashes, subresource integrity, a pinned deployment bundle. These — not the group assertion — are what raise the bar against full frontend compromise.
    **Operational prerequisite in the same step:** `BUILDER_ADDRESS` must be opted in to USDC (31566704) with sufficient ALGO MBR **before launch**. The builder fee is paid in the collateral asset and the address appears in `accounts` on every fee-bearing call — if it is not opted in, plausibly **every open fails for every user on day one**. *(Conditional: confirm on chain whether PEX pays via an axfer requiring the opt-in or via accrual.)*
