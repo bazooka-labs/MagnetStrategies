@@ -356,28 +356,30 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 `planV2CancelRelatedReduceOrders` emits `related_reduce_orders_require_owner_cancel` and returns *separate* groups the owner must sign (`src/orders.ts:286-308`); `planV2CloseWithOrderCleanup` emits `related_order_cancels_require_followup_group` when close + cancel exceeds 16, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`). Handle both.
 
-**Four requirements:**
+**What V4 lifetime binding changes.** Cover launches **after** the position-identity cutover on SDK ≥ 0.6.1, so every bracket Cover creates is a V4 order bound to a `position_id`. A V4 bracket meeting a replaced position is **cancelled, not executed** — `v2_order_cancelled` status 8. The re-arm hazard is therefore structurally impossible **for our own orders**, and the requirements below shrink accordingly.
 
-1. **Every manual close builds the cancel group.** An unsigned follow-up is a blocking alarm state, the same posture as "position open, bracket not placed."
-2. **Before every *purchase-flow* open, read live `o2:` boxes for the target key and refuse if any reduce order there is in lifecycle state `position_missing`** (`src/orders.ts:226-228`). Scope matters: because the take profit is mandatory, every live position always has a resting reduce order, so a blanket "refuse if any order exists" would block every increase — the add-to-position flow this document calls the most heavily disclosed action in the product. The refusal targets **orphans**, not brackets.
+**What it does not change.** Lifetime binding is V4-only. A user who traded PEX directly **before** cutover can still hold a **legacy V3 bracket** on the same `(market, collateralAsset, side, owner)` key — matched by coordinates, with no id binding. Per Ultrade: *"A legacy trigger can affect a reopened position at the same coordinates."* That order is not ours and we did not create it, but it can fire against a Cover position opened on that key.
 
-   The position key carries **no nonce**, so an orphan's `position_missing` blocker *clears* when the user opens a new Cover on the same market and side — and PEX's keepers then fire a stale target, at the old price, against a position it was never set for.
+**Three requirements:**
 
-3. **The increase flow cancels and re-places the bracket in the same group. If that group cannot be built, refuse the increase** — never increase without re-placing, and never split it across two signatures leaving the position bracketless in between.
+1. **Before every purchase-flow open, read live `o2:` boxes for the target key and refuse if a *legacy* reduce order rests there.** Not "any reduce order" — the take profit is mandatory, so every live position always has one, and a blanket refusal would block the increase flow. Not "any `position_missing` order" either, which was the previous wording: V4 orphans are cancelled by the protocol rather than fired, so they are harmless. **The refusal targets legacy V3 orders specifically**, identified by their stored `schemaVersion: 3`. Offer the user a cancel, showing the ALGO and USDC-opt-in prerequisites, and tell them plainly that it is a pre-cutover order of their own that PEX will not lifetime-bind.
 
-   > **No SDK builder produces this group.** `buildV2MarketOpenWithAttachedOrdersTransactions` does open + brackets only; `planV2CloseWithOrderCleanup` is the close analogue and has no increase equivalent. The grouping helpers are private — `grouped` (`transactions.ts:5949`), `regroup` / `splitGrouped` (`orders.ts:500-513`). That matters beyond inconvenience: `grouped()` applies `applyV2LargeProgramReadBudgetToTransactions` and `distinguishRepeatedMathCarriers` before `assignGroupID`, and `regroup()` does neither — so a hand-assembled group using bare `assignGroupID` under-allocates the large-program box-read budget and can collide on duplicate `PDexV2Math.noop` carriers (`duplicate_non_carrier_transaction`).
+   Scope the refusal to that single `(market, side)` key — never a global block. A refusal can otherwise deadlock: cancellation needs spendable ALGO (plausibly absent right after a liquidation, the failure this document calls the most common), needs the USDC opt-in intact for the escrow refund to land, and may be gated by a market pause.
+
+2. **The increase flow cancels and re-places the bracket in the same group. If that group cannot be built, refuse the increase** — never increase without re-placing, and never split across two signatures leaving the position bracketless in between. Unaffected by lifetime binding: an increase keeps the same position lifetime, so the bracket stays *bound and valid* while silently covering the wrong size.
+
+   Two distinct defects make this unconditional rather than conditioned on an SDK blocker:
+
+   - `reduce_size_exceeds_position` is a **live comparison** (`src/orders.ts:229-231`), not a terminal state. A take profit made stale by a partial close or partial ADL becomes **executable again** if the position grows back past its size — firing at the old trigger for the old size.
+   - `v2AttachedChildInput` defaults the child size to `leg.sizeUsdDelta ?? rawParent.sizeUsdDelta` (`src/transactions.ts:6371`). On an increase the parent's value is the **delta**, not the merged total, so a bracket attached without an explicit override covers only the newly-added size while rendering as fully armed. **`leg.sizeUsdDelta` must be set to the post-increase position size** — it is on the assertion list.
+
+   > **No SDK builder produces this group.** `buildV2MarketOpenWithAttachedOrdersTransactions` does open + brackets only; `planV2CloseWithOrderCleanup` is the close analogue with no increase equivalent. The grouping helpers are private — `grouped` (`transactions.ts:5949`), `regroup` / `splitGrouped` (`orders.ts:500-513`) — and that matters beyond inconvenience: `grouped()` applies `applyV2LargeProgramReadBudgetToTransactions` and `distinguishRepeatedMathCarriers` before `assignGroupID` while `regroup()` does neither, so a hand-assembled group under-allocates the box-read budget and can collide on duplicate `PDexV2Math.noop` carriers.
    >
-   > **Size:** settlement maintenance (2+) + collateral axfer + `open_or_increase` + trading carrier + yield/dynamic-OI carriers + escrow axfer + storage payment + `submit_linked_order` + linked-order carriers + cancel + cancel budget carrier = **11–17** against a hard ceiling of 16. At the top of that range this is not buildable at all.
-   >
-   > **Build Order step 5 must measure the real combined group size on MainNet and confirm hand-regrouping preserves the read budget.** If it does not, the atomic requirement is unbuildable regardless of size and the increase flow needs redesigning — and the only alternatives leave a position bracketless between signatures, which the product definition forbids.
+   > **Size: 11–17 transactions against a hard ceiling of 16.** At the top of that range it is not buildable at all. **Build Order step 5 must measure the real combined size on MainNet and confirm hand-regrouping preserves the read budget.** If it does not, the atomic requirement is unbuildable and the increase flow needs redesigning — and every alternative leaves a position bracketless between signatures, which the product definition forbids.
 
-4. **The increase flow never conditions re-placement on the SDK reporting a blocker.** Two reasons. `reduce_size_exceeds_position` is a **live comparison** (`src/orders.ts:229-231`), not a terminal state: a take profit made stale by a partial close or a partial ADL becomes **executable again** if the position later grows back past its size, firing at the old trigger for the old size. And `v2AttachedChildInput` defaults the child's size to `leg.sizeUsdDelta ?? rawParent.sizeUsdDelta` (`src/transactions.ts:6371`) — on an increase the parent's value is the **delta**, not the merged total, so a bracket attached without an explicit override silently covers only the newly-added size while rendering as fully armed.
+3. **Manual closes should build the cancel group — for promptness, not correctness.** PEX cancels the orphan itself via status 7/8 and refunds `storage_refund_microalgo` either way, so an unsigned follow-up is no longer the blocking alarm state an earlier draft made it. What proactive cancellation buys is a faster MBR return and no window where a dead order renders as live. Handle both follow-up signals: `related_order_cancels_require_followup_group`, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts:311-347`).
 
-   > **`leg.sizeUsdDelta` must be set to the post-increase position size.** Add it to the assertion list.
-
-4. **Scope every refusal to the specific `(market, side)` key**, never a global block — the user must always have another action available. A refusal can otherwise deadlock: cancellation needs spendable ALGO (plausibly absent right after a liquidation, which this document names as the most common failure), needs the USDC opt-in intact for the escrow refund to land, and may be gated by a market pause. Show the exact ALGO and opt-in prerequisites before presenting the cancel.
-
-Orphaned orders and their locked MBR are surfaced in [Hedge History](#hedge-history) with one-tap reclaim.
+**Hedge History** records orphans and their MBR. Whether it needs a **reclaim button** or only a **record** depends on the one question still open — whether status-7/8 cleanup is eager at close or lazy on next keeper evaluation. Build the record; add the button only if cleanup proves lazy.
 
 ### Worked example
 
@@ -428,7 +430,7 @@ Available on Surface 2:
    |---|---|
    | `not_crossed` | **Armed** — the normal healthy state |
    | `reduce_size_exceeds_position` | **Stale** — re-arms at the old trigger if the position grows back |
-   | `position_missing` | **Orphaned** — reclaim available |
+   | `position_missing` | **Orphaned** — PEX cancels it via `v2_order_cancelled` status 7/8 and refunds storage; show as resolved, not as a user action, unless cleanup proves lazy |
    | `order_expired`, `bad_order_price` | **Dead** |
 
    Also supply `marketSnapshot` with live `index_price_min` / `index_price_max`, and check the decoded `o2:` record for those fields: `mergedOrder = { ...(marketSnapshot ?? {}), ...order }` (`src/orders.ts:173`) lets **order-box fields win over the live snapshot**, so a shadowing field would evaluate crossing against prices frozen at placement time
@@ -532,7 +534,7 @@ The original 0.5.0 retarget decision (2026-09-21) stands in substance — build 
 
 **Existing-position TP/SL now requires `expectedPositionId`.** That makes the orphan protection **structural rather than policy** — a bracket bound to position lifetime *N* cannot fire against lifetime *N+1*. Consequences:
 
-- The purchase-flow refusal ("no open against a key holding a `position_missing` order") becomes belt-and-braces rather than load-bearing. Keep it; stop relying on it.
+- The purchase-flow refusal narrows from "any `position_missing` order" to **legacy V3 orders only** — V4 orphans are cancelled by the protocol rather than fired. See [Orphaned take-profit orders](#orphaned-take-profit-orders).
 - **Re-examine the whole orphan section against 0.5.0 before implementing any of it.** Several of its requirements may be redundant.
 
 **Old brackets retire with refunds at cutover**, rather than trading — this is the `PARENT_RETIRED` reason on `v2_order_bracket_cleanup`, the one of its four triggers that touches us, and only at the cutover itself. Consequence: **"tell affected users to recreate protection"** becomes a launch-day requirement if we ever ship on 0.4.0 first — a further reason not to.
@@ -819,7 +821,7 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 8. **No PEX risk parameter is hardcoded.** Margin rates, caps, fees, funding share and utilization limits are read live.
 9. **No transaction group is presented for signature without passing the full-group ABI assertion** described in the Threat Model — every app-call argument verified against what the confirm screen displayed. Simulation runs too, but is a pre-flight failure detector, not a security control: a compromised frontend controls the simulation, the comparison, and the display. The wallet is the only real boundary.
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts:6379-6380`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
-11. **No purchase-flow open proceeds against a position key holding a reduce order in state `position_missing`.** Orphans re-arm; the position key has no nonce. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
+11. **No purchase-flow open proceeds against a position key holding a *legacy* (`schemaVersion: 3`) reduce order.** V4 orders are lifetime-bound and a stale one meets a replaced position as a cancellation, not an execution — so V4 orphans are harmless and this invariant does not cover them. Legacy orders match by coordinates only and can still fire against a new position. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
 12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).submission_result !== "execute_immediately"`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`. (`v2OrderCrossedByOracle` is unexported and cannot be called.) PEX does not validate a target against the market; a wrong-side target executes immediately.
 13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
@@ -870,7 +872,7 @@ What a Cover user is trusting, stated plainly because the product's honesty depe
 | Yield recall fails at close time | Neither the take profit nor a manual close can execute. Surface honestly — the user is temporarily unable to exit |
 | One-group construction exceeds 16 transactions | **Refuse to open, at every band.** Group size varies with settlement-maintenance calls, yield-freshness carriers and the `builderFeeBps > 0` dynamic-OI carrier — **not** with leverage, so a band-keyed rule is meaningless. And the take profit is mandatory: a fallback that opens a position without one contradicts the product definition. A first-time-trader open plus its bracket runs 11–15 transactions against a hard ceiling of 16, so this is a live constraint, not a theoretical one |
 | Close + cancel exceeds 16 transactions | `related_order_cancels_require_followup_group`. Set the expectation before the first prompt; treat an unsigned follow-up as an alarm state |
-| Orphaned take profit from a prior position | Refuse to open a new Cover on that key until it is cancelled — an orphan re-arms against the new position |
+| **Legacy (V3) reduce order on the target key** | Refuse the purchase-flow open until cancelled — legacy orders match by coordinates and can fire against a new position. V4 orphans need no such check |
 
 ---
 
