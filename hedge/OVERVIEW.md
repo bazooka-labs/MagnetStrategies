@@ -1,113 +1,62 @@
 # Hedge
 
-Hedge is the price-markets arm of Magnet Strategies: a daily intraday ladder on BTC, settled against a future price and denominated entirely in **mUSD**.
+Hedge is the leveraged-positions arm of Magnet Strategies: perpetual positions on Algorand, wrapped in a product surface that deliberately does not look like a trading terminal.
 
-Hedge is admin-managed. The protocol admin creates rounds, sets rake, and operates the keeper that posts settlement prices. There is no governance token. Trust is placed in Bazooka Labs as operator, and mitigated by open-sourcing every contract (see [Open Source Policy](#open-source-policy)).
+Hedge does not operate an exchange. It integrates **PEX**, a third-party perpetuals protocol built by Ultrade. Magnet Strategies writes no exchange contracts, custodies no user funds, and holds no protocol role.
 
-**Status:** Design stage. One product scoped — VPL. Nothing is built or deployed.
+**Status:** Design stage. One product scoped — **Cover**. Nothing is built or deployed.
 
----
-
-## Why mUSD Is the Base Currency
-
-Hedge exists to give mUSD holders reasons to keep mUSD in their wallets rather than redeeming it for USDC.
-
-This is a claim about **holding behaviour, not price.** mUSD is a stablecoin — if it works, it is worth $1 forever, and no amount of product volume changes that. What Hedge moves is narrower and more honest:
-
-| Lever | Mechanism |
-|---|---|
-| **Float** | mUSD sits in escrow for the life of a round and cannot be redeemed while it is there. Longer round windows produce more dwell time; very short windows produce almost none. |
-| **Denomination lock-in** | Payouts are made in mUSD, not USDC. A winner receives mUSD and faces the exit decision again rather than having exited automatically. Each round, some fraction stays. |
-| **Entry demand** | Playing requires mUSD. Players arriving with USDC mint through the PSM (free, 1:1) to participate. |
-
-What Hedge does **not** do is increase mUSD's backing. Rake routes to the Magnet Strategies treasury, not to PSM reserves — a deliberate choice trading direct backing accrual for treasury flexibility. The treasury may route funds to the PSM at its discretion; the contract has no opinion on it.
-
-Supporting context: the PSM already charges 1% on mUSD→USDC redemption and 0% on mint. Entry into mUSD is friction-free; exit is not. Hedge adds reasons to stay on the near side of that asymmetry.
-
-### Metrics That Matter
-
-Instrument these from the first deployment. They are the only honest measure of whether the sector works:
-
-- **% of minted mUSD that never touches PSM redeem**
-- **Median mUSD holding duration**
-- **mUSD locked in Hedge escrow** (absolute, and as % of circulating mUSD)
-
-Volume and rake revenue are business metrics. They are not evidence the sector achieved its purpose.
+> **VPL moved to [`predict/`](../predict/).** It shipped first and lives under the `/predict` route, so it has its own self-contained tree — docs, contract, keeper. The sector framing it needs is duplicated there rather than cross-linked, so neither tree depends on the other. This overview now describes Hedge as the perps arm.
 
 ---
 
-## Architecture
+## What Hedge Is For
 
-Hedge is a single self-contained contract. No framework, no game core, no adapter interface.
+Cover exists to make a leveraged hedge legible to someone who is not a trader: buy a number of fixed-size units, pick how aggressively to size them, name a price to take profit at, sign once.
 
-```
-Magnet Strategies
-├── UVote          ← advisory governance over $U
-├── MagnetFi       ← lending & borrowing (mUSD issuer)
-└── Hedge          ← daily BTC ladder (mUSD consumer)
-    ├── hedge-oracle   ← price feed, ring-fenced from MagnetFi
-    └── ladder         ← the contract
-```
+That framing carries a commercial rationale as well as a product one. PEX is new and thin — at the time of writing its two markets hold roughly $3,100 between them, with one carrying no open interest at all. **Cover is partly an attempt to bring flow to PEX**, which is why its sizing is written as a function of live depth rather than a fixed constant: the product scales with the exchange instead of needing a release each time the exchange grows.
 
-### Build Standalone, Extract Later
-
-Hedge is **one product**, and the right structure for one product is one self-contained contract. No shared module, no adapter interface, no abstraction built for a second thing that does not exist. If a second product ever ships, shared pieces get extracted then — against two real implementations rather than one real and one hypothetical.
-
-Three commitments hold regardless of what follows:
-
-**A Hedge oracle app, separate from the MagnetFi vault oracle.**
-
-> **Hedge must never read the oracle that MagnetFi liquidations depend on.**
-
-If it shared the vault price feed, manipulating a payout and manipulating protocol solvency would become the same action. Separate app, separate feed, no exceptions.
-
-**A treasury address, not a router.** Rake sends to an address. Because the contract targets an address rather than a hardcoded split, a splitter routing to treasury, PSM reserves, or $U buyback can be introduced later without touching or redeploying it.
-
-**The existing frontend.** Hedge lives inside the Magnet Strategies app and uses the existing connect-wallet flow. No separate wallet architecture, no custody, no session keys, no server-side signing. Every user action is a wallet-signed transaction.
-
-### Parameters
-
-Rake rate, basis, payout rules, stake models, and entry weighting all live on the contract as configuration rather than convention. `rake_bps` carries a hard cap that cannot itself be raised.
-
-### Deliverables
-
-| Component | Convention |
-|---|---|
-| Contract | `contracts/hedge/ladder/` |
-| Reads | `web/src/lib/hedge/ladderReads.ts` (algosdk) |
-| Writes | `web/src/lib/hedge/ladderClient.ts` (algokit-utils, lazy-loaded) |
-| Route | `web/src/app/hedge/` |
-| Admin | Tab in the Hedge admin panel, gated to admin address |
-| Ops | Keeper cron for round resolution |
-
-Mirrors the existing `magnetfiReads` / `magnetfiClient` / `magnetfiOps` split.
+Revenue comes from PEX's native builder-fee rail — a permissionless 10 bps of notional on positions, recorded on-chain in the order box. No contract of ours, no custody, no separate fee collection.
 
 ---
 
-## Ring-Fencing From MagnetFi
+## Commitments
 
-Hedge consumes mUSD. It is never part of mUSD's issuance or solvency machinery.
+Three hold regardless of what Hedge ships.
 
-- Hedge contracts hold mUSD as **ordinary balance only**. They never mint, never burn, and hold no protocol role
-- Hedge never reads or writes MagnetFi state
-- Hedge uses its own oracle app
-- Rake flows one way: Hedge → treasury. Nothing flows back
+**No contract of our own, for as long as that remains true.** Every economic action is a PEX call signed by the user's wallet. The attack surface is what our frontend constructs and what our interface claims — not what a contract of ours can be made to do. Any proposal that adds a contract changes the threat model in [perps/COVER_SPEC.md](./perps/COVER_SPEC.md) and requires re-review.
 
-MagnetFi's core invariant — *circulating mUSD ≤ PSM USDC reserves* — is unaffected. mUSD held in Hedge escrow is circulating mUSD like any other; escrowing it neither mints nor destroys it, so the invariant is untouched in both directions.
+**Non-custodial, always.** No session keys, no server-side signing, no delegated authority over user funds. A delegated-LogicSig design was specified and then **rejected** — see the Duration section of the Cover spec for why, and for the six transaction fields whose omission would have made it a total-loss vulnerability.
+
+**No shared dependency between Hedge and MagnetFi solvency.** The original rule was narrower — *Hedge must never read the oracle that MagnetFi liquidations depend on* — because manipulating a payout and manipulating protocol solvency must never become one action. Integrating a third-party protocol generalises it:
+
+> **No Hedge product may depend on a price or state source that MagnetFi solvency depends on.**
+
+Under that rule Cover is clean: it reads PEX state and touches no MagnetFi state at all. It also means taking PEX LP as MagnetFi collateral would foreclose PEX-based Hedge products, and vice versa. That dependency can be spent once. Cover does not spend it.
+
+---
+
+## Build Standalone, Extract Later
+
+Hedge is one product, and the right structure for one product is one self-contained tree. No shared module, no adapter interface, no abstraction built for a second thing that does not exist. If a second product ships, shared pieces get extracted then — against two real implementations rather than one real and one hypothetical.
+
+VPL's move to `predict/` is that principle applied: duplicated framing, no cross-tree dependency.
 
 ---
 
 ## Open Source Policy
 
-**The Hedge contract and its frontend are public**, in the same repo and under the same terms as the rest of Magnet Strategies.
+**Hedge's frontend and any contract it ever gains are public**, in the same repo and under the same terms as the rest of Magnet Strategies.
 
 The reasoning is not ideological:
 
-1. **The contract is public regardless.** Approval programs are readable on-chain, and any published client library carries the full ABI with it. Closed-sourcing an Algorand contract obscures nothing of substance — it converts a one-hour read into a one-day read. A deployed contract's mechanism, admin powers, and fee take can be reconstructed from chain data alone, and deleting a repo does not undo that.
-2. **Trust is the binding constraint.** Hedge's admin sets the rake, creates rounds, and operates the keeper that posts the settlement price deciding who wins. From a user's seat, a closed-source contract with an operator-supplied resolving price is indistinguishable from a rigged one. Open source converts *trust the operator* into *verify the contract, then trust only the price feed.*
-3. **Consistency.** MagnetFi is public and it custodies real collateral and can liquidate people. A closed price market alongside an open lending protocol reads as concealment.
+1. **Deployed code is public regardless.** Approval programs are readable on-chain and any published client library carries the full ABI. Closed-sourcing an Algorand contract converts a one-hour read into a one-day read and obscures nothing of substance.
+2. **Trust is the binding constraint.** Cover's users are trusting PEX's contracts, PEX's oracle signer, PEX's keepers, and — transitively, because pool assets are deployed into Folks Finance and xALGO — two further protocols. Being legible about our own layer is the minimum we can offer against that stack.
+3. **Consistency.** MagnetFi is public and custodies real collateral. A closed integration layer alongside an open lending protocol reads as concealment.
 
-**Carve-out — off-chain operations may stay private.** The keeper's scheduling, price-source aggregation, outlier handling, redundancy, and failover are a separate service and are not part of any game's public repo. That is where operational edge legitimately lives.
+**Carve-out — off-chain operations may stay private.** Keeper scheduling, redundancy and failover are a separate service and are not part of any public repo. That is where operational edge legitimately lives.
+
+Note that PEX's own SDK is **source-available, not open source**, under the PEX Builder License 1.0. Nothing in Cover conflicts with its terms; our code stays under ours, theirs under theirs.
 
 ---
 
@@ -115,11 +64,7 @@ The reasoning is not ideological:
 
 | | |
 |---|---|
-| [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model |
-| [perps/OVERVIEW.md](./perps/OVERVIEW.md) | Perps — PEX integration: platform facts, verified constants, integration paths considered |
+| [perps/OVERVIEW.md](./perps/OVERVIEW.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
+| [perps/COVER_SPEC.md](./perps/COVER_SPEC.md) | Cover — product definition, architecture, threat model, invariants |
+| [ORACLE.md](./ORACLE.md) | Price service — sources, attestation format, trust model. Retained because perps cites it as the sector-level oracle doc for off-chain cross-checks in our own keeper aggregation |
 | [../predict/OVERVIEW.md](../predict/OVERVIEW.md) | **Predict** — the ladder product line, moved to its own tree |
-
-**VPL moved to [`predict/`](../predict/).** It shipped first and lives under the
-`/predict` route, so it has its own self-contained tree — docs, contract, keeper. The
-sector framing above is duplicated there rather than cross-linked, so neither tree
-depends on the other. Hedge keeps this overview and `ORACLE.md` for the perps work.

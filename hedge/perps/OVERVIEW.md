@@ -248,7 +248,9 @@ PSM v3 productive reserves carry real exposure today. PEX is the first on-chain 
 
 ### Out of scope — mUSD as a funding path
 
-Explicitly excluded. Routing mUSD → USDC through the PSM to fund positions would incur the 1% redemption fee on every entry, make the mUSD path the most expensive way to fund a position in our own app, and build a convenient exit ramp out of mUSD — working directly against the float and dwell-time metrics in [../OVERVIEW.md](../OVERVIEW.md).
+Explicitly excluded, and the reasoning stands on its own: routing mUSD → USDC through the PSM would incur the **1% redemption fee on every entry**, making the mUSD path the most expensive way to fund a position in our own app. It would also build a convenient exit ramp out of mUSD inside our own product — mUSD's entry is friction-free and its exit is not, deliberately, and a one-tap exit erodes that asymmetry.
+
+*(An earlier draft justified this by citing float and dwell-time metrics in the Hedge arm overview. Those metrics belong to VPL, which now lives in [`predict/`](../../predict/); the exclusion does not depend on them.)*
 
 **Do not reintroduce this without a PSM change.** The version worth pursuing instead is mUSD accepted as a PEX collateral asset, which requires a configured market-pool asset on their side. That is a conversation with PEX, not an integration we can build.
 
@@ -281,5 +283,5 @@ Nothing in Cover conflicts with these terms. Our own contracts and frontend rema
 | | |
 |---|---|
 | [COVER_SPEC.md](./COVER_SPEC.md) | Cover — product definition and architecture spec |
-| [../OVERVIEW.md](../OVERVIEW.md) | Hedge arm — positioning, mUSD rationale, ring-fencing |
+| [../OVERVIEW.md](../OVERVIEW.md) | Hedge arm — what the arm is for, the three commitments, open-source policy |
 | [../ORACLE.md](../ORACLE.md) | Hedge oracle — sources, attestation, trust model |

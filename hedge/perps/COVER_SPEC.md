@@ -484,9 +484,47 @@ This is also where orphaned take-profit orders surface. Since three outcomes orp
 
 ---
 
-## Target Version — build against 0.5.0, not 0.4.0
+## Target Version — pin 0.6.1 or later
 
-**Decision (2026-09-21): retarget to SDK 0.5.0 on TestNet, and launch when it reaches MainNet.** Ultrade published 0.5.0 on 2026-09-20 — TestNet-only for a few days, MainNet shortly after — and it is a **breaking position-identity contract upgrade**. Continuing against 0.4.0/MainNet would mean rewriting the parts of this document that are most expensive to get wrong.
+**Decision, updated 2026-09-22: pin SDK 0.6.1 or later, build against TestNet, launch after the MainNet cutover.** The SDK moved 0.5.0 → 0.5.1 → 0.6.0 → 0.6.1 in two days. Ultrade ask integrators to pin a **reviewed commit ref**, not a tag.
+
+**MainNet has not cut over.** `PDexV2Trading` still shows only the 2026-09-12 update; the position-identity contracts are not live, and 0.6.1 states it requires them and is incompatible with the older contracts. There is no rush and no risk of being caught mid-transition.
+
+### 0.6.1 fixes a bug in exactly our configuration
+
+> *"Fixes transaction resource budgeting when attaching only a TP or only an SL after an entry."*
+
+Cover attaches **only a take profit**. That is the case that was broken. **Pin ≥ 0.6.1; do not build against 0.5.x or 0.6.0.**
+
+### 0.6.0 closed the close-identity hole — upstream
+
+The wildcard default this document flagged on 2026-09-21 is gone. `expectedClosePositionId(undefined)` now **throws**: *"expectedPositionId is required for a direct close or margin withdrawal."* Per Ultrade, omission "now fails instead of silently disabling the on-chain lifetime check."
+
+**The sentinel survives as a deliberate opt-out.** `UNCHECKED_CLOSE_POSITION_ID` is exported from both `@pdex/sdk/transactions` and `@pdex/sdk/constants`; passing it explicitly executes against whatever position occupies the coordinates. Ultrade's guidance is explicit:
+
+> *"do not use it for TP/SL or as a fallback for a failed position read."*
+
+That second clause names the exact shortcut an implementer reaches for when a position read fails. [Invariant 13](#invariants) therefore survives, reshaped: the risk is no longer omission — the SDK handles that — it is **deliberate use**.
+
+### Legacy V3 orders still re-arm
+
+Lifetime binding applies to **V4 orders only**. V3 TP/SL and pending brackets keep working, matched by owner/market/collateral/side, and per the 0.6.0 notes:
+
+> *"A legacy trigger can affect a reopened position at the same coordinates; voluntarily recreate protection to gain V4 lifetime binding."*
+
+So the re-arm hazard is **not fully dead** — dead for newly created brackets, alive for legacy ones. If anything ever ships before cutover, every user must be prompted to recreate protection afterwards. Orphan cleanup passes `cleanup: "orphan"` with `schemaVersion: 3` for a legacy bracket child; **`cleanup: "legacy"` is now rejected outright.**
+
+### ABI status
+
+**No further ABI or layout changes from 0.5.0** — stated in the 0.6.0 notes and confirmed by re-reading the builders. The lists in [The full-group assertion](#the-full-group-assertion) are current: `open_or_increase` 7, `decrease_or_close` 15, `submit_linked_order` 24.
+
+### Program hashes — capture at cutover, not now
+
+Current MainNet approval-program SHA-256 prefixes are Trading `c6c2802f…`, OrderOps `492edbc1…`, AdminControl `08e7101a…`. **These change at the position-identity cutover**, so capture the pinning constants at release against the upgraded contracts rather than committing today's values.
+
+### Superseded
+
+The original 0.5.0 retarget decision (2026-09-21) stands in substance — build against the position-identity contracts, not 0.4.0 — but 0.5.0 is no longer the right pin.
 
 ### What 0.5.0 changes for us
 
@@ -783,7 +821,7 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts:6379-6380`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a reduce order in state `position_missing`.** Orphans re-arm; the position key has no nonce. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
 12. **No take-profit leg is signed unless `quoteV2DecreaseOrder(...).submission_result !== "execute_immediately"`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`. (`v2OrderCrossedByOracle` is unexported and cannot be called.) PEX does not validate a target against the market; a wrong-side target executes immediately.
-13. **No close is signed with `expectedPositionId` unset or equal to the wildcard sentinel `(1<<64)-1`.** An unbound close closes whichever position lifetime occupies the key. Valid ids are `0 ≤ id < 2^48`. *(0.5.0 and later.)*
+13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
 15. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
 
