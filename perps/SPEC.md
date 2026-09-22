@@ -244,7 +244,9 @@ With the live MainNet `doi:` config — enabled, both factors 1,000,000 — `dyn
 
 ### Direction
 
-`Protect against a drop` (short) and `Protect against a rise` (long). Presented as outcomes, not as sides.
+**Long** — *betting ALGO goes up* — and **Short** — *betting ALGO goes down*. Stated as the direction of the bet, not as protection.
+
+> An earlier draft framed these as `Protect against a drop` / `Protect against a rise`. That was dropped: protection framing forces the user to hold two models at once — their own exposure, and an instrument that moves opposite to it. Long and short are **one step**, and the user arriving at a leveraged product already knows which way they think the price goes.
 
 ### Duration
 
@@ -265,7 +267,7 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 > The user opens and closes within minutes, paying open fee + close fee + builder fee **twice** + keeper fee: roughly **$0.69 on a $10 unit at 20×, about 7% of committed capital, instantly** — and Magnet Strategies is the beneficiary of the error. Because the take profit is mandatory and we pre-fill a default, a sign error in the prefill or the direction mapping hits every user.
 >
 > **This is the only control that exists.** Assert against the same oracle payload going into the group, not a displayed mid price:
-> - short (*protect against a drop*): `trigger < indexMinPrice × (1 − ε)`
+> - short (*betting ALGO goes down*): `trigger < indexMinPrice × (1 − ε)`
 > - long (*protect against a rise*): `trigger > indexMaxPrice × (1 + ε)`
 >
 > with `ε = CROSS_MARGIN_BPS`, so a target one tick from crossing is also refused.
@@ -292,7 +294,7 @@ Show the implied shape next to the field as plain information, the way the liqui
 >
 > What the product does instead of a stop: make **distance to liquidation** a permanent first-class element and alert when the buffer is consumed past a threshold. That is the stop's function delivered as information rather than as an order — consistent with keeping responsibility with the trader.
 
-**Why Aggressive exists.** Not as "the reckless band." A capital-efficient hedge *requires* leverage: covering $10,000 of spot ALGO at 5× would mean posting $2,000, which defeats the purpose of hedging at all; at 20× it is $500. High leverage is the correct tool for covering a large exposure against a sharp move, and the outcome distribution should be read accordingly — a hedge liquidated because the underlying moved *favourably* for the user's spot position is insurance expiring unused, not a loss. The product does not second-guess someone who has chosen it.
+**Why the bar runs to the maximum.** The right end of the risk bar is offered, not hidden behind friction. Someone reaching for it is making a deliberate high-conviction call on a short horizon, which is a legitimate use of the instrument, and the product does not second-guess it. What it does instead is make the consequence continuously visible: the liquidation marker slides toward spot as the bar moves, so the cost of the choice is shown rather than argued.
 
 **The accepted trade-off, stated plainly:** without a stop, **liquidation is the only automated downside exit.** At the Aggressive band that means a ~2.3% adverse move ends the position. Liquidation also costs the user the liquidation fee (up to 0.70% of position size) on top of the loss, where a stop inside the buffer would have returned more and returned it sooner. This is a deliberate product decision, not an oversight — but it makes the **displayed liquidation price a safety-critical element**, not a detail.
 
@@ -817,7 +819,7 @@ Two distinct unavailability states, with different messages and different user a
 
 **Prefer a ceiling to a wall.** Because any size can be evaluated locally, show the limit rather than a disabled button — *"most you can open on this side right now: $46"*. It tells the user how to get to yes and costs nothing extra. With a continuum there are two ceilings to surface, and they are different: the **leverage** ceiling shortens the bar, while the **notional** ceiling caps the amount. A user blocked by the second can still open by typing less; a user blocked by the first cannot, and should be told the side is full.
 
-**Structural note for this product specifically.** Hedging demand is correlated — in an ALGO drawdown everyone wants the same side at the same time. Perps will systematically push into whichever side is already constrained, at exactly the moment users want it. Design the capacity messaging for that case rather than treating it as an edge case, and consider nudging users to open cover while capacity exists.
+**Structural note for this product specifically.** Directional demand is correlated — in an ALGO drawdown most users want the same side at the same time. Perps will systematically push into whichever side is already crowded, which is also the side whose leverage ceiling has already fallen, since `dynamicBps` tracks that side's open interest. **Both constraints tighten together, in the same event.** Design the capacity messaging for that case rather than treating it as an edge case.
 
 **Gating is a snapshot, not a guarantee.** State can shift between the read and the signature. Gating removes predictable failures; it does not remove all failures. A clean on-chain rejection handler is still required, and the acceptable-price bound is a separate rejection path gating cannot touch.
 
@@ -831,13 +833,13 @@ Display accuracy is a security property here, because there is no contract to ex
 
 1. **Every displayed payout is net** of open fee, close fee, builder fee, keeper fee where a bracket is attached, and accrued funding and borrowing. A screen that says $100 when $98.40 lands is a trust failure.
 2. **The profit target is never presented as guaranteed.** PEX documents these orders as conditional. The trigger arms when the *oracle* crosses the level; a keeper then executes, and in a fast move it can fill worse. `≈$148` is correct; "you will receive $148" is not.
-3. **Holding cost is shown live and labelled as variable.** Borrowing accrues with utilization; funding is charged *or received* hourly depending on which side of the OI imbalance the user is on. A hedger on the light side may be **paid** to hold. Never quote either as fixed.
+3. **Holding cost is shown live and labelled as variable.** Borrowing accrues with utilization; funding is charged *or received* hourly depending on which side of the OI imbalance the user is on. A user on the light side of the imbalance may be **paid** to hold. Never quote either as fixed.
 4. **Funding share is read, never assumed.** `opposing_trader_share_bps` is live on-chain state. Hardcoding 25% is a defect.
 5. **Quotes refuse to render on a stale oracle.** Payloads carry a ~30s validity window. Past `ORACLE_MAX_AGE_SEC`, show a stale state rather than a stale number.
 6. **The builder fee is disclosed.** It is publicly readable on-chain; concealing it in the UI is the same category of problem as a closed price feed.
    **And one line of settlement disclosure**, not a warning banner: Perps settles on PEX, a third-party protocol, whose risk parameters can change. Brief, true, and cheap now.
 7. **The payoff table is labelled as subject to the trader PnL cap.** `checkTraderPnlCap` pushes `trader_pnl_cap` when **this close's own payout** exceeds `max_pnl_factor_for_traders_bps ×` the side pool in USD (`src/v2Quotes.ts:4222-4230`); a pushed reason makes the quote **not ok**, so the voluntary close is *rejected*, not reduced. *(An earlier draft claimed this binds on aggregate side PnL versus other traders, and named the wrong reason strings — `long_pnl_cap`/`short_pnl_cap` are LP deposit/withdraw reasons. At $10-unit sizes an individual payout cannot approach a fraction of the pool, so this effectively never binds on the voluntary-close path.)*
-   **The aggregate-side-PnL exposure is real, but it is ADL, not this.** `sidePositivePnlUsd` against `sidePnlCapUsd` drives ADL eligibility (`src/v2Quotes.ts:2565-2570`), and `effectiveProfitUsd = profitUsd × traderPnlCapUsd / sidePositivePnlUsd` scales the payout down. That is where correlated one-sided hedging demand actually lands, and where `side_positive_pnl_usd`, `side_pnl_cap_usd` and `adl_threshold_breached` should be surfaced.
+   **The aggregate-side-PnL exposure is real, but it is ADL, not this.** `sidePositivePnlUsd` against `sidePnlCapUsd` drives ADL eligibility (`src/v2Quotes.ts:2565-2570`), and `effectiveProfitUsd = profitUsd × traderPnlCapUsd / sidePositivePnlUsd` scales the payout down. That is where correlated one-sided demand actually lands, and where `side_positive_pnl_usd`, `side_pnl_cap_usd` and `adl_threshold_breached` should be surfaced.
 8. **The displayed liquidation buffer is computed after fees**, from the SDK's `liquidation_price_estimate` — never from `1/leverage − maintenance_margin_rate`, which ignores that open fees and the builder fee are deducted from collateral first.
 9. **Treat `liquidation_price_estimate == 0` or an empty `liquidation_price_direction` as a quote failure.** The solver returns `{ok:false, liquidation_price:0n, direction:""}` on `invalid_side`, `position_price_unavailable`, `position_health_unavailable`, `liquidation_boundary_not_found` and `non_monotonic_liquidation_boundary` (`src/v2Quotes.ts:1765-1875`) — **and the quote result discards `ok` and `failure_reason`, exposing only the estimate and the direction**. Rendering the zero would show a short position as having a liquidation price of `$0.0000`, which reads as *"this can never be liquidated"* — the most dangerous possible misreading, on the element this document calls safety-critical, in a product with no stop loss behind it. Block the open; show an explicit unavailable state on the management surface and alert.
 
