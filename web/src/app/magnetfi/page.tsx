@@ -20,7 +20,7 @@ const VaultsTab = dynamic(
   () => import("@/components/magnetfi/v2/VaultsTab").then((m) => m.VaultsTab),
   { ssr: false, loading: pulse }
 );
-// The mUSD swap now lives on the dedicated /musd page; the Bank tab deep-links there.
+// The mUSD swap now lives on the combined /tokens page; the Bank tab deep-links there.
 
 // Admin panel pulls in algokit-utils — lazy-load so it only ships when an admin opens it.
 const AdminTab = dynamic(
@@ -35,7 +35,7 @@ const TABS: TabDef[] = [
   { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
   { id: "markets", label: "Single Token Markets", icon: <TrendingUp className="h-4 w-4" /> },
   { id: "borrow", label: "LP Collateral Vaults", icon: <Vault className="h-4 w-4" /> },
-  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/musd" },
+  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/tokens?tab=musd" },
 ];
 
 export default function MagnetFiPage() {

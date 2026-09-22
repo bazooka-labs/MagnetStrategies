@@ -3,11 +3,11 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "mUSD — Magnet Strategies",
-  description: "mUSD is the fully USDC-backed Magnet dollar. Mint 1:1 with no fee, redeem any time, and track the Peg Stability Module reserves.",
+  title: "Tokens — Magnet Strategies",
+  description: "$U and mUSD — price, holders, TVL, live charting, swapping, and the Peg Stability Module, all in one place.",
 };
 
-export default function MusdLayout({ children }: { children: React.ReactNode }) {
+export default function TokensLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />

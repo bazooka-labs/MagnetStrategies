@@ -7,10 +7,9 @@ import { useState } from "react";
 import { WalletButton } from "@/components/WalletButton";
 
 const navLinks = [
-  { href: "/token", label: "Magnet Token", external: false },
+  { href: "/tokens", label: "Tokens", external: false },
   { href: "/magnetfi", label: "Bank", external: false },
   { href: "/predict", label: "Predict", external: false },
-  { href: "/musd", label: "mUSD", external: false },
   { href: "/pools", label: "Pools", external: false },
   { href: "/vote", label: "Vote", external: false },
   { href: "/contact", label: "Contact", external: false },

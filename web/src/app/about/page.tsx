@@ -15,7 +15,7 @@ const PRODUCTS: Product[] = [
   {
     img: "/tokens/u.png", name: "$U — the Magnet Token",
     body: "The asset at the center. A fixed-supply Algorand token whose value tracks the strategies it powers.",
-    href: "/token", cta: "Token dashboard", external: false,
+    href: "/tokens", cta: "Token dashboard", external: false,
   },
   {
     icon: <Landmark className="h-5 w-5" />, name: "MagnetFi — the Bank",
@@ -25,7 +25,7 @@ const PRODUCTS: Product[] = [
   {
     img: "/musd-icon.png", name: "mUSD — the Magnet dollar",
     body: "A fully USDC-backed stablecoin. Mint 1:1 with no fee, redeem any time.",
-    href: "/musd", cta: "Mint & redeem", external: false,
+    href: "/tokens?tab=musd", cta: "Mint & redeem", external: false,
   },
   {
     icon: <Sprout className="h-5 w-5" />, name: "Magnet Farms",

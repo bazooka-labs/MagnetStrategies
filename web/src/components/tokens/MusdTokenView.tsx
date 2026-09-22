@@ -19,7 +19,7 @@ const MusdTab = dynamic(
   { ssr: false, loading: pulse },
 );
 
-export default function MusdPage() {
+export function MusdTokenView() {
   const { algodClient } = useWallet();
   const [stats, setStats] = useState<ProtocolStats | null>(null);
   const [strat, setStrat] = useState<StrategyStats | null>(null);
@@ -55,7 +55,7 @@ export default function MusdPage() {
   const underBacked = backingRatioNum != null && backingRatioNum < 1;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+    <>
       {/* Hero */}
       <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
@@ -99,6 +99,6 @@ export default function MusdPage() {
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500">mUSD Exchange</h2>
         <MusdTab />
       </section>
-    </div>
+    </>
   );
 }
