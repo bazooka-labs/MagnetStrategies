@@ -177,8 +177,8 @@ Cover-side constants:
 | `MAX_POSITION_NOTIONAL_USD` | **dynamic** — `min(LAUNCH_NOTIONAL_CEILING, 20% × live per-side OI headroom, 25% × live trader-PnL-cap headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band, which bound a single purchase and was bypassed by the increase flow — positions merge — while also delivering rising notional across bands, $1,250 → $1,500 → $2,000, the opposite of its own stated rationale.)* |
 | `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling regardless of depth, for launch. Raise deliberately, not automatically. |
 | `MAX_UNITS_PER_PURCHASE` | 25 | UI convenience only; the notional cap is the binding control |
-| `BAND_LOW` | 5× fixed | |
-| `BAND_MODERATE` | 10× fixed | |
+| `BAND_LOW` | **3×** fixed | Deliverable while side OI < $3,333 |
+| `BAND_MODERATE` | **6×** fixed | Deliverable while side OI < $1,667 — validate against live `max_open_interest_*` at startup |
 | `BAND_AGGRESSIVE` | `min(maxAvailable, BAND_AGGRESSIVE_CEILING)` | |
 | `BAND_AGGRESSIVE_CEILING` | 20× | **Required.** MainNet max leverage is undocumented; without a ceiling the product makes an open-ended commitment to a number we do not know, and every buffer figure in this document assumes 20×. Revisit after step-2 measurement. |
 
@@ -222,15 +222,32 @@ Consequences, all of which the product must respect rather than paper over:
 
 Three bands. Low and Moderate are **fixed multiples**. Aggressive is **whatever the maximum available leverage is** for that position size at that moment.
 
-| Band | Leverage | Approx. buffer | Notional per unit |
+| Band | Leverage | Buffer (gross / net) | Notional per $10 unit |
 |---|---|---|---|
-| Low | 5× fixed | ~17.5% | $50 |
-| Moderate | 10× fixed | ~7.5% | $100 |
-| Aggressive | max available | ~2.5% gross / **~2.3% net** at 20× | up to $200 |
+| Low | **3× fixed** | 30.8% / ~30.6% | $30 |
+| Moderate | **6× fixed** | 14.2% / ~13.9% | $60 |
+| Aggressive | max available | 2.5% / ~2.3% at 20× | up to $200 |
 
 Fixed multiples mean Low and Moderate are deterministic: the same tap gives the same risk every time. Only the band named Aggressive maximises, which is what the word means.
 
+**These multiples are chosen against the dynamic OI margin, not in spite of it.** Effective leverage is `10000 / effectiveBps` with `effectiveBps = max(500, side OI in whole dollars)`, so every fixed band has a side-OI level above which it cannot be delivered:
+
+| Band | Dies above | ALGO/USD (cap $960) | BTC/USD (cap $1,560) |
+|---|---|---|---|
+| 3× | $3,333 side OI | ✅ | ✅ |
+| 6× | $1,667 side OI | ✅ | ✅ — **$107 of headroom** |
+| *10× (previous Moderate)* | *$1,000* | *✅* | ❌ **undeliverable** |
+| *5× (previous Low)* | *$2,000* | *✅* | *✅* |
+
+**Both fixed bands now survive to each market's OI cap**, which the previous 5×/10× pair did not: 10× dies above $1,000 of side OI while BTC/USD's cap is $1,560. Determinism is restored.
+
+Fee drag also falls sharply — round-trip fees take ~0.7% of the buffer at 3× and ~1.6% at 6×, against ~8.8% at 20×.
+
+> **The 6× guarantee is conditional on an admin-mutable cap.** BTC/USD has only $107 between its $1,560 OI cap and 6×'s $1,667 death point. If PEX raises that cap above $1,667, Moderate becomes undeliverable there. **Validate each band against the live `max_open_interest_*` at startup**, not against the figures printed here.
+
 **Buffer figures above are indicative only.** `1/leverage − maintenance_margin_rate` is *not* the user-facing number: open fees and the builder fee are deducted from collateral before the position opens (see [Revenue](#revenue)), so the real buffer is tighter. **Display the SDK's `liquidation_price_estimate` from a live quote, never a formula.**
+
+**And resolve every band from the quote's `effective_max_leverage_bps`, never from `initial_margin_bps`** — which is only the baseline. That requires reading the `doi:` box from `PDexV2TradingRiskOps` (3690309161) alongside the market boxes; without it every quote pushes `dynamic_oi_margin_missing`. Note `dynamicBps` is computed on side OI **including the user's own new size**, so for Aggressive the available leverage is a fixed point in order size and needs a solve rather than a lookup. The fixed bands avoid that problem entirely — another reason to prefer them.
 
 **Aggressive's resolved leverage and buffer must be displayed before signature.** It floats with capacity by design — 20× normally, less when open interest nears the per-side cap:
 
@@ -403,19 +420,19 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 ```
 committed          $50
-leverage           10×      (Moderate — fixed multiple)
-notional           $500
-liquidation buffer ~7.5%    (ALGO rising ~7.5% ends the position)
+leverage           6×       (Moderate — fixed multiple)
+notional           $300
+liquidation buffer ~14.2%   (ALGO rising ~14.2% ends the position)
 ```
 
 Illustrative payoff, net of fees. **These figures are computed by the SDK against live state, never by us, and never hardcoded:**
 
 | ALGO moves | User receives |
 |---|---|
-| −20% | ~$148 |
-| −10% | ~$98 |
-| −5% | ~$73 |
-| +7.5% | Liquidated — residual returned after the liquidation fee, typically a few dollars and sometimes nothing. See [Show the amount returned](#show-the-amount-returned-not-just-the-event) |
+| −20% | ~$109 |
+| −10% | ~$79 |
+| −5% | ~$64 |
+| +14.2% | Liquidated — residual returned after the liquidation fee, typically a few dollars and sometimes nothing. See [Show the amount returned](#show-the-amount-returned-not-just-the-event) |
 
 ---
 
@@ -754,9 +771,9 @@ Capped by the protocol at **10 bps of notional** (`MAX_POSITION_BUILDER_FEE_BPS 
 
 | Stake | Band | Notional | MS fee at 10 bps |
 |---|---|---|---|
-| $50 | Low (5×) | $250 | $0.25 |
-| $50 | Moderate (10×) | $500 | $0.50 |
-| $50 | Aggressive (20×) | $1,000 | $1.00 |
+| $50 | Low (3×) | $150 | $0.15 |
+| $50 | Moderate (6×) | $300 | $0.30 |
+| $50 | Aggressive (20×, when available) | $1,000 | $1.00 |
 
 **The fee is charged on both open and close** — confirmed at `src/v2Quotes.ts:2478-2481`, where `quoteV2CloseLike` normalises a builder fee whenever `!liquidation && !adl`. Round-trip take is therefore **20 bps of notional**. The take-profit child inherits the parent's `builderFee`, so its execution pays it too. On liquidation and ADL it is forced to zero.
 
@@ -764,7 +781,7 @@ Capped by the protocol at **10 bps of notional** (`MAX_POSITION_BUILDER_FEE_BPS 
 
 This is a volume business. $1M of monthly notional returns roughly $2,000 at 20 bps round-trip.
 
-> **Incentive disclosure.** Revenue tracks notional, so Magnet Strategies earns four times more from an Aggressive position than a Low one at the same stake — and the "resolve to the highest available leverage" rule maximises user risk and our fee at the same time. That alignment is real. It should be acknowledged here rather than discovered by an auditor, and it is the reason two things in this spec are non-negotiable: the resolved leverage is displayed before signature, and the liquidation price is a permanent, safety-critical element of the management surface — the more so because there is no stop loss behind it.
+> **Incentive disclosure.** Revenue tracks notional, so Magnet Strategies earns up to **six** times more from an Aggressive position than a Low one at the same stake — wider than the four-times gap under the previous 5×/10× bands, because lowering the fixed multiples lowered the fee they generate — and the "resolve to the highest available leverage" rule maximises user risk and our fee at the same time. That alignment is real. It should be acknowledged here rather than discovered by an auditor, and it is the reason two things in this spec are non-negotiable: the resolved leverage is displayed before signature, and the liquidation price is a permanent, safety-critical element of the management surface — the more so because there is no stop loss behind it.
 
 ### Swap fee — a separate decision
 
@@ -793,7 +810,8 @@ Bands are not always available. PEX tightens margin requirements dynamically as 
 **Gating is a local computation, not a network round trip.** The SDK computes quotes and risk client-side. Read market state on an interval, then evaluate any hypothetical order size and band instantly as the user changes inputs.
 
 ```
-read      mp2: (pool)  mo2: (open interest)  mf2: (funding/borrowing)  ma2: (adaptive funding)
+read      mp2: (pool)  mo2: (open interest)  mf2: (funding/borrowing)  ma2: (adaptive funding)   [PDexV2Markets]
+          doi: (dynamic OI margin config)                                [PDexV2TradingRiskOps]
 decode    via protocol manifest
 compute   effective max leverage per side, remaining capacity per side  [local]
 derive    which bands are deliverable at the user's current unit count  [local]
