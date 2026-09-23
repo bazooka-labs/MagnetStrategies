@@ -6,7 +6,7 @@ Perps is a simplified product surface over PEX perpetual positions. Four inputs:
 
 **Status:** Design stage. Nothing is built or deployed.
 
-> **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.1 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. Citations are current against **0.6.1** (`d9f43a4`).
+> **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.2 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. Citations are current against **0.6.2** (`d9f43a4`).
 
 Read [PEX.md](./PEX.md) first for PEX platform facts, verified constants, and the integration paths that were rejected.
 
@@ -89,7 +89,7 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
 **`open_or_increase` — add-margin variant.** "Add collateral" is `buildV2AddPositionMarginCall`, which calls `open_or_increase` with **`sizeUsdDelta = 0`** and a **zero** builder-fee cap. Assert `sizeUsdDelta == 0`, `builderFeeBps == 0`, and bound the collateral by the axfer alone; the leverage-ratio rule does not apply since it evaluates to 0. *(For later: `buildV2WithdrawPositionMarginCall` uses `decrease_or_close` with `sizeUsdDelta = 0` and carries the withdrawal amount in the **`minPrimary`** slot — so the `minPrimary == minSecondary == 0` rule is wrong for that path if partial withdrawal is ever surfaced.)*
 
-**`decrease_or_close` args (0.6.1, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts`).
+**`decrease_or_close` args (0.6.2, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts`).
 - **`expectedPositionId` must be a real id, never the wildcard.** `expectedClosePositionId(undefined)` yields `(1n << 64n) - 1n`, which closes whatever position occupies the key. Valid range is `0 ≤ id < 2^48`. **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
 - `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Perps" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
 - `outputSwapMode == 0`, and `minPrimary == minSecondary == 0` given mode 0
@@ -179,7 +179,7 @@ Perps-side constants:
 | `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling on notional regardless of depth, for launch. Raise deliberately, not automatically. |
 | `RISK_BAR_MIN_LEVERAGE` | **solved live** | `max(min_position_size_usd, dynamic_min) / amount`. **Never a constant** — a pinned 1× sat above the ceiling on the short side today |
 | `RISK_BAR_MAX_LEVERAGE` | **solved live** | `min(N_margin, OI_headroom, MAX_POSITION_NOTIONAL_USD) / amount`, confirmed by a live quote returning `ok === true`. Never `10000 / initial_margin_bps`, and never the raw `effective_max_leverage_bps` — that field omits the fee term |
-| `PROTECTION_ENABLED` | conditional | Offer the optional stop only when the open + both brackets group builds under 16 transactions |
+| `PROTECTION_ENABLED` | **`false` — BLOCKED** | Not a size check: open + both brackets measures 13 against a ceiling of 16 and always fits. Blocked on the unverified OCO symbols — see [Protection](#protection--an-optional-stop). Do not plan work against it |
 
 | `BUILDER_ADDRESS` | MS treasury | Build-time constant |
 | `POSITION_BUILDER_FEE_BPS` | 10 | Protocol cap is 10 |
@@ -195,7 +195,7 @@ Perps-side constants:
 
 > `MAX_POSITION_NOTIONAL_USD` is a **product guardrail with no on-chain enforcement** — a user can always go to PEX directly. It is not counted as a security control.
 >
-> **The PnL-cap and reserve terms were removed, because neither binds.** An earlier draft took a percentage of "trader-PnL-cap headroom", which is not a quantity that exists — `checkTraderPnlCap` recomputes a ceiling on *each close's own profit payout* against the side pool; it is not a consumable allowance, and at any size this product reaches it is unreachable (a 100% move on $250 pays $250 against a $717 ceiling). Reserves do not bind either: they permit **$4,977** of side OI against `max_open_interest`'s **$960**. **OI headroom is the only live constraint**, which makes the formula both simpler and honest.
+> **The PnL-cap and reserve terms were removed, because neither binds.** An earlier draft took a percentage of "trader-PnL-cap headroom", which is not a quantity that exists — `checkTraderPnlCap` recomputes a ceiling on *each close's own profit payout* against the side pool; it is not a consumable allowance, and at any size this product reaches it is unreachable (a 100% move on $250 pays $250 against a $717 ceiling). Reserves do not bind either: measured, `long_reserves_exceeded` binds near **$4,250** and `short_reserves_exceeded` near **$7,300**, both far above `max_open_interest`'s **$960** — though they become binding the moment PEX raises that cap. **OI headroom is the only live constraint**, which makes the formula both simpler and honest.
 >
 > **It still needs a floor.** Live short-side headroom is **$46.56**; 20% of that is $9.31 of notional, below anything sellable. When the cap falls under the minimum viable order the UI must say the side is full, not offer an amount that cannot open.
 >
@@ -217,7 +217,7 @@ The user types a **USDC amount** — their collateral, and their maximum loss on
 
 A single bar. Both ends are solved against live state — see below. The resolved multiple is shown; there are no named tiers and no fixed stops.
 
-**This is a structural answer, not a style choice** — but the arithmetic below is the part an earlier draft got wrong, and it was wrong in a way that made the bar's right end reject for every user on every open. Proven by executing 0.6.1 against live state.
+**This is a structural answer, not a style choice** — but the arithmetic below is the part an earlier draft got wrong, and it was wrong in a way that made the bar's right end reject for every user on every open. Proven by executing 0.6.2 against live state.
 
 #### The ceiling is not `1 / initial_margin`
 
@@ -232,29 +232,60 @@ Both fees are bps of **notional** — 6 bps open + 10 bps builder — so achieva
 
 > **Solving that fixed point on `effective_max_leverage_bps` is necessary but *not sufficient*.** An earlier draft required exactly that and still overshot, because the field itself carries no fee term. Executed: LONG at live OI solves to 12.484× and rejects; the true maximum is **12.240×**.
 
-**Closed form.** With `C` = collateral in USD, `OI0` = current side OI in USD, `f = (open_fee_bps + builder_fee_bps) / 10000`, `IM0` = baseline initial margin as a fraction:
+**Closed form.** With `C` = collateral in USD, `OI0` = current side OI in USD, `f = (open_fee_bps + builder_fee_bps) / 10000`, `IM0` = baseline initial margin as a fraction, and **`k = doi_factor / 1e6`** for that market:
 
 ```
 baseline branch   N ≤ C / (IM0 + f)
-dynamic branch    N² + N·(OI0 + 10000f) − 10000·C = 0
-                  N = [ −(OI0 + 10000f) + √((OI0 + 10000f)² + 40000·C) ] / 2
+dynamic branch    N² + N·(OI0 + 10000·f/k) − 10000·C/k = 0
+                  N = [ −b + √(b² + 40000·C/k) ] / 2      where b = OI0 + 10000·f/k
 margin ceiling    N_margin = min(both branches)
 ```
 
-Verified against live MainNet: `OI0 = 189.10, C = 50` → **$611.95**, against $612.00 by binary search on the SDK.
+> **`k` is not optional.** `dynamicBps = (sideOiAfter × factor) / V2_MATH_FACTOR_SCALE` with the scale at 1e12, so the "≈ side OI in whole dollars" shortcut holds only where `factor = 1e6`. **ALGO/USD is 1,000,000; BTC/USD is 641,026.** Omitting `k` understates BTC's ceiling by ~20% — safe but wasteful — and **overstates** it on any market with a factor above 1e6, which returns `initial_margin_breach`: the exact failure this section exists to prevent. Factors are admin-mutable (Invariant 8), so read per market.
 
-#### One ceiling expression, three constraints
+Verified by execution across 218 randomised cases (`OI0 ∈ [0, 2500]`, `C ∈ [5.30, 900]`) at `k = 1`: **zero overstatements**, worst understatement **$0.43**, always conservative. The single reference point reproduces exactly — `OI0 = 189.10, C = 50` → $611.95 against $612.00 by binary search. Branch selection `min(both)` is correct because `effectiveBps = max(…)` requires both constraints to hold, and the discriminant `b² + 40000·C/k > 0` for all `C > 0`, so the root is always usable.
 
-The margin solve is only one of three, and on the short side today it is **not** the binding one:
+#### One ceiling expression — five constraints, not three
+
+An earlier draft named three and **two of the missing two bind first**, each reproducing the exact defect this section was rewritten to eliminate: a bar that renders with a valid-looking right end where every point on it rejects.
 
 ```
-L_max = min( N_margin , OI_headroom , MAX_POSITION_NOTIONAL_USD ) / C
+L_max = min( N_margin , N_collateral , N_slippage , OI_headroom , MAX_POSITION_NOTIONAL_USD ) / C
 ```
 
-| Side, live, $50 collateral | Margin solve | OI headroom | Binding | Ceiling |
-|---|---|---|---|---|
-| LONG | $611.95 | $770.90 | margin | **12.24×** |
-| SHORT | $381.43 | **$46.56** | OI cap | **0.93×** |
+**`N_collateral` — the minimum-collateral floor is a ceiling on notional.** `quoteV2OpenPosition` computes `collateralValueAfter = C − (openFee + builderFee)` and *then* tests it against `risk.min_collateral_usd`. Fees are bps of notional, so:
+
+```
+N_collateral = (C − min_collateral_usd) / f
+```
+
+At `C = $5.00` — the documented minimum, and what `MAX` produces from a small wallet — **nothing opens at any size**. Measured, LONG, live market:
+
+| C | ceiling without this term | true maximum | reason at the old ceiling |
+|---|---|---|---|
+| $5.00 | $96.90 (19.4×) | **nothing openable** | `collateral_too_small` |
+| $5.01 | $97.09 | **$6.25** (1.25×) | `collateral_too_small` |
+| $5.05 | $97.87 | $31.25 | `collateral_too_small` |
+| $5.20 | $100.78 | $100.78 — margin takes over | ok |
+
+Predicted matches binary search to the cent. **State a minimum amount:** `C > min_collateral_usd + f × max(min_position_size_usd, dynamic_min)` ≈ **$5.008** today, read live.
+
+**`N_slippage` — price impact is charged before the slippage test, and it is large.** `positionImpactForOi` with both exponents at 1 reduces to a **flat 55 bps of notional** on ALGO/USD for any open that worsens the long/short imbalance. Favourable-side impact is separately capped by `position_impact_pool_qty` (~$1.21 total today), so it is **not symmetric**.
+
+> **At `DEFAULT_SLIPPAGE_BPS = 50` anchored to the index, the ALGO/USD short side is unopenable at every size and every collateral amount today** — a $5 short needs ≥100 bps to clear — and on a balanced book **both** sides fail. Measured across the live, balanced and long-heavy books.
+>
+> **Fix: anchor `acceptablePrice` to the quoted `execution_price`, not to the index.** Verified: at 50 bps, index-anchored short returns `false`, execution-anchored returns `true`. Then surface impact as its own cost line, and treat the user's slippage as tolerance *on top of* impact rather than inclusive of it.
+>
+> This was missed because the original verification binary-searched with `acceptablePrice` effectively disabled. **`price_slippage` belongs in the list of things the confirming quote can return on the open path**, not only on close.
+
+**And reserves are a fifth, further out.** `long_reserves_exceeded` binds near **$4,250** of side OI and `short_reserves_exceeded` near **$7,300** — both well above the $960 `max_open_interest`, so reserves do not bind today. They become the binding constraint the moment PEX raises the OI cap.
+
+| Side, $50 collateral | Margin | Collateral | OI headroom | Binding | Ceiling |
+|---|---|---|---|---|---|
+| LONG | $611.95 | $28,125 | $770.90 | margin | **12.24×** |
+| SHORT | $381.43 | $28,125 | **$46.56** | OI cap | **0.93×** |
+
+*(Both rows assume slippage is anchored to execution price. Index-anchored, the SHORT row is unreachable at any size — see `N_slippage` above.)*
 
 **Then step down one UI tick, and confirm by quoting the resolved size and requiring `ok === true` before enabling the right end.** Do not ship the closed form as the only gate — `dynamic_min_position_size_usd`, `position_quantization` and `impact_consumes_size` also sit on this path.
 
@@ -304,7 +335,7 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 >
 > **This is the only control that exists.** Assert against the same oracle payload going into the group, not a displayed mid price:
 > - short (*betting ALGO goes down*): `trigger < indexMinPrice × (1 − ε)`
-> - long (*protect against a rise*): `trigger > indexMaxPrice × (1 + ε)`
+> - long (*betting ALGO goes up*): `trigger > indexMaxPrice × (1 + ε)`
 >
 > with `ε = CROSS_MARGIN_BPS`, so a target one tick from crossing is also refused.
 >
@@ -320,7 +351,7 @@ The take profit is a native PEX order kind (`DECREASE_TAKE_PROFIT`), stored on-c
 > quoteV2DecreaseOrder({ ...childInput, market, prices }).crossed === false
 > ```
 >
-> **Not `submission_result`.** That field returns `"blocked"` for any failure, and a same-group open pushes `position_missing` because the position does not exist yet — so the check would pass on every purchase-flow open while the order was crossed. Verified by execution against 0.6.1.
+> **Not `submission_result`.** That field returns `"blocked"` for any failure, and a same-group open pushes `position_missing` because the position does not exist yet — so the check would pass on every purchase-flow open while the order was crossed. Verified by execution against 0.6.2.
 >
 > (`src/v2OrderQuotes.ts`, `:470`, `submissionResultFor` at `:518-523`; asserted for a take profit in `test/v2-order-quotes.test.ts:178`.) Derive `market` / `prices` from **the group's own oracle message** — `analyzeV2NewOrderIntent` is called with no `marketSnapshot` (`src/v2OrderQuotes.ts`), so prices must be supplied explicitly or the check is vacuous.
 >
@@ -344,13 +375,13 @@ Show the implied shape next to the field as plain information, the way the liqui
 
 | Component | Source | Amount |
 |---|---|---|
-| Order box MBR | **import `V2_ORDER_BOX_MBR_MICRO_ALGO` from the pinned SDK — do not hardcode** | **99,700 µALGO** in 0.6.1 |
+| Order box MBR | **import `V2_ORDER_BOX_MBR_MICRO_ALGO` from the pinned SDK — do not hardcode** | **99,700 µALGO** in 0.6.2 |
 | Group flat fees | `required_group_flat_fee_microalgos` (µALGO **flat fee only** — it contains no MBR) | varies with carriers |
 | Keeper fee escrow | `keeperFeeAmount`, denominated in **the collateral asset**, not µALGO | ≥ $0.05 |
 
 The 100,200 µALGO execution escrow applies to `OPEN_LIMIT` only, never to decrease kinds.
 
-> **The order-box MBR moved and an earlier draft missed it.** 0.6.1 carries **both** `V2_LEGACY_ORDER_BOX_MBR_MICRO_ALGO = 96_500` and `V2_ORDER_BOX_MBR_MICRO_ALGO = 99_700`; the 3,200 µALGO delta is the `position_id` word added to the order box at the cutover. `v2AttachedChildInput` defaults the storage payment to the **current** value. Hardcoding 96,500 — which this document did, calling it "exact", through two claimed re-derivations — makes the full-group assertion fail on the `pay` leg of every open, and paying 96,500 makes the contract reject the short payment. **Import the constant from the pinned SDK and assert against it.** Both order- and position-box MBR are layout-derived and move at cutover.
+> **The order-box MBR moved and an earlier draft missed it.** 0.6.x declares both `V2_LEGACY_ORDER_BOX_MBR_MICRO_ALGO = 96_500` and `V2_ORDER_BOX_MBR_MICRO_ALGO = 99_700` — but **only the latter is exported**, so import that one and treat the legacy value as documentation; the 3,200 µALGO delta is the `position_id` word added to the order box at the cutover. `v2AttachedChildInput` defaults the storage payment to the **current** value. Hardcoding 96,500 — which this document did, calling it "exact", through two claimed re-derivations — makes the full-group assertion fail on the `pay` leg of every open, and paying 96,500 makes the contract reject the short payment. **Import the constant from the pinned SDK and assert against it.** Both order- and position-box MBR are layout-derived and move at cutover.
 
 **All-in for open plus one take profit: ~0.40 ALGO. With Protection, roughly 0.12 ALGO more** — a second order box plus ~15,000 µALGO of additional flat fees — and a **second keeper-fee escrow in USDC** — order box 99,700 + position box 70,900 + trader box 29,300 + trading flat fee 29,000 + OrderOps flat fee ~14,000 + per-transaction minimums across the group. *(An earlier draft cited 0.193 ALGO — a two-order-box figure compared against an all-in precheck — and later carried the legacy 96,500 into this very sum, three lines under the warning against it. Under-prechecking causes the failure this document calls the most common one.)*
 
@@ -366,19 +397,39 @@ A second bracket (`DECREASE_STOP_LOSS`, order kind 3) placed between spot and th
 
 Worked at $50 and 6×: a stop at mid-buffer returns roughly **$27**; riding to liquidation returns roughly **$5**.
 
-**Why optional is what makes it workable.** Each bracket is four transactions against a hard ceiling of 16, and open + take profit already runs 11–15. A second bracket takes it to 15–19, so it **does not always fit**. As a mandatory leg that is fragile; as an optional one it degrades cleanly — **offer it when the group builds, hide the control when it does not**, never fail at signature.
+**Optionality is a product choice, not a size constraint.** An earlier draft argued the group might not fit. **Measured, it always does:**
 
-**Placement is constrained structurally, not by validation.** The stop must sit **between spot and the liquidation price**: past liquidation it never fires, past spot it fires immediately — the same wrong-side hazard as a mis-set take profit, now with a second order to get wrong. Present it as a marker on the liquidation scale rather than a free price field, so the constraint is expressed by the control.
+| Group | Transactions |
+|---|---|
+| open + take profit | **9** |
+| open + take profit + stop loss | **13** |
+
+Invariant across ALGO LONG, ALGO SHORT, ALGO-collateral and BTC LONG — zero variance — against `validateGroupTransactionCount`'s throw at **>16**. Each bracket is 4 transactions as stated; the *open* leg is 5, not the 7–11 implied.
+
+> **The conditional gate was therefore dead code**, and dangerous in one direction: implemented against the old 15–19 estimate it would have hidden Protection from **everyone, permanently**. Keep Protection optional because a directional trader may not want a stop, not because the group might not build. `PROTECTION_ENABLED` is a product flag, not a size check.
+
+*(The increase-flow "11–17 transactions" claim inherits the same inflated open-group figure and should be re-measured: 5 + 2 cancel + 4 re-place = 11 by construction. The close path with two brackets is unmeasured — it needs `prepareV2ActionRecall` and live yield state.)*
+
+**Placement needs margin at *both* ends, and re-checking over time.** The stop sits between spot and the liquidation price — past liquidation it never fires, past spot it fires immediately, the same wrong-side hazard as a mis-set take profit with a second order to get wrong. Present it as a marker on the liquidation scale rather than a free price field, so the control expresses the constraint. But "between spot and liquidation" is **not sufficient**:
+
+- **ε is applied at the spot end only.** Nothing keeps the stop off the liquidation boundary, where the liquidator wins the race and the user pays the 70 bps liquidation fee anyway — destroying the ~$27-vs-~$5 case this section rests on. Require a stated minimum buffer above liquidation as well.
+- **The liquidation price drifts.** Funding and borrowing settle against collateral, so a stop placed just inside the buffer at open migrates *outside* it over the position's life and then never fires. Nothing currently re-evaluates placement after open — the management surface needs an alert when drift pushes the stop past liquidation. *(Reasoned from source, not executed.)*
 
 > ⚠️ **BLOCKED — Protection does not ship until OCO is settled by simulation.**
 >
-> An earlier draft claimed `OCO_SIBLING_CANCELLED` "becomes live: when one bracket executes PEX cancels the other, which is cleanup we no longer build." **That symbol does not exist.** Grepping the pinned 0.6.1 source, its bundled docs, and the live `GET /v2/protocol` manifest returns **zero hits** for `OCO_SIBLING_CANCELLED`, `PARENT_RETIRED`, `PARENT_CANCELLED`, `PARENT_EXPIRED`, and for statuses 7/8 as `POSITION_MISSING`/`POSITION_REPLACED`. `v2_order_cancelled` declares `status: uint64` and `v2_order_bracket_cleanup` declares `reason: uint64`, both with **no enum registry anywhere**.
+> An earlier draft claimed `OCO_SIBLING_CANCELLED` "becomes live: when one bracket executes PEX cancels the other, which is cleanup we no longer build." **That symbol does not exist.** Grepping the pinned 0.6.2 source, its bundled docs, and the live `GET /v2/protocol` manifest returns **zero hits** for `OCO_SIBLING_CANCELLED`, `PARENT_RETIRED`, `PARENT_CANCELLED`, `PARENT_EXPIRED`, and for statuses 7/8 as `POSITION_MISSING`/`POSITION_REPLACED`. `v2_order_cancelled` declares `status: uint64` and `v2_order_bracket_cleanup` declares `reason: uint64`, both with **no enum registry anywhere**.
 >
 > All of it came from one chat message. Per this document's own citation policy those symbols are **UNVERIFIED**, and the spec then made one of them load-bearing for new surface — the exact over-trust pattern six passes have now flagged.
 >
 > **Simulated 2026-09-22. Partially settled — and the part that did not settle is informative.**
 >
-> **What is now confirmed from chain.** `v2_order_bracket_cleanup` (235) is real and fires on MainNet — **48 occurrences** across 450 OrderOps transactions. It refunds storage: every sample carries `storage_refund_microalgo = 96,500`, the pre-cutover order-box MBR, which independently corroborates that MainNet has not cut over. Both child slots appear in the wild — `base+1` and `base+2` pairs such as `(1, 2)`, `(5, 6)` — confirming the stride-of-3 allocation. Exactly **two reason codes occur: 1 (×30) and 3 (×18)**.
+> **What is confirmed from chain.** `v2_order_bracket_cleanup` (235) is real and fires on MainNet — **49 occurrences** across 483 OrderOps transactions, reason codes **1 (×30) and 3 (×19)**, exactly two. Both child slots appear — `base+1` and `base+2` pairs such as `(1, 2)`, `(5, 6)` — confirming the stride-of-3 allocation. `keeper_fee_paid = 0` in **all 49**, with the keeper fee refunded to the owner: **nobody has ever been paid to run a cleanup**, which strengthens rather than weakens this document's pessimism about lazy incentive-driven cleanup.
+>
+> **An earlier draft claimed the 96,500 µALGO storage refund corroborated that MainNet had not cut over. The chain refutes that.** The refund is a clean step function: **96,500 through round 65,264,306 (28 events), then 99,700 from round 65,266,976 onward (21 events).** The order-box cutover has already happened. Confirmed directly: the live `o2:` box is **200 bytes / 25 words with `schema_version = 4`** and carries a `position_id`, where the legacy box is 192 bytes.
+>
+> **MainNet is mixed, and that is by design.** Ultrade confirmed 2026-09-22 that 0.6.x is live for MainNet and that *"older positions don't have position id and are functional as legacy."* So V4 order boxes coexist with 14-word `p2:` position boxes created before the cutover — those are legacy positions, not evidence of a pre-cutover contract. A comparison of approval-program hashes against a *previously recorded* value cannot detect an upgrade that predates the recording; that mistake is what produced the wrong conclusion.
+>
+> Two receipt event ids, **248 (×4) and 249 (×57)**, appear on live OrderOps and are absent from both pinned manifests; 249's payload carries the same timestamp-shaped position id. Worth decoding — they are the best available evidence of how far the cutover has progressed.
 >
 > **What could not be settled, and why.** `v2_order_executed` (231) appears **zero times** in those 450 transactions. **No order has ever executed on MainNet** — unsurprising at $913 of ALGO/USD open interest and none at all on BTC/USD. So execution-triggered cancellation cannot be observed here, and every `reason=3` event occurred **alone**, with no execution in the same transaction. The reason→name mapping therefore rests on assuming Ultrade listed them in enum order, which is not evidence.
 >
@@ -388,7 +439,7 @@ Worked at $50 and 6×: a stop at mid-buffer returns roughly **$27**; riding to l
 
 The child order slots `base+1` / `base+2` are both already reserved by the stride-of-3 allocation.
 
-**Costs:** a second order box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 µALGO in 0.6.1) and a second keeper-fee escrow in USDC. Both recoverable. Fold both into the quoted figures, and into the pre-flight balance check.
+**Costs:** a second order box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 µALGO in 0.6.2) and a second keeper-fee escrow in USDC. Both recoverable. Fold both into the quoted figures, and into the pre-flight balance check.
 
 ### Orphaned take-profit orders
 
@@ -402,10 +453,10 @@ There are **two distinct cleanup mechanisms**, and the one that matters for Perp
 |---|---|---|
 | `PARENT_CANCELLED` | Owner cancels a pending **entry** order; attached children removed | **No** — Perps opens at market, so there is no resting parent entry |
 | `PARENT_EXPIRED` | `cancel_expired_order` invoked on an expired entry order. **Expiry alone does not trigger it** | **No** — same reason |
-| `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **No** — Perps carries a single bracket, so there is no sibling |
+| `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **Only if Protection ships.** With a take profit alone there is no sibling. With Protection there are two, and this becomes the governing cleanup path — one of the reasons Protection is blocked, since the symbol itself is [UNVERIFIED](#protection--an-optional-stop) |
 | `PARENT_RETIRED` | Position-identity upgrade: execution attempted on a legacy bracket entry; parent retired, children removed | Only at the 0.5.0 cutover |
 
-**None of the four covers our orphan case.** Dropping the stop loss also permanently removes `OCO_SIBLING_CANCELLED` from our surface.
+**None of the four covers our orphan case *as currently scoped*** — a single mandatory take profit. **This section is written for one bracket and does not cover Protection**, which introduces a sibling and makes `OCO_SIBLING_CANCELLED` governing. Rewrite it before Protection ships, including the partial-reduction case where OCO would leave the surviving position with no brackets at all.
 
 **Our case — a position closed while its take profit rests — is handled separately**, by `v2_order_cancelled` (232) with:
 
@@ -434,7 +485,7 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 `planV2CancelRelatedReduceOrders` emits `related_reduce_orders_require_owner_cancel` and returns *separate* groups the owner must sign (`src/orders.ts`); `planV2CloseWithOrderCleanup` emits `related_order_cancels_require_followup_group` when close + cancel exceeds 16, and `some_related_order_cancels_require_followup_group` when the close merges with the first cancel group but further groups remain (`src/orders.ts`). Handle both.
 
-**What V4 lifetime binding changes.** Perps launches **after** the position-identity cutover on SDK ≥ 0.6.1, so every bracket Perps creates is a V4 order bound to a `position_id`. A V4 bracket meeting a replaced position is **cancelled, not executed** — `v2_order_cancelled` status 8. The re-arm hazard is therefore structurally impossible **for our own orders**, and the requirements below shrink accordingly.
+**What V4 lifetime binding changes.** Perps launches **after** the position-identity cutover on SDK ≥ 0.6.2, so every bracket Perps creates is a V4 order bound to a `position_id`. A V4 bracket meeting a replaced position is **cancelled, not executed** — `v2_order_cancelled` status 8. The re-arm hazard is therefore structurally impossible **for our own orders**, and the requirements below shrink accordingly.
 
 **What it does not change.** Lifetime binding is V4-only. A user who traded PEX directly **before** cutover can still hold a **legacy V3 bracket** on the same `(market, collateralAsset, side, owner)` key — matched by coordinates, with no id binding. Per Ultrade: *"A legacy trigger can affect a reopened position at the same coordinates."* That order is not ours and we did not create it, but it can fire against a Perps position opened on that key.
 
@@ -451,7 +502,7 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    - `reduce_size_exceeds_position` is a **live comparison** (`src/orders.ts`), not a terminal state. A take profit made stale by a partial close or partial ADL becomes **executable again** if the position grows back past its size — firing at the old trigger for the old size.
    - `v2AttachedChildInput` defaults the child size to `leg.sizeUsdDelta ?? rawParent.sizeUsdDelta` (`src/transactions.ts`). On an increase the parent's value is the **delta**, not the merged total, so a bracket attached without an explicit override covers only the newly-added size while rendering as fully armed. **`leg.sizeUsdDelta` must be set to the post-increase position size** — it is on the assertion list.
 
-   > **Simulated 2026-09-22: the single-bracket path is clean.** Built against 0.6.1 with the live protocol manifest:
+   > **Simulated 2026-09-22: the single-bracket path is clean.** Built against 0.6.2 with the live protocol manifest:
    >
    > | Case | Result |
    > |---|---|
@@ -462,7 +513,7 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
    >
    > So the collision needs **both** two brackets and the attached-child ids passed through. **The mandatory close path with a single take profit is unaffected**, which was an open question. This is a Protection blocker only.
    >
-   > **Assert distinct transaction IDs on every group before presenting it.** `new Set(txns.map(t => t.txID())).size === txns.length`, in the single audited module. This is cheap and catches a live upstream bug: with two brackets, `planV2CancelRelatedReduceOrders` appends a `PDexV2Math.noop` budget carrier per cancel, and two such carriers are **byte-identical** — no args, no boxes, no foreign apps, no note. The planner routes through `regroup`, which clears group IDs and re-assigns without the de-duplication `grouped()` applies. Reproduced against 0.6.1: a two-reduce-order cancel builds 4 transactions with **3 distinct IDs**, succeeds at build time, and is rejected at submission. `planV2CloseWithOrderCleanup` merges through the same path, so this sits on the mandatory close route. Report it to Ultrade.
+   > **Assert distinct transaction IDs on every group before presenting it.** `new Set(txns.map(t => t.txID())).size === txns.length`, in the single audited module. This is cheap and catches a live upstream bug: with two brackets, `planV2CancelRelatedReduceOrders` appends a `PDexV2Math.noop` budget carrier per cancel, and two such carriers are **byte-identical** — no args, no boxes, no foreign apps, no note. The planner routes through `regroup`, which clears group IDs and re-assigns without the de-duplication `grouped()` applies. Reproduced against 0.6.2: a two-reduce-order cancel builds 4 transactions with **3 distinct IDs**, succeeds at build time, and is rejected at submission. `planV2CloseWithOrderCleanup` merges through the same path, so this sits on the mandatory close route. Report it to Ultrade.
 
    > **No SDK builder produces this group.** `buildV2MarketOpenWithAttachedOrdersTransactions` does open + brackets only; `planV2CloseWithOrderCleanup` is the close analogue with no increase equivalent. The grouping helpers are private — `grouped` (`transactions.ts:5949`), `regroup` / `splitGrouped` (`orders.ts:500-513`) — and that matters beyond inconvenience: `grouped()` applies `applyV2LargeProgramReadBudgetToTransactions` and `distinguishRepeatedMathCarriers` before `assignGroupID` while `regroup()` does neither, so a hand-assembled group under-allocates the box-read budget and can collide on duplicate `PDexV2Math.noop` carriers.
    >
@@ -470,7 +521,7 @@ That receipt carries `storage_refund_microalgo`, so **the order-box MBR is refun
 
 3. **Every manual close builds the cancel group. This is a correctness requirement, and an unsigned follow-up is a blocking alarm state.**
 
-   > **An earlier draft downgraded this to "promptness" on the strength of a chat message, and the source does not support it.** What 0.6.1 shows: `orders.ts` sets `cleanupReason = "position_replaced"` and pushes a blocker — that is a **client-side lifecycle classification** establishing the order will not *execute*. It says nothing about cancellation. `planV2CancelRelatedReduceOrders` still emits `related_reduce_orders_require_owner_cancel` and returns separate owner-signed groups; if closing auto-cancelled brackets that planner would be unnecessary. The only cleanup mechanism in the SDK is `buildV2OrderCleanupCall` — an `execute_order` call with `cleanup: "orphan"`, **arbitrary sender**, 20,000 µALGO flat fee — and the 0.5.0 notes describe orphans receiving **paid** cleanup.
+   > **An earlier draft downgraded this to "promptness" on the strength of a chat message, and the source does not support it.** What 0.6.2 shows: `orders.ts` sets `cleanupReason = "position_replaced"` and pushes a blocker — that is a **client-side lifecycle classification** establishing the order will not *execute*. It says nothing about cancellation. `planV2CancelRelatedReduceOrders` still emits `related_reduce_orders_require_owner_cancel` and returns separate owner-signed groups; if closing auto-cancelled brackets that planner would be unnecessary. The only cleanup mechanism in the SDK is `buildV2OrderCleanupCall` — an `execute_order` call with `cleanup: "orphan"`, **arbitrary sender**, 20,000 µALGO flat fee — and the 0.5.0 notes describe orphans receiving **paid** cleanup.
    >
    > So cleanup is **lazy and incentive-driven, not eager and automatic.** On an exchange this thin, a $0.05–0.10 keeper fee may motivate nobody, leaving 99,700 µALGO of MBR plus the USDC escrow locked indefinitely. **Non-execution is verified; prompt cancellation is not.**
    >
@@ -486,7 +537,7 @@ $50 committed, risk bar at 6×, long, live ALGO at $0.0866:
 
 ```
 committed          $50        (collateral, and the maximum loss)
-leverage           6×         (bar position; ceiling today is 10.9× on the short side)
+leverage           6×         (bar position; the short-side ceiling today is 0.93×, not the 10.9× a raw `effective_max_leverage_bps` read suggests)
 notional           $300
 liquidation        ~14.2% against you, before fees
 ```
@@ -591,17 +642,19 @@ This is also where orphaned take-profit orders surface. Since three outcomes orp
 
 ---
 
-## Target Version — pin 0.6.1 or later
+## Target Version — pin 0.6.2 or later
 
-**Decision, updated 2026-09-22: pin SDK 0.6.1 or later, build against TestNet, launch after the MainNet cutover.** The SDK moved 0.5.0 → 0.5.1 → 0.6.0 → 0.6.1 in two days. Ultrade ask integrators to pin a **reviewed commit ref**, not a tag.
+**Decision, updated 2026-09-22: pin SDK 0.6.2, build against MainNet.** The SDK moved 0.5.0 → 0.5.1 → 0.6.0 → 0.6.2 in two days. Ultrade ask integrators to pin a **reviewed commit ref**, not a tag.
 
-**MainNet has not cut over.** `PDexV2Trading` still shows only the 2026-09-12 update; the position-identity contracts are not live, and 0.6.1 states it requires them and is incompatible with the older contracts. There is no rush and no risk of being caught mid-transition.
+**The cutover has happened and 0.6.x is live for MainNet** — confirmed by Ultrade 2026-09-22 and by chain: the order-box MBR stepped from 96,500 to 99,700 at round **65,266,976**, and live `o2:` boxes are 200 bytes with `schema_version = 4` and a `position_id`. Older positions have no `position_id` and *"are functional as legacy"*, so 14-word `p2:` boxes are pre-cutover positions, not evidence of pre-cutover contracts. **Build against MainNet; the TestNet detour is unnecessary.**
+
+**0.6.2 fixes the duplicate-transaction-ID defect we reported.** `regroup` is gone from the close path, replaced by `appendV2TransactionGroupTransactions` over a proper group result, `splitGrouped` became `batchCancelGroups`, and a regression test was added. Verified by re-running our reproduction: the failing case — two brackets plus attached-child ids — now returns **4 transactions, 4 distinct IDs**, where 0.6.2 gave 3. Reported and fixed within a day.
 
 ### 0.6.1 fixes a bug in exactly our configuration
 
 > *"Fixes transaction resource budgeting when attaching only a TP or only an SL after an entry."*
 
-Perps attaches **only a take profit**. That is the case that was broken. **Pin ≥ 0.6.1; do not build against 0.5.x or 0.6.0.**
+Perps attaches **only a take profit**. That is the case that was broken. **Pin ≥ 0.6.2; do not build against 0.5.x or 0.6.0.**
 
 ### 0.6.0 closed the close-identity hole — upstream
 
@@ -629,9 +682,9 @@ So the re-arm hazard is **not fully dead** — dead for newly created brackets, 
 
 Current MainNet approval-program SHA-256 prefixes are Trading `c6c2802f…`, OrderOps `492edbc1…`, AdminControl `08e7101a…`. **These change at the position-identity cutover**, so capture the pinning constants at release against the upgraded contracts rather than committing today's values.
 
-**The protocol-manifest SHA-256 belongs in the same bucket.** The served manifest still describes the *pre-cutover* generation: it declares `decrease_or_close` with 14 args and `submit_linked_order` with 22, against the 15 and 24 the 0.6.1 builders pass; its `position_state` and `order_state` formats carry no `position_id`; and its `approval_size` for Trading and OrderOps does not match the deployed programs. Pinning today's hash would pin an artifact **incompatible with the pinned SDK** — `encodeAppArgs` throws `decrease_or_close expects 14 app args`. Capture it at cutover.
+**The protocol-manifest SHA-256 belongs in the same bucket.** The served manifest still describes the *pre-cutover* generation: it declares `decrease_or_close` with 14 args and `submit_linked_order` with 22, against the 15 and 24 the 0.6.2 builders pass; its `position_state` and `order_state` formats carry no `position_id`; and its `approval_size` for Trading and OrderOps does not match the deployed programs. Pinning today's hash would pin an artifact **incompatible with the pinned SDK** — `encodeAppArgs` throws `decrease_or_close expects 14 app args`. Capture it at cutover.
 
-> The 7 / 15 / 24 argument lists are verified positionally against the 0.6.1 builders, but are **post-cutover and unverified against any served manifest**, because no cutover manifest exists yet.
+> The 7 / 15 / 24 argument lists are verified positionally against the 0.6.2 builders, but are **post-cutover and unverified against any served manifest**, because no cutover manifest exists yet.
 
 ### Superseded
 
@@ -685,7 +738,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 | `liquidation_fee_bps` | 70 |
 | `max_liquidation_impact_bps` | 50 |
 | `funding_interval_seconds` | 3600 |
-| `optimal_usage_factor_*_bps` | 7000 — **the kink in the borrowing-rate curve, not a utilization gate.** Grepping 0.6.1, it is never read as a limit. What actually closes a side is `checkReserves` (`reserve_factor_bps × side OI` vs side pool USD) and `checkOiAfter` (`max_open_interest_*`) |
+| `optimal_usage_factor_*_bps` | 7000 — **the kink in the borrowing-rate curve, not a utilization gate.** Grepping 0.6.2, it is never read as a limit. What actually closes a side is `checkReserves` (`reserve_factor_bps × side OI` vs side pool USD) and `checkOiAfter` (`max_open_interest_*`) |
 
 > ⚠️ **`initial_margin_bps` is the baseline, not the cap. An earlier draft concluded "20× confirmed" from it and that is wrong.**
 >
@@ -730,7 +783,13 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 
 ## Pending Parameter Changes
 
-Ultrade is shipping a fixed delay window on parameter changes plus on-chain readability of what is pending (~1 week from 2026-09-18). That converts our sharpest residual risk into a **user-facing safety feature**, and Perps should consume it as soon as it exists.
+> ⚠️ **No delay window exists, and none is committed.** Ultrade confirmed 2026-09-22 that a delay is *planned* but deliberately deferred: the protocol launched three weeks ago and they want to retain emergency-upgrade capability. That is a defensible call — a rigid delay on a very young protocol is arguably more dangerous than none. What they commit to instead is **communicating upgrades to builders in advance**, as they did with another integrator for the position-identity upgrade.
+>
+> **Consequences for us.** That commitment protects *builders*, not *users* — our users hear about a change only if we are awake and relay it, and it depends on someone remembering to send the message. So: **approval-program hash monitoring is now our only automatic detection of an upgrade**, not a supplement to a delay. It moves up in priority accordingly.
+>
+> **What we proposed back:** make the delay *asymmetric* when it does ship — only changes adverse to open positions need a window; anything that reduces risk, pauses a market or fixes a bug lands immediately. That preserves full emergency capability while still protecting users from the one thing they cannot react to. And ship the on-chain readability of pending changes even without an enforced delay, so integrators can surface them automatically.
+
+The section below describes the feature **as it would work once a delay ships**, and is conditional on that.
 
 Because there is no stop loss, the displayed liquidation price is the user's primary safety signal. Today the best available is reading `maintenance_margin_bps` live and never caching it — purely reactive. With pending changes readable and dated, the management surface shows **forward** state instead:
 
@@ -947,7 +1006,7 @@ If a backend store is ever preferred instead, note that it makes the Operating M
 10. **Every take-profit order is GTC** — `TIME_IN_FORCE.GTC` and `expiry_time = 0`, which is already the SDK default for attached children (`src/transactions.ts`). An order that silently expires while the position it belongs to persists is a defect. The cost of GTC is that it cannot be cleaned up by `cancel_expired_order`, which anyone may call — so owner-cancellation becomes mandatory infrastructure, not hygiene.
 11. **No purchase-flow open proceeds against a position key holding a *legacy* (`schemaVersion: 3`) reduce order.** V4 orders are lifetime-bound and a stale one meets a replaced position as a cancellation, not an execution — so V4 orphans are harmless and this invariant does not cover them. Legacy orders match by coordinates only and can still fire against a new position. The increase flow is exempt and instead cancels and re-places the bracket in the same group.
 12. **No bracket leg — take-profit *or* stop-loss — is signed unless `quoteV2DecreaseOrder(...).crossed === false`** against the group's own oracle message, and the trigger clears the crossing bound by `CROSS_MARGIN_BPS`.
-    > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Perps's primary path** — proven by building 0.6.1 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
+    > **Assert `crossed`, never `submission_result`.** An earlier draft used `submission_result !== "execute_immediately"` and that check is **vacuous on Perps's primary path** — proven by building 0.6.2 and running it. `submissionResultFor` returns `"blocked"` whenever any failure is present, and a same-group open has no position yet, so `analyzeV2NewOrderIntent` pushes `position_missing` and the result is `"blocked"` regardless of the trigger. A deliberately wrong-side short take profit (spot 50, trigger 60) returns `blocked / crossed: true`. The check passed 100% of purchase-flow opens while the order was crossed and would have executed on submission. `crossed` is exposed directly on the quote result and is independent of the failure list. (`v2OrderCrossedByOracle` remains unexported; `decodeV2OracleSnapshotMessage` is exported with a hardcoded 133-byte layout if a local reproduction is preferred.) PEX does not validate a target against the market; a wrong-side target executes immediately.
 13. **No close is signed with `expectedPositionId` equal to `UNCHECKED_CLOSE_POSITION_ID`.** Since 0.6.0 the SDK throws on omission, so the remaining risk is *deliberate* use of the sentinel — which executes against whatever position occupies the coordinates. Ultrade's guidance is that it must never be used for TP/SL, and never as a fallback for a failed position read. **A failed position read is a blocked action, not a licence to skip the check.** Valid ids are `0 ≤ id < 2^48`.
 14. **`liquidation_price_estimate == 0` or `liquidation_price_direction == ""` is a quote failure, never a rendered price.**
 15. **No financial display derives from note contents.** Every dollar figure comes from a live PEX quote.
@@ -1009,7 +1068,7 @@ What a Perps user is trusting, stated plainly because the product's honesty depe
 - **No chart.** PEX is oracle-priced; a chart would be decorative and would imply the user should be timing entries.
 - **No delegated close authority.** Option B is documented as rejected, not deferred.
 - **No per-unit targets, durations, or liquidation prices.** Units size a purchase; they are not independent positions.
-- **No stop loss.** Deliberate: simplicity is the product, and downside management stays with the user via manual close. The cost is that liquidation becomes the only automated downside exit.
+- **No stop loss in v1.** Protection is specified but **BLOCKED** pending the OCO questions — see [Protection](#protection--an-optional-stop). Until it ships, liquidation is the only automated downside exit, and the displayed liquidation price carries that weight alone.
 
 ---
 
@@ -1021,11 +1080,12 @@ What a Perps user is trusting, stated plainly because the product's honesty depe
 3. **Pending-change reader**, once Ultrade ships it. Poll, recompute forward liquidation prices, notify inside the window. See [Pending Parameter Changes](#pending-parameter-changes).
 4. **Supply-chain controls.** Reproducible builds with published hashes, subresource integrity, a pinned deployment bundle. These — not the group assertion — are what raise the bar against full frontend compromise.
    **Operational prerequisite in the same step:** `BUILDER_ADDRESS` must be opted in to USDC (31566704) with sufficient ALGO MBR **before launch**. The builder fee is paid in the collateral asset and the address appears in `accounts` on every fee-bearing call — if it is not opted in, plausibly **every open fails for every user on day one**. *(Conditional: confirm on chain whether PEX pays via an axfer requiring the opt-in or via accrual.)*
-4. **Quote engine.** Solve the risk bar's floor and ceiling per the closed form, confirmed by a live quote returning `ok === true`; payoff table; holding cost; availability gating; notional cap. Verified against SDK output, not reimplemented.
-5. **Group construction.** Single audited module. Per-method ABI assertions plus asset-movement assertions on `(asset, amount, receiver)`. Simulation as a pre-flight check. `baseOrderId` allocated in strides of 3 from the highest existing `o2:` box read live from chain, never from local state.
-6. **Purchase surface.** Direction → amount → risk bar → target price → optional protection → confirm, with entry-time routing to the increase flow.
-7. **Management surface.** Liquidation price, take-profit state, accrued holding cost, add / add-collateral / partial close / close, orphan reclaim.
-8. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close.
+5. **Quote engine.** Solve the risk bar's floor and ceiling per the closed form, confirmed by a live quote returning `ok === true`; payoff table; holding cost; availability gating; notional cap. Verified against SDK output, not reimplemented.
+6. **Group construction.** Single audited module. Per-method ABI assertions plus asset-movement assertions on `(asset, amount, receiver)`. Simulation as a pre-flight check. `baseOrderId` allocated in strides of 3 from the highest existing `o2:` box read live from chain, never from local state.
+7. **Purchase surface.** Direction → amount → risk bar → target price → optional protection → confirm, with entry-time routing to the increase flow.
+8. **Protection (BLOCKED).** Do not build until both are settled: Ultrade supplies the `v2_order_bracket_cleanup` `reason` enum (codes 1 and 3 occur on MainNet; the mapping to their four named triggers is assumption), and OCO-on-execution is simulated on TestNet — including the partial-reduction case. Neither is determinable on MainNet, where `v2_order_executed` has never fired.
+9. **Management surface.** Liquidation price, take-profit state, accrued holding cost, add / add-collateral / partial close / close, orphan reclaim.
+10. **Outcomes.** Receipt decoding **with inner-transaction traversal** — `decodeReceiptFromConfirmation()` returns one receipt and does not recurse, and keeper-executed take-profits close the position *inside* the orders transaction, so a single-receipt decode misses every third-party close.
    **Read `position_deleted` as a named field** on `v2_position_decreased_with_output_swap`; it is not in the `flags` prefix word, and the manifest carries no flags registry, so `hasFlag()` throws. On `v2_position_liquidated` and `v2_position_adl` that field does not exist — use `remaining_size == 0`.
    **Do not derive an exit price by division.** See [Outcomes](#outcomes-notifications-and-perps-history): the units do not produce a price and `pnl_output` is `uint64` with no sign bit. Either show no execution price, or reconstruct from `entry_price` read out of the `p2:` box before the close.
    Then the five close notifications and Perps History.
@@ -1046,7 +1106,7 @@ Policy, roadmap, or internal semantics we cannot observe.
 
 0. **Confirm the 0.5.0 MainNet cutover date**, and whether old brackets retiring with refunds requires anything of integrators beyond telling users to recreate protection.
 1. **Does the parameter delay window cover contract upgrades, or only parameters?** The sharpest remaining question. `PDexV2Trading` was upgraded 2026-09-12, an upgrade keeps the app ID, and Ultrade indicate no app ID change is expected — so **every** future change reaches us through the upgrade path. A 48h delay on parameters is only as strong as the upgrade path beneath it.
-2. ~~**`v2_order_bracket_cleanup` triggers and reason codes**~~ — **answered 2026-09-21.** Four reasons, none applying to Perps; our orphan case is `v2_order_cancelled` status 7/8, which refunds storage. See [How PEX cleans up](#how-pex-cleans-up--answered-by-ultrade-2026-09-21). **Narrowed sub-question:** is that cleanup **eager** at close or **lazy** on the next keeper evaluation? Decides whether Perps History needs a reclaim affordance or only a record.
+2. **REOPENED — the `v2_order_bracket_cleanup` `reason` enum, and OCO-on-execution. Blocks Protection.** Codes **1** and **3** occur on MainNet (30 and 19 times), but the mapping to Ultrade's four named triggers is assumption, not evidence, and `v2_order_executed` has **never fired on MainNet**, so execution-triggered cancellation is unobservable there. Two actions: ask Ultrade for the enum, and simulate OCO on **TestNet** — including the partial-reduction case, where OCO firing would leave the surviving position with no brackets at all. *(Partially answered 2026-09-21: the four reasons were described, and `v2_order_cancelled` status 7/8 refunds storage. The sub-question of whether cleanup is eager or lazy is now settled by chain — `keeper_fee_paid = 0` in all 49 cleanups, so nobody has ever been paid to run one. Perps History needs the reclaim affordance.)*
 3. ~~**Oracle signer public key**~~ — **answered 2026-09-21.** `4cc6bcc8...d2e3dffb`, from `PDexV2OrderOps` (3690309166) global key `"oc"`, cross-checked against `PDexV2Trading` global key `"q"`. Pin it. Remaining sub-question: confirm the trailing `0x1e` is indeed an on-chain freshness tolerance of 30 seconds.
 4. ~~**Yield recall failure**~~ — **answered 2026-09-21.** Recall is atomic within whatever action requires it; if it fails, that action fails. Keeper recalls are not needed for direct user actions such as closing a position, so a manual close carries its own recall rather than depending on a keeper's.
 5. **Is there a published or private PEX audit, and is a multisig on the roadmap?** Both already asked; answers pending.
@@ -1058,7 +1118,7 @@ Each can be settled with `simulate_transactions` against MainNet at zero cost, a
 - Do the PEX contracts enforce oracle freshness, and with what tolerance? *(Simulate with a deliberately stale payload.)*
 - Do the contracts cap `keeperFeeAmount`? *(Simulate an order with an absurd escrow.)*
 - Is `max_pnl_factor_for_traders_bps` enforced on-chain identically to the SDK's `checkTraderPnlCap`? *(Simulate a close whose payout exceeds the cap.)*
-- Does `cancel_order` refund the order-box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 in 0.6.1) and the escrowed keeper fee? *(Simulate a cancel and read the balance deltas.)*
+- Does `cancel_order` refund the order-box MBR (`V2_ORDER_BOX_MBR_MICRO_ALGO`, 99,700 in 0.6.2) and the escrowed keeper fee? *(Simulate a cancel and read the balance deltas.)*
 - Is a duplicate `ownerOrderId` rejected, or does it overwrite the box?
 - Does a market pause gate `PDexV2OrderOps` cancellation?
 - Can an ALGO→USDC swap and a position open fit in one signed group within resource-reference limits?
@@ -1068,5 +1128,5 @@ Each can be settled with `simulate_transactions` against MainNet at zero cost, a
 
 ### Ours to decide, not to ask
 
-- **Should there be an unleveraged (1×) option?** A product called Perps with a 5× floor cannot express "protect me without leverage." Three bands were specified deliberately; recording the gap rather than silently closing it.
+- ~~**Should there be an unleveraged option?**~~ **Closed by the risk-bar rewrite.** The floor is solved as `max(min_position_size_usd, dynamic_min) / amount`, so low leverage is reachable whenever the venue allows it. No fixed floor, no bands.
 - **Does a PEX redeploy migrate existing position state?** Low priority — no app ID change is expected, so the two-state degraded mode is insurance against an unplanned event.
