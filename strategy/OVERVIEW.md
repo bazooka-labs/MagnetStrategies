@@ -30,7 +30,8 @@ Applied:
 | | Where | Why |
 |---|---|---|
 | Perpetual positions | Strategy | A directional position |
-| Auto-compounding LP vault | Strategy | An engineered exposure, return not a posted rate |
+| Adding liquidity to a $U pool yourself | Tokens | You hold the LP position and take the fees as they come. Nothing is engineered on top |
+| Auto-compounding LP vault | Strategy | The **same underlying activity**, wrapped: someone decides when to harvest, what to re-deploy into, and on what schedule. That decision layer is the product |
 | Leveraged staking loop | Strategy | Engineered exposure — **even though it runs on Bank primitives underneath** |
 | Borrowing mUSD against ALGO | Bank | A rate, and liquidation of your own collateral |
 | Minting or redeeming mUSD | Tokens | It is about acquiring the asset, not deploying it |
