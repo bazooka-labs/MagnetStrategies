@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
 const PANEL =
@@ -29,7 +30,7 @@ export function AboutModal() {
         About $U
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
           onClick={(e) => { if (e.target === e.currentTarget) close(); }}
@@ -63,7 +64,8 @@ export function AboutModal() {
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

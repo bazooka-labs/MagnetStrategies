@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 const MAGNET_ASA_ID = 3081853135;
 const PANEL =
@@ -120,7 +121,7 @@ export function TvlRankStat() {
         )}
       </button>
 
-      {open && board && (
+      {open && board && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
           onClick={(e) => { if (e.target === e.currentTarget) close(); }}
@@ -209,7 +210,8 @@ export function TvlRankStat() {
               ecosystem total.
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
