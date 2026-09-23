@@ -9,7 +9,7 @@ both. The umbrella is the user's intent, not who wrote the code.
 | Product | What it is | Status |
 |---|---|---|
 | [Perps](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | Design stage, integration under construction |
-| CLMM strategy pools | Automated LP / concentrated-liquidity vaults, expected to be built on **PactFi's** CLMM contracts | **Waiting on PactFi** to release the platform. Designed in discussion, nothing written |
+| CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | **Waiting on PactFi** to release the platform. Discussed, not designed; nothing written and no decisions taken |
 | Strategy vaults | Other engineered exposures — looped, structured | Not started |
 | Advanced trading | Surfaces for users who want the full instrument, not the simplified one | Not started |
 
@@ -76,15 +76,21 @@ protocol dependency reproduces the failure with no oracle involved at all.
 A corollary worth stating: taking a third-party protocol's LP as MagnetFi collateral
 would foreclose Strategy products built on that protocol, and vice versa.
 
-> **That corollary is already live, and the split is currently clean.** MagnetFi's
-> vault is wired to **Tinyman** — `lp_pool_id` is a Tinyman pool app ID, and VAULT.md
-> defines a vault type as a Tinyman pool. **Pact** appears only as liquidity
-> deep-links on the Tokens page, never as collateral, so it is **unspent**.
+> **Where this currently stands, as fact rather than plan.** MagnetFi's vault is wired
+> to **Tinyman** — `lp_pool_id` is a Tinyman pool app ID, and VAULT.md defines a vault
+> type as a Tinyman pool. **Pact** appears only as liquidity deep-links on the Tokens
+> page and is not collateral anywhere.
 >
-> The planned CLMM strategy pools are expected to build on Pact. That is clean today
-> and stops being clean the moment MagnetFi accepts a Pact LP as vault collateral.
-> **Whichever arm takes Pact first takes it permanently** — so this is a decision to
-> make deliberately, once, rather than discover when the second one is blocked.
+> **Two separate open ideas, neither decided.** CLMM strategy pools may be built on
+> Pact; AMM/CLMM LPs may become MagnetFi collateral. Both have been discussed, neither
+> is resolved, and they are not currently coupled to each other.
+>
+> The only claim made here is that **the rule above is the thing to check them
+> against** if they ever meet — a Strategy product and MagnetFi solvency reading the
+> same venue's state is the shape it exists to catch. Whether that coupling actually
+> arises depends on how each is built, and is analysis to do then, on real designs.
+> Flagged now so the question gets asked; **not** prejudged, and neither venue is
+> reserved for either arm.
 
 **Disclosure.** Every Strategy product states, in the product surface and not only in
 its docs: whose contracts hold the funds, what the counterparty is, and what can go to
