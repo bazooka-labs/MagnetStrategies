@@ -5,6 +5,10 @@ immutable adapter behind the PSM↔adapter interface (`pool_deposit` / `pool_wit
 `recoverable_value`). This is the load-bearing venue-trust contract: **`recoverable_value()` must be
 a non-manipulable on-chain read** (the #1 gate of this adapter's dedicated audit — see PSM.md H-1).
 
+> **The upstream source this was derived from is kept in
+> [`reference/folks-sdk/`](./reference/folks-sdk/)** — `lend/v2/{types,formulae,utils,deposit}.ts`,
+> MIT, with SHA-256s recorded. Read them there rather than hunting the commit again.
+
 > **Status: interface fully reverse-engineered + verified against live mainnet state and the Folks
 > `algorand-js-sdk` (commit ~2026-06). NOT integration-tested** — Folks is not on LocalNet, so a
 > mainnet-fork / testnet deposit→read→harvest→recall cycle is required before this adapter is
