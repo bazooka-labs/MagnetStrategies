@@ -214,4 +214,8 @@ MagnetFi v2 has five revenue streams across two categories — automatic and adm
 - [LP Oracle](./LP_ORACLE.md) — LP valuation formula, data sources, TWAP, circuit breakers
 - [Liquidation](./LIQUIDATION.md) — micro-liquidation, health-factor liquidation, state guards
 - [Admin](./ADMIN.md) — all admin actions, monitoring checklist, deployment procedure, emergency runbook
+- [Folks Adapter](./FOLKS_ADAPTER.md) — **v3 productive reserves.** The venue integration that puts idle PSM reserves to work in the Folks Finance USDC pool. Verified interface, live mainnet constants, and the `recoverable_value()` non-manipulability gate
+- [V3 Implementation Plan](./V3_IMPLEMENTATION_PLAN.md) — phased delivery of productive reserves
+- [Audit Handoff](./AUDIT_HANDOFF.md) — internal review package and accepted residuals
+- [Launch Runbook](./LAUNCH_RUNBOOK.md) — *historical.* The original mainnet launch sequence, step by step. Records that the deploy wizards were removed from the live admin panel post-launch and how to re-enable them
 - [Web app](../../web/README.md) — frontend site map, the Bank tabs, admin console, `src/lib` architecture, and notable UI behaviors
