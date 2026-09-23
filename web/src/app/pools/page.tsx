@@ -64,7 +64,7 @@ export default function PoolsPage() {
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    fetch("/api/pools")
+    fetch("/api/pools", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setPools(d.pools))
       .catch(() => setErr(true));

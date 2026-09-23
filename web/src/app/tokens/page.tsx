@@ -1,11 +1,9 @@
 import { TokensView } from "@/components/tokens/TokensView";
+import { MagnetTokenView } from "@/components/tokens/MagnetTokenView";
+import { MusdTokenView } from "@/components/tokens/MusdTokenView";
 import { fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL } from "@/lib/tokenStats";
 
-export default async function TokensPage({
-  searchParams,
-}: {
-  searchParams: { tab?: string };
-}) {
+export default async function TokensPage() {
   const [holders, price, tvl] = await Promise.all([
     fetchHolderCount(),
     fetchMagnetPriceUSDC(),
@@ -14,10 +12,8 @@ export default async function TokensPage({
 
   return (
     <TokensView
-      holders={holders}
-      price={price}
-      tvl={tvl}
-      initialTab={searchParams.tab === "musd" ? "musd" : "magnet"}
+      magnetView={<MagnetTokenView holders={holders} price={price} tvl={tvl} />}
+      musdView={<MusdTokenView />}
     />
   );
 }

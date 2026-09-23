@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, Suspense, useState } from "react";
 import Image from "next/image";
-import { MagnetTokenView } from "@/components/tokens/MagnetTokenView";
-import { MusdTokenView } from "@/components/tokens/MusdTokenView";
+import { useSearchParams } from "next/navigation";
 
 type Tab = "magnet" | "musd";
 
@@ -35,18 +34,18 @@ function TabButton({
   );
 }
 
-export function TokensView({
-  holders,
-  price,
-  tvl,
-  initialTab = "magnet",
+// Reads the ?tab= query param client-side (rather than the page taking searchParams as a
+// prop) so /tokens keeps being statically generated instead of opting into per-request
+// dynamic rendering — the same reason TvlRankStat fetches its own data client-side.
+function TokensViewInner({
+  magnetView,
+  musdView,
 }: {
-  holders: string;
-  price: string;
-  tvl: string;
-  initialTab?: Tab;
+  magnetView: ReactNode;
+  musdView: ReactNode;
 }) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "musd" ? "musd" : "magnet");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -68,11 +67,15 @@ export function TokensView({
         </div>
       </div>
 
-      {tab === "magnet" ? (
-        <MagnetTokenView holders={holders} price={price} tvl={tvl} />
-      ) : (
-        <MusdTokenView />
-      )}
+      {tab === "magnet" ? magnetView : musdView}
     </div>
+  );
+}
+
+export function TokensView(props: { magnetView: ReactNode; musdView: ReactNode }) {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8" />}>
+      <TokensViewInner {...props} />
+    </Suspense>
   );
 }
