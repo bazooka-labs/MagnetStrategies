@@ -94,6 +94,21 @@ export const PEX_ORACLE_SIGNER_PUBKEY_HEX =
 /** Trailing bytes of the same entry read 0x1e (30), matching the observed payload window. */
 export const ORACLE_MAX_AGE_SEC = 20;
 
+/**
+ * PEX's published oracle bundle. Read-only, keyless, served from R2.
+ * The path repeats the network because the base URL is itself network-scoped.
+ */
+export const PEX_ORACLE_BUNDLE_URL =
+  "https://pub-1e72beea87f04ebfafce248132310425.r2.dev/mainnet/v2/oracle-payloads/mainnet/current.json";
+
+/**
+ * Algorand MainNet genesis hash, hex. Carried inside every signed oracle message.
+ * Asserting it is what stops a TestNet-signed payload being replayed at a MainNet
+ * user — the signature over it would be perfectly valid.
+ */
+export const ALGORAND_MAINNET_GENESIS_HASH_HEX =
+  "c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adf";
+
 // ── Revenue ───────────────────────────────────────────────────────────────────
 /**
  * Builder fee recipient. Recorded on-chain in the order box and publicly readable,
