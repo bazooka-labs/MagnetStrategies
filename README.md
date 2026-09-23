@@ -92,9 +92,8 @@ MagnetStrategies/
 │   └── perps/          ← Perps on PEX — OVERVIEW, SPEC, PEX platform reference
 ├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
-│   ├── magnetdao/uvote/ ← UVote contract (live, App 3679681107) — path keeps the
+│   └── magnetdao/uvote/ ← UVote contract (live, App 3679681107) — path keeps the
 │                          legacy name; deploy scripts reference it
-│   └── lending/         ← v1 oracle + pool (compiled, superseded by magnetfi v2)
 └── web/                ← Next.js frontend (magnetstrategies.io)
 ```
 
