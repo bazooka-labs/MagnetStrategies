@@ -92,8 +92,8 @@ MagnetStrategies/
 │   └── perps/          ← Perps on PEX — OVERVIEW, SPEC, PEX platform reference
 ├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
-│   └── magnetdao/uvote/ ← UVote contract (live, App 3679681107) — path keeps the
-│                          legacy name; deploy scripts reference it
+│   └── magnetdao/       ← MagnetDAO-era contracts. `uvote/` is the live one
+│                          (App 3679681107); governance/treasury/voting are retired
 └── web/                ← Next.js frontend (magnetstrategies.io)
 ```
 
@@ -113,9 +113,19 @@ doctrine to hold.
 | Contact | — | Frontend only |
 
 > Note: **MagnetDAO** was the first governance vision, later rebuilt as **UVote**. The
-> docs tree is split into `org/` and `vote/` accordingly. `contracts/magnetdao/`
-> deliberately keeps the old name — deploy scripts and the live contract's provenance
-> comments reference that path, and renaming it would buy nothing.
+> docs tree is split into `org/` and `vote/` accordingly.
+>
+> `contracts/magnetdao/` deliberately keeps the old name, and the name is accurate —
+> it holds the MagnetDAO-era contracts, of which only `uvote/` survived. Renaming was
+> considered and rejected: `deploy_uvote.py` does `from uvote.uvote import ...`, a real
+> package import, so moving the directory breaks the deploy script for a live
+> governance contract, and breaks it silently — the failure would surface at the next
+> redeploy, which is exactly when surprises are least welcome. Cosmetic gain, real risk.
+>
+> The retired `governance.py` / `treasury.py` / `voting.py` still sit there. `voting.py`
+> was deployed (App `3554779766`) and is dormant: it holds **zero $U**, so no user funds
+> are in it, and `VOTING_APP_ID` in `web/src/lib/constants.ts` is defined but never read.
+> Their fate is an open item in [`org/TODO.md`](./org/TODO.md).
 
 ## Other Documents
 

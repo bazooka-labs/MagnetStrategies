@@ -31,11 +31,10 @@ governance token for UVote. See [TOKENOMICS.md](./TOKENOMICS.md).
 
 | Product | What it is | Route | Docs |
 |---|---|---|---|
-| **MagnetFi** | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi`, `/musd` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
+| **MagnetFi** (the Bank) | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
 | **Single-Token Markets** | Lend/borrow individual assets via partner **CompX**'s money markets (surfaced read-only + deep-link). | `/magnetfi` → Markets | — |
 | **UVote** | Advisory, founder-led governance over $U. Holders lock $U to signal on protocol direction. **Live on mainnet** (App `3679681107`). | `/vote` | [UVOTE.md](../vote/UVOTE.md) |
-| **Pools** | $U liquidity pools across Tinyman & Pact — live fee/farm APRs, deep-link to add liquidity. | `/pools` | — |
-| **$U Token** | Price, holders, TVL, chart, and swap (via TxnLab/Haystack). | `/token` | — |
+| **Tokens** | **$U** and **mUSD** on one page: price, holders, TVL, chart, swap, and the $U liquidity pools across Tinyman & Pact. The mUSD swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed the former `/token`, `/musd`, `/pools` and `/about`. | `/tokens` | [TOKENOMICS.md](./TOKENOMICS.md) · [mUSD.md](../magnetfi/v2/mUSD.md) |
 | **Contact** | On-chain support inbox + broadcast channel (no backend — wallet-signed note-field messages). | `/contact` | — |
 
 ---

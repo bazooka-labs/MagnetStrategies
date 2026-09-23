@@ -124,7 +124,7 @@ position_value = (user_lp_balance / total_lp_supply) × pool_TVL
 pool_TVL       = (asset_A_reserves × price_A) + (asset_B_reserves × price_B)
 ```
 
-Data sources (planned): Vestige API, on-chain pool state (Tinyman), TWAP for manipulation resistance.
+Data sources: **on-chain Tinyman v2 pool reserves**, cross-checked against CompX's on-chain Flux oracle. There is no dependency on an external price API — the original Vestige integration was removed after its endpoint was retired, which was also the P19-02 single-point-of-failure. See [LP_ORACLE.md](./LP_ORACLE.md) and [AUDIT.md](./AUDIT.md).
 Circuit breakers: reject price updates with >50% deviation from prior reading (on-chain guard in LP Oracle contract).
 
 → [`LP_ORACLE.md`](./LP_ORACLE.md)
