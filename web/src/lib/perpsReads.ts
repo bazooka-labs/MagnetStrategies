@@ -53,6 +53,15 @@ const DYNAMIC_OI_FIELDS = [
   "dynamic_oi_margin_long_factor_scaled", "dynamic_oi_margin_short_factor_scaled",
 ] as const;
 
+// `m2:` on Markets. Carries position_conversion_scale, which sets the position
+// quantization floor. It is the only non-risk box the solver needs, and it is on
+// chain — so the floor does not depend on market metadata from a backend.
+const MARKET_CORE_FIELDS = [
+  "schema_version", "market_id", "index_asset_id", "long_asset_id",
+  "short_asset_id", "market_type", "position_conversion_scale", "market_share_asset_id",
+] as const;
+
+export type MarketCore = Record<(typeof MARKET_CORE_FIELDS)[number], bigint>;
 export type MarketRisk = Record<(typeof MARKET_RISK_FIELDS)[number], bigint>;
 export type MarketPool = Record<(typeof MARKET_POOL_FIELDS)[number], bigint>;
 export type OpenInterest = Record<(typeof OPEN_INTEREST_FIELDS)[number], bigint>;
@@ -94,6 +103,9 @@ async function readBox<T extends readonly string[]>(
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────────
+
+export const readMarketCore = (algod: algosdk.Algodv2, marketId: number) =>
+  readBox(algod, PEX_APPS.markets, "m2:", marketId, MARKET_CORE_FIELDS) as Promise<MarketCore>;
 
 export const readMarketRisk = (algod: algosdk.Algodv2, marketId: number) =>
   readBox(algod, PEX_APPS.markets, "mr2:", marketId, MARKET_RISK_FIELDS) as Promise<MarketRisk>;
@@ -182,6 +194,7 @@ export async function verifyProgramPins(algod: algosdk.Algodv2): Promise<PinChec
 
 export type MarketState = {
   marketId: number;
+  core: MarketCore;
   risk: MarketRisk;
   pool: MarketPool;
   oi: OpenInterest;
@@ -191,7 +204,8 @@ export type MarketState = {
 
 /** One round trip's worth of everything the solver needs. */
 export async function readMarketState(algod: algosdk.Algodv2, marketId: number): Promise<MarketState> {
-  const [risk, pool, oi, doi] = await Promise.all([
+  const [core, risk, pool, oi, doi] = await Promise.all([
+    readMarketCore(algod, marketId),
     readMarketRisk(algod, marketId),
     readMarketPool(algod, marketId),
     readOpenInterest(algod, marketId),
@@ -203,5 +217,5 @@ export async function readMarketState(algod: algosdk.Algodv2, marketId: number):
     // is visible rather than showing up as an unexplained ceiling jump.
     console.warn(`perps: dynamic OI margin disabled on market ${marketId}`);
   }
-  return { marketId, risk, pool, oi, doi, readAt: Date.now() };
+  return { marketId, core, risk, pool, oi, doi, readAt: Date.now() };
 }
