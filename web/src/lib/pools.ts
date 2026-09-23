@@ -57,6 +57,16 @@ export const POOLS: Pool[] = [
   },
 ];
 
+// mUSD liquidity pools showcased on the mUSD token page. Same live fee/farm APR fetch as
+// POOLS above (shared fetchPoolMetrics) via /api/musd-pools.
+export const MUSD_POOLS: Pool[] = [
+  {
+    id: "musd-usdc", pair: "mUSD / USDC", partner: "USDC", dex: "tinyman",
+    ref: "QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4",
+    addLiquidityUrl: "https://app.tinyman.org/pool/QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4",
+  },
+];
+
 export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "Pact" };
 
 // Live per-pool metrics, shared by /api/pools (per-pool cards) and the site-wide Total TVL

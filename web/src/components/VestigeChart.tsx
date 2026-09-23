@@ -1,8 +1,16 @@
-export function VestigeChart() {
+export function VestigeChart({
+  assetId,
+  denominatingAssetId,
+  title,
+}: {
+  assetId: number;
+  denominatingAssetId: number;
+  title: string;
+}) {
   return (
     <iframe
-      title="Magnet ($U) / ALGO Chart"
-      src="https://vestige.fi/widget/3081853135/chart?noCookie=true&denominatingAssetId=0"
+      title={title}
+      src={`https://vestige.fi/widget/${assetId}/chart?noCookie=true&denominatingAssetId=${denominatingAssetId}`}
       className="w-full block"
       style={{ height: 440, border: "none" }}
       loading="lazy"

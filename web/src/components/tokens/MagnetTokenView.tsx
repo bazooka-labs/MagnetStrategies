@@ -65,7 +65,21 @@ export function MagnetTokenView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <AboutModal />
+            <AboutModal triggerLabel="About $U" heading="What is $U?">
+              <p>
+                Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
+                organization, with the goal of outperforming a simple ALGO holding over time.
+                Launched in June 2025, $U has a fixed supply of 750,000 tokens (ASA ID:{" "}
+                <span className="font-mono text-gray-300">3081853135</span>).
+              </p>
+              <p>
+                $U is positioned to capture the broader Algorand market through its strategic LP
+                pairings, as well as earn yield across additional DeFi strategies like node
+                staking rewards. Track Magnet&apos;s performance below and decide if you&apos;d
+                like to add $U to your Algorand portfolio using our swap tooling provided by
+                TxnLab.
+              </p>
+            </AboutModal>
             <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
               Live on Algorand mainnet
@@ -87,7 +101,7 @@ export function MagnetTokenView({
 
         <div className="grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
           <div className="lg:col-span-3">
-            <VestigeChart />
+            <VestigeChart assetId={3081853135} denominatingAssetId={0} title="Magnet ($U) / ALGO Chart" />
           </div>
           <div className="lg:col-span-2">
             <HaystackSwap />
