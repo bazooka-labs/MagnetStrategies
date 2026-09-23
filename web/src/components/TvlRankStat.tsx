@@ -105,9 +105,8 @@ export function TvlRankStat() {
         onClick={() => board && setOpen(true)}
         disabled={!board}
         aria-haspopup="dialog"
-        className={`${PANEL} group p-5 text-left transition-colors enabled:hover:border-magnet-500/50 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-magnet-500`}
+        className="group relative w-full p-5 text-left transition-colors enabled:hover:bg-white/5 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-magnet-500"
       >
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
         <p className="text-xs font-medium uppercase tracking-wider text-gray-500">TVL Rank</p>
         <p className="mt-2 font-mono text-2xl font-bold text-magnet-300">{value}</p>
         {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}

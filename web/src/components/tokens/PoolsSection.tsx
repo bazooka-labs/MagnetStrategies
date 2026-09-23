@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Waves, Wheat, ArrowUpRight, Info } from "lucide-react";
+import { Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData } from "@/lib/pools";
 import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
@@ -59,7 +59,7 @@ function PoolCard({ p }: { p: PoolData }) {
   );
 }
 
-export default function PoolsPage() {
+export function PoolsSection() {
   const [pools, setPools] = useState<PoolData[] | null>(null);
   const [err, setErr] = useState(false);
 
@@ -71,51 +71,36 @@ export default function PoolsPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Hero */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-        <div className="animate-blob-drift pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
-        <div className="relative flex items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-magnet-600 to-magnet-800 text-white shadow-lg shadow-magnet-900/50">
-            <Waves className="h-7 w-7" />
-          </div>
-          <div>
-            <h1 className="magnet-glow-soft font-display text-3xl font-bold text-white sm:text-4xl">Pools</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-300">
-              Provide liquidity to <span className="font-semibold text-white">$U</span> pools on Tinyman and Pact to
-              earn trading fees — plus farm rewards whenever incentives are live. APRs update in real time.
-            </p>
-          </div>
+    <section className="mb-10">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">$U Liquidity Pools</h2>
+          <p className="mt-1 text-sm text-gray-400">
+            Provide liquidity to <span className="font-semibold text-white">$U</span> pools on Tinyman and
+            Pact to earn trading fees — plus farm rewards whenever incentives are live.
+          </p>
         </div>
+        <span className="hidden shrink-0 text-xs text-gray-500 sm:inline">Live from Tinyman &amp; Pact</span>
       </div>
 
-      {/* Pools */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">$U Liquidity Pools</h2>
-          <span className="text-xs text-gray-500">Live from Tinyman &amp; Pact</span>
+      {err ? (
+        <Panel className="p-8 text-center"><p className="text-sm text-gray-400">Couldn&apos;t load pool data. Try refreshing.</p></Panel>
+      ) : !pools ? (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => <div key={i} className="h-56 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />)}
         </div>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[...pools].sort((a, b) => (b.totalApr ?? -1) - (a.totalApr ?? -1)).map((p) => <PoolCard key={p.id} p={p} />)}
+        </div>
+      )}
 
-        {err ? (
-          <Panel className="p-8 text-center"><p className="text-sm text-gray-400">Couldn&apos;t load pool data. Try refreshing.</p></Panel>
-        ) : !pools ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2].map((i) => <div key={i} className="h-56 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />)}
-          </div>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[...pools].sort((a, b) => (b.totalApr ?? -1) - (a.totalApr ?? -1)).map((p) => <PoolCard key={p.id} p={p} />)}
-          </div>
-        )}
-
-        <p className="mt-5 flex items-start gap-2 text-xs text-gray-500">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          A <span className="font-medium text-gray-400">Farming</span> badge appears whenever a pool has an active
-          rewards program — these vary over time and are pulled live, so no pool ever shows a stale incentive.
-          Liquidity is added directly on the DEX.
-        </p>
-      </section>
-    </div>
+      <p className="mt-5 flex items-start gap-2 text-xs text-gray-500">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        A <span className="font-medium text-gray-400">Farming</span> badge appears whenever a pool has an active
+        rewards program — these vary over time and are pulled live, so no pool ever shows a stale incentive.
+        Liquidity is added directly on the DEX.
+      </p>
+    </section>
   );
 }

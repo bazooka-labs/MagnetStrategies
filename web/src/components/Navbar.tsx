@@ -10,7 +10,6 @@ const navLinks = [
   { href: "/tokens", label: "Tokens", external: false },
   { href: "/magnetfi", label: "Bank", external: false },
   { href: "/predict", label: "Predict", external: false },
-  { href: "/pools", label: "Pools", external: false },
   { href: "/vote", label: "Vote", external: false },
   { href: "/contact", label: "Contact", external: false },
 ];

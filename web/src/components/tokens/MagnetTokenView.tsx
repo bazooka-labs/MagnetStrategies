@@ -1,9 +1,10 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { Panel, Stat } from "@/components/magnetfi/v2/shared";
+import { Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
-import { MAGNET_ASA_ID } from "@/lib/tokenStats";
+import { AboutModal } from "@/components/tokens/AboutModal";
+import { PoolsSection } from "@/components/tokens/PoolsSection";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -11,6 +12,28 @@ const HaystackSwap = dynamic(
   () => import("@/components/HaystackSwap").then((m) => m.HaystackSwap),
   { ssr: false, loading: pulse }
 );
+
+function StatCell({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: "purple";
+}) {
+  return (
+    <div className="p-5">
+      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</p>
+      <p className={`mt-2 font-mono text-2xl font-bold ${accent === "purple" ? "text-magnet-300" : "text-white"}`}>
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
+    </div>
+  );
+}
 
 export function MagnetTokenView({
   holders,
@@ -45,52 +68,39 @@ export function MagnetTokenView({
             </div>
           </div>
 
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200 shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-            Live on Algorand mainnet
-          </span>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <AboutModal />
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Live on Algorand mainnet
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* What is $U */}
-      <Panel className="p-6 sm:p-8 mb-8">
-        <h2 className="font-display text-lg font-semibold text-white mb-3">What is $U?</h2>
-        <div className="space-y-3 text-sm leading-relaxed text-gray-400">
-          <p>
-            Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
-            organization, built to attract and compound liquidity, with the goal of outperforming
-            a simple ALGO holding over time. $U is positioned to capture the broader Algorand
-            market through its strategic LP pairings, as well as earn yield across additional DeFi
-            strategies like node staking rewards.
-          </p>
-          <p>
-            Launched in June 2025, $U has a fixed supply of 750,000 tokens (ASA ID:{" "}
-            <span className="font-mono text-gray-300">{MAGNET_ASA_ID}</span>). It&apos;s the
-            primary asset across every Magnet Strategies product — collateralizing MagnetFi LP
-            loans, anchoring liquidity pairs, and used for voting power in founder-led proposals.
-            Track Magnet&apos;s performance below and decide if you&apos;d like to add $U to your
-            Algorand portfolio using our swap tooling provided by TxnLab.
-          </p>
+      {/* Stats + chart + swap, one unified panel */}
+      <Panel className="mb-8">
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
+          <StatCell label="Price" value={price} sub="USDC" />
+          <StatCell label="Holders" value={holders} sub="Active wallets" />
+          <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" accent="purple" />
+          <TvlRankStat />
+        </div>
+
+        <div className="border-t border-white/10" />
+
+        <div className="grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
+          <div className="lg:col-span-3">
+            <VestigeChart />
+          </div>
+          <div className="lg:col-span-2">
+            <HaystackSwap />
+          </div>
         </div>
       </Panel>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Price" value={price} sub="USDC" />
-        <Stat label="Holders" value={holders} sub="Active wallets" />
-        <Stat label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" accent="purple" />
-        <TvlRankStat />
-      </div>
-
-      {/* Chart + Swap */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <VestigeChart />
-        </div>
-        <div className="lg:col-span-2">
-          <HaystackSwap />
-        </div>
-      </div>
+      {/* $U liquidity pools */}
+      <PoolsSection />
     </>
   );
 }

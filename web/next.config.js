@@ -2,16 +2,18 @@
 const nextConfig = {
   reactStrictMode: true,
   async redirects() {
-    // /earn was renamed to /pools — keep old links/bookmarks working.
+    // /earn was renamed to /pools, since folded into /tokens — keep old links/bookmarks working.
     // /dao (v1 MagnetDAO) was retired in favor of /vote (UVote).
     // /token and /musd were consolidated into /tokens (toggle between $U and mUSD).
+    // /pools was folded into the $U side of /tokens.
     return [
-      { source: "/earn", destination: "/pools", permanent: true },
+      { source: "/earn", destination: "/tokens", permanent: true },
       { source: "/api/earn/pools", destination: "/api/pools", permanent: true },
       { source: "/dao", destination: "/vote", permanent: true },
       { source: "/dao/:path*", destination: "/vote", permanent: true },
       { source: "/token", destination: "/tokens", permanent: true },
       { source: "/musd", destination: "/tokens?tab=musd", permanent: true },
+      { source: "/pools", destination: "/tokens", permanent: true },
     ];
   },
   webpack: (config) => {

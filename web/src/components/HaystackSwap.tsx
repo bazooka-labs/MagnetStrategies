@@ -94,9 +94,7 @@ export function HaystackSwap() {
   const canSwap = isConnected && !!previewOut && !swapping && !quoteLoading
 
   return (
-    <div className="relative rounded-xl border border-white/10 bg-black/50 backdrop-blur-sm p-5 flex flex-col gap-4 shadow-xl shadow-black/50">
-      <div className="absolute inset-x-0 top-0 h-px rounded-t-xl bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-
+    <div className="flex flex-col gap-4 p-5">
       <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 text-left">Swap</p>
 
       {/* USDC input */}
