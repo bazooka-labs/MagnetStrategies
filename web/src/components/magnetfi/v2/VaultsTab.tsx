@@ -226,7 +226,7 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
             <p className="text-sm font-semibold text-white">Your position</p>
             <button onClick={refresh} className="text-gray-500 hover:text-white"><RefreshCw className="h-3.5 w-3.5" /></button>
           </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4">
             <div><p className="text-[11px] uppercase tracking-wider text-gray-500">Collateral</p>
               <p className="mt-1 font-mono text-white">{formatUsd(pos.lpAmount)} LP</p>
               <p className="text-xs text-gray-500">${formatUsd(posValue)}</p></div>
@@ -291,7 +291,7 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
 
       {/* Open new vault */}
       {PROTOCOL_LIVE && !pos && (
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className="grid gap-8">
             <div className="space-y-5">
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
@@ -404,7 +404,7 @@ export function VaultsTab() {
       {!PROTOCOL_LIVE ? (
         <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
       ) : (
-        <div className="space-y-10">
+        <div className="grid gap-5 md:grid-cols-2">
           {LIVE_VAULTS.map(({ vt, pool }) => (
             <VaultPanel key={vt.id} vt={vt} pool={pool} util={util} />
           ))}
