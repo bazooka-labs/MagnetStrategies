@@ -36,6 +36,7 @@ export type BindingConstraint =
   | "margin"
   | "collateral"
   | "oi_headroom"
+  | "reserves"
   | "launch_cap";
 
 export type SolvedBar = {
@@ -198,13 +199,73 @@ export function slippageFeasible(state: MarketState, side: Side, slippageBps: nu
   return impactBps(state, side) <= slippageBps;
 }
 
+/**
+ * Reserve ceiling — `checkReserves`, the constraint that binds after the OI cap.
+ *
+ * Not binding today, and added before it is. `max_open_interest` went from $960
+ * to $1,500 on 2026-09-23 while the long reserve bound sits near $4,250: the gap
+ * is now under 3x and closes every time PEX raises the cap against observed
+ * liquidity. Adding the term after it starts binding would mean shipping a bar
+ * whose right end rejects — the exact failure the ceiling section exists to
+ * prevent.
+ *
+ * The two sides are NOT symmetric, and reading them as symmetric is how this
+ * term gets silently wrong:
+ *
+ *   long   reserve_factor_long_bps  x (long OI TOKENS revalued at index price)
+ *   short  reserve_factor_short_bps x (short OI in USD)
+ *
+ * So the long side is marked to market continuously while the short side is
+ * carried at notional. A long's own contribution is `N x index/execution`, which
+ * EXCEEDS N whenever impact is favourable — so using N directly would overstate
+ * the ceiling. The impact cap bounds that ratio, and the bound is used.
+ */
+export function reserveCeilingUsd(
+  state: MarketState,
+  side: Side,
+  prices: { indexPrice12: bigint; longPrice12: bigint; shortPrice12: bigint },
+): number {
+  const ORACLE_SCALE = Number(BigInt(1_000_000_000_000));
+  const singleToken = state.core.long_asset_id === state.core.short_asset_id;
+
+  const longPoolUsd = (Number(state.pool.long_pool_amount) * Number(prices.longPrice12)) / ORACLE_SCALE;
+  const shortPoolUsd = singleToken
+    ? longPoolUsd
+    : (Number(state.pool.short_pool_amount) * Number(prices.shortPrice12)) / ORACLE_SCALE;
+
+  if (side === "short") {
+    const factor = Number(state.risk.reserve_factor_short_bps) / 10_000;
+    if (factor <= 0) return Number.POSITIVE_INFINITY;
+    const usedUsd = Number(sideOiUsd(state.oi, "short")) / Number(USD_SCALE);
+    const capUsd = (shortPoolUsd / Number(USD_SCALE)) / factor;
+    return Math.max(0, capUsd - usedUsd);
+  }
+
+  const factor = Number(state.risk.reserve_factor_long_bps) / 10_000;
+  if (factor <= 0) return Number.POSITIVE_INFINITY;
+  const tokens = Number(state.oi.long_oi_tokens_with_long_collateral + state.oi.long_oi_tokens_with_short_collateral);
+  const markedUsd = (tokens * Number(prices.indexPrice12)) / Number(state.core.position_conversion_scale) / Number(USD_SCALE);
+  const capUsd = (longPoolUsd / Number(USD_SCALE)) / factor;
+  const headroomUsd = Math.max(0, capUsd - markedUsd);
+  // A long adds N x index/execution of marked value, not N. Bound that ratio by
+  // the maximum favourable impact so the term errs toward a smaller ceiling.
+  const worstRatio = 1 + Number(state.risk.max_position_impact_bps) / 10_000;
+  return headroomUsd / worstRatio;
+}
+
 /** Solve both ends of the risk bar. */
 export function solveBar(
   state: MarketState,
   side: Side,
   collateralUsd: number,
   indexPrice12: bigint,
-  opts: { builderFeeBps?: number; launchCapUsd?: number; headroomShare?: number } = {},
+  opts: {
+    builderFeeBps?: number;
+    launchCapUsd?: number;
+    headroomShare?: number;
+    /** Omit and the reserve term is skipped — see solveBar's note. */
+    prices?: { indexPrice12: bigint; longPrice12: bigint; shortPrice12: bigint };
+  } = {},
 ): SolvedBar {
   const launchCap = opts.launchCapUsd ?? LAUNCH_NOTIONAL_CEILING_USD;
   const headroomShare = opts.headroomShare ?? OI_HEADROOM_SHARE;
@@ -213,6 +274,10 @@ export function solveBar(
     margin: marginCeilingUsd(state, side, collateralUsd, opts.builderFeeBps),
     collateral: collateralCeilingUsd(state, collateralUsd, opts.builderFeeBps),
     oi_headroom: num(oiHeadroomUsd(state.risk, state.oi, side)) * headroomShare,
+    // Skipped without prices rather than approximated: the long side needs the
+    // index price to mark its OI, and a guessed mark would make this term wrong
+    // in the overstating direction. Callers with an oracle payload pass prices.
+    reserves: opts.prices ? reserveCeilingUsd(state, side, opts.prices) : Number.POSITIVE_INFINITY,
     launch_cap: launchCap,
   };
 
@@ -232,7 +297,9 @@ export function solveBar(
         ? "This market is at its size limit right now."
         : binding === "margin"
           ? "Not enough margin for the smallest position."
-          : "Below the minimum position size.";
+          : binding === "reserves"
+            ? "This market is at its size limit right now."
+            : "Below the minimum position size.";
   }
 
   return {

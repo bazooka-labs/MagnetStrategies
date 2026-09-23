@@ -186,8 +186,14 @@ export function confirmCeiling(
   opts: { maxSteps?: number } = {},
 ): { notionalUsd: number; quote: OpenQuote } | null {
   const maxSteps = opts.maxSteps ?? 12;
+  const d = input.oracle.decoded;
   const bar = solveBar(input.state, input.side, input.collateralUsd, input.oracle.indexPrice12, {
     builderFeeBps: input.builderFeeBps,
+    prices: {
+      indexPrice12: input.oracle.indexPrice12,
+      longPrice12: (d.longMinPrice + d.longMaxPrice) / BigInt(2),
+      shortPrice12: (d.shortMinPrice + d.shortMaxPrice) / BigInt(2),
+    },
   });
   if (!bar.open) return null;
 
