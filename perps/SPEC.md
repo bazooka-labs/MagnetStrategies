@@ -278,6 +278,16 @@ Predicted matches binary search to the cent. **State a minimum amount:** `C > mi
 >
 > This was missed because the original verification binary-searched with `acceptablePrice` effectively disabled. **`price_slippage` belongs in the list of things the confirming quote can return on the open path**, not only on close.
 
+> **The constraint set is complete — verified by exhaustive enumeration, 2026-09-23.**
+>
+> Three consecutive audit passes each found a missing constraint, every time because the verification started from the list already written rather than from the code. This check inverted that: enumerate every reason `quoteV2OpenPosition` can push, *then* diff against what is documented.
+>
+> It pushes **12 reasons directly** and calls `checkOiAfter` and `checkReservesAfterTrade`. Swept 846 `(collateral, notional)` pairs from $5 to $200 collateral at 0.2×–40× — 568 opened cleanly — and **exactly one reason appeared that is not in this list**: `position_health_breach`, 47 times, **never alone**; it is always accompanied by a documented constraint, so it is dominated rather than independent.
+>
+> The remaining reasons are not ceilings: `fee_exceeds_collateral` is dominated algebraically, since `(C − min_collateral_usd)/f < C/f` for any positive minimum, and never fired in the sweep; `impact_consumes_size` never fired in 846 pairs — at a 55 bps impact factor it would require negative impact to exceed the whole base size, reachable only where integer rounding kills a tiny order, so it is floor-side; `top_up_required` is increase-flow cost settlement; `builder_fee_not_allowed_for_margin_only` belongs to the add-margin variant; `acceptable_price_required` is input validation.
+>
+> **Method note worth keeping:** derive the constraint set from the failure paths in source, not from the set already believed. The three Criticals this replaced were each a constraint nobody had thought to test.
+
 **And reserves are a fifth, further out.** `long_reserves_exceeded` binds near **$4,250** of side OI and `short_reserves_exceeded` near **$7,300** — both well above the $960 `max_open_interest`, so reserves do not bind today. They become the binding constraint the moment PEX raises the OI cap.
 
 | Side, $50 collateral | Margin | Collateral | OI headroom | Binding | Ceiling |
