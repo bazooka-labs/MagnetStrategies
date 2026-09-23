@@ -35,6 +35,24 @@ tokens to signal a preference; the founder acts on the mandate. **Live on mainne
 
 → [`magnetdao/UVOTE.md`](./magnetdao/UVOTE.md)
 
+### Strategy
+The DeFi strategy arm — products where a user **takes a position or deploys capital into
+an engineered strategy**, as opposed to accepting a posted rate (that is the Bank). Some
+run on our contracts, some on a third party's. First product is **Perps**: leveraged
+positions on **PEX**, Ultrade's Algorand perpetuals protocol, where Magnet writes no
+contract and every action is a PEX call signed by the user's wallet. Strategy vaults and
+advanced trading surfaces come later.
+
+→ [`strategy/OVERVIEW.md`](./strategy/OVERVIEW.md)
+
+### Predict
+**VPL — Volatility Prediction Ladder.** mUSD-denominated, user-to-user price markets:
+the protocol never takes the other side, holds no inventory, and carries no directional
+risk. Its own tree and its own page, deliberately — those guarantees are Predict's
+identity and must not be imported into products that do not offer them.
+
+→ [`predict/OVERVIEW.md`](./predict/OVERVIEW.md)
+
 ### Pools
 $U liquidity pools across Tinyman & Pact with live fee/farm APRs and deep-links to add
 liquidity (`/pools`).
@@ -60,13 +78,33 @@ MagnetStrategies/
 ├── README.md
 ├── magnetdao/          ← Org overview, $U tokenomics, treasury, UVote governance docs
 │                          (UVOTE.md + UVOTE_SPEC.md)
-├── magnetfi/           ← MagnetFi protocol docs
-│   ├── v1/             ← Standard lending (code complete, superseded by v2)
+├── magnetfi/           ← MagnetFi protocol docs — the "Bank"
 │   └── v2/             ← LP vault + mUSD + PSMv3 — docs, contracts, oracle bot, tests (LIVE)
+├── strategy/           ← The "Strategy" arm
+│   ├── OVERVIEW.md     ← Admission criterion + arm-wide commitments
+│   ├── ORACLE.md       ← Arm-level price doctrine
+│   └── perps/          ← Perps on PEX — OVERVIEW, SPEC, PEX platform reference
+├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
-│   └── magnetdao/uvote/ ← UVote voting contract (live on mainnet, App 3679681107)
+│   ├── magnetdao/uvote/ ← UVote voting contract (live on mainnet, App 3679681107)
+│   └── lending/         ← v1 oracle + pool (compiled, superseded by magnetfi v2)
 └── web/                ← Next.js frontend (magnetstrategies.io)
 ```
+
+### Nav, and where its docs live
+
+The app nav is organised by **user intent**; the repo is organised by **where doctrine
+lives**. They are allowed to differ, and a tree exists only where there is shared
+doctrine to hold.
+
+| Nav | Docs | Note |
+|---|---|---|
+| Tokens | `magnetfi/` (mUSD) + `magnetdao/` (\$U) | A page, not a tree — it composes two products |
+| Bank | `magnetfi/` | One product; "Bank" is the label, MagnetFi is the name |
+| Strategy | `strategy/` | A real tree: multiple products sharing price doctrine and commitments |
+| Predict | `predict/` | Stands alone by design |
+| Vote | `magnetdao/` | UVote governance docs |
+| Contact | — | Frontend only |
 
 > Note: the `magnetdao/` folder name is a legacy artifact of the original branding;
 > its contents are the Magnet Strategies org + UVote governance docs.

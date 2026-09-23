@@ -1,15 +1,16 @@
-# Perps Oracle
+# Strategy Oracle
 
-Price doctrine for the Perps. **This is not a feed specification** — it is the set
-of rules a Perps product must satisfy about where its prices come from, plus the shared
-capability available to any of them.
+Price doctrine for the [Strategy](./OVERVIEW.md) arm. **This is not a feed
+specification** — it is the set of rules a Strategy product must satisfy about where
+its prices come from, plus the shared capability available to any of them.
 
 Each product's concrete instance lives with that product:
 
 | Product | Its price situation |
 |---|---|
-| **Perps** (perps, [perps/SPEC.md](./SPEC.md)) | Consumes **PEX's** signed oracle payloads. Runs no feed of its own |
-| **VPL** (ladder, moved to [`predict/`](../predict/ORACLE.md)) | Runs the Magnet four-venue feed; settles on OHLC4 of a 1-minute candle |
+| **Perps** ([perps/SPEC.md](./perps/SPEC.md)) | Consumes **PEX's** signed oracle payloads. Runs no feed of its own |
+| Strategy vaults | Not started. Whatever they price against, the rule below binds before anything is chosen |
+| **VPL** (ladder, in [`predict/`](../predict/ORACLE.md)) | Outside this arm. Runs the Magnet four-venue feed; settles on OHLC4 of a 1-minute candle. Listed because it is the other consumer of the shared capability |
 
 ---
 
@@ -17,27 +18,32 @@ Each product's concrete instance lives with that product:
 
 The founding constraint, and the one that generalises:
 
-> **No Perps product may depend on a price *or state* source that MagnetFi's solvency
-> machinery depends on.**
+> **No Strategy product may depend on a price *or state* source that MagnetFi's
+> solvency machinery depends on.**
 
-It was originally written narrowly — *Perps must never read the oracle MagnetFi
+It was originally written narrowly — *a product must never read the oracle MagnetFi
 liquidations depend on* — because if a payout feed and a liquidation feed are the same
 feed, then manipulating a payout and manipulating protocol solvency become a single
 action.
 
 **PEX makes the gap in the narrow phrasing visible.** If PEX state ever feeds MagnetFi
-solvency (through LP collateral) *and* a Perps product also depends on PEX state, the
+solvency (through LP collateral) *and* a Strategy product also depends on PEX state, the
 same failure mode returns with PEX as the shared dependency — no Magnet-run oracle
 involved anywhere. The rule is therefore about the *property*, not about a particular
 oracle app — which is why the blockquote above says *price or state* rather than price
-alone. A price-only phrasing would permit exactly what [Invariant 5](./SPEC.md#invariants)
+alone. A price-only phrasing would permit exactly what [Invariant 5](./perps/SPEC.md#invariants)
 forbids: PEX state feeding MagnetFi solvency. The generalised form is stated identically
-in [OVERVIEW.md](./OVERVIEW.md) and [PEX.md](./PEX.md); this doc
-owns the price half of it.
+in [the arm's OVERVIEW](./OVERVIEW.md#commitments) and [perps/PEX.md](./perps/PEX.md);
+this doc owns the price half of it.
+
+> **The rule binds hardest on products that do not exist yet.** Perps satisfies it by
+> accident — PEX is external, so it touches no MagnetFi state. A strategy vault looping
+> through MagnetFi lending would violate it directly, and is among the most obvious
+> things to build next.
 
 Two corollaries worth stating outright:
 
-- **Separate signing keys, separate apps.** A Perps product's oracle key must never be
+- **Separate signing keys, separate apps.** A Strategy product's oracle key must never be
   the MagnetFi vault oracle key, so compromising one cannot reach the other.
 - **Separation is only as strong as its weakest layer.** Contract-level isolation does
   not survive two private keys sitting on one machine. That is an operational question,
@@ -49,7 +55,7 @@ Two corollaries worth stating outright:
 
 There is no credible third-party price oracle on Algorand today. Pyth is not deployed
 here; Gora is moribund. Every protocol on this chain that needs a price runs its own
-feed, and Perps is no exception.
+feed, and Strategy products are no exception.
 
 That is a statement about the chain, not a preference. m-of-n signing across
 independent parties is the path that would remove the residual trust, and it remains
@@ -63,7 +69,7 @@ A four-venue exchange-direct aggregation — **Coinbase Exchange, Kraken, Gemini
 Bitstamp**. Real BTC-USD order books, no USDT pairs, no aggregators, all free and
 keyless. Measured live, their agreement sits around 1–2 bps.
 
-Any Perps product may use it. VPL settles on it. **Perps does not** — PEX payloads are
+Any Strategy product may use it. VPL settles on it. **Perps does not** — PEX payloads are
 target-bound, signed for a specific PEX application, and must be rejected on target
 mismatch; they cannot be consumed on-chain by any Magnet Strategies contract. What the
 Magnet feed offers Perps is a **free, independent off-chain cross-check** in our own
@@ -101,7 +107,7 @@ refresh rates for no benefit.
 
 Paying for data solves licensing. It does not remove the trust question — it relocates it.
 
-Where a Perps product signs its own prices, the contracts verify a signature against a
+Where a Strategy product signs its own prices, the contracts verify a signature against a
 registered pubkey; they cannot verify that the signed number is the true market price.
 A user must trust that the operator signed honestly.
 

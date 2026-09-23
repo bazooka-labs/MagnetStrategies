@@ -1,7 +1,7 @@
 // ── Perps — frontend config and pinned constants ──────────────────────────────
 // Leveraged positions on PEX, a third-party perpetuals protocol by Ultrade.
 // Magnet Strategies writes no contract here: every economic action is a PEX call
-// signed by the user's wallet. See perps/SPEC.md.
+// signed by the user's wallet. See strategy/perps/SPEC.md.
 //
 // EVERYTHING IN THIS FILE IS A BUILD-TIME CONSTANT BY DESIGN.
 // The SDK resolves app and asset IDs from a backend-supplied deployment manifest,

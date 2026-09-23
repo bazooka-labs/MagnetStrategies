@@ -1,14 +1,14 @@
-# Hedge Oracle
+# Predict Oracle
 
-Hedge settles against a price. This document covers the service that supplies it, the attestation format the contract verifies, and the trust model that follows.
+VPL settles against a price. This document covers the service that supplies it, the attestation format the contract verifies, and the trust model that follows.
 
-**Status:** Settled — four free, keyless exchange candle endpoints, with Hedge signing attestations on-chain.
+**Status:** Settled — four free, keyless exchange candle endpoints, with Predict signing attestations on-chain.
 
 ---
 
 ## Requirement
 
-Hedge settles against a price, and the requirement is deliberately small:
+VPL settles against a price, and the requirement is deliberately small:
 
 **Four sources × two checkpoints = eight candle reads per day.**
 
@@ -116,13 +116,13 @@ Conflating the two would mean buying institutional-grade data at UI refresh rate
 
 Paying for data solves licensing. It does not remove the trust question — it relocates it.
 
-**Hedge signs the prices.** The contracts verify a signature against a registered pubkey; they cannot verify that the signed number is the true market price. A player must trust that the operator signed honestly.
+**Predict signs the prices.** The contracts verify a signature against a registered pubkey; they cannot verify that the signed number is the true market price. A player must trust that the operator signed honestly.
 
 What limits that exposure:
 
 - **The contracts are public** ([open source policy](./OVERVIEW.md#open-source-policy)), so verification logic, staleness bounds, and admin powers are all auditable. Trust narrows to the price itself rather than the whole mechanism.
 - **Attestations are permanent and public.** Every signed price lands on-chain with its timestamp. A dishonest price is not deniable after the fact and can be checked against any independent source forever.
-- **The signing key is separate from the MagnetFi vault oracle key.** Per the [ring-fencing rule](./OVERVIEW.md#ring-fencing-from-magnetfi), compromising the Hedge oracle can never touch protocol solvency.
+- **The signing key is separate from the MagnetFi vault oracle key.** Per the [ring-fencing rule](./OVERVIEW.md#ring-fencing-from-magnetfi), compromising the Predict oracle can never touch protocol solvency.
 - **Publishing the source and methodology** — naming the provider and the aggregation method — makes any signed price independently checkable, which is most of the way to verifiable without the cost of a decentralised feed.
 
 The residual risk is honest and should be stated plainly rather than engineered around at this stage: a compromised or dishonest signing key can decide game outcomes. Key custody is therefore an operational security question, not a contract question.

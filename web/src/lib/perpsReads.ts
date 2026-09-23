@@ -1,6 +1,6 @@
 // Perps — read-only on-chain queries (algosdk only, no algokit-utils, no signing).
 // Every number the risk bar depends on is read live: PEX risk parameters are
-// admin-mutable and are never hardcoded here. See perps/SPEC.md, Invariant 8.
+// admin-mutable and are never hardcoded here. See strategy/perps/SPEC.md, Invariant 8.
 //
 // Box layouts are PINNED rather than fetched. The protocol manifest supplies both
 // the ABI specs used to encode args and the formats used to decode state, so

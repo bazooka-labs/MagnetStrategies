@@ -1,7 +1,7 @@
 // Perps — risk-bar solver.
 //
 // Turns live market state into the two ends of the risk bar. Both ends are
-// SOLVED; neither is a constant. See perps/SPEC.md, "One ceiling expression —
+// SOLVED; neither is a constant. See strategy/perps/SPEC.md, "One ceiling expression —
 // five constraints, not three".
 //
 // This module is deliberately pure: no network, no algod. Feed it a MarketState

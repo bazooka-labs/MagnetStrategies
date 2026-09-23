@@ -1,7 +1,7 @@
 // Perps — PEX oracle payload fetch, decode and verification.
 //
 // Perps runs no feed of its own; it consumes PEX's signed payloads. See
-// perps/ORACLE.md. This module's whole job is to make sure that the numbers we
+// strategy/ORACLE.md. This module's whole job is to make sure that the numbers we
 // SHOW a user are the numbers we SEND to the chain.
 //
 // ── Why decoding is not optional ─────────────────────────────────────────────

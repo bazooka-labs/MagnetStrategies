@@ -61,7 +61,7 @@ https://pub-1e72beea87f04ebfafce248132310425.r2.dev/mainnet
 
 Payloads carry a ~30-second validity window (`valid_from_timestamp` → `valid_until_timestamp`) and are fetched `no-store`. Source is `exchange-median`.
 
-> Oracle payloads are **target-bound**. They are signed for a specific PEX application and must be rejected on target mismatch. They cannot be consumed on-chain by any Magnet Strategies contract. They may be used off-chain as a free independent cross-check in our own keeper aggregation — see [./ORACLE.md](./ORACLE.md).
+> Oracle payloads are **target-bound**. They are signed for a specific PEX application and must be rejected on target mismatch. They cannot be consumed on-chain by any Magnet Strategies contract. They may be used off-chain as a free independent cross-check in our own keeper aggregation — see [./ORACLE.md](../ORACLE.md).
 
 ---
 
@@ -250,7 +250,7 @@ PSM v3 productive reserves carry real exposure today. PEX is the first on-chain 
 
 Explicitly excluded, and the reasoning stands on its own: routing mUSD → USDC through the PSM would incur the **1% redemption fee on every entry**, making the mUSD path the most expensive way to fund a position in our own app. It would also build a convenient exit ramp out of mUSD inside our own product — mUSD's entry is friction-free and its exit is not, deliberately, and a one-tap exit erodes that asymmetry.
 
-*(An earlier draft justified this by citing float and dwell-time metrics in the Perps overview. Those metrics belong to VPL, which now lives in [`predict/`](../predict/); the exclusion does not depend on them.)*
+*(An earlier draft justified this by citing float and dwell-time metrics in the Perps overview. Those metrics belong to VPL, which now lives in [`predict/`](../../predict/); the exclusion does not depend on them.)*
 
 **Do not reintroduce this without a PSM change.** The version worth pursuing instead is mUSD accepted as a PEX collateral asset, which requires a configured market-pool asset on their side. That is a conversation with PEX, not an integration we can build.
 
@@ -284,4 +284,4 @@ Nothing in Perps conflicts with these terms. Our own contracts and frontend rema
 |---|---|
 | [SPEC.md](./SPEC.md) | Perps — product definition and architecture spec |
 | [./OVERVIEW.md](./OVERVIEW.md) | Perps — what the arm is for, the three commitments, open-source policy |
-| [./ORACLE.md](./ORACLE.md) | Perps price doctrine — the dependency-coupling rule and trust model. The shared four-venue feed is available to Perps **only as an off-chain cross-check**; Perps settles on PEX's signed payloads |
+| [./ORACLE.md](../ORACLE.md) | Perps price doctrine — the dependency-coupling rule and trust model. The shared four-venue feed is available to Perps **only as an off-chain cross-check**; Perps settles on PEX's signed payloads |
