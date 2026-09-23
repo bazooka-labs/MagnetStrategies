@@ -10,7 +10,7 @@
 // passes, because it checks against the same poisoned source. Pin, then assert.
 
 /** SDK version this file is pinned against. Never float this. */
-export const PEX_SDK_VERSION = "0.6.2" as const;
+export const PEX_SDK_VERSION = "0.6.3" as const;
 
 // ── PEX MainNet deployment ────────────────────────────────────────────────────
 // Recovered from GET /v2/networks/mainnet/deployments. Fetch the manifest at
@@ -151,11 +151,27 @@ export const CHILD_KEEPER_FEE_USDC = 0.1;
 export const MAX_KEEPER_FEE_ESCROW_USDC = 0.5;
 
 /**
- * BLOCKED — do not build against this.
+ * STILL FALSE — one of the two blockers is cleared, the other is not.
+ *
+ * Cleared in SDK 0.6.3: the cleanup and status registries now ship as
+ * `V2_ORDER_BRACKET_CLEANUP_REASON` and `V2_ORDER_STATUS`, with
+ * OCO_SIBLING_CANCELLED (3) documented as "Linked TP/SL executed; the other
+ * child was removed". That is the OCO-on-execution guarantee Protection needs,
+ * and it is now a published contract rather than a chat message. 0.6.3 is
+ * additive — no contract change — so the behaviour always existed; what changed
+ * is that it is now stated.
+ *
+ * NOT cleared: nobody has watched it happen. `v2_order_executed` has still never
+ * fired on MainNet, so OCO remains unobserved by us. A published table is better
+ * evidence than a chat message and is still not a measurement — and this codebase
+ * has already been burned once by treating a described cleanup as a verified one.
+ *
+ * Flip this only after a TestNet position with a linked TP/SL has one leg execute
+ * and the sibling is observed removed, with the receipt read back. Needs a funded
+ * TestNet account.
+ *
  * Not a size constraint: open + both brackets measures 13 transactions against a
- * ceiling of 16 and always fits. Blocked on cleanup symbols that exist in no SDK
- * or manifest — OCO_SIBLING_CANCELLED and the reason/status enums are chat-sourced,
- * and `v2_order_executed` has never fired on MainNet so OCO is unobservable there.
+ * ceiling of 16 and always fits.
  */
 export const PROTECTION_ENABLED = false;
 
