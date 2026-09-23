@@ -1,8 +1,7 @@
 "use client";
 
-import { type ReactNode, Suspense, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 
 type Tab = "magnet" | "musd";
 
@@ -34,18 +33,23 @@ function TabButton({
   );
 }
 
-// Reads the ?tab= query param client-side (rather than the page taking searchParams as a
-// prop) so /tokens keeps being statically generated instead of opting into per-request
-// dynamic rendering — the same reason TvlRankStat fetches its own data client-side.
-function TokensViewInner({
+// Reads window.location directly (not next/navigation's useSearchParams, which needs a
+// Suspense boundary and would make the build emit an EMPTY fallback into the static HTML —
+// worse than not having the deep link at all) so /tokens keeps shipping full content in its
+// statically generated markup, same as /token did, while ?tab=musd still flips the tab once
+// the client mounts. The same reason TvlRankStat fetches its own data client-side.
+export function TokensView({
   magnetView,
   musdView,
 }: {
   magnetView: ReactNode;
   musdView: ReactNode;
 }) {
-  const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "musd" ? "musd" : "magnet");
+  const [tab, setTab] = useState<Tab>("magnet");
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "musd") setTab("musd");
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -69,13 +73,5 @@ function TokensViewInner({
 
       {tab === "magnet" ? magnetView : musdView}
     </div>
-  );
-}
-
-export function TokensView(props: { magnetView: ReactNode; musdView: ReactNode }) {
-  return (
-    <Suspense fallback={<div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8" />}>
-      <TokensViewInner {...props} />
-    </Suspense>
   );
 }
