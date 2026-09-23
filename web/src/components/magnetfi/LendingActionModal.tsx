@@ -24,15 +24,6 @@ interface Props {
 
 const ALGOD_URL = "https://mainnet-api.algonode.cloud"
 
-// SDK 2.0.2 reports 6 decimals for all tokens; $U and its LST are actually 5.
-const CORRECT_DECIMALS: Record<number, number> = {
-  3081853135: 5, // $U
-  3607827779: 5, // cU v3 (LST)
-}
-function assetDecimals(assetId: number, sdkFallback: number): number {
-  return CORRECT_DECIMALS[assetId] ?? sdkFallback
-}
-
 const TABS: { id: LendingAction; label: string }[] = [
   { id: "supply", label: "Supply" },
   { id: "withdraw", label: "Withdraw" },
@@ -55,8 +46,8 @@ export function LendingActionModal({
   const [error, setError] = useState<string | null>(null)
   const [balances, setBalances] = useState<Record<number, bigint>>({})
 
-  const baseDec = assetDecimals(marketData.baseTokenId, marketData.baseTokenDecimals)
-  const lstDec  = assetDecimals(marketData.lstTokenId,  marketData.lstTokenDecimals)
+  const baseDec = marketData.baseTokenDecimals
+  const lstDec  = marketData.lstTokenDecimals
   const isU = marketData.baseTokenId === 3081853135
   const baseTicker = isU ? "$U" : "USDC"
   const collateralTicker = collateralMarket
@@ -65,9 +56,7 @@ export function LendingActionModal({
 
   const baseBalance = balances[marketData.baseTokenId] ?? BigInt(0)
   const lstBalance = balances[marketData.lstTokenId] ?? BigInt(0)
-  const collateralDec: number = collateralMarket
-    ? assetDecimals(collateralMarket.lstTokenId, collateralMarket.lstTokenDecimals)
-    : 6
+  const collateralDec: number = collateralMarket ? collateralMarket.lstTokenDecimals : 6
   const collateralBalance = collateralMarket
     ? (balances[collateralMarket.lstTokenId] ?? BigInt(0))
     : BigInt(0)
