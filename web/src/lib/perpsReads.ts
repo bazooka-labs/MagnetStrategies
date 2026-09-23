@@ -53,6 +53,16 @@ const DYNAMIC_OI_FIELDS = [
   "dynamic_oi_margin_long_factor_scaled", "dynamic_oi_margin_short_factor_scaled",
 ] as const;
 
+// `ma2:` on Markets. Carries opposing_trader_share_bps, which the SDK's cost
+// quote requires — without it quoteV2OpenPosition throws rather than returning a
+// failure, so it is not optional for a quote of any kind.
+const ADAPTIVE_FUNDING_FIELDS = [
+  "schema_version", "mode", "saved_factor_milli_bps", "saved_factor_side",
+  "increase_factor_milli_bps", "decrease_factor_milli_bps",
+  "threshold_stable_bps", "threshold_decrease_bps",
+  "min_factor_milli_bps", "max_factor_milli_bps", "opposing_trader_share_bps",
+] as const;
+
 // `m2:` on Markets. Carries position_conversion_scale, which sets the position
 // quantization floor. It is the only non-risk box the solver needs, and it is on
 // chain — so the floor does not depend on market metadata from a backend.
@@ -62,6 +72,7 @@ const MARKET_CORE_FIELDS = [
 ] as const;
 
 export type MarketCore = Record<(typeof MARKET_CORE_FIELDS)[number], bigint>;
+export type AdaptiveFunding = Record<(typeof ADAPTIVE_FUNDING_FIELDS)[number], bigint>;
 export type MarketRisk = Record<(typeof MARKET_RISK_FIELDS)[number], bigint>;
 export type MarketPool = Record<(typeof MARKET_POOL_FIELDS)[number], bigint>;
 export type OpenInterest = Record<(typeof OPEN_INTEREST_FIELDS)[number], bigint>;
@@ -77,8 +88,11 @@ export const usd = (raw: bigint): number => Number(raw) / Number(USD_SCALE);
 
 // ── Box plumbing ──────────────────────────────────────────────────────────────
 
+// TextEncoder rather than Buffer: this runs in the browser, and the prefixes are
+// ASCII so the two are byte-identical. Avoids depending on a Node global reaching
+// the client bundle at all.
 const boxKey = (prefix: string, marketId: number): Uint8Array =>
-  new Uint8Array([...Buffer.from(prefix), ...algosdk.encodeUint64(BigInt(marketId))]);
+  new Uint8Array([...new TextEncoder().encode(prefix), ...algosdk.encodeUint64(BigInt(marketId))]);
 
 function decodeWords<T extends readonly string[]>(raw: Uint8Array, fields: T): Record<T[number], bigint> {
   const words = Math.floor(raw.length / 8);
@@ -106,6 +120,9 @@ async function readBox<T extends readonly string[]>(
 
 export const readMarketCore = (algod: algosdk.Algodv2, marketId: number) =>
   readBox(algod, PEX_APPS.markets, "m2:", marketId, MARKET_CORE_FIELDS) as Promise<MarketCore>;
+
+export const readAdaptiveFunding = (algod: algosdk.Algodv2, marketId: number) =>
+  readBox(algod, PEX_APPS.markets, "ma2:", marketId, ADAPTIVE_FUNDING_FIELDS) as Promise<AdaptiveFunding>;
 
 export const readMarketRisk = (algod: algosdk.Algodv2, marketId: number) =>
   readBox(algod, PEX_APPS.markets, "mr2:", marketId, MARKET_RISK_FIELDS) as Promise<MarketRisk>;
@@ -195,6 +212,7 @@ export async function verifyProgramPins(algod: algosdk.Algodv2): Promise<PinChec
 export type MarketState = {
   marketId: number;
   core: MarketCore;
+  adaptive: AdaptiveFunding;
   risk: MarketRisk;
   pool: MarketPool;
   oi: OpenInterest;
@@ -204,8 +222,9 @@ export type MarketState = {
 
 /** One round trip's worth of everything the solver needs. */
 export async function readMarketState(algod: algosdk.Algodv2, marketId: number): Promise<MarketState> {
-  const [core, risk, pool, oi, doi] = await Promise.all([
+  const [core, adaptive, risk, pool, oi, doi] = await Promise.all([
     readMarketCore(algod, marketId),
+    readAdaptiveFunding(algod, marketId),
     readMarketRisk(algod, marketId),
     readMarketPool(algod, marketId),
     readOpenInterest(algod, marketId),
@@ -217,5 +236,5 @@ export async function readMarketState(algod: algosdk.Algodv2, marketId: number):
     // is visible rather than showing up as an unexplained ceiling jump.
     console.warn(`perps: dynamic OI margin disabled on market ${marketId}`);
   }
-  return { marketId, core, risk, pool, oi, doi, readAt: Date.now() };
+  return { marketId, core, adaptive, risk, pool, oi, doi, readAt: Date.now() };
 }
