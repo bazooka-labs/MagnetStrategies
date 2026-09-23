@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Landmark, Vault, Coins, LayoutGrid, TrendingUp, Shield } from "lucide-react";
+import { Landmark, Coins, Shield } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
-import { OverviewTab } from "@/components/magnetfi/v2/OverviewTab";
 import dynamic from "next/dynamic";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
@@ -20,7 +19,7 @@ const VaultsTab = dynamic(
   () => import("@/components/magnetfi/v2/VaultsTab").then((m) => m.VaultsTab),
   { ssr: false, loading: pulse }
 );
-// The mUSD swap now lives on the combined /tokens page; the Bank tab deep-links there.
+// The mUSD swap lives on the combined /tokens page; the mUSD link below deep-links there.
 
 // Admin panel pulls in algokit-utils — lazy-load so it only ships when an admin opens it.
 const AdminTab = dynamic(
@@ -28,29 +27,10 @@ const AdminTab = dynamic(
   { ssr: false, loading: () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" /> }
 );
 
-type Tab = "overview" | "markets" | "borrow" | "musd" | "admin";
-type TabDef = { id: Tab; label: string; icon: React.ReactNode; badge?: string; href?: string };
-
-const TABS: TabDef[] = [
-  { id: "overview", label: "Overview", icon: <LayoutGrid className="h-4 w-4" /> },
-  { id: "markets", label: "Single Token Markets", icon: <TrendingUp className="h-4 w-4" /> },
-  { id: "borrow", label: "LP Collateral Vaults", icon: <Vault className="h-4 w-4" /> },
-  { id: "musd", label: "mUSD", icon: <Coins className="h-4 w-4" />, href: "/tokens?tab=musd" },
-];
-
 export default function MagnetFiPage() {
   const { address, isConnected } = useWallet();
   const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
-
-  // If the admin disconnects while on the Admin tab, fall back to Overview.
-  useEffect(() => {
-    if (!isAdmin && activeTab === "admin") setActiveTab("overview");
-  }, [isAdmin, activeTab]);
-
-  const tabs: TabDef[] = isAdmin
-    ? [...TABS, { id: "admin", label: "Admin", icon: <Shield className="h-4 w-4" /> }]
-    : TABS;
+  const [showAdmin, setShowAdmin] = useState(false);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -76,15 +56,25 @@ export default function MagnetFiPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse-slow" />
-              {PROTOCOL_LIVE ? "LP Collateral Vaults live" : "LP Collateral Vaults — launching"}
-            </span>
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-              Single Token Markets live
-            </span>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Link
+              href="/tokens?tab=musd"
+              className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-magnet-500/50 hover:text-white"
+            >
+              <Coins className="h-3.5 w-3.5" /> mUSD
+            </Link>
+            {isAdmin && (
+              <button
+                onClick={() => setShowAdmin((v) => !v)}
+                className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  showAdmin
+                    ? "border-magnet-500/60 bg-magnet-500/10 text-white"
+                    : "border-white/10 bg-white/5 text-gray-300 hover:border-magnet-500/50 hover:text-white"
+                }`}
+              >
+                <Shield className="h-3.5 w-3.5" /> Admin
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -93,53 +83,16 @@ export default function MagnetFiPage() {
       {!PROTOCOL_LIVE && (
         <div className="mb-8 rounded-xl border border-magnet-500/20 bg-magnet-500/5 px-5 py-3.5 text-sm text-magnet-200">
           MagnetFi LP vaults are in final pre-launch — explore the vault types and run the numbers below.
-          Single-token lending and borrowing is live now via the Markets tab.
+          Single-token lending and borrowing is live now.
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="mb-8 flex flex-wrap gap-2">
-        {tabs.map((tab) => {
-          const cls = `inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
-            activeTab === tab.id
-              ? "border-magnet-500/60 bg-magnet-500/10 text-white"
-              : "border-white/10 bg-black/30 text-gray-400 hover:border-white/20 hover:text-gray-200"
-          }`;
-          const inner = (
-            <>
-              {tab.icon}
-              {tab.label}
-              {tab.badge && (
-                <span className="rounded-full bg-blue-500/20 border border-blue-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 leading-none">
-                  {tab.badge}
-                </span>
-              )}
-            </>
-          );
-          return tab.href ? (
-            <Link key={tab.id} href={tab.href} className={cls}>{inner}</Link>
-          ) : (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cls}>{inner}</button>
-          );
-        })}
+      {isAdmin && showAdmin && <div className="mb-10"><AdminTab /></div>}
+
+      <div className="space-y-12">
+        <CompXMarkets />
+        <VaultsTab />
       </div>
-
-      {/* Content */}
-      {activeTab === "overview" && (
-        <OverviewTab
-          onExploreMarkets={() => setActiveTab("markets")}
-          onBorrow={() => setActiveTab("borrow")}
-        />
-      )}
-
-      {activeTab === "markets" && (
-        <div className="space-y-6">
-          <CompXMarkets />
-        </div>
-      )}
-
-      {activeTab === "borrow" && <VaultsTab />}
-      {activeTab === "admin" && isAdmin && <AdminTab />}
     </div>
   );
 }

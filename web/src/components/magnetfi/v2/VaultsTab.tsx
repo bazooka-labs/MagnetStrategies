@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
-import { Info, Loader2, RefreshCw, CalendarClock } from "lucide-react";
+import { Info, Loader2, RefreshCw, CalendarClock, Vault } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import {
@@ -13,10 +13,11 @@ import {
   type PoolRef,
 } from "@/lib/magnetfiClient";
 import {
-  getOracle, getVaultPosition, getBalances,
+  getOracle, getVaultPosition, getBalances, getProtocolStats, getTotalVaultDebt,
   MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
 } from "@/lib/magnetfiReads";
 import { Panel, PairGlyph, PrimaryButton } from "./shared";
+import { LpVaultLearnMore } from "./LpVaultLearnMore";
 
 // Collateral pools with on-chain wiring — one live vault panel each. A VaultType without wiring
 // (poolWiring undefined) is not yet configured on-chain and is omitted here.
@@ -86,7 +87,7 @@ function HeaderMetric({ label, value, sub, subClass }: {
   );
 }
 
-function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
+function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: number | null }) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
   const [pos, setPos] = useState<VaultPosition | null>(null);
@@ -197,6 +198,23 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
           sub={oracle ? (fresh ? "oracle fresh" : "oracle stale") : undefined}
           subClass={fresh ? "text-green-400" : "text-red-400"}
         />
+      </div>
+
+      {/* PSM utilization — shared across every vault (same ceiling backs them all), same
+          bar treatment as the Single Token Markets utilization display. */}
+      <div className="mt-4">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] uppercase tracking-wider text-gray-500">PSM Utilization</p>
+          <p className="font-mono text-xs text-gray-400">{util === null ? "…" : `${util.toFixed(1)}%`}</p>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          {util !== null && (
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${util > 80 ? "bg-red-500" : util > 60 ? "bg-yellow-500" : "bg-magnet-500"}`}
+              style={{ width: `${Math.min(100, util)}%` }}
+            />
+          )}
+        </div>
       </div>
 
       <div className="my-6 border-t border-white/10" />
@@ -350,16 +368,47 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
 }
 
 export function VaultsTab() {
-  if (!PROTOCOL_LIVE) {
-    return (
-      <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
-    );
-  }
+  const { algodClient } = useWallet();
+  const [ceiling, setCeiling] = useState<number | null>(null);
+  const [borrowed, setBorrowed] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!PROTOCOL_LIVE || !algodClient) return;
+    getProtocolStats(algodClient).then((s) => setCeiling(s.ceiling)).catch(() => {});
+    getTotalVaultDebt(algodClient).then(setBorrowed).catch(() => {});
+  }, [algodClient]);
+
+  const capacity = (borrowed ?? 0) + (ceiling ?? 0);
+  const util = borrowed !== null && ceiling !== null && capacity > 0
+    ? Math.min(100, (borrowed / capacity) * 100)
+    : null;
+
   return (
-    <div className="space-y-10">
-      {LIVE_VAULTS.map(({ vt, pool }) => (
-        <VaultPanel key={vt.id} vt={vt} pool={pool} />
-      ))}
-    </div>
+    <section>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">
+            <Vault className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="font-display text-sm font-semibold text-white">LP Collateral Vaults</h2>
+            <p className="text-xs text-gray-500">
+              Deposit Tinyman LP tokens as collateral and borrow mUSD against them — your LP keeps earning trading fees.
+            </p>
+          </div>
+        </div>
+        <LpVaultLearnMore />
+      </div>
+
+      {!PROTOCOL_LIVE ? (
+        <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
+      ) : (
+        <div className="space-y-10">
+          {LIVE_VAULTS.map(({ vt, pool }) => (
+            <VaultPanel key={vt.id} vt={vt} pool={pool} util={util} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
