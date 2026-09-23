@@ -19,7 +19,7 @@
 $U is the asset at the center of every Magnet Strategies product:
 
 1. **Governance token (UVote)** — holders lock $U to vote on protocol direction.
-   Weight is **1 $U = 1 vote** (proportional to the amount locked). See [UVOTE.md](./UVOTE.md).
+   Weight is **1 $U = 1 vote** (proportional to the amount locked). See [UVOTE.md](../vote/UVOTE.md).
 2. **Vault collateral (MagnetFi)** — $U-based LP tokens (e.g. U/tALGO, U/USDC) are the
    collateral borrowers deposit to mint mUSD. See [magnetfi/v2/VAULT.md](../magnetfi/v2/VAULT.md).
 3. **Liquidity anchor** — $U is the base asset in Magnet-paired DEX pools (Tinyman &

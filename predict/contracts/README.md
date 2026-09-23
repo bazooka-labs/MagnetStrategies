@@ -1,4 +1,4 @@
-# Hedge contracts
+# Predict contracts
 
 Algorand Python (PuyaPy) implementation of the daily BTC ladder.
 

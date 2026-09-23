@@ -449,7 +449,7 @@ The contract issues **no inner `acfg` ever**, and the only inner `appl` it can i
 >
 > **Callers must over-pay fees.** A lone `lock` needs 4 opup inner transactions, so the group must carry ~5,000 µALGO of fee, not the 1,000 minimum. Nothing in the ABI signals this, and `lock`'s window is only `LOCK_DEADLINE` wide — a relayer that pays the minimum fee fails and may not have time to diagnose it. The keeper does this by default; a relay implementation must too. The app address is not mUSD's manager, reserve, freeze or clawback address.
 
-**Asserted at bootstrap, not merely verified once:** mUSD (`3615600399`) must have freeze and clawback set to the zero address — permanent and irreversible on Algorand once set. MagnetFi cannot freeze or claw back Hedge's escrow, so isolation holds in both directions. Revision 5 rested this on a human's off-chain check protecting a non-upgradeable contract; decimals and a unit name are trivially forgeable by any third party's ASA, while clawback and freeze are the properties that actually matter.
+**Asserted at bootstrap, not merely verified once:** mUSD (`3615600399`) must have freeze and clawback set to the zero address — permanent and irreversible on Algorand once set. MagnetFi cannot freeze or claw back Predict's escrow, so isolation holds in both directions. Revision 5 rested this on a human's off-chain check protecting a non-upgradeable contract; decimals and a unit name are trivially forgeable by any third party's ASA, while clawback and freeze are the properties that actually matter.
 
 Because bugs are permanent, `MAX_SCHEDULE_AHEAD`, `cancel_empty_round`, the bootstrap asset checks and the wide sanity bounds exist specifically to make operator foot-guns recoverable.
 

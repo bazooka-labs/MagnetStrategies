@@ -99,6 +99,6 @@ for the audited detail), stated plainly:
 
 - [UVOTE_SPEC.md](./UVOTE_SPEC.md) — contract internals, box layout, transaction
   shapes, the two audit passes, and the deploy record (App `3679681107`).
-- [TOKENOMICS.md](./TOKENOMICS.md) — $U roles across the protocol.
-- [Treasury](./TREASURY.md) — funding and deployment of protocol capital.
+- [TOKENOMICS.md](../org/TOKENOMICS.md) — $U roles across the protocol.
+- [Treasury](../org/TREASURY.md) — funding and deployment of protocol capital.
 - Frontend: the `/vote` page (`web/src/app/vote/`) — see [web/README.md](../web/README.md).

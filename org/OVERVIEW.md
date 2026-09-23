@@ -31,12 +31,11 @@ governance token for UVote. See [TOKENOMICS.md](./TOKENOMICS.md).
 
 | Product | What it is | Route | Docs |
 |---|---|---|---|
-| **MagnetFi** | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi`, `/musd` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
+| **MagnetFi** (the Bank) | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
 | **Single-Token Markets** | Lend/borrow individual assets via partner **CompX**'s money markets (surfaced read-only + deep-link). | `/magnetfi` → Markets | — |
-| **UVote** | Advisory, founder-led governance over $U. Holders lock $U to signal on protocol direction. **Live on mainnet** (App `3679681107`). | `/vote` | [UVOTE.md](./UVOTE.md) |
-| **Pools** | $U liquidity pools across Tinyman & Pact — live fee/farm APRs, deep-link to add liquidity. | `/pools` | — |
-| **$U Token** | Price, holders, TVL, **ASA TVL Rank**, chart, and swap (via TxnLab/Haystack). | `/token` | — |
-| **ASA TVL Tracker** | Cross-DEX liquidity analytics: the top 100 Algorand ASAs by TVL. Surfaced as the **TVL Rank** box on `/token` (with a Top 100 modal) and a public read API. Reads Pact's managed-weighted pools that Vestige and other indexers miss. **Live.** | `/token`, `/api/leaderboard` | [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md) |
+| **UVote** | Advisory, founder-led governance over $U. Holders lock $U to signal on protocol direction. **Live on mainnet** (App `3679681107`). | `/vote` | [UVOTE.md](../vote/UVOTE.md) |
+| **Tokens** | **$U** and **mUSD** on one page: price, holders, TVL, **ASA TVL Rank**, chart, swap, and the $U liquidity pools across Tinyman & Pact. The mUSD swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed the former `/token`, `/musd`, `/pools` and `/about`. | `/tokens` | [TOKENOMICS.md](./TOKENOMICS.md) · [mUSD.md](../magnetfi/v2/mUSD.md) |
+| **ASA TVL Tracker** | Cross-DEX liquidity analytics: the top 100 Algorand ASAs by TVL. Surfaced as the **TVL Rank** box on `/tokens` (with a Top 100 modal) and a public read API. Reads Pact's managed-weighted pools that Vestige and other indexers miss. **Live.** | `/tokens`, `/api/leaderboard` | [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md) |
 | **Contact** | On-chain support inbox + broadcast channel (no backend — wallet-signed note-field messages). | `/contact` | — |
 
 ---
@@ -57,8 +56,8 @@ Governance runs through **UVote** — advisory, founder-led voting where $U hold
 tokens to signal on an open question (liquidity, parameters, investments, or any
 direction the founder puts forward). It is not a decentralized DAO: the founder retains
 execution authority; UVote produces a clear on-chain mandate. Full model, voter
-guarantees, and lifecycle in [UVOTE.md](./UVOTE.md); contract + audit detail in
-[UVOTE_SPEC.md](./UVOTE_SPEC.md).
+guarantees, and lifecycle in [UVOTE.md](../vote/UVOTE.md); contract + audit detail in
+[UVOTE_SPEC.md](../vote/UVOTE_SPEC.md).
 
 > **History note.** UVote replaced the original "MagnetDAO" framing — a quarterly cycle
 > for outside projects to apply for treasury liquidity — which was too narrow for what

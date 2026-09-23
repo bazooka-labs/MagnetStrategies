@@ -124,7 +124,7 @@ position_value = (user_lp_balance / total_lp_supply) × pool_TVL
 pool_TVL       = (asset_A_reserves × price_A) + (asset_B_reserves × price_B)
 ```
 
-Data sources (planned): Vestige API, on-chain pool state (Tinyman), TWAP for manipulation resistance.
+Data sources: **on-chain Tinyman v2 pool reserves**, cross-checked against CompX's on-chain Flux oracle. There is no dependency on an external price API — the original Vestige integration was removed after its endpoint was retired, which was also the P19-02 single-point-of-failure. See [LP_ORACLE.md](./LP_ORACLE.md) and [AUDIT.md](./AUDIT.md).
 Circuit breakers: reject price updates with >50% deviation from prior reading (on-chain guard in LP Oracle contract).
 
 → [`LP_ORACLE.md`](./LP_ORACLE.md)
@@ -214,4 +214,8 @@ MagnetFi v2 has five revenue streams across two categories — automatic and adm
 - [LP Oracle](./LP_ORACLE.md) — LP valuation formula, data sources, TWAP, circuit breakers
 - [Liquidation](./LIQUIDATION.md) — micro-liquidation, health-factor liquidation, state guards
 - [Admin](./ADMIN.md) — all admin actions, monitoring checklist, deployment procedure, emergency runbook
+- [Folks Adapter](./FOLKS_ADAPTER.md) — **v3 productive reserves.** The venue integration that puts idle PSM reserves to work in the Folks Finance USDC pool. Verified interface, live mainnet constants, and the `recoverable_value()` non-manipulability gate
+- [V3 Implementation Plan](./V3_IMPLEMENTATION_PLAN.md) — phased delivery of productive reserves
+- [Audit Handoff](./AUDIT_HANDOFF.md) — internal review package and accepted residuals
+- [Launch Runbook](./LAUNCH_RUNBOOK.md) — *historical.* The original mainnet launch sequence, step by step. Records that the deploy wizards were removed from the live admin panel post-launch and how to re-enable them
 - [Web app](../../web/README.md) — frontend site map, the Bank tabs, admin console, `src/lib` architecture, and notable UI behaviors
