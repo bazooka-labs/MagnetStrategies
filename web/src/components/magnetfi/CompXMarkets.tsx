@@ -178,9 +178,11 @@ export function CompXMarkets() {
             <TrendingUp className="h-4 w-4 text-blue-400" />
           </div>
           <div>
-            <h2 className="font-display text-sm font-semibold text-white">Single-Token Markets</h2>
-            <p className="text-xs text-gray-500">
-              Lend or borrow individual assets · live on Algorand mainnet
+            <h2 className="font-display text-sm font-semibold text-white">Single Token Markets</h2>
+            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-500">
+              Lend and borrow individual assets through CompX&apos;s money markets on Algorand. Supply
+              to earn yield, or borrow against your deposited collateral. Rates float with market
+              utilization.
             </p>
           </div>
         </div>

@@ -210,7 +210,7 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
           {util !== null && (
             <div
-              className={`h-full rounded-full transition-all duration-700 ${util > 80 ? "bg-red-500" : util > 60 ? "bg-yellow-500" : "bg-magnet-500"}`}
+              className="h-full rounded-full bg-magnet-500 transition-all duration-700"
               style={{ width: `${Math.min(100, util)}%` }}
             />
           )}
@@ -392,8 +392,9 @@ export function VaultsTab() {
           </div>
           <div>
             <h2 className="font-display text-sm font-semibold text-white">LP Collateral Vaults</h2>
-            <p className="text-xs text-gray-500">
-              Deposit Tinyman LP tokens as collateral and borrow mUSD against them — your LP keeps earning trading fees.
+            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-500">
+              Stay liquid with Magnet&apos;s LP Vaults. Deposit your Tinyman LP tokens as collateral
+              and borrow mUSD against them while you keep earning trading fees in the background.
             </p>
           </div>
         </div>
