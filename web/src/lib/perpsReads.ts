@@ -238,3 +238,45 @@ export async function readMarketState(algod: algosdk.Algodv2, marketId: number):
   }
   return { marketId, core, adaptive, risk, pool, oi, doi, readAt: Date.now() };
 }
+
+// ── Builder address preflight ─────────────────────────────────────────────────
+
+export type BuilderCheck = {
+  ok: boolean;
+  optedIn: boolean;
+  spendableAlgo: number;
+  problem?: string;
+};
+
+/**
+ * Confirm the builder fee can actually be received.
+ *
+ * The fee is paid in the collateral asset, so if the recipient is not opted in
+ * to it the transfer fails and takes the whole group with it — every open, for
+ * every user, presenting as our bug rather than a treasury configuration issue.
+ * Cheap to check and worth checking at startup rather than discovering on the
+ * first open of the day.
+ *
+ * Deliberately NOT called per-quote: it is a config property, not a per-trade one.
+ */
+export async function assertBuilderAddressUsable(
+  algod: algosdk.Algodv2, address: string, collateralAssetId: number,
+): Promise<BuilderCheck> {
+  if (!address) return { ok: false, optedIn: false, spendableAlgo: 0, problem: "BUILDER_ADDRESS is unset" };
+  if (!algosdk.isValidAddress(address)) {
+    return { ok: false, optedIn: false, spendableAlgo: 0, problem: "BUILDER_ADDRESS is not a valid address" };
+  }
+  const info = (await algod.accountInformation(address).do()) as unknown as {
+    amount: bigint | number; minBalance: bigint | number;
+    assets?: Array<{ assetId?: bigint | number; amount: bigint | number }>;
+  };
+  const spendableAlgo = (Number(info.amount) - Number(info.minBalance)) / Number(USD_SCALE);
+  const optedIn = collateralAssetId === 0
+    || (info.assets ?? []).some((a) => Number(a.assetId) === collateralAssetId);
+  const problem = !optedIn
+    ? `builder address is not opted in to asset ${collateralAssetId} — every open would fail`
+    : spendableAlgo < 0
+      ? "builder address is below its minimum balance"
+      : undefined;
+  return { ok: !problem, optedIn, spendableAlgo, problem };
+}

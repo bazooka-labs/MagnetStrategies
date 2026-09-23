@@ -111,15 +111,26 @@ export const ALGORAND_MAINNET_GENESIS_HASH_HEX =
 
 // ── Revenue ───────────────────────────────────────────────────────────────────
 /**
- * Builder fee recipient. Recorded on-chain in the order box and publicly readable,
- * so it must also be disclosed in the UI.
+ * Builder fee recipient — the MagnetFi admin address, by deliberate choice.
  *
- * TODO(confirm): must be a Magnet Strategies treasury address opted in to USDC with
- * spendable ALGO for MBR BEFORE launch — the fee is paid in the collateral asset and
- * the address appears in `accounts` on every fee-bearing call. Not opted in,
- * plausibly every open fails for every user on day one.
+ * Verified on chain 2026-09-23: valid checksum, opted in to USDC (31566704),
+ * 310 ALGO spendable, not rekeyed.
+ *
+ * This address never signs anything in this product. It is a RECIPIENT: it sits in
+ * `accounts` so the fee transfer can reach it and is written into the order box as
+ * a record. Publishing it exposes no private key.
+ *
+ * It is the same key that controls MagnetFi's PSM, vault and oracle, which was
+ * raised and accepted. The disclosure half of that concern is moot — the address
+ * is already committed in this public repo (`magnetfi.ts`) and rendered on several
+ * user-facing pages, so the Perps UI reveals nothing new. What remains is that the
+ * key now also accrues revenue, so sweeping means signing with it. Accepted
+ * deliberately; revisit if sweep frequency rises.
+ *
+ * If this address is ever NOT opted in to USDC, every open fails for every user and
+ * it presents as our bug. `assertBuilderAddressUsable` in perpsReads is the preflight.
  */
-export const BUILDER_ADDRESS = "" as string;
+export const BUILDER_ADDRESS = "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A" as string;
 
 /** Protocol cap is 10. `normalizeBuilderFee` throws above it rather than clamping. */
 export const POSITION_BUILDER_FEE_BPS = 10;
