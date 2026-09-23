@@ -12,6 +12,7 @@ import {
 import { Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { AboutModal } from "@/components/tokens/AboutModal";
+import { StatCell } from "@/components/tokens/StatCell";
 import { MusdPoolsSection } from "@/components/tokens/MusdPoolsSection";
 
 const pulse = () => <div className="h-96 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
@@ -22,32 +23,13 @@ const MusdTab = dynamic(
   { ssr: false, loading: pulse },
 );
 
-function StatCell({
-  label,
-  value,
-  sub,
-  accent,
+export function MusdTokenView({
+  holders,
+  marketPrice,
 }: {
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: "green" | "purple" | "red";
+  holders: string;
+  marketPrice: number | null;
 }) {
-  const valueColor =
-    accent === "green" ? "text-green-400"
-    : accent === "purple" ? "text-magnet-300"
-    : accent === "red" ? "text-red-400"
-    : "text-white";
-  return (
-    <div className="p-5">
-      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</p>
-      <p className={`mt-2 font-mono text-2xl font-bold ${valueColor}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
-    </div>
-  );
-}
-
-export function MusdTokenView() {
   const { algodClient } = useWallet();
   const [stats, setStats] = useState<ProtocolStats | null>(null);
   const [strat, setStrat] = useState<StrategyStats | null>(null);
@@ -76,11 +58,7 @@ export function MusdTokenView() {
         ? "+100%"
         : `${(backingRatioNum * 100).toFixed(2)}%`;
 
-  // Static $1 peg until a live market-price feed is wired (see the "Market Price" subtext). When
-  // that lands, pegPrice becomes the live quote and the metric turns red automatically below $1.
-  const pegPrice = 1;
-  const underPeg = pegPrice < 1;
-  const underBacked = backingRatioNum != null && backingRatioNum < 1;
+  const pegDisplay = marketPrice != null ? `$${marketPrice.toFixed(4)}` : "—";
 
   return (
     <>
@@ -124,10 +102,10 @@ export function MusdTokenView() {
       {/* Stats + chart + swap, one unified panel */}
       <Panel className="mb-8">
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
-          <StatCell label="mUSD Peg" value={`$${pegPrice.toFixed(2)}`} sub="Market Price" accent={underPeg ? "red" : "green"} />
-          <StatCell label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" accent="purple" />
-          <StatCell label="Available USDC" value={val(stats?.psmUsdc)} sub="PSM balance for mUSD swaps" accent="green" />
-          <StatCell label="Backing Ratio" value={backing} sub="USDC Reserves" accent={underBacked ? "red" : "green"} />
+          <StatCell label="mUSD Peg" value={pegDisplay} sub="Market Price via Vestige" />
+          <StatCell label="Holders" value={holders} sub="mUSD wallets" />
+          <StatCell label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" />
+          <StatCell label="Backing Ratio" value={backing} sub="USDC Reserves" />
         </div>
 
         <div className="border-t border-white/10" />

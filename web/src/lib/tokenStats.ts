@@ -2,8 +2,10 @@ import { fetchTotalTvlUsd } from "@/lib/pools";
 import { AGGREGATE_TVL_ENABLED, fetchAggregateTvlUsd } from "@/lib/tvlAggregate";
 
 export const MAGNET_ASA_ID = 3081853135;
+export const MUSD_ASA_ID = 3615600399;
+const USDC_ASA_ID = 31566704;
 
-export async function fetchHolderCount(): Promise<string> {
+export async function fetchHolderCount(assetId: number): Promise<string> {
   try {
     let count = 0;
     let nextToken: string | undefined;
@@ -11,7 +13,7 @@ export async function fetchHolderCount(): Promise<string> {
       const params = new URLSearchParams({ "currency-greater-than": "0", limit: "1000" });
       if (nextToken) params.set("next", nextToken);
       const res = await fetch(
-        `https://mainnet-idx.algonode.cloud/v2/assets/${MAGNET_ASA_ID}/balances?${params}`,
+        `https://mainnet-idx.algonode.cloud/v2/assets/${assetId}/balances?${params}`,
         { next: { revalidate: 3600 } }
       );
       if (!res.ok) break;
@@ -56,6 +58,24 @@ export async function fetchMagnetPriceUSDC(): Promise<string> {
     return `$${priceUSDC.toFixed(6)}`;
   } catch {
     return "—";
+  }
+}
+
+/** Live mUSD/USDC market price from Vestige, for the peg-health stat. Raw number (not a
+ * pre-formatted string, unlike the other fetchers here) since the caller needs it for the
+ * under-peg comparison, not just display. */
+export async function fetchMusdMarketPriceUsd(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `https://api.vestigelabs.org/assets/price?asset_ids=${MUSD_ASA_ID}&network_id=0&denominating_asset_id=${USDC_ASA_ID}`,
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const entry = Array.isArray(data) ? data[0] : null;
+    return entry?.price ? Number(entry.price) : null;
+  } catch {
+    return null;
   }
 }
 
