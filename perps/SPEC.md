@@ -195,7 +195,7 @@ Perps-side constants:
 
 > `MAX_POSITION_NOTIONAL_USD` is a **product guardrail with no on-chain enforcement** — a user can always go to PEX directly. It is not counted as a security control.
 >
-> **The PnL-cap and reserve terms were removed, because neither binds.** An earlier draft took a percentage of "trader-PnL-cap headroom", which is not a quantity that exists — `checkTraderPnlCap` recomputes a ceiling on *each close's own profit payout* against the side pool; it is not a consumable allowance, and at any size this product reaches it is unreachable (a 100% move on $250 pays $250 against a $717 ceiling). Reserves do not bind either: measured, `long_reserves_exceeded` binds near **$4,250** and `short_reserves_exceeded` near **$7,300**, both far above `max_open_interest`'s **$960** — though they become binding the moment PEX raises that cap. **OI headroom is the only live constraint**, which makes the formula both simpler and honest.
+> **The PnL-cap and reserve terms were removed, because neither binds.** An earlier draft took a percentage of "trader-PnL-cap headroom", which is not a quantity that exists — `checkTraderPnlCap` recomputes a ceiling on *each close's own profit payout* against the side pool; it is not a consumable allowance, and at any size this product reaches it is unreachable (a 100% move on $250 pays $250 against a $717 ceiling). Reserves do not bind either: measured, `long_reserves_exceeded` binds near **$4,250** and `short_reserves_exceeded` near **$7,300**, both far above `max_open_interest`'s **$1,500** — though they close that gap each time PEX raises the cap, and at $4,250 the long side is now less than 3x away. **OI headroom is the only live constraint**, which makes the formula both simpler and honest.
 >
 > **It still needs a floor.** Live short-side headroom is **$46.56**; 20% of that is $9.31 of notional, below anything sellable. When the cap falls under the minimum viable order the UI must say the side is full, not offer an amount that cannot open.
 >
@@ -288,7 +288,7 @@ Predicted matches binary search to the cent. **State a minimum amount:** `C > mi
 >
 > **Method note worth keeping:** derive the constraint set from the failure paths in source, not from the set already believed. The three Criticals this replaced were each a constraint nobody had thought to test.
 
-**And reserves are a fifth, further out.** `long_reserves_exceeded` binds near **$4,250** of side OI and `short_reserves_exceeded` near **$7,300** — both well above the $960 `max_open_interest`, so reserves do not bind today. They become the binding constraint the moment PEX raises the OI cap.
+**And reserves are a fifth, further out.** `long_reserves_exceeded` binds near **$4,250** of side OI and `short_reserves_exceeded` near **$7,300** — both above the $1,500 `max_open_interest`, so reserves still do not bind. The margin narrowed on 2026-09-23 when the cap went from $960 to $1,500: the long side is now within a factor of three. Ultrade raise the cap deliberately and incrementally against observed liquidity, so this crossover should be expected rather than treated as an anomaly. **`readMarketState` already reads everything the reserve check needs; the solver does not yet include the term.** Add it before the cap reaches ~$3,000.
 
 | Side, $50 collateral | Margin | Collateral | OI headroom | Binding | Ceiling |
 |---|---|---|---|---|---|
@@ -764,7 +764,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 > |---|---|---|
 > | ≤ $500 | 500 bps | 20× |
 > | $913 (ALGO/USD short, live) | 913 bps | **10.95×** |
-> | $960 (ALGO/USD OI cap) | 960 bps | 10.4× |
+> | $1,500 (ALGO/USD OI cap, current) | 1500 bps | 6.7× |
 > | $1,560 (BTC/USD OI cap) | 1560 bps | 6.4× |
 >
 > **Resolved by design change, not mitigation.** Fixed leverage bands were removed entirely in favour of the [risk bar](#risk--a-continuum-not-named-tiers). A continuum has no threshold to cross, so no band can become undeliverable and no relabelling table is needed. Two requirements survive from the finding and are recorded there: resolve from `effective_max_leverage_bps` rather than `initial_margin_bps`, and **solve** the ceiling rather than look it up, because `dynamicBps` includes the user's own order size. `doi:` is now in the Availability Gating read list.
@@ -773,7 +773,7 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 
 | | ALGO/USD | BTC/USD |
 |---|---|---|
-| `max_open_interest` per side | **$960** | **$1,560** |
+| `max_open_interest` per side | **$1,500** *(raised from $960 on 2026-09-23)* | **$1,560** |
 | `reserve_factor_bps` | 1600 | 800 |
 | `max_pnl_factor_for_traders_bps` | 9000 | 6000 |
 | `max_pnl_factor_for_adl_bps` | 8500 | 5500 |
@@ -784,14 +784,14 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 | | ALGO/USD | BTC/USD |
 |---|---|---|
 | Pool | 6,835 ALGO (~$592) + 796 USDC ≈ **$1,388** | 8,927 ALGO (~$773) + 942 USDC ≈ **$1,715** |
-| Open interest | long **$189.10** · short **$913.44** *(re-read 2026-09-22; an earlier table said $10.60 / $159.92, understating short-side crowding by 5.7×)* | **zero** |
+| Open interest | long **$120.60** · short **$71.00** *(re-read 2026-09-23. It was $189.10 / $913.44 the day before, and $10.60 / $159.92 the day before that — the short side drained by 13x in 24h. **Never cache this.** Every figure derived from it, including the whole risk bar, is valid only for the block it was read at.)* | **zero** |
 | `unpaid_cost_usd` | 1 at 1e6 scale — i.e. \$0.000001, so a liquidation gap has occurred but is negligible in size | 0 |
 
 **PEX is new and thin, and that is understood: Perps exists partly to bring flow to it.** The requirement is not to wait for depth but to size against it honestly and scale automatically as it grows.
 
 ### Consequences for sizing
 
-- **A fixed `MAX_POSITION_NOTIONAL_USD` of $1,500 exceeded the entire $960 per-side OI cap.** A single Perps at that cap could not open.
+- **A fixed `MAX_POSITION_NOTIONAL_USD` of $1,500 exceeded the entire per-side OI cap** when that cap was $960. It is now $1,500 — exactly equal — which is still not room for one position, since the side is never empty. The lesson stands and is why the ceiling is solved rather than configured.
 - **The trader PnL cap can bind, contrary to an earlier finding.** That analysis reasoned from unit size; the binding quantity is *pool* size. At 90% of a $796 short-side pool the payout ceiling is ≈**$716** — reachable by a $1,500 notional position on a 48% move. Correct the earlier conclusion that it "effectively never binds."
 - **Availability gating is the normal case, not an edge case.** A 5-unit Moderate Perps is $500 notional — over half the ALGO/USD OI cap — and `position_impact_factor_bps = 55` means a position that size moves its own execution price.
 
@@ -1035,7 +1035,7 @@ What a Perps user is trusting, stated plainly because the product's honesty depe
 
 | Trusted party | For what | Our mitigation |
 |---|---|---|
-| PEX contracts | Correct settlement, margin, liquidation, ADL | None available. No audit is advertised. Disclose. |
+| PEX contracts | Correct settlement, margin, liquidation, ADL | **No external audit exists — confirmed by Ultrade 2026-09-23.** Assurance is internal: 12 rounds of AI-assisted review across multiple models, continued until no further real findings were produced, and they are candid that this bounds neither bugs nor implementation oversights — they cite the orphaned TP/SL issue as one that survived it. This is more disclosure than most, and it is not a third-party audit. **Disclose it in those words.** The mitigation is not technical: size limits, the launch notional ceiling, and telling users plainly what is and is not backing the contracts holding their collateral. |
 | PEX admin & upgrade keys | Acting in good faith. **Ultrade confirmed 2026-09-18** that maintenance margin can be raised on a market with open positions and **applies immediately**, that a number of parameters are mutable with bounds they intend to tighten, and that they are building (a) a **fixed delay window** before parameter changes take effect and (b) **on-chain readability of pending changes**, ~1 week out, proposed at 48h. Longer term they intend to hand admin to Algorand stakers via token governance. `maintenance_margin_bps` is read **live at liquidation time** (`src/v2Quotes.ts`), not snapshotted at open, so the buffer disclosed at purchase is a live parameter Ultrade controls. | **This is an accepted trust, recorded deliberately.** Both keys are single-signature and `PDexV2Trading` is upgradeable (see [PEX.md](./PEX.md#governance-and-upgradeability)). Magnet Strategies assumes good-faith operation with notice — the normal posture for a third-party dependency. Note that this assumption addresses *intent* only: key compromise, operational error, and a well-intentioned upgrade introducing a bug are unaffected by it. Until the delay ships, mitigation is limited to reading parameters live and never caching a disclosed buffer. Once it ships, we read the **pending** change and surface it — see [Pending parameter changes](#pending-parameter-changes). |
 | PEX oracle signer | The price range all execution derives from | Freshness and target validation; refuse stale payloads |
 | PEX keeper network | Executing stored orders and ADL | None available |
@@ -1122,10 +1122,12 @@ Policy, roadmap, or internal semantics we cannot observe.
 
 0. **Confirm the 0.5.0 MainNet cutover date**, and whether old brackets retiring with refunds requires anything of integrators beyond telling users to recreate protection.
 1. **Does the parameter delay window cover contract upgrades, or only parameters?** The sharpest remaining question. `PDexV2Trading` was upgraded 2026-09-12, an upgrade keeps the app ID, and Ultrade indicate no app ID change is expected — so **every** future change reaches us through the upgrade path. A 48h delay on parameters is only as strong as the upgrade path beneath it.
-2. **REOPENED — the `v2_order_bracket_cleanup` `reason` enum, and OCO-on-execution. Blocks Protection.** Codes **1** and **3** occur on MainNet (30 and 19 times), but the mapping to Ultrade's four named triggers is assumption, not evidence, and `v2_order_executed` has **never fired on MainNet**, so execution-triggered cancellation is unobservable there. Two actions: ask Ultrade for the enum, and simulate OCO on **TestNet** — including the partial-reduction case, where OCO firing would leave the surviving position with no brackets at all. *(Partially answered 2026-09-21: the four reasons were described, and `v2_order_cancelled` status 7/8 refunds storage. The sub-question of whether cleanup is eager or lazy is now settled by chain — `keeper_fee_paid = 0` in all 49 cleanups, so nobody has ever been paid to run one. Perps History needs the reclaim affordance.)*
+2. ~~**The `v2_order_bracket_cleanup` `reason` enum, and OCO-on-execution.**~~ — **enum answered 2026-09-23 in SDK 0.6.3; the TestNet observation is still outstanding.** `V2_ORDER_BRACKET_CLEANUP_REASON` and `V2_ORDER_STATUS` now ship as exported constants with a documented table: the two codes we had seen are `PARENT_CANCELLED` (1) and `OCO_SIBLING_CANCELLED` (3), the latter defined as *"Linked TP/SL executed; the other child was removed"* — the OCO-on-execution guarantee Protection needs. 0.6.3 is additive with no contract change, so the behaviour predates the documentation. **Protection stays gated** until one leg is watched executing on TestNet with the sibling observed removed: a published table is better evidence than a chat message and is still not a measurement. Two cleanup details to get right: bracket cleanup removes `owner + child_order_id` (not `base_order_id`), status 7/8 cleanup removes `owner + owner_order_id`, and codes 7/8 are successful cleanup rather than fills. Original finding follows.
+
+   *Original:* Codes **1** and **3** occur on MainNet (30 and 19 times), but the mapping to Ultrade's four named triggers is assumption, not evidence, and `v2_order_executed` has **never fired on MainNet**, so execution-triggered cancellation is unobservable there. Two actions: ask Ultrade for the enum, and simulate OCO on **TestNet** — including the partial-reduction case, where OCO firing would leave the surviving position with no brackets at all. *(Partially answered 2026-09-21: the four reasons were described, and `v2_order_cancelled` status 7/8 refunds storage. The sub-question of whether cleanup is eager or lazy is now settled by chain — `keeper_fee_paid = 0` in all 49 cleanups, so nobody has ever been paid to run one. Perps History needs the reclaim affordance.)*
 3. ~~**Oracle signer public key**~~ — **answered 2026-09-21.** `4cc6bcc8...d2e3dffb`, from `PDexV2OrderOps` (3690309166) global key `"oc"`, cross-checked against `PDexV2Trading` global key `"q"`. Pin it. Remaining sub-question: confirm the trailing `0x1e` is indeed an on-chain freshness tolerance of 30 seconds.
 4. ~~**Yield recall failure**~~ — **answered 2026-09-21.** Recall is atomic within whatever action requires it; if it fails, that action fails. Keeper recalls are not needed for direct user actions such as closing a position, so a manual close carries its own recall rather than depending on a keeper's.
-5. **Is there a published or private PEX audit, and is a multisig on the roadmap?** Both already asked; answers pending.
+5. ~~**Is there a published or private PEX audit?**~~ — **answered 2026-09-23. There is none, internal or external.** Assurance is 12 rounds of AI-assisted review across several models, run until findings stopped appearing. Ultrade state plainly that bugs and implementation oversights remain possible and cite the orphaned TP/SL fix as an example that survived the process. Recorded in [Residual Trust](#residual-trust); it changes what we disclose, not whether we build. **The multisig half of this question is still open** and should stay on the list — both admin and upgrade keys remain single-signature.
 
 ### Determinable by simulation — do not spend Ultrade's time on these
 
