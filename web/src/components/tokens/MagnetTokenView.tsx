@@ -17,19 +17,15 @@ function StatCell({
   label,
   value,
   sub,
-  accent,
 }: {
   label: string;
   value: string;
   sub?: string;
-  accent?: "purple";
 }) {
   return (
     <div className="p-5">
       <p className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</p>
-      <p className={`mt-2 font-mono text-2xl font-bold ${accent === "purple" ? "text-magnet-300" : "text-white"}`}>
-        {value}
-      </p>
+      <p className="mt-2 font-mono text-2xl font-bold text-green-400">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
     </div>
   );
@@ -83,7 +79,7 @@ export function MagnetTokenView({
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
           <StatCell label="Price" value={price} sub="USDC" />
           <StatCell label="Holders" value={holders} sub="Active wallets" />
-          <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" accent="purple" />
+          <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" />
           <TvlRankStat />
         </div>
 
