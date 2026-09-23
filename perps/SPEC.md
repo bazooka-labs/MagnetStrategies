@@ -299,6 +299,12 @@ Predicted matches binary search to the cent. **State a minimum amount:** `C > mi
 
 **Then step down one UI tick, and confirm by quoting the resolved size and requiring `ok === true` before enabling the right end.** Do not ship the closed form as the only gate — `dynamic_min_position_size_usd`, `position_quantization` and `impact_consumes_size` also sit on this path.
 
+> **The feasible set is an interval, not a prefix — found 2026-09-23 while verifying the solver against the SDK.**
+>
+> Sizes *below* `min_position_size_usd` reject exactly as sizes above the ceiling do, so feasibility is `[floor, ceiling]` and not `[0, ceiling]`. A binary search seeded at zero halves `hi` straight past a narrow window and concludes the side is closed: at `C = $5.01` it reported **$0 openable where the true maximum is $6.25**, the value this document already records from an independent measurement.
+>
+> The first verification run reproduced this as a fake "overstatement" in the solver. The solver was right and the harness was wrong. **Any size search — ours, or a future one — must seed from a known-feasible point rather than from zero.**
+
 #### The floor must be solved too
 
 ```
