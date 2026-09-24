@@ -313,3 +313,186 @@ export async function simulateGroup(
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// ── Close path ────────────────────────────────────────────────────────────────
+
+/** `PDexV2Trading.decrease_or_close` — 15 args, captured from the pinned SDK's encoder. */
+export const CLOSE_SELECTOR = "82f0edaf" as const;
+
+/**
+ * The wildcard `expectedPositionId`. `expectedClosePositionId(undefined)` yields
+ * `2^64 - 1`, which closes **whatever position currently occupies the key** —
+ * including one opened after the user pressed the button. Never send it.
+ */
+export const POSITION_ID_WILDCARD = (BigInt(1) << BigInt(64)) - BigInt(1);
+/** Valid ids are 48-bit. */
+export const POSITION_ID_MAX = BigInt(1) << BigInt(48);
+
+export type DisplayedClose = {
+  sender: string;
+  marketId: number;
+  side: 1 | 2;
+  collateralAssetId: number;
+  /** Exactly the size shown. For a full close this must equal position_size_usd. */
+  sizeUsdDeltaMicro: bigint;
+  /** The live position size, so a "close everything" can be proven complete. */
+  positionSizeUsdMicro: bigint;
+  /** True when the user asked to close the whole position. */
+  fullClose: boolean;
+  acceptablePrice12: bigint;
+  indexPrice12: bigint;
+  slippageBps: number;
+  /** The real position id. Never a wildcard, never a guess. */
+  expectedPositionId: bigint;
+  oracleMessage: Uint8Array;
+  oracleSignature: Uint8Array;
+  /** From prepareV2DecreaseOrCloseInput — asserted, not trusted. */
+  yieldRecallMode: bigint;
+  maxLongReceiptAmount: bigint;
+  maxShortReceiptAmount: bigint;
+};
+
+/**
+ * Assert a close group.
+ *
+ * This path has **no collateral transfer**, so the leverage ratio that anchors
+ * the open path does not exist here. `sizeUsdDelta` has no binding check unless
+ * it is asserted directly — which is why the partial-close attack works: a
+ * compromised frontend shows "close my position", sends a small decrease, and the
+ * user believes they are out while still fully exposed. Their take-profit then
+ * fails with `reduce_size_exceeds_position` until the position grows back.
+ */
+export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): GroupAssertion {
+  const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
+  const findings: GroupFinding[] = [];
+  const checked: string[] = [];
+  const fail = (code: string, detail: string) => findings.push({ code, detail });
+  const did = (name: string) => checked.push(name);
+
+  if (txns.length === 0) {
+    fail("empty_group", "no transactions");
+    return { ok: false, findings, checked };
+  }
+
+  const ids = new Set(txns.map((t) => t.txID()));
+  if (ids.size !== txns.length) {
+    fail("duplicate_txids", `${txns.length} transactions but ${ids.size} distinct IDs`);
+  }
+  did("distinct transaction IDs");
+
+  let totalFee = BigInt(0);
+  txns.forEach((t, i) => {
+    totalFee += big(t.fee);
+    if (String(t.sender) !== shown.sender) fail("foreign_sender", `txn ${i} sender is not the user`);
+    if (t.rekeyTo) fail("rekey", `txn ${i} sets rekeyTo`);
+    if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
+    if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
+    if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
+    if (t.applicationCall && !ALLOWED_APP_IDS.has(Number(t.applicationCall.appIndex))) {
+      fail("unpinned_app", `txn ${i} calls app ${t.applicationCall.appIndex}, not a pinned PEX app`);
+    }
+  });
+  did("sender, rekey/close/clawback, pinned apps");
+
+  if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
+    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO}`);
+  }
+  did("total fee under cap");
+
+  // Nothing leaves the wallet on a close. Any outbound transfer is an exfiltration.
+  const transfers = txns.filter((t) => t.assetTransfer || t.payment);
+  if (transfers.length > 0) {
+    fail("unexpected_transfer", `close path carries ${transfers.length} value transfer(s); expected none`);
+  }
+  did("no outbound value transfer on the close path");
+
+  const mainCalls = txns.filter(
+    (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.trading,
+  );
+  if (mainCalls.length !== 1) {
+    fail("main_call_count", `expected 1 Trading call, found ${mainCalls.length}`);
+    return { ok: false, findings, checked };
+  }
+  const ac = mainCalls[0].applicationCall!;
+  const args = ac.appArgs ?? [];
+  if (hex(args[0] ?? new Uint8Array()) !== CLOSE_SELECTOR) {
+    fail("selector", `selector ${hex(args[0] ?? new Uint8Array())}, expected ${CLOSE_SELECTOR}`);
+  }
+  if (args.length !== 16) {
+    fail("arg_count", `${args.length - 1} args after selector, expected 15`);
+    return { ok: false, findings, checked };
+  }
+  did("decrease_or_close selector and arity");
+
+  const u64 = (a: Uint8Array) => algosdk.decodeUint64(a, "bigint");
+  const [, aMarket, aColl, aSide, aSize, aPrice, aSwap, aMinP, aMinS, aBuilder, aMsg, aSig, aRecall, aMaxL, aMaxS, aPosId] = args;
+
+  if (u64(aMarket) !== BigInt(shown.marketId)) fail("market_id", `${u64(aMarket)} vs ${shown.marketId}`);
+  if (u64(aColl) !== BigInt(shown.collateralAssetId)) fail("collateral_asset", `${u64(aColl)} vs ${shown.collateralAssetId}`);
+  if (u64(aSide) !== BigInt(shown.side)) fail("side", `${u64(aSide)} vs ${shown.side}`);
+  did("marketId, collateralAssetId, side");
+
+  // The partial-close attack lives here.
+  if (u64(aSize) !== shown.sizeUsdDeltaMicro) {
+    fail("size_usd_delta", `group closes ${u64(aSize)}, screen showed ${shown.sizeUsdDeltaMicro}`);
+  }
+  if (shown.fullClose && u64(aSize) !== shown.positionSizeUsdMicro) {
+    fail("partial_close", `full close requested but group closes ${u64(aSize)} of ${shown.positionSizeUsdMicro}`);
+  }
+  did("sizeUsdDelta, and full close closes the whole position");
+
+  // The wildcard closes whatever occupies the key, including a position the user
+  // opened seconds ago.
+  const posId = u64(aPosId);
+  if (posId === POSITION_ID_WILDCARD) {
+    fail("position_id_wildcard", "expectedPositionId is the wildcard — would close whatever occupies the key");
+  } else if (posId >= POSITION_ID_MAX) {
+    fail("position_id_range", `expectedPositionId ${posId} is outside the 48-bit range`);
+  } else if (posId !== shown.expectedPositionId) {
+    fail("position_id", `group binds to position ${posId}, displayed ${shown.expectedPositionId}`);
+  }
+  did("expectedPositionId is real, in range, and the displayed one");
+
+  if (u64(aSwap) !== BigInt(0)) fail("output_swap_mode", `outputSwapMode ${u64(aSwap)}, expected 0`);
+  if (u64(aMinP) !== BigInt(0)) fail("min_primary", `minPrimary ${u64(aMinP)}, expected 0 at swap mode 0`);
+  if (u64(aMinS) !== BigInt(0)) fail("min_secondary", `minSecondary ${u64(aMinS)}, expected 0 at swap mode 0`);
+  did("outputSwapMode 0 with zero minimums");
+
+  if (aBuilder.length !== 40) {
+    fail("builder_tuple", `builder tuple ${aBuilder.length} bytes, expected 40`);
+  } else {
+    if (algosdk.encodeAddress(aBuilder.slice(0, 32)) !== BUILDER_ADDRESS) {
+      fail("builder_address", "close builder fee is not pointed at BUILDER_ADDRESS");
+    }
+    if (u64(aBuilder.slice(32, 40)) !== BigInt(POSITION_BUILDER_FEE_BPS)) {
+      fail("builder_bps", `close builder fee ${u64(aBuilder.slice(32, 40))} bps, expected ${POSITION_BUILDER_FEE_BPS}`);
+    }
+  }
+  did("builder address and fee bps on the close leg");
+
+  const msg = abiBytes(aMsg);
+  const sig = abiBytes(aSig);
+  if (!msg || !sameBytes(msg, shown.oracleMessage)) fail("oracle_message", "not the verified payload bytes");
+  if (!sig || !sameBytes(sig, shown.oracleSignature)) fail("oracle_signature", "not the verified signature bytes");
+  did("oracle message and signature are the verified bytes");
+
+  // Recall values decide how much the contract may pull back from the yield
+  // provider. They come from preparation and are asserted rather than trusted.
+  if (u64(aRecall) !== shown.yieldRecallMode) fail("yield_recall_mode", `${u64(aRecall)} vs prepared ${shown.yieldRecallMode}`);
+  if (u64(aMaxL) !== shown.maxLongReceiptAmount) fail("max_long_receipt", `${u64(aMaxL)} vs prepared ${shown.maxLongReceiptAmount}`);
+  if (u64(aMaxS) !== shown.maxShortReceiptAmount) fail("max_short_receipt", `${u64(aMaxS)} vs prepared ${shown.maxShortReceiptAmount}`);
+  did("yieldRecallMode and receipt caps match preparation");
+
+  if (shown.indexPrice12 > BigInt(0)) {
+    const drift = Math.abs(Number(shown.acceptablePrice12) - Number(shown.indexPrice12)) / Number(shown.indexPrice12);
+    if (drift > shown.slippageBps / 10_000 + 1e-9) {
+      fail("slippage", `acceptablePrice ${(drift * 10_000).toFixed(1)} bps from index, tolerance ${shown.slippageBps}`);
+    }
+  }
+  if (u64(aPrice) !== shown.acceptablePrice12) {
+    fail("acceptable_price", `arg ${u64(aPrice)}, displayed ${shown.acceptablePrice12}`);
+  }
+  did("acceptablePrice matches display and sits within slippage");
+
+  return { ok: findings.length === 0, findings, checked };
+}

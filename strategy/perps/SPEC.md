@@ -89,6 +89,19 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
 **`open_or_increase` — add-margin variant.** "Add collateral" is `buildV2AddPositionMarginCall`, which calls `open_or_increase` with **`sizeUsdDelta = 0`** and a **zero** builder-fee cap. Assert `sizeUsdDelta == 0`, `builderFeeBps == 0`, and bound the collateral by the axfer alone; the leverage-ratio rule does not apply since it evaluates to 0. *(For later: `buildV2WithdrawPositionMarginCall` uses `decrease_or_close` with `sizeUsdDelta = 0` and carries the withdrawal amount in the **`minPrimary`** slot — so the `minPrimary == minSecondary == 0` rule is wrong for that path if partial withdrawal is ever surfaced.)*
 
+> **NEW BLOCKER, found 2026-09-24 while building the close assertion: the close path cannot be constructed without a PEX backend.**
+>
+> `buildV2DecreaseOrCloseTransactions` throws `insufficient_large_program_read_budget_capacity`. Measured: the `decrease_or_close` call saturates its reference budget at **8 of 8** (3 foreignApps + 1 foreignAsset + 2 accounts + 2 boxes) while `largeProgramRoles: ["markets","trading"]` needs **4 more** empty box references. Local capacity is zero.
+>
+> Other call families are rescued by `fundV2LargeProgramBudgetWithMathCarriers`, which appends Math carriers to absorb the budget — **it is not applied to `decrease_or_close`.** That path instead relies on nested capacity from yield-freshness carriers, which exist only once `prepareV2DecreaseOrCloseInput` has run. And that helper calls **`client.v2MarketYieldActionRecallPlan()` and `client.v2MarketYieldResourceRegistry()` — both backend HTTP endpoints, with no on-chain equivalent anywhere in the SDK.**
+>
+> This contradicts the operating assumption that Perps reads only chain. It is not a quote-accuracy problem or a convenience: **a user cannot exit without it.** One of these has to be true before launch, and the choice is a product decision, not an implementation detail:
+> 1. Run a compatible backend for the recall plan and registry — and then re-read [CRITICAL: The Backend Supplies Fund Destinations](#critical-the-backend-supplies-fund-destinations), because that backend now sits on the exit path.
+> 2. Derive the registry and recall plan from chain ourselves, outside the SDK.
+> 3. Get Ultrade to expose both as published artifacts, the way oracle payloads already are — cheapest for everyone if they will do it.
+>
+> The **assertion** for this path is written and tested regardless; the arg layout below is confirmed against the SDK's own encoder (selector `82f0edaf`, 15 args). What is blocked is *building* the group, not checking it.
+
 **`decrease_or_close` args (0.6.2, 15)** — `[marketId, collateralAssetId, side, sizeUsdDelta, acceptablePrice, outputSwapMode, minPrimary, minSecondary, [builderAddress, builderFeeBps], oracleMessage, oracleSignature, yieldRecallMode, maxLongReceiptAmount, maxShortReceiptAmount, expectedPositionId]` (`src/transactions.ts`).
 - **`expectedPositionId` must be a real id, never the wildcard.** `expectedClosePositionId(undefined)` yields `(1n << 64n) - 1n`, which closes whatever position occupies the key. Valid range is `0 ≤ id < 2^48`. **There is no collateral transfer on this path, so the leverage ratio is undefined and `sizeUsdDelta` has no binding check unless asserted directly:**
 - `sizeUsdDelta` equals the displayed close size exactly — and `== position_size_usd` for a full close. Without this, a compromised frontend shows "close my Perps" and sends a partial decrease: the user believes they are out, they are still exposed, and their take profit is now unexecutable via `reduce_size_exceeds_position` until the position grows back
