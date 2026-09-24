@@ -196,3 +196,28 @@ export async function getOraclePayload(
 
 /** Price12 -> dollars, for display only. */
 export const price12ToUsd = (p: bigint): number => Number(p) / 1e12;
+
+/**
+ * Decimal string -> Price12, exactly.
+ *
+ * NOT `Math.round(Number(s) * 1e12)`. A BTC price times 1e12 is about 8.3e16,
+ * past Number.MAX_SAFE_INTEGER (9.007e15), where not every integer is
+ * representable — so that expression can silently land on a neighbouring value.
+ * On a take-profit target that means the order triggers at a price the user was
+ * never shown, which is the precise failure the group assertions exist to catch.
+ *
+ * Done on the string instead: split at the point, pad or truncate the fraction to
+ * 12 digits, concatenate, parse once as BigInt. Returns null on anything that is
+ * not a plain non-negative decimal.
+ */
+export function usdToPrice12(input: string): bigint | null {
+  const s = input.trim();
+  if (!/^\d*\.?\d*$/.test(s) || s === "" || s === ".") return null;
+  const [whole = "", frac = ""] = s.split(".");
+  const frac12 = frac.slice(0, 12).padEnd(12, "0");
+  try {
+    return BigInt(`${whole || "0"}${frac12}`);
+  } catch {
+    return null;
+  }
+}

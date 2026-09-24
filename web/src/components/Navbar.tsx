@@ -9,6 +9,7 @@ import { WalletButton } from "@/components/WalletButton";
 const navLinks = [
   { href: "/tokens", label: "Tokens", external: false },
   { href: "/magnetfi", label: "Bank", external: false },
+  { href: "/strategy", label: "Strategy", external: false },
   { href: "/predict", label: "Predict", external: false },
   { href: "/vote", label: "Vote", external: false },
   { href: "/contact", label: "Contact", external: false },
