@@ -81,6 +81,21 @@ export const PEX_PROTOCOL_MANIFEST_SHA256 =
   "d594c876fcd253ea18ff66607c41752102c75db233a4ba43a7ca5d17b55ca173";
 
 /**
+ * The SAME manifest hashed in canonical form — `JSON.stringify(JSON.parse(raw))`.
+ *
+ * Two hashes because they check different things. The raw hash above is
+ * provenance: it identifies the exact file as delivered, and is what you compare
+ * when re-fetching from PEX. This one is the runtime control: a bundler hands the
+ * app a parsed object, never the original text, so the file's byte hash is
+ * unverifiable at runtime. Canonical re-serialisation is stable across
+ * parse/stringify round-trips (verified), which makes it checkable in the browser.
+ *
+ * Asserting only the raw hash would mean asserting nothing at runtime.
+ */
+export const PEX_PROTOCOL_MANIFEST_CANONICAL_SHA256 =
+  "10a879f93baef40a48649c1e9b6a2bb4664e593008e115c4acd6c550af737d3d";
+
+/**
  * Oracle signer public key, read from PDexV2OrderOps global key "oc" and
  * cross-checked against PDexV2Trading global key "q" (identical 48 bytes).
  *
