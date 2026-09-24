@@ -323,6 +323,12 @@ Predicted matches binary search to the cent. **State a minimum amount:** `C > mi
 
 *(Both rows assume slippage is anchored to execution price. Index-anchored, the SHORT row is unreachable at any size — see `N_slippage` above.)*
 
+> **This rule was violated by the first card, and the failure looked exactly as predicted — 2026-09-24.** The card mapped the risk bar onto `solveBar`'s raw ceiling. The ceiling itself is right: binary search against the SDK agrees with it. But offering it *exactly* means converting it to micro-units rounds up by a unit or two, and the quote returns `initial_margin_breach`. Measured at $10 collateral on ALGO/USD: the bar's top read 19.38x and the chain refused it, while $20 collateral was fine — so it presented as an arbitrary small-amount bug rather than a boundary condition.
+>
+> Fixed by mapping the bar onto `confirmCeiling`'s result instead of `solveBar`'s. That is cheap enough to do on every keystroke because `quoteV2OpenPosition` is local — there is no network call in the confirm loop. Verified afterwards: 21 bar positions from 0.00 to 1.00, both sides, both markets, at $5.50/$10/$25/$100 — **every one quotes `ok`**.
+>
+> The residual gap is the deliberate step-down: the confirmed ceiling lands at **19.19x** against a theoretical **19.38x**, about 1% of the range. That is the cost of not shipping a bar whose top rejects, and it is the right trade.
+
 **Then step down one UI tick, and confirm by quoting the resolved size and requiring `ok === true` before enabling the right end.** Do not ship the closed form as the only gate — `dynamic_min_position_size_usd`, `position_quantization` and `impact_consumes_size` also sit on this path.
 
 > **The feasible set is an interval, not a prefix — found 2026-09-23 while verifying the solver against the SDK.**

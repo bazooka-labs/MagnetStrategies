@@ -27,6 +27,7 @@ import {
 import { solveBar, type Side } from "@/lib/perpsSolver";
 import { price12ToUsd, usdToPrice12 } from "@/lib/perpsOracle";
 import {
+  confirmCeiling,
   maxPayoffUsd,
   payoffAtPrice,
   priceForPayoff,
@@ -71,10 +72,35 @@ export function PerpsCard() {
     });
   }, [data, side, collateralUsd]);
 
+  /**
+   * The bar's right end must be a size the chain will actually accept.
+   *
+   * The solved ceiling is correct but exact: converting it to micro-units rounds
+   * up by a unit or two and the quote returns initial_margin_breach. Offering it
+   * raw produces a bar whose top rejects — which is worse than a slightly lower
+   * top, because the user only finds out after the wallet prompt. confirmCeiling
+   * steps down until a real quote passes. It is local, not a network call, so
+   * this is cheap enough to run on every change.
+   */
+  const confirmed = useMemo(() => {
+    if (!data || !bar?.open) return null;
+    try {
+      return confirmCeiling({
+        state: data.state, oracle: data.oracle, side, collateralUsd,
+        builderAddress: BUILDER_ADDRESS || "A".repeat(58),
+        collateralAssetId: COLLATERAL_ASSET_ID,
+        slippageBps: DEFAULT_SLIPPAGE_BPS,
+      });
+    } catch { return null; }
+  }, [data, bar, side, collateralUsd]);
+
+  const ceilingUsd = confirmed?.notionalUsd ?? 0;
+  const tradable = !!(bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd);
+
   const notional = useMemo(() => {
-    if (!bar?.open) return 0;
-    return bar.minNotionalUsd + (bar.maxNotionalUsd - bar.minNotionalUsd) * barPos;
-  }, [bar, barPos]);
+    if (!bar?.open || !tradable) return 0;
+    return bar.minNotionalUsd + (ceilingUsd - bar.minNotionalUsd) * barPos;
+  }, [bar, ceilingUsd, tradable, barPos]);
 
   const quote: OpenQuote | null = useMemo(() => {
     if (!data || !bar?.open || notional <= 0) return null;
@@ -166,21 +192,26 @@ export function PerpsCard() {
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-white/50">Risk</span>
           <span className="text-sm font-semibold tabular-nums text-white">
-            {bar?.open && quote?.ok ? `${quote.leverage.toFixed(2)}×` : "—"}
+            {tradable && quote?.ok ? `${quote.leverage.toFixed(2)}×` : "—"}
           </span>
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
-          disabled={!bar?.open}
+          disabled={!tradable}
           onChange={(e) => { setBarPos(Number(e.target.value)); setTpTouched(false); }}
           className="mt-2 w-full accent-magnet-400 disabled:opacity-30" />
         <div className="flex justify-between text-[11px] tabular-nums text-white/40">
-          <span>{bar?.open ? `${bar.minLeverage.toFixed(2)}×` : ""}</span>
-          <span>{bar?.open ? `${bar.maxLeverage.toFixed(2)}×` : ""}</span>
+          <span>{tradable ? `${bar!.minLeverage.toFixed(2)}×` : ""}</span>
+          <span>{tradable && collateralUsd > 0 ? `${(ceilingUsd / collateralUsd).toFixed(2)}×` : ""}</span>
         </div>
         {bar && !bar.open && (
           <p className="mt-1 text-xs text-amber-300/90">{bar.closedReason}</p>
         )}
-        {bar?.open && (
+        {bar?.open && !tradable && (
+          <p className="mt-1 text-xs text-amber-300/90">
+            No size on this side currently clears the exchange&apos;s checks. Try a different amount.
+          </p>
+        )}
+        {tradable && (
           <p className="mt-1 text-[11px] text-white/35">
             Position size {fmtUsd(notional)} · limited by {bar.binding.replace(/_/g, " ")}
           </p>
