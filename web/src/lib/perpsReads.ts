@@ -280,3 +280,105 @@ export async function assertBuilderAddressUsable(
       : undefined;
   return { ok: !problem, optedIn, spendableAlgo, problem };
 }
+
+// ── Order id allocation ───────────────────────────────────────────────────────
+
+/** `v2ExpectedLinkedChildOrderId`: take-profit is base+1, stop-loss is base+2. */
+export const ORDER_ID_STRIDE = BigInt(3);
+/** `validateLinkBaseOrderId`: 0 < base <= (1n << 61n) - 1n - 2n. */
+export const ORDER_ID_MAX_BASE = (BigInt(1) << BigInt(61)) - BigInt(3);
+
+export type BaseOrderIdAllocation = {
+  baseOrderId: bigint;
+  /** Ids this bracket will occupy: base (entry link), base+1 (TP), base+2 (SL). */
+  reserved: [bigint, bigint, bigint];
+  /** Order ids already on chain for this owner. */
+  existing: bigint[];
+};
+
+/**
+ * Allocate a base order id for a new bracket, from chain.
+ *
+ * **Never from local state.** An id derived from a counter in localStorage, or
+ * from a position count, desynchronises the moment the user opens in two tabs,
+ * clears storage, or switches device — and a colliding id does not fail cleanly
+ * in the UI, it fails at submission after the wallet prompt.
+ *
+ * Order boxes are keyed `o2: | owner | orderId`, so ids are **per owner**: two
+ * users can never collide, and the only contention is a user against themselves.
+ * algod supports prefix filtering, so this reads only this owner's boxes rather
+ * than enumerating the whole app.
+ *
+ * Races are possible and are fail-safe rather than fail-dangerous: two tabs can
+ * both read the same maximum and pick the same base, and the second submission is
+ * rejected on chain because the box already exists. No funds move. The wallet
+ * prompt is wasted, which is why this is read immediately before building.
+ */
+export async function allocateBaseOrderId(
+  algod: algosdk.Algodv2, owner: string,
+): Promise<BaseOrderIdAllocation> {
+  const prefix = new Uint8Array([
+    ...new TextEncoder().encode("o2:"),
+    ...algosdk.decodeAddress(owner).publicKey,
+  ]);
+  const b64 = typeof btoa === "function"
+    ? btoa(String.fromCharCode(...Array.from(prefix)))
+    : Buffer.from(prefix).toString("base64");
+
+  const existing: bigint[] = [];
+  let next: string | undefined;
+  // Paginate defensively: a long-lived account can accumulate order boxes.
+  for (let page = 0; page < 50; page++) {
+    const q = algod.getApplicationBoxes(PEX_APPS.orderOps);
+    // The SDK exposes only `max`; algod itself accepts prefix/next, so they are
+    // set on the query object directly.
+    (q as unknown as { query: Record<string, unknown> }).query.prefix = `b64:${b64}`;
+    if (next) (q as unknown as { query: Record<string, unknown> }).query.next = next;
+    const res = (await q.do()) as unknown as {
+      boxes?: { name: Uint8Array }[]; nextToken?: string; ["next-token"]?: string;
+    };
+    for (const box of res.boxes ?? []) {
+      // name = "o2:"(3) | owner(32) | orderId(8)
+      if (box.name.length !== 43) continue;
+      existing.push(algosdk.decodeUint64(box.name.slice(35, 43), "bigint"));
+    }
+    next = res.nextToken ?? res["next-token"];
+    if (!next) break;
+  }
+
+  const highest = existing.reduce((a, b) => (b > a ? b : a), BigInt(0));
+  // base must be > 0; the whole stride sits above every id already in use.
+  const baseOrderId = highest + BigInt(1);
+  if (baseOrderId > ORDER_ID_MAX_BASE) {
+    throw new Error("perps: order id space exhausted for this account");
+  }
+  return {
+    baseOrderId,
+    reserved: [baseOrderId, baseOrderId + BigInt(1), baseOrderId + BigInt(2)],
+    existing: existing.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+  };
+}
+
+/**
+ * Confirm none of an allocation's ids are taken, immediately before signing.
+ *
+ * Cheap, and it closes the window between allocating and building. It cannot
+ * close the window between signing and confirmation — nothing can, off chain.
+ */
+export async function assertBaseOrderIdFree(
+  algod: algosdk.Algodv2, owner: string, alloc: BaseOrderIdAllocation,
+): Promise<boolean> {
+  const pk = algosdk.decodeAddress(owner).publicKey;
+  for (const id of alloc.reserved) {
+    const name = new Uint8Array([
+      ...new TextEncoder().encode("o2:"), ...pk, ...algosdk.encodeUint64(id),
+    ]);
+    try {
+      await algod.getApplicationBoxByName(PEX_APPS.orderOps, name).do();
+      return false; // exists -> taken
+    } catch {
+      // 404 is the expected, healthy case.
+    }
+  }
+  return true;
+}
