@@ -125,7 +125,15 @@ Asset movements alone are not sufficient. `open_or_increase` takes **no collater
 
   Assert the pair matches the flow. A mismatch is how a bracket ends up bound to the wrong position lifetime.
 
-  > **`entryGroupOffset` is a relative backward distance, not an absolute index.** Source: `entryGroupOffset = transactions.length + 2 − entryTransactionIndex`, where `entryTransactionIndex` is the index of the `open_or_increase` call. An earlier draft described it as "the entry's index in the group" — the two coincide only when the entry sits at index 0, which it never does, since settlement-maintenance calls and the collateral transfer precede it (`primaryIndex = maintenance.length + 1`). An assertion written from that wording rejects **every** valid Perps group, and the likely field response is to relax the check rather than correct it.
+  > **`entryGroupOffset` — measured on a real group, 2026-09-24, and this replaces a callout that was itself misleading.**
+>
+> Built `open + attached TP` against MainNet: 9 transactions, `open_or_increase` at index 1, `submit_linked_order` at index 7, and the encoded **`entryGroupOffset` is 6** — exactly `tpIndex − openIndex`, which is what the table above says.
+>
+> The previous callout cited the source expression `entryGroupOffset = transactions.length + 2 − entryTransactionIndex` and warned that reading it as a simple index difference would "reject **every** valid Perps group". That is backwards in practice. The expression is correct, but `transactions.length` is the length **at the moment the leg is appended** (5 here, the open parts only), not the final group length. Read with the final length it yields 10 and rejects every valid group — the exact failure the callout was warning about, caused by the callout.
+>
+> **Assert it as the distance between the two transactions in the finished group**, which is directly observable and needs no knowledge of append order: `entryGroupOffset == indexOf(submit_linked_order) − indexOf(open_or_increase)`, range 1–15. Confirmed alongside `expectedPositionId = 0`, `linkMode = 3` (CHILD_ACTIVE), `timeInForce = 0`, `expiryTime = 0`.
+>
+> Also measured on the same group, both matching this document: keeper-fee escrow **100,000 µUSDC** and order-box MBR **99,700 µALGO** (not the legacy 96,500).
 
 > `encodeAppArgs` packs everything from index 14 onward into a trailing tuple when there are more than 15 args (`src/transactions.ts`) — 22 args triggers this, and the packing boundary comes from the **manifest's** arg type list. The assertion must decode the packed tuple, which makes the manifest hash pin load-bearing for this leg.
 
