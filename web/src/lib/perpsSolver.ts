@@ -15,7 +15,7 @@
 // all sit on this path and none of them are modelled here.
 
 import {
-  LAUNCH_NOTIONAL_CEILING_USD,
+  MAX_PLAUSIBLE_NOTIONAL_USD,
   OI_HEADROOM_SHARE,
   POSITION_BUILDER_FEE_BPS,
 } from "./perps";
@@ -37,7 +37,7 @@ export type BindingConstraint =
   | "collateral"
   | "oi_headroom"
   | "reserves"
-  | "launch_cap";
+  | "sanity_cap";
 
 export type SolvedBar = {
   side: Side;
@@ -267,7 +267,7 @@ export function solveBar(
     prices?: { indexPrice12: bigint; longPrice12: bigint; shortPrice12: bigint };
   } = {},
 ): SolvedBar {
-  const launchCap = opts.launchCapUsd ?? LAUNCH_NOTIONAL_CEILING_USD;
+  const sanityCap = opts.launchCapUsd ?? MAX_PLAUSIBLE_NOTIONAL_USD;
   const headroomShare = opts.headroomShare ?? OI_HEADROOM_SHARE;
 
   const terms: Record<BindingConstraint, number> = {
@@ -278,7 +278,7 @@ export function solveBar(
     // index price to mark its OI, and a guessed mark would make this term wrong
     // in the overstating direction. Callers with an oracle payload pass prices.
     reserves: opts.prices ? reserveCeilingUsd(state, side, opts.prices) : Number.POSITIVE_INFINITY,
-    launch_cap: launchCap,
+    sanity_cap: sanityCap,
   };
 
   let binding: BindingConstraint = "margin";
@@ -299,7 +299,9 @@ export function solveBar(
           ? "Not enough margin for the smallest position."
           : binding === "reserves"
             ? "This market is at its size limit right now."
-            : "Below the minimum position size.";
+            : binding === "sanity_cap"
+              ? "Size limit reached — please report this, it should not happen."
+              : "Below the minimum position size.";
   }
 
   return {

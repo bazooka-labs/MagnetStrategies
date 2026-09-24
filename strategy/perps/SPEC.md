@@ -193,8 +193,8 @@ Perps-side constants:
 | Constant | Value | Notes |
 |---|---|---|
 
-| `MAX_POSITION_NOTIONAL_USD` | `min(LAUNCH_NOTIONAL_CEILING, 20% × live per-side OI headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band. That bound a single purchase, was bypassed by the increase flow since positions merge, and delivered rising notional across bands — the opposite of its stated rationale.)* |
-| `LAUNCH_NOTIONAL_CEILING` | 250 | Absolute ceiling on notional regardless of depth, for launch. Raise deliberately, not automatically. |
+| `MAX_POSITION_NOTIONAL_USD` | `min(MAX_PLAUSIBLE_NOTIONAL_USD, 50% × live per-side OI headroom)` | **The cap is on resulting merged position notional, not on a purchase.** Evaluated identically in the purchase flow and the increase flow. *(An earlier draft capped units per band. That bound a single purchase, was bypassed by the increase flow since positions merge, and delivered rising notional across bands — the opposite of its stated rationale.)* |
+| `MAX_PLAUSIBLE_NOTIONAL_USD` | 25,000 | **A tripwire, not a product cap.** The fixed 250 launch ceiling was removed 2026-09-24 — see below. This sits far above any plausible solved value and exists only so a decode or arithmetic bug cannot render an absurd right-hand end. If it binds in normal use, something upstream is broken. |
 | `RISK_BAR_MIN_LEVERAGE` | **solved live** | `max(min_position_size_usd, dynamic_min) / amount`. **Never a constant** — a pinned 1× sat above the ceiling on the short side today |
 | `RISK_BAR_MAX_LEVERAGE` | **solved live** | `min(N_margin, OI_headroom, MAX_POSITION_NOTIONAL_USD) / amount`, confirmed by a live quote returning `ok === true`. Never `10000 / initial_margin_bps`, and never the raw `effective_max_leverage_bps` — that field omits the fee term |
 | `PROTECTION_ENABLED` | **`false` — BLOCKED** | Not a size check: open + both brackets measures 13 against a ceiling of 16 and always fits. Blocked on the unverified OCO symbols — see [Protection](#protection--an-optional-stop). Do not plan work against it |
@@ -217,7 +217,15 @@ Perps-side constants:
 >
 > **It still needs a floor.** Live short-side headroom is **$46.56**; 20% of that is $9.31 of notional, below anything sellable. When the cap falls under the minimum viable order the UI must say the side is full, not offer an amount that cannot open.
 >
-> **It is deliberately a function of live state, not a constant.** PEX is early and thin; a fixed cap either blocks users today or becomes meaningless as depth grows, and updating it by release is a standing tax. Deriving it from live per-side OI headroom and trader-PnL-cap headroom means Perps scales with the exchange automatically — which is the point, since bringing flow to PEX is part of why this product exists. The `LAUNCH_NOTIONAL_CEILING` stays as a deliberate brake on that automation.
+> **It is deliberately a function of live state, not a constant.** PEX is early and thin; a fixed cap either blocks users today or becomes meaningless as depth grows, and updating it by release is a standing tax. Deriving it from live per-side OI headroom means Perps scales with the exchange automatically — which is the point, since bringing flow to PEX is part of why this product exists.
+
+> **The fixed $250 launch ceiling was removed on 2026-09-24, and the measurement is why.** It had never been discussed on its merits, and it was not even the binding term. On ALGO/USD the 20% headroom share was: at $50 collateral the ceiling was $243, which is `0.20 × $1,214`, not the $250. Worse, at $250 of collateral the product delivered **1.0×** — not a leverage product.
+>
+> The natural ceiling is real and measurable without any cap of ours: **~$1,214 on ALGO/USD and ~$1,340 on BTC/USD**, set by OI headroom, and it rises as PEX deepens. Below roughly $150 of collateral the *margin* term binds first instead, at 11–15×. The five live constraints already bound this; a fixed dollar figure only bound it worse.
+>
+> What replaced it is one scaling brake plus one alarm. `OI_HEADROOM_SHARE` went 0.2 → **0.5**, and its justification is **availability, not risk**: a single user consuming all remaining headroom closes the side, and the next visitor loads the card to be told the market is unavailable. `MAX_PLAUSIBLE_NOTIONAL_USD` is a tripwire against our own decode bugs, set where it should never bind.
+>
+> **What was lost, stated plainly:** the fixed cap was the only thing bounding the blast radius of *our own* defects. A solver that overstates or a box decode that goes wrong is now bounded only by the tripwire. This document already notes the cap was never a security control — a user can go to PEX directly — but that argument is about attackers, not about our bugs. Measured after the change: $50 → 11.4× (ALGO) / 13.4× (BTC), $100 → 6.1× / 6.7×, $250 → 2.4× / 2.7×.
 
 ---
 

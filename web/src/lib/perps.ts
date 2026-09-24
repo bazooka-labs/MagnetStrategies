@@ -52,7 +52,21 @@ export const PEX_MARKETS = {
   btcUsd: { id: 2, label: "BTC/USD", backing: "synthetic" },
 } as const;
 
-/** v1 trades ALGO/USD only. */
+/**
+ * Markets the card offers. Both are live and verified end to end: oracle payload,
+ * solver, confirming quote and group construction all work per market.
+ *
+ * They are NOT interchangeable. BTC/USD is synthetic — the pool owes
+ * BTC-denominated PnL while holding ALGO and USDC, with nothing offsetting — and
+ * its dynamic-OI factor is 641,026 against ALGO's 1,000,000. Every derived number
+ * is read per market; none of it is shared.
+ */
+export const ENABLED_MARKET_IDS: readonly number[] = [
+  PEX_MARKETS.algoUsd.id,
+  PEX_MARKETS.btcUsd.id,
+];
+
+/** Which market the card opens on. */
 export const ACTIVE_MARKET_ID = PEX_MARKETS.algoUsd.id;
 
 /** USDC only in v1 — see SPEC "Collateral". Keeps one position per (market, side). */
@@ -154,11 +168,30 @@ export const POSITION_BUILDER_FEE_BPS = 10;
 export const SWAP_BUILDER_FEE_BPS = 0;
 
 // ── Product constants ─────────────────────────────────────────────────────────
-/** Absolute notional ceiling for launch, regardless of depth. Raise deliberately. */
-export const LAUNCH_NOTIONAL_CEILING_USD = 250;
+/**
+ * Sanity tripwire on notional, NOT a product cap.
+ *
+ * The fixed $250 launch ceiling was removed: it did not scale, and at $250 of
+ * collateral it delivered 1.0x, which is not a leverage product. The real ceiling
+ * is solved live from five constraints and is genuinely bounded — measured at
+ * ~$1,214 on ALGO/USD and ~$1,340 on BTC/USD, rising as PEX deepens.
+ *
+ * What remains is a tripwire set far above any plausible solved value. It exists
+ * for one case only: a decode or arithmetic bug producing an absurd headroom, so
+ * the bar cannot render a wildly wrong right-hand end. If this ever binds in
+ * normal use, something upstream is broken — treat it as an alarm, not a limit.
+ */
+export const MAX_PLAUSIBLE_NOTIONAL_USD = 25_000;
 
-/** Share of live per-side OI headroom we are willing to take. */
-export const OI_HEADROOM_SHARE = 0.2;
+/**
+ * Share of live per-side OI headroom one position may take.
+ *
+ * This is an availability control, not a risk one. A single user consuming all
+ * remaining headroom closes the side for the next visitor, who then loads the
+ * card and is told the market is unavailable. Half keeps the book open while
+ * still allowing a position that matters.
+ */
+export const OI_HEADROOM_SHARE = 0.5;
 
 /** User-adjustable, disclosed. Anchored to the QUOTED EXECUTION PRICE, not the index. */
 export const DEFAULT_SLIPPAGE_BPS = 50;
