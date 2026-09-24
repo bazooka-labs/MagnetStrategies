@@ -382,3 +382,49 @@ export async function assertBaseOrderIdFree(
   }
   return true;
 }
+
+// ── Positions ─────────────────────────────────────────────────────────────────
+
+/**
+ * `p2:` on Trading. **14 words, and the protocol manifest is wrong about it.**
+ *
+ * The manifest's `position_state` entry lists 15 field names against a
+ * `value_size` of 112 bytes — which is 14 words, not 15. Decoding to the manifest
+ * list shifts every field after the third: `side` reads as a USD amount and
+ * `collateral_amount` reads as a price. Verified against five live MainNet
+ * positions; this layout reproduces sensible values for all of them.
+ *
+ * `position_id` is the field that is not here. It lives in the box KEY, not the
+ * value — which matters, because `expectedPositionId` on a close must be a real
+ * id and the wildcard closes whatever occupies the key.
+ */
+const POSITION_FIELDS = [
+  "market_id", "collateral_asset_id", "side", "size_usd", "size_tokens",
+  "collateral_amount", "pending_impact_qty_signed", "entry_price",
+  "borrowing_factor_snapshot_milli_bps", "funding_fee_per_size_snapshot_milli_bps",
+  "claimable_long_token_funding_per_size_snapshot",
+  "claimable_short_token_funding_per_size_snapshot",
+  "created_at", "updated_at",
+] as const;
+
+export type PositionState = Record<(typeof POSITION_FIELDS)[number], bigint>;
+
+/** Read one position by its natural key. Returns null when there is none. */
+export async function readPosition(
+  algod: algosdk.Algodv2, owner: string, marketId: number,
+  collateralAssetId: number, side: 1 | 2,
+): Promise<PositionState | null> {
+  const name = new Uint8Array([
+    ...new TextEncoder().encode("p2:"),
+    ...algosdk.decodeAddress(owner).publicKey,
+    ...algosdk.encodeUint64(BigInt(marketId)),
+    ...algosdk.encodeUint64(BigInt(collateralAssetId)),
+    ...algosdk.encodeUint64(BigInt(side)),
+  ]);
+  try {
+    const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
+    return decodeWords(res.value, POSITION_FIELDS) as PositionState;
+  } catch {
+    return null; // no box = no position
+  }
+}
