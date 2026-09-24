@@ -386,44 +386,76 @@ export async function assertBaseOrderIdFree(
 // ── Positions ─────────────────────────────────────────────────────────────────
 
 /**
- * `p2:` on Trading. **14 words, and the protocol manifest is wrong about it.**
+ * `p2:` on Trading — 112 bytes, and **not uniform uint64s**.
  *
- * The manifest's `position_state` entry lists 15 field names against a
- * `value_size` of 112 bytes — which is 14 words, not 15. Decoding to the manifest
- * list shifts every field after the third: `side` reads as a USD amount and
- * `collateral_amount` reads as a price. Verified against five live MainNet
- * positions; this layout reproduces sensible values for all of them.
+ * `position_id` is a **uint48** and `side` a **uint16**, packed into one 8-byte
+ * word. Every other field is a uint64. Fifteen fields, 112 bytes, exactly as the
+ * protocol manifest declares — an earlier version of this file asserted the
+ * manifest was wrong and decoded fourteen uint64s, which silently read
+ * `position_id << 16 | side` as `side`. Three live positions decoded fine because
+ * they predate the position-identity upgrade and carry id 0; the two opened after
+ * it read side as 3,145,729 and 3,407,873.
  *
- * `position_id` is the field that is not here. It lives in the box KEY, not the
- * value — which matters, because `expectedPositionId` on a close must be a real
- * id and the wildcard closes whatever occupies the key.
+ * That matters well beyond a display bug: `expectedPositionId` on a close must be
+ * the real id, and the wildcard closes whatever occupies the key.
  */
-const POSITION_FIELDS = [
-  "market_id", "collateral_asset_id", "side", "size_usd", "size_tokens",
-  "collateral_amount", "pending_impact_qty_signed", "entry_price",
-  "borrowing_factor_snapshot_milli_bps", "funding_fee_per_size_snapshot_milli_bps",
+const POSITION_U64_TAIL = [
+  "size_usd", "size_tokens", "collateral_amount", "pending_impact_qty_signed",
+  "entry_price", "borrowing_factor_snapshot_milli_bps",
+  "funding_fee_per_size_snapshot_milli_bps",
   "claimable_long_token_funding_per_size_snapshot",
   "claimable_short_token_funding_per_size_snapshot",
   "created_at", "updated_at",
 ] as const;
 
-export type PositionState = Record<(typeof POSITION_FIELDS)[number], bigint>;
+export type PositionState =
+  Record<(typeof POSITION_U64_TAIL)[number], bigint> & {
+    market_id: bigint;
+    collateral_asset_id: bigint;
+    position_id: bigint;
+    side: bigint;
+  };
 
-/** Read one position by its natural key. Returns null when there is none. */
+/** Size of a position box value, asserted rather than assumed. */
+export const POSITION_BOX_BYTES = 112;
+
+export function decodePosition(raw: Uint8Array): PositionState {
+  if (raw.length !== POSITION_BOX_BYTES) {
+    throw new Error(`perps: position box is ${raw.length} bytes, expected ${POSITION_BOX_BYTES}`);
+  }
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  // uint48 position_id then uint16 side, sharing bytes 16..24.
+  let positionId = BigInt(0);
+  for (let i = 16; i < 22; i++) positionId = (positionId << BigInt(8)) | BigInt(raw[i]);
+  const out = {
+    market_id: view.getBigUint64(0, false),
+    collateral_asset_id: view.getBigUint64(8, false),
+    position_id: positionId,
+    side: BigInt(view.getUint16(22, false)),
+  } as PositionState;
+  POSITION_U64_TAIL.forEach((name, i) => {
+    (out as Record<string, bigint>)[name] = view.getBigUint64(24 + i * 8, false);
+  });
+  return out;
+}
+
 export async function readPosition(
   algod: algosdk.Algodv2, owner: string, marketId: number,
   collateralAssetId: number, side: 1 | 2,
 ): Promise<PositionState | null> {
+  // Key order is marketId, collateralAssetId, side, THEN owner — owner is last.
+  // Putting it first (the obvious guess, and the order o2: uses) silently reads a
+  // different box, and decodes the leading market id as part of an address.
   const name = new Uint8Array([
     ...new TextEncoder().encode("p2:"),
-    ...algosdk.decodeAddress(owner).publicKey,
     ...algosdk.encodeUint64(BigInt(marketId)),
     ...algosdk.encodeUint64(BigInt(collateralAssetId)),
     ...algosdk.encodeUint64(BigInt(side)),
+    ...algosdk.decodeAddress(owner).publicKey,
   ]);
   try {
     const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
-    return decodeWords(res.value, POSITION_FIELDS) as PositionState;
+    return decodePosition(res.value);
   } catch {
     return null; // no box = no position
   }

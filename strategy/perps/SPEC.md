@@ -787,7 +787,13 @@ The original 0.5.0 retarget decision (2026-09-21) stands in substance — build 
 
 The last two corroborate the solved ceiling independently: a real user reached **17.74x on $12.40**, and the solver caps that collateral near 18.9x.
 
-> **The position box layout in the protocol manifest is wrong, and this was found while checking the above.** `position_state` lists **15** field names against a `value_size` of **112 bytes** — which is 14 words. Decoding to the manifest's list shifts every field after the third: `side` reads as a USD amount, `collateral_amount` reads as a price. The real layout omits **`position_id`**, which lives in the box *key* rather than the value. Pinned in `perpsReads.ts` and verified against all five live positions. This is a concrete instance of why box layouts are pinned rather than read from the manifest.
+> **The position box is not uniform uint64s, and an earlier version of this note blamed the manifest for that.** `position_state` declares fifteen fields in 112 bytes, which looks impossible at 8 bytes each. It is not: **`position_id` is a `uint48` and `side` a `uint16`**, packed into one word. Every other field is a `uint64`. The manifest was right; the assumption that every field is 8 bytes was wrong.
+>
+> Decoding fourteen uint64s silently reads `position_id << 16 | side` as `side`. It survived first contact because the three oldest live positions predate the position-identity upgrade and carry id 0, so their word reads as a clean 1 or 2. The two opened after it read side as **3,145,729** and **3,407,873** — which is 48 and 52 shifted left by 16.
+>
+> **This matters well past a display bug.** `expectedPositionId` on a close must be the real id, and the wildcard closes whatever occupies the key. A decoder that cannot see `position_id` at all would have had nothing correct to put there. Now decoded by explicit field width in `perpsReads.ts`, verified against all five live positions: ids 0, 0, 0, 48, 52, each inside the 48-bit range, and every `side` agreeing with the one in the box key.
+>
+> Second time in this build that upstream was blamed for a local assumption — the first being the close-path "blocker". The check that would have caught both is the same: reproduce the claim from the other side before writing it down.
 
 ---
 
