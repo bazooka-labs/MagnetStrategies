@@ -25,8 +25,16 @@ provisional** — "Perps" describes the instrument, not the product.
 
 ## What Perps Is For
 
-**A leveraged position in four inputs.** Long or short, an amount in USDC, a risk
-level, and a price to take profit at. Optionally a protection level. Sign once.
+**A leveraged position in five inputs.** A market, long or short, an amount in USDC,
+a risk level, and a price to take profit at. Optionally a protection level. Sign once.
+
+**Two markets, both live: ALGO/USD and BTC/USD.** They are not interchangeable and
+nothing about them is shared. BTC/USD is **synthetic** — the pool owes
+BTC-denominated PnL while holding ALGO and USDC, with nothing offsetting — and its
+dynamic-OI factor is 641,026 against ALGO's 1,000,000, so a ceiling solved with
+ALGO's number is wrong on BTC. Every figure the card shows is read per market,
+including the price, which comes from that market's own verified oracle payload
+rather than a separate display feed.
 
 It is deliberately **not** a trading terminal, and deliberately **not** framed as
 hedging. An earlier draft built it around protecting an existing holding — *"protect
