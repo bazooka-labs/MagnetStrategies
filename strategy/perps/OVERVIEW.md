@@ -98,5 +98,6 @@ MagnetFi state at all.
 |---|---|
 | [SPEC.md](./SPEC.md) | Product definition, architecture, threat model, invariants |
 | [PEX.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
+| [AUDIT.md](./AUDIT.md) | Adversarial audit findings, the one-position decision, and what the earlier verification got wrong |
 | [../ORACLE.md](../ORACLE.md) | Arm-level price doctrine — Perps consumes PEX's signed payloads and runs no feed of its own |
 | [../OVERVIEW.md](../OVERVIEW.md) | The Strategy arm — admission criterion and arm-wide commitments |
