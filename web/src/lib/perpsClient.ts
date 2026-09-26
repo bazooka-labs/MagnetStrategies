@@ -5,13 +5,15 @@
 //
 //   1. install the pinned protocol manifest      (never fetched)
 //   2. re-read market state and oracle           (fresh, not the card's copy)
-//   3. allocate baseOrderId from chain           (never from local state)
-//   4. build the group
-//   5. ASSERT the group against what was displayed
-//   6. simulate as a pre-flight
-//   7. only then prompt the wallet
+//   3. verify PEX's programs still match the pins (and that we can be paid)
+//   4. refuse if a position is already open      (we do not support increases)
+//   5. allocate baseOrderId from chain           (never from local state)
+//   6. build the group
+//   7. ASSERT the group against what was displayed
+//   8. simulate as a pre-flight
+//   9. only then prompt the wallet
 //
-// Step 5 gates step 7. A group that fails assertion is never presented for
+// Step 7 gates step 9. A group that fails assertion is never presented for
 // signature — see strategy/perps/SPEC.md, Invariant 9. That is a defence against
 // construction bugs, not against a compromised frontend, which would own this
 // file too.
@@ -31,6 +33,7 @@ import {
 import { allocateBaseOrderId, assertBaseOrderIdFree, readMarketState, readPosition } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
+import { preflight } from "./perpsPreflight";
 import { assertOpenWithTakeProfit, simulateGroup, ORDER_BOX_MBR_MICRO_ALGO } from "./perpsGroup";
 import { acceptableForClose, quoteOpen } from "./perpsQuote";
 import type { Side } from "./perpsSolver";
@@ -108,11 +111,21 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
 
   // Deliberately re-read rather than trusting the card's snapshot: an oracle
   // payload is only valid for a few seconds, and parameters move.
-  const [state, oracle, account] = await Promise.all([
+  const [state, oracle, account, pre] = await Promise.all([
     readMarketState(algod, marketId),
     getOraclePayload(PEX_APPS.trading, marketId),
     algod.accountInformation(sender).do(),
+    // Normally cached and warm — the card starts it on mount. Re-checked here
+    // rather than taken from the caller: the card's gate is there so the button
+    // is honest, and this one is here so the gate is not the only thing
+    // standing between an upgraded PEX and a signature.
+    preflight(algod),
   ]);
+
+  if (!pre.canOpen) {
+    if (pre.detail) console.warn(`perps: preflight refused the open — ${pre.detail}`);
+    throw new Error(pre.reason ?? "Trading is unavailable right now.");
+  }
 
   if (!oracle.signatureVerified) {
     throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");

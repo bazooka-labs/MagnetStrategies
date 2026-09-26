@@ -194,16 +194,19 @@ export async function verifyProgramPins(algod: algosdk.Algodv2): Promise<PinChec
     ["math", PEX_APPS.math],
     ["adminControl", PEX_APPS.adminControl],
   ];
-  const drifted: string[] = [];
-  for (const [name, appId] of targets) {
+  // In parallel. Sequentially this took 11 seconds against MainNet — six round
+  // trips, each pulling a whole approval program — which is long enough that a
+  // user reaches the trade button before the check that gates it has returned.
+  const results = await Promise.all(targets.map(async ([name, appId]) => {
     const app = await algod.getApplicationByID(appId).do();
     const program = app.params.approvalProgram;
-    if (!program) { drifted.push(`${name}: no approval program returned`); continue; }
+    if (!program) return `${name}: no approval program returned`;
     const bytes = Uint8Array.from(program as ArrayLike<number>);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-    if (hex !== PEX_PROGRAM_SHA256[name]) drifted.push(`${name}: ${hex.slice(0, 16)}…`);
-  }
+    return hex === PEX_PROGRAM_SHA256[name] ? null : `${name}: ${hex.slice(0, 16)}…`;
+  }));
+  const drifted = results.filter((r): r is string => r !== null);
   return { ok: drifted.length === 0, drifted };
 }
 

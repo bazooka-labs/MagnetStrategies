@@ -36,6 +36,7 @@ import {
   type OpenQuote,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
+import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
@@ -55,6 +56,7 @@ export function PerpsCard() {
   const [tpTouched, setTpTouched] = useState(false);
 
   const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
+  const preflight = usePerpsPreflight();
   const market = MARKETS.find((m) => m.id === marketId)!;
   const collateralUsd = Math.max(0, Number(amount) || 0);
   const indexUsd = data ? price12ToUsd(data.oracle.indexPrice12) : null;
@@ -105,9 +107,17 @@ export function PerpsCard() {
    * unusable. `signatureVerified` was never read at all, though it exists
    * precisely so callers can refuse a price that could not be checked against
    * PEX's signing key.
+   *
+   * `preflight.canOpen` is null until the first check returns, and `=== true`
+   * is deliberate: "not yet verified" has to read as "no". The alternative —
+   * `!== false` — would let every trade through during the window the check
+   * exists to cover.
    */
   const dataTrusted = !!data && !error && data.oracle.signatureVerified;
-  const tradable = !!(dataTrusted && bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd);
+  const tradable = !!(
+    dataTrusted && preflight.canOpen === true
+    && bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd
+  );
 
   const notional = useMemo(() => {
     if (!bar?.open || !tradable) return 0;
@@ -174,11 +184,22 @@ export function PerpsCard() {
         })}
       </div>
 
-      {(error || (data && !data.oracle.signatureVerified)) && (
+      {(error || (data && !data.oracle.signatureVerified) || preflight.canOpen === false) && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            {error
+            {/* Most specific first: a contract or configuration problem is a
+                better explanation than "data unavailable", which is what a
+                failed preflight would otherwise also surface as. */}
+            {preflight.canOpen === false ? (
+              <>
+                {preflight.reason}{" "}
+                <button onClick={preflight.recheck} disabled={preflight.checking}
+                  className="underline underline-offset-2 hover:text-amber-100 disabled:opacity-50">
+                  {preflight.checking ? "Checking…" : "Retry"}
+                </button>
+              </>
+            ) : error
               ? `Live market data unavailable — trading is disabled until it returns. (${error})`
               : "This price could not be verified against PEX's signing key, so trading is disabled."}
           </span>
@@ -234,7 +255,14 @@ export function PerpsCard() {
         {bar && !bar.open && (
           <p className="mt-1 text-xs text-amber-300/90">{bar.closedReason}</p>
         )}
-        {bar?.open && !tradable && (
+        {/* Only blame the amount when the amount is actually the problem. This
+            line used to render for every cause of `!tradable`, so during the
+            contract check — and whenever that check failed — it told the user to
+            try a different amount for something no amount would fix. */}
+        {bar?.open && !tradable && preflight.canOpen === null && (
+          <p className="mt-1 text-xs text-white/45">Verifying the exchange contracts…</p>
+        )}
+        {bar?.open && !tradable && preflight.canOpen === true && dataTrusted && (
           <p className="mt-1 text-xs text-amber-300/90">
             No size on this side currently clears the exchange&apos;s checks. Try a different amount.
           </p>

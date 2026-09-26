@@ -194,8 +194,45 @@ leaving the displayed value alone, so the equality check fired first and the
 directional bound never ran. The attack worth testing is a screen that displays
 what it sends — a *consistent* lie — so those cases now mutate both.
 
-**Still open from the lists above:** H4 (three controls with no callers) is
-Phase 4. The Medium/Low items outside `perpsGroup.ts` — the long take-profit
+**Phase 4 — H4, the controls with no callers.** `readPosition` was wired in
+Phase 1 by the one-position guard. The other two now share
+`web/src/lib/perpsPreflight.ts`, which is their only caller:
+
+- `verifyProgramPins` — app IDs survive a redeploy untouched, so this is the
+  only thing that notices a PEX upgrade. On drift: **block opens, keep exits
+  live**, because a redeploy leaves existing positions in the old app and a
+  blanket halt strands whoever is holding one.
+- `assertBuilderAddressUsable` — if the treasury is not opted in to USDC, the
+  builder-fee transfer fails and takes every open with it, for every user,
+  presenting as our bug. Refuse early and say it is ours.
+
+Neither belongs in the ten-second market refresh, so the preflight is cached
+behind one shared promise with a five-minute TTL: the card starts it on mount,
+and the write path awaits the same promise. **A read that did not complete fails
+closed** — an incomplete check is not evidence the programs are unchanged — but
+that outcome is deliberately not cached, so a dropped request does not hold
+trading down for five minutes. The card offers a retry that bypasses the TTL.
+
+The card gates on `canOpen === true`, not `!== false`: the value is null until
+the first check returns, and "not yet verified" has to read as "no". The write
+path re-runs the check rather than trusting the card — the card's gate is there
+so the button is honest, the write path's so it is safe.
+
+Two things running it against MainNet exposed:
+
+1. **It took 11 seconds.** `verifyProgramPins` awaited six `getApplicationByID`
+   calls in a loop, each pulling a whole approval program. Long enough that a
+   user reaches the button before the check gating it returns. Parallelised:
+   **1.5 seconds**, same result. Pins are intact and the builder address is
+   opted in with 310 ALGO spendable, so wiring this did not block live trading.
+2. **A message under the slider lied.** "No size on this side currently clears
+   the exchange's checks. Try a different amount." rendered for *every* cause of
+   `!tradable` — so during the contract check, and whenever it failed, it told
+   the user to change an amount that was never the problem. It is now scoped to
+   the case it describes. This is the same defect as H3, one layer down: a
+   control was added and the screen was not re-read against it.
+
+**Still open from the lists above:** the Medium/Low items outside `perpsGroup.ts` — the long take-profit
 upper bound, the solver's overstatement near the $5 floor, `assertBaseOrderIdFree`
 treating a 5xx as free, the NaN/Infinity and `"-5"` input guards, the per-keystroke
 quote cost, and `doi:` — remain.
