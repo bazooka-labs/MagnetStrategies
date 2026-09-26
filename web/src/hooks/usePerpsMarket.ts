@@ -8,7 +8,7 @@
 // a day, and short-side open interest drained 13x inside 24 hours. A figure
 // cached for even a minute can render a bar the chain will reject.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import { ORACLE_MAX_AGE_SEC, PEX_APPS } from "@/lib/perps";
@@ -25,9 +25,17 @@ export type PerpsMarketData = {
 export type PerpsMarketStatus = {
   data: PerpsMarketData | null;
   loading: boolean;
-  /** User-facing reason the market cannot be traded right now. */
+  /**
+   * User-facing reason the market cannot be traded right now.
+   *
+   * **The caller must not allow a trade while this is set.** The previous
+   * snapshot is deliberately kept on screen so the card does not blank, which
+   * means every figure it shows may be stale.
+   */
   error: string | null;
   refresh: () => void;
+  /** Timestamp of the last load ATTEMPT, so a stale view keeps ageing visibly. */
+  attemptAt: number;
 };
 
 /**
@@ -41,15 +49,36 @@ export function usePerpsMarket(marketId: number): PerpsMarketStatus {
   const [data, setData] = useState<PerpsMarketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const alive = useRef(true);
   const [tick, setTick] = useState(0);
+  /**
+   * Bumped on every load attempt, successful or not.
+   *
+   * Without it the staleness indicator freezes: `setError` with an identical
+   * message is a no-op, so a repeatedly-failing refresh — "Failed to fetch" from
+   * a dropped connection, the common case — triggers no re-render, and the
+   * "price signed Ns ago" line stops ageing while the data keeps getting older.
+   */
+  const [attemptAt, setAttemptAt] = useState(() => Date.now());
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
-    alive.current = true;
-    // Clear on market switch so the card never shows ALGO's numbers under BTC's
-    // label while the new read is in flight.
+    /**
+     * Per-effect, NOT a ref.
+     *
+     * A ref is one object for the component's whole life. React runs the old
+     * effect's cleanup (setting it false) and then the new effect's setup
+     * (setting it true) before any in-flight promise resolves — so a stale
+     * closure reads `true` and its result lands anyway. That is exactly how a
+     * slow ALGO response ended up rendering under a BTC label, and it stuck
+     * until the next refresh because whichever read finished LAST won.
+     *
+     * A local captured per effect run cannot be revived by a later run.
+     */
+    let alive = true;
+
+    // Clear on market switch so the card never shows one market's numbers under
+    // the other's label while the new read is in flight.
     setData(null);
     setLoading(true);
     setError(null);
@@ -57,34 +86,43 @@ export function usePerpsMarket(marketId: number): PerpsMarketStatus {
     const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
 
     const load = async () => {
+      setAttemptAt(Date.now());
       try {
         const [state, oracle] = await Promise.all([
           readMarketState(algod, marketId),
           getOraclePayload(PEX_APPS.trading, marketId),
         ]);
-        if (!alive.current) return;
+        if (!alive) return;
+        // Belt and braces: both the box read and the signed payload carry the
+        // market they belong to, so a mismatch is provable rather than assumed.
+        // If the closure guard above ever fails again, this still refuses.
+        if (Number(state.core.market_id) !== marketId
+          || Number(oracle.decoded.marketId) !== marketId) {
+          setError("Market data did not match the selected market.");
+          return;
+        }
         setData({ state, oracle, readAt: Date.now() });
         setError(null);
       } catch (e) {
-        if (!alive.current) return;
+        if (!alive) return;
         // Keep the previous snapshot on screen rather than blanking the card —
         // but the error is surfaced, and the caller must not allow a trade while
         // it is set.
         setError(e instanceof Error ? e.message : String(e));
       } finally {
-        if (alive.current) setLoading(false);
+        if (alive) setLoading(false);
       }
     };
 
     void load();
     const id = setInterval(() => void load(), REFRESH_MS);
     return () => {
-      alive.current = false;
+      alive = false;
       clearInterval(id);
     };
   }, [marketId, tick]);
 
-  return { data, loading, error, refresh };
+  return { data, loading, error, refresh, attemptAt };
 }
 
 /** Seconds since the oracle payload was signed, for the staleness indicator. */

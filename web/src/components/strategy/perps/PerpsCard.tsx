@@ -54,7 +54,7 @@ export function PerpsCard() {
   const [tpPrice, setTpPrice] = useState<string>("");
   const [tpTouched, setTpTouched] = useState(false);
 
-  const { data, loading, error } = usePerpsMarket(marketId);
+  const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
   const market = MARKETS.find((m) => m.id === marketId)!;
   const collateralUsd = Math.max(0, Number(amount) || 0);
   const indexUsd = data ? price12ToUsd(data.oracle.indexPrice12) : null;
@@ -95,7 +95,19 @@ export function PerpsCard() {
   }, [data, bar, side, collateralUsd]);
 
   const ceilingUsd = confirmed?.notionalUsd ?? 0;
-  const tradable = !!(bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd);
+
+  /**
+   * Trading is blocked whenever the data cannot be trusted, not merely
+   * annotated.
+   *
+   * The banner used to claim "trading is disabled" while the slider stayed live
+   * and every figure rendered from a snapshot the hook had already judged
+   * unusable. `signatureVerified` was never read at all, though it exists
+   * precisely so callers can refuse a price that could not be checked against
+   * PEX's signing key.
+   */
+  const dataTrusted = !!data && !error && data.oracle.signatureVerified;
+  const tradable = !!(dataTrusted && bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd);
 
   const notional = useMemo(() => {
     if (!bar?.open || !tradable) return 0;
@@ -129,6 +141,9 @@ export function PerpsCard() {
     (bounds.maxPrice12 === null || tp12 <= bounds.maxPrice12));
   const tpPayoff = quote?.ok && tpValid ? payoffAtPrice(quote, tp12) : null;
   const maxPayoff = quote?.ok ? maxPayoffUsd(quote) : null;
+  // attemptAt changes on every load attempt, so this re-renders and keeps
+  // ageing even when a repeated identical error would otherwise freeze it.
+  void attemptAt;
   const age = oracleAgeSeconds(data);
 
   return (
@@ -138,7 +153,16 @@ export function PerpsCard() {
         {MARKETS.map((m) => {
           const on = m.id === marketId;
           return (
-            <button key={m.id} onClick={() => setMarketId(m.id)}
+            <button key={m.id} onClick={() => {
+                if (m.id === marketId) return;
+                setMarketId(m.id);
+                // A price means nothing across markets. $0.30 is a plausible ALGO
+                // target and an absurd BTC one, and a short's lower bound is a
+                // ten-thousandth of a cent — so a carried value validates and the
+                // card cheerfully prints a 389% return. Clear it outright.
+                setTpPrice("");
+                setTpTouched(false);
+              }}
               className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                 on ? "border-magnet-400/60 bg-magnet-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}>
               <div className={`text-sm font-semibold ${on ? "text-white" : "text-white/70"}`}>{m.label}</div>
@@ -150,10 +174,14 @@ export function PerpsCard() {
         })}
       </div>
 
-      {error && (
+      {(error || (data && !data.oracle.signatureVerified)) && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>Live market data unavailable — trading is disabled until it returns. ({error})</span>
+          <span>
+            {error
+              ? `Live market data unavailable — trading is disabled until it returns. (${error})`
+              : "This price could not be verified against PEX's signing key, so trading is disabled."}
+          </span>
         </div>
       )}
 
@@ -197,7 +225,7 @@ export function PerpsCard() {
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
           disabled={!tradable}
-          onChange={(e) => { setBarPos(Number(e.target.value)); setTpTouched(false); }}
+          onChange={(e) => setBarPos(Number(e.target.value))}
           className="mt-2 w-full accent-magnet-400 disabled:opacity-30" />
         <div className="flex justify-between text-[11px] tabular-nums text-white/40">
           <span>{tradable ? `${bar!.minLeverage.toFixed(2)}×` : ""}</span>
