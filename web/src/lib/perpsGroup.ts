@@ -88,7 +88,16 @@ export type DisplayedOpen = {
   /** Exactly the notional shown, in 1e6 USD. */
   sizeUsdDeltaMicro: bigint;
   acceptablePrice12: bigint;
-  /** Index price the card displayed, Price12. */
+  /**
+   * Execution price the quote returned — what acceptablePrice is anchored to.
+   *
+   * NOT the index. Price impact is charged before the slippage test and is flat
+   * in size, so an index anchor fails at every size and closes whole sides. An
+   * earlier version of this assertion measured against the index and refused 3
+   * of 4 correct groups.
+   */
+  executionPrice12: bigint;
+  /** Index price the card displayed, Price12. Shown to the user, not the anchor. */
   indexPrice12: bigint;
   slippageBps: number;
   /** The exact verified payload bytes — not a re-fetch. */
@@ -107,6 +116,41 @@ const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
  * verify the prefix agrees with the remaining length — a disagreeing prefix means
  * the arg is not what it claims.
  */
+/**
+ * Is `acceptable` a legitimate worst-price for an order at `reference`?
+ *
+ * Deliberately written out here rather than importing the helper that produced
+ * the value: an assertion that calls the same function it is checking proves
+ * self-consistency, not correctness.
+ *
+ * `opening` a long pays UP from the execution price, a short receives DOWN.
+ * `closing` inverts — selling a long accepts DOWN from the trigger, buying back
+ * a short accepts UP. Both directions are bounded on the far side by the
+ * tolerance and on the near side by the reference itself, so a value on the
+ * wrong side is caught as well as one that is merely too loose.
+ */
+function acceptableWithin(
+  acceptable: bigint, reference: bigint, side: 1 | 2,
+  slippageBps: number, intent: "opening" | "closing",
+): { ok: boolean; why: string } {
+  if (reference <= BigInt(0)) return { ok: false, why: "reference price is not positive" };
+  const bps = BigInt(Math.max(0, Math.round(slippageBps)));
+  const tenK = BigInt(10_000);
+  const up = (reference * (tenK + bps)) / tenK;
+  const down = (reference * (tenK - bps)) / tenK;
+  // Which way this order is willing to move.
+  const paysUp = intent === "opening" ? side === 1 : side === 2;
+  const lo = paysUp ? reference : down;
+  const hi = paysUp ? up : reference;
+  if (acceptable < lo || acceptable > hi) {
+    return {
+      ok: false,
+      why: `${acceptable} outside [${lo}, ${hi}] for ${intent} side ${side} at ${slippageBps} bps`,
+    };
+  }
+  return { ok: true, why: "" };
+}
+
 function abiBytes(arg: Uint8Array): Uint8Array | null {
   if (arg.length < 2) return null;
   const declared = (arg[0] << 8) | arg[1];
@@ -262,13 +306,11 @@ export function assertOpenGroup(txnsIn: unknown[], shown: DisplayedOpen): GroupA
 
   // The SDK checks only that acceptablePrice is a positive Price12 — there is no
   // upper bound on how loose it may be.
-  if (shown.indexPrice12 > BigInt(0)) {
-    const drift = Math.abs(Number(shown.acceptablePrice12) - Number(shown.indexPrice12)) / Number(shown.indexPrice12);
-    if (drift > shown.slippageBps / 10_000 + 1e-9) {
-      fail("slippage", `acceptablePrice is ${(drift * 10_000).toFixed(1)} bps from index, tolerance ${shown.slippageBps}`);
-    }
-  }
-  did("acceptablePrice within displayed slippage of index");
+  const openBound = acceptableWithin(
+    shown.acceptablePrice12, shown.executionPrice12, shown.side, shown.slippageBps, "opening",
+  );
+  if (!openBound.ok) fail("slippage", openBound.why);
+  did("acceptablePrice on the right side of execution, within tolerance");
 
   if (BigInt(POSITION_BUILDER_FEE_BPS) > BigInt(0)) {
     const accts = (ac.accounts ?? []).map(String);
@@ -340,6 +382,8 @@ export type DisplayedClose = {
   /** True when the user asked to close the whole position. */
   fullClose: boolean;
   acceptablePrice12: bigint;
+  /** Execution price the close quote returned — the anchor, not the index. */
+  executionPrice12: bigint;
   indexPrice12: bigint;
   slippageBps: number;
   /** The real position id. Never a wildcard, never a guess. */
@@ -483,16 +527,15 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
   if (u64(aMaxS) !== shown.maxShortReceiptAmount) fail("max_short_receipt", `${u64(aMaxS)} vs prepared ${shown.maxShortReceiptAmount}`);
   did("yieldRecallMode and receipt caps match preparation");
 
-  if (shown.indexPrice12 > BigInt(0)) {
-    const drift = Math.abs(Number(shown.acceptablePrice12) - Number(shown.indexPrice12)) / Number(shown.indexPrice12);
-    if (drift > shown.slippageBps / 10_000 + 1e-9) {
-      fail("slippage", `acceptablePrice ${(drift * 10_000).toFixed(1)} bps from index, tolerance ${shown.slippageBps}`);
-    }
-  }
+  // A close is the opposite direction from an open at the same side.
+  const closeBound = acceptableWithin(
+    shown.acceptablePrice12, shown.executionPrice12, shown.side, shown.slippageBps, "closing",
+  );
+  if (!closeBound.ok) fail("slippage", closeBound.why);
   if (u64(aPrice) !== shown.acceptablePrice12) {
     fail("acceptable_price", `arg ${u64(aPrice)}, displayed ${shown.acceptablePrice12}`);
   }
-  did("acceptablePrice matches display and sits within slippage");
+  did("acceptablePrice matches display, on the right side of execution, within tolerance");
 
   return { ok: findings.length === 0, findings, checked };
 }
@@ -664,13 +707,15 @@ export function assertOpenWithTakeProfit(
   did("triggerPrice equals the displayed target exactly");
 
   // The SDK checks only the side of this, never the distance.
+  // Direction matters and an absolute distance cannot see it. This check used
+  // Math.abs, which meant the assertion module could not catch a take-profit
+  // priced on the wrong side of its own trigger — the exact defect that made
+  // every group unbuildable. A close inverts relative to an open.
   const tpAccept = u64(A[10]);
-  if (shownTp.triggerPrice12 > BigInt(0)) {
-    const drift = Math.abs(Number(tpAccept) - Number(shownTp.triggerPrice12)) / Number(shownTp.triggerPrice12);
-    if (drift > shownTp.slippageBps / 10_000 + 1e-9) {
-      fail("tp_slippage", `TP acceptablePrice ${(drift * 10_000).toFixed(1)} bps from trigger, tolerance ${shownTp.slippageBps}`);
-    }
-  }
+  const tpBound = acceptableWithin(
+    tpAccept, shownTp.triggerPrice12, shownOpen.side, shownTp.slippageBps, "closing",
+  );
+  if (!tpBound.ok) fail("tp_slippage", `take-profit ${tpBound.why}`);
   if (u64(A[11]) !== BigInt(shownOpen.collateralAssetId)) fail("keeper_fee_asset", `keeperFeeAssetId ${u64(A[11])}`);
   if (u64(A[12]) !== shownTp.keeperFeeMicro) fail("keeper_fee_arg", `keeperFeeAmount ${u64(A[12])} vs escrow ${shownTp.keeperFeeMicro}`);
   if (u64(A[13]) !== BigInt(0)) fail("tp_swap_mode", `outputSwapMode ${u64(A[13])}, expected 0`);

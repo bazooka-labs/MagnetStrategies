@@ -85,8 +85,11 @@ export function priceInput(oracle: OraclePayload): Record<string, bigint> {
 }
 
 /**
- * Acceptable price from an execution price and a tolerance.
- * A long is willing to pay up to X more; a short to receive down to X less.
+ * Acceptable price for an **opening** order.
+ *
+ * A long pays up to X more; a short receives down to X less. This is the wrong
+ * helper for a take-profit — see `acceptableForClose`, and read the note there
+ * before using either.
  */
 export function acceptableFromExecution(executionPrice12: bigint, side: Side, slippageBps: number): bigint {
   const bps = BigInt(Math.round(slippageBps));
@@ -118,6 +121,30 @@ function shape(raw: Record<string, unknown>, side: Side, collateralUsd: number):
     effectiveInitialMarginBps: Number(raw.effective_initial_margin_bps ?? 0),
     raw,
   };
+}
+
+/**
+ * Acceptable price for a **closing** order — a take-profit or a stop.
+ *
+ * The direction inverts, and getting it wrong is silent until the SDK refuses
+ * the whole group. Closing a long means SELLING, so the worst price accepted is
+ * BELOW the trigger; closing a short means buying, so it is above. The contract
+ * enforces this: `v2OrderPriceCoherenceFailure` rejects a
+ * `DECREASE_TAKE_PROFIT` whose acceptable price sits above the trigger for a
+ * long, or below it for a short.
+ *
+ * This existed only as `acceptableFromExecution` for a while, and the take-profit
+ * leg called it — which made every group unbuildable, on both markets and both
+ * sides, for as long as that code existed. It is a separate named function so the
+ * open/close distinction is visible at the call site rather than carried in the
+ * caller's head.
+ */
+export function acceptableForClose(triggerPrice12: bigint, side: Side, slippageBps: number): bigint {
+  const bps = BigInt(Math.round(slippageBps));
+  const ten_k = BigInt(10_000);
+  return side === "long"
+    ? (triggerPrice12 * (ten_k - bps)) / ten_k   // selling: accept down to trigger - slip
+    : (triggerPrice12 * (ten_k + bps)) / ten_k;  // buying:  accept up to trigger + slip
 }
 
 export type QuoteInput = {

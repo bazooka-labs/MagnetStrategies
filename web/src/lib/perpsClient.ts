@@ -29,11 +29,11 @@ import {
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
 } from "./perps";
-import { allocateBaseOrderId, assertBaseOrderIdFree, readMarketState } from "./perpsReads";
+import { allocateBaseOrderId, assertBaseOrderIdFree, readMarketState, readPosition } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { assertOpenWithTakeProfit, simulateGroup, ORDER_BOX_MBR_MICRO_ALGO } from "./perpsGroup";
-import { acceptableFromExecution, quoteOpen } from "./perpsQuote";
+import { acceptableForClose, quoteOpen } from "./perpsQuote";
 import type { Side } from "./perpsSolver";
 
 type SignFn = (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>;
@@ -63,9 +63,31 @@ export type OpenPositionResult = {
   baseOrderId: bigint;
   /** What the assertion actually checked, for the receipt. */
   checks: string[];
+  /**
+   * False when the group was submitted but confirmation was not observed in
+   * time. It is NOT a failure: the group stays valid for the rest of its window
+   * and will most likely commit. The caller must show the txId and say the
+   * outcome is unknown — never that it failed.
+   */
+  confirmed: boolean;
 };
 
+/** Thrown when a position already exists on this market and side. */
+export class PositionAlreadyOpenError extends Error {
+  constructor(readonly sizeUsdMicro: bigint) {
+    super("You already have a position on this market and side. Close it before opening another.");
+    this.name = "PositionAlreadyOpenError";
+  }
+}
+
 const micro = (usd: number): bigint => BigInt(Math.round(usd * 1e6));
+
+/**
+ * Rounds to wait for confirmation. Algorand blocks are ~2.8s, so this is about
+ * two minutes — long enough to cover a slow round and a load-balanced poll,
+ * short enough not to strand the UI. Running out is reported, never thrown.
+ */
+const CONFIRM_ROUNDS = 40;
 
 /** ALGO needed for the order-box MBR plus group fees, with headroom. */
 const MIN_ALGO_MICRO = ORDER_BOX_MBR_MICRO_ALGO + BigInt(200_000);
@@ -125,7 +147,22 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
     throw new Error(`The exchange will not accept this position: ${probe.reasons.join(", ")}`);
   }
   const acceptablePrice = probe.acceptablePrice12;
-  const tpAcceptable = acceptableFromExecution(takeProfitPrice12, side, slippageBps);
+  // A take-profit CLOSES the position, so its acceptable price sits on the
+  // opposite side of the trigger from an open. See acceptableForClose.
+  const tpAcceptable = acceptableForClose(takeProfitPrice12, side, slippageBps);
+
+  // ── One position per (market, side) ──────────────────────────────────────
+  // PEX keeps exactly one position per (market, collateral asset, side) and a
+  // second open INCREASES it. We do not support increases: it is a second
+  // economic path with its own quoting and assertion surface, and it is what
+  // turns an unobserved confirmation into a doubled position. Refuse instead.
+  //
+  // This also makes `position: null` in the quote correct rather than merely
+  // convenient — every open we permit really does start from nothing.
+  const existing = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
+  if (existing && existing.size_usd > BigInt(0)) {
+    throw new PositionAlreadyOpenError(existing.size_usd);
+  }
 
   stage("allocating");
   const alloc = await allocateBaseOrderId(algod, sender);
@@ -184,6 +221,7 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
       collateralAmountMicro: micro(collateralUsd),
       sizeUsdDeltaMicro: micro(notionalUsd),
       acceptablePrice12: acceptablePrice,
+      executionPrice12: probe.executionPrice12,
       indexPrice12: oracle.indexPrice12,
       slippageBps,
       oracleMessage: oracle.message,
@@ -213,6 +251,14 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
     throw new Error(`The exchange rejected this in simulation, so it was not sent: ${sim.message ?? "unknown"}`);
   }
 
+  // Re-check immediately before the prompt. This narrows the window rather than
+  // closing it: two tabs could still both pass, and because positions MERGE the
+  // loser is not rejected — it increases. Nothing off chain can close that gap.
+  const stillClear = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
+  if (stillClear && stillClear.size_usd > BigInt(0)) {
+    throw new PositionAlreadyOpenError(stillClear.size_usd);
+  }
+
   stage("signing");
   const txns = group.map((t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction);
   // The SDK already grouped these; re-assigning would invalidate the assertion
@@ -223,8 +269,26 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
 
   stage("submitting");
   const res = await algod.sendRawTransaction(blobs).do();
-  stage("confirming");
-  await algosdk.waitForConfirmation(algod, res.txid, 6);
 
-  return { txId: res.txid, baseOrderId: alloc.baseOrderId, checks: assertion.checked };
+  // Past this line the money may already have moved. Nothing below may throw
+  // away the txid, and a wait that runs out is NOT a failure.
+  //
+  // The old code waited 6 rounds — about 17 seconds — against a validity window
+  // of roughly 47 minutes, then threw. Worse, algod here is a load-balanced
+  // endpoint and the SDK deliberately swallows the 404s that come from polling a
+  // different node than the one that accepted the submission. So a successful
+  // open reported as failed was not an edge case; it was the expected outcome of
+  // a slow round. The user then retried and opened a second position.
+  stage("confirming");
+  let confirmed = false;
+  try {
+    await algosdk.waitForConfirmation(algod, res.txid, CONFIRM_ROUNDS);
+    confirmed = true;
+  } catch {
+    // Deliberately swallowed. The caller is told `confirmed: false` and given the
+    // txid; it must not present this as a failure.
+    confirmed = false;
+  }
+
+  return { txId: res.txid, baseOrderId: alloc.baseOrderId, checks: assertion.checked, confirmed };
 }
