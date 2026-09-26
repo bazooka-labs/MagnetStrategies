@@ -184,6 +184,26 @@ export const SWAP_BUILDER_FEE_BPS = 0;
 export const MAX_PLAUSIBLE_NOTIONAL_USD = 25_000;
 
 /**
+ * Ceiling on a long's take-profit, as a multiple of the entry price.
+ *
+ * A long's profit has no mathematical ceiling — price can rise without bound —
+ * so `takeProfitBounds` returned no upper limit and the card accepted anything.
+ * Typing a large number into the target field printed "Closes for $1.7bn profit
+ * before costs", a promise nothing could keep.
+ *
+ * The real problem is not that such a target is impossible, it is that it is
+ * almost always a typo: a misplaced decimal, or a price entered in the wrong
+ * units. A 10x move on the underlying is already an extraordinary outcome, and
+ * take-profit is mandatory here precisely so a position closes — one set beyond
+ * any reachable price is functionally no take-profit at all.
+ *
+ * So this is a typo guard, and the message says so rather than claiming the
+ * price cannot get there. Shorts need no equivalent: they are bounded at zero,
+ * which `maxPayoffUsd` already enforces.
+ */
+export const MAX_TAKE_PROFIT_MULTIPLE = 10;
+
+/**
  * Share of live per-side OI headroom one position may take.
  *
  * This is an availability control, not a risk one. A single user consuming all

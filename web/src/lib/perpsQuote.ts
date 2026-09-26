@@ -15,7 +15,12 @@
 // cost line rather than silently eating the tolerance with it.
 
 import { quoteV2OpenPosition } from "@pdex/sdk";
-import { DEFAULT_SLIPPAGE_BPS, PEX_APPS, POSITION_BUILDER_FEE_BPS } from "./perps";
+import {
+  DEFAULT_SLIPPAGE_BPS,
+  MAX_TAKE_PROFIT_MULTIPLE,
+  PEX_APPS,
+  POSITION_BUILDER_FEE_BPS,
+} from "./perps";
 import { USD_SCALE, type MarketState } from "./perpsReads";
 import type { OraclePayload } from "./perpsOracle";
 import { solveBar, steppedCeilingUsd, type Side } from "./perpsSolver";
@@ -269,9 +274,14 @@ export function maxPayoffUsd(quote: OpenQuote): number {
  * Valid take-profit prices, Price12. A TP sits on the profitable side of entry:
  * above it for a long, between zero and it for a short.
  */
-export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice12: bigint | null } {
+export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice12: bigint } {
   return quote.side === "long"
-    ? { minPrice12: quote.entryPrice12 + BigInt(1), maxPrice12: null }
+    // A long is mathematically unbounded, so this ceiling is a typo guard, not
+    // a statement about what the price can do. See MAX_TAKE_PROFIT_MULTIPLE.
+    ? {
+        minPrice12: quote.entryPrice12 + BigInt(1),
+        maxPrice12: quote.entryPrice12 * BigInt(MAX_TAKE_PROFIT_MULTIPLE),
+      }
     : { minPrice12: BigInt(1), maxPrice12: quote.entryPrice12 - BigInt(1) };
 }
 

@@ -232,10 +232,47 @@ Two things running it against MainNet exposed:
    the case it describes. This is the same defect as H3, one layer down: a
    control was added and the screen was not re-read against it.
 
-**Still open from the lists above:** the Medium/Low items outside `perpsGroup.ts` — the long take-profit
-upper bound, the solver's overstatement near the $5 floor, `assertBaseOrderIdFree`
-treating a 5xx as free, the NaN/Infinity and `"-5"` input guards, the per-keystroke
-quote cost, and `doi:` — remain.
+**Phase 5 — the remaining Medium and Low findings.**
+
+- **No upper bound on a long's take-profit.** A long is mathematically unbounded,
+  so `takeProfitBounds` returned no ceiling and the card printed "Closes for
+  $1.7bn profit before costs". `MAX_TAKE_PROFIT_MULTIPLE` (10x entry) is a typo
+  guard, not a claim about what the price can do, and the message says "check the
+  decimal point" rather than "impossible". Take-profit is mandatory here precisely
+  so a position closes; one set beyond any reachable price is functionally no
+  take-profit at all.
+- **`assertBaseOrderIdFree` treated a 5xx as free.** A bare `catch {}` meant a
+  timeout, a dropped connection and a server error all returned "the id is free"
+  — the single fact the function exists to establish. It now matches a 404
+  narrowly and throws on anything it cannot positively identify as one. Nothing
+  was ever at risk, since a collision is rejected on chain, but it reported a
+  check as passed that had not run, and spent the user's wallet prompt to find out.
+- **NaN and Infinity reached the write path.** `collateralUsd <= 0` is false for
+  NaN, because NaN fails every comparison — so NaN passed the guard, reached
+  `BigInt(Math.round(NaN))` and surfaced as a raw `RangeError`. Now
+  `Number.isFinite`, plus guards on the take-profit price and slippage.
+- **`"-5"` became `"5"`.** `replace(/[^0-9.]/g, "")` stripped the sign, so a
+  negative did not fail — it turned into a real $5 position. Sanitising now lives
+  in `perpsInput.ts` with its own tests: a minus is *refused* rather than
+  corrected, extra dots collapse instead of parsing to NaN downstream, and
+  `parseMoney` returns null rather than 0 so "nothing entered" and "zero" stay
+  distinguishable.
+- **~28 quote evaluations per keystroke.** The solver was wired to the raw input
+  string, and `confirmCeiling` alone walks up to twelve quotes, so typing "100"
+  ran the whole thing three times over. The input is now debounced 120 ms before
+  it reaches the solver. The field itself is never debounced.
+
+**The solver overstatement is closed, and not by a fix.** The +11.4% near the $5
+floor was measured before `steppedCeilingUsd` and `confirmCeiling` landed in
+Phase 1. Re-measured live across both markets, both sides and seven collateral
+values from $5 to $100: **0.00% at all 24 points**, with the solver's own ceiling
+accepted directly by the SDK quote (`confirmCeiling` returns it unchanged on the
+first step). $5 itself reports closed — "too small once fees are taken out" —
+which is the floor behaving as documented, not a regression.
+
+**Still open:** `doi:` has no declared format in the manifest, so that layout is
+pinned against nothing. That is a question for Ultrade, not a code change, and it
+sits with B6 in the list below.
 
 ---
 

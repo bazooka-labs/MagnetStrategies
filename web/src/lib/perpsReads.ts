@@ -362,11 +362,29 @@ export async function allocateBaseOrderId(
   };
 }
 
+/** True when an algod error is specifically "this box does not exist". */
+function isNotFound(e: unknown): boolean {
+  const status = (e as { status?: number; response?: { status?: number } })?.status
+    ?? (e as { response?: { status?: number } })?.response?.status;
+  if (typeof status === "number") return status === 404;
+  // Some transports surface only a message. Match narrowly: any error we cannot
+  // positively identify as a 404 must NOT be treated as one.
+  const msg = e instanceof Error ? e.message : String(e);
+  return /\b404\b|box not found|no such box/i.test(msg);
+}
+
 /**
  * Confirm none of an allocation's ids are taken, immediately before signing.
  *
  * Cheap, and it closes the window between allocating and building. It cannot
  * close the window between signing and confirmation — nothing can, off chain.
+ *
+ * **Throws rather than guessing.** This used to `catch {}` every error and
+ * return true, so a 5xx, a timeout or a dropped connection all read as "the id
+ * is free" — the one answer the function is supposed to establish. Nothing was
+ * at risk of being lost, since a collision is rejected on chain, but it meant
+ * reporting a check as passed that never ran, and spending the user's wallet
+ * prompt to find out. Only a 404 proves absence.
  */
 export async function assertBaseOrderIdFree(
   algod: algosdk.Algodv2, owner: string, alloc: BaseOrderIdAllocation,
@@ -379,7 +397,11 @@ export async function assertBaseOrderIdFree(
     try {
       await algod.getApplicationBoxByName(PEX_APPS.orderOps, name).do();
       return false; // exists -> taken
-    } catch {
+    } catch (e) {
+      if (!isNotFound(e)) {
+        throw new Error(`Could not check whether order id ${id} is free: ${
+          e instanceof Error ? e.message : String(e)}`);
+      }
       // 404 is the expected, healthy case.
     }
   }

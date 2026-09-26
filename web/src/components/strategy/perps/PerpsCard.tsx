@@ -20,6 +20,7 @@ import {
   COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS,
   ENABLED_MARKET_IDS,
+  MAX_TAKE_PROFIT_MULTIPLE,
   PEX_MARKETS,
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
+import { looksNegative, parseMoney, sanitizeDecimalInput } from "@/lib/perpsInput";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
@@ -46,6 +48,22 @@ const fmtPrice = (p: number) =>
   : p >= 1 ? `$${p.toFixed(2)}`
   : `$${p.toFixed(6)}`;
 const fmtUsd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+
+/**
+ * `value`, but only after it has stopped changing for `ms`.
+ *
+ * Deliberately returns the CURRENT value on first render rather than null, so
+ * nothing flickers through an empty state on mount.
+ */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return settled;
+}
 
 export function PerpsCard() {
   const [marketId, setMarketId] = useState<number>(ACTIVE_MARKET_ID);
@@ -58,7 +76,20 @@ export function PerpsCard() {
   const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
   const preflight = usePerpsPreflight();
   const market = MARKETS.find((m) => m.id === marketId)!;
-  const collateralUsd = Math.max(0, Number(amount) || 0);
+  /**
+   * The amount the solver sees, settled.
+   *
+   * `amount` drives the input and updates on every keystroke; this drives
+   * `solveBar`, `confirmCeiling` and `quoteOpen`. Wiring the solver straight to
+   * the raw string cost roughly 28 synchronous quote evaluations per keystroke
+   * — `confirmCeiling` alone walks up to twelve — so typing "100" ran it three
+   * times over. Nothing there is worth computing for a number the user is still
+   * in the middle of typing.
+   *
+   * Only the derived numbers wait; the field itself never does.
+   */
+  const settledAmount = useDebounced(amount, 120);
+  const collateralUsd = parseMoney(settledAmount) ?? 0;
   const indexUsd = data ? price12ToUsd(data.oracle.indexPrice12) : null;
 
   // Both ends of the bar are solved live; neither is a constant.
@@ -147,8 +178,10 @@ export function PerpsCard() {
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
   const tp12 = usdToPrice12(tpPrice) ?? BigInt(0);
   const bounds = quote?.ok ? takeProfitBounds(quote) : null;
-  const tpValid = !!(quote?.ok && bounds && tp12 >= bounds.minPrice12 &&
-    (bounds.maxPrice12 === null || tp12 <= bounds.maxPrice12));
+  const tpValid = !!(quote?.ok && bounds
+    && tp12 >= bounds.minPrice12 && tp12 <= bounds.maxPrice12);
+  /** Above the ceiling specifically — a different message from "too low". */
+  const tpTooHigh = !!(quote?.ok && bounds && tp12 > bounds.maxPrice12);
   const tpPayoff = quote?.ok && tpValid ? payoffAtPrice(quote, tp12) : null;
   const maxPayoff = quote?.ok ? maxPayoffUsd(quote) : null;
   // attemptAt changes on every load attempt, so this re-renders and keeps
@@ -230,7 +263,13 @@ export function PerpsCard() {
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
           <input id="perps-amount" inputMode="decimal" value={amount}
-            onChange={(e) => { setAmount(e.target.value.replace(/[^0-9.]/g, "")); setTpTouched(false); }}
+            onChange={(e) => {
+              // Refuse a negative rather than silently stripping the sign: "-5"
+              // used to become a real $5 position. See perpsInput.
+              if (looksNegative(e.target.value)) return;
+              setAmount(sanitizeDecimalInput(e.target.value));
+              setTpTouched(false);
+            }}
             className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none" />
           <span className="text-xs text-white/40">USDC</span>
         </div>
@@ -298,7 +337,11 @@ export function PerpsCard() {
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
           <input id="perps-tp" inputMode="decimal" value={tpPrice}
-            onChange={(e) => { setTpPrice(e.target.value.replace(/[^0-9.]/g, "")); setTpTouched(true); }}
+            onChange={(e) => {
+              if (looksNegative(e.target.value)) return;
+              setTpPrice(sanitizeDecimalInput(e.target.value));
+              setTpTouched(true);
+            }}
             className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none" />
         </div>
         {quote?.ok && (
@@ -310,7 +353,11 @@ export function PerpsCard() {
             <p className="mt-1 text-xs text-amber-300/90">
               {side === "short" && maxPayoff !== null && Number.isFinite(maxPayoff)
                 ? `A short can make at most ${fmtUsd(maxPayoff)} — its price can only fall to zero. Choose a target below ${fmtPrice(price12ToUsd(quote.entryPrice12))}.`
-                : `Choose a target above ${fmtPrice(price12ToUsd(quote.entryPrice12))}.`}
+                : tpTooHigh && bounds
+                  // Says "check it" rather than "impossible", because it is not
+                  // impossible — it is almost certainly a misplaced decimal.
+                  ? `That target is more than ${MAX_TAKE_PROFIT_MULTIPLE}× the current price — check the decimal point. The highest we accept is ${fmtPrice(price12ToUsd(bounds.maxPrice12))}.`
+                  : `Choose a target above ${fmtPrice(price12ToUsd(quote.entryPrice12))}.`}
             </p>
           )
         )}

@@ -103,7 +103,20 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   const stage = (s: OpenStage) => input.onStage?.(s);
 
   if (!BUILDER_ADDRESS) throw new Error("Builder address is not configured.");
-  if (collateralUsd <= 0 || notionalUsd <= 0) throw new Error("Enter an amount first.");
+  // `Number.isFinite` rather than a comparison: NaN fails EVERY comparison, so
+  // `NaN <= 0` is false and a NaN used to pass this guard untouched, then reach
+  // `BigInt(Math.round(NaN))` and surface as a raw RangeError with no wallet
+  // prompt and no explanation. Infinity did the same.
+  if (!Number.isFinite(collateralUsd) || !Number.isFinite(notionalUsd)
+    || collateralUsd <= 0 || notionalUsd <= 0) {
+    throw new Error("Enter an amount first.");
+  }
+  if (takeProfitPrice12 <= BigInt(0)) {
+    throw new Error("Set a take-profit price first.");
+  }
+  if (!Number.isFinite(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
+    throw new Error("Slippage tolerance is out of range.");
+  }
 
   stage("preparing");
   // Encoding without a verified ABI is the one thing we never do.
