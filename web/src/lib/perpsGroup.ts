@@ -27,6 +27,7 @@
 import algosdk from "algosdk";
 import {
   BUILDER_ADDRESS,
+  MAX_KEEPER_FEE_ESCROW_USDC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
 } from "./perps";
@@ -39,15 +40,56 @@ export const PEX_SELECTORS = {
   mathNoop: "e83a87ab",
 } as const;
 
-/** Every app ID a Perps group is allowed to call. */
-const ALLOWED_APP_IDS: ReadonlySet<number> = new Set<number>(Object.values(PEX_APPS));
+/**
+ * Apps a Perps group may call, and how many times.
+ *
+ * Previously this was every value of PEX_APPS with counts enforced only for
+ * Trading and OrderOps — so an extra call to cvaVault, swapOps, adminOps or
+ * adminControl passed the assertion untouched. Those apps are pinned, which
+ * makes them *ours*, not harmless. An allow-list is only a control if the things
+ * it excludes are actually excluded.
+ *
+ * Math carriers vary with pool state, so they are bounded rather than fixed.
+ */
+const CALL_BUDGET: ReadonlyArray<{ app: number; name: string; min: number; max: number }> = [
+  { app: PEX_APPS.trading, name: "Trading", min: 1, max: 1 },
+  { app: PEX_APPS.orderOps, name: "OrderOps", min: 0, max: 1 },
+  { app: PEX_APPS.math, name: "Math carrier", min: 0, max: 8 },
+];
+const CALLABLE: ReadonlySet<number> = new Set(CALL_BUDGET.map((c) => c.app));
 
 /**
- * Ceiling on total group fee, microALGO. A real open measures 33,000; the cap is
- * loose enough for extra resource carriers as pool state varies and tight enough
- * that a fee-drain is refused.
+ * Ceiling on total group fee, microALGO.
+ *
+ * Measured: an open is 33,000 and an open with a take-profit is 51,000. The old
+ * cap of 250,000 left roughly 0.2 ALGO per trade skimmable inside an otherwise
+ * valid group — small, but the one tamper that nothing else would catch. This
+ * keeps ~2x headroom for extra resource carriers without leaving that room.
  */
-export const MAX_GROUP_FEE_MICRO_ALGO = 250_000;
+export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
+
+/** Checks every app call against CALL_BUDGET. */
+function checkCallBudget(
+  txns: { applicationCall?: { appIndex: bigint | number } }[],
+  fail: (code: string, detail: string) => void,
+): void {
+  const counts = new Map<number, number>();
+  for (const t of txns) {
+    if (!t.applicationCall) continue;
+    const app = Number(t.applicationCall.appIndex);
+    if (!CALLABLE.has(app)) {
+      fail("unpinned_app", `group calls app ${app}, which this flow never uses`);
+      continue;
+    }
+    counts.set(app, (counts.get(app) ?? 0) + 1);
+  }
+  for (const c of CALL_BUDGET) {
+    const seen = counts.get(c.app) ?? 0;
+    if (seen < c.min || seen > c.max) {
+      fail("call_budget", `${c.name} called ${seen} times, expected ${c.min}..${c.max}`);
+    }
+  }
+}
 
 export type GroupFinding = { code: string; detail: string };
 export type GroupAssertion = { ok: boolean; findings: GroupFinding[]; checked: string[] };
@@ -198,16 +240,11 @@ export function assertOpenGroup(txnsIn: unknown[], shown: DisplayedOpen): GroupA
     if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
     if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
     if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
-    if (t.applicationCall) {
-      const app = Number(t.applicationCall.appIndex);
-      if (!ALLOWED_APP_IDS.has(app)) {
-        fail("unpinned_app", `txn ${i} calls app ${app}, which is not a pinned PEX app`);
-      }
-    }
   });
+  checkCallBudget(txns, fail);
   did("sender is the user on every transaction");
   did("no rekeyTo / assetCloseTo / closeRemainderTo / clawback");
-  did("every app call targets a pinned PEX app");
+  did("app calls within the flow's budget, by app and by count");
 
   if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
     fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO} microALGO`);
@@ -346,9 +383,20 @@ export async function simulateGroup(
   });
   try {
     const res = await algod.simulateTransactions(req).do();
-    const grp = res.txnGroups?.[0];
-    if (grp?.failureMessage) {
+    // Fail CLOSED on an unexpected shape. Previously a 200 with no txnGroups
+    // left `grp` undefined, `grp?.failureMessage` undefined, and the function
+    // returned ok — silently skipping the pre-flight and going to the prompt.
+    const groups = res.txnGroups ?? [];
+    if (groups.length !== 1) {
+      return { ok: false, message: `simulation returned ${groups.length} groups, expected 1` };
+    }
+    const grp = groups[0];
+    if (grp.failureMessage) {
       return { ok: false, failureAt: Number(grp.failedAt?.[0] ?? -1), message: grp.failureMessage };
+    }
+    const units = grp.txnResults ?? [];
+    if (units.length !== txns.length) {
+      return { ok: false, message: `simulation returned ${units.length} results for ${txns.length} transactions` };
     }
     return { ok: true };
   } catch (e) {
@@ -432,11 +480,9 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
     if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
     if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
     if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
-    if (t.applicationCall && !ALLOWED_APP_IDS.has(Number(t.applicationCall.appIndex))) {
-      fail("unpinned_app", `txn ${i} calls app ${t.applicationCall.appIndex}, not a pinned PEX app`);
-    }
   });
-  did("sender, rekey/close/clawback, pinned apps");
+  checkCallBudget(txns, fail);
+  did("sender, rekey/close/clawback, app-call budget");
 
   if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
     fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO}`);
@@ -562,8 +608,6 @@ export type DisplayedTakeProfit = {
   sizeUsdDeltaMicro: bigint;
   /** Keeper fee escrowed, micro-units of the collateral asset. */
   keeperFeeMicro: bigint;
-  /** Absolute ceiling on the escrow, independent of what was displayed. */
-  maxKeeperFeeMicro: bigint;
   /** Base id this bracket is allocated from. */
   baseOrderId: bigint;
   slippageBps: number;
@@ -644,30 +688,53 @@ export function assertOpenWithTakeProfit(
   if (transfers.length !== 2) {
     fail("transfer_count", `expected 2 transfers (collateral + keeper escrow), found ${transfers.length}`);
   }
+  const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
   const escrow = transfers.find((t) => big(t.assetTransfer!.amount) !== shownOpen.collateralAmountMicro);
   if (!escrow) {
     fail("keeper_escrow_missing", "no keeper-fee escrow transfer found");
   } else {
-    const amt = big(escrow.assetTransfer!.amount);
+    const x = escrow.assetTransfer!;
+    const amt = big(x.amount);
     if (amt !== shownTp.keeperFeeMicro) {
       fail("keeper_escrow_amount", `escrow ${amt}, displayed ${shownTp.keeperFeeMicro}`);
     }
-    // The absolute cap is the control. A ratio alone is not: both sides of a
-    // ratio come from the frontend, so displaying $400 and escrowing $800 passes.
-    if (amt > shownTp.maxKeeperFeeMicro) {
-      fail("keeper_escrow_cap", `escrow ${amt} exceeds the absolute cap ${shownTp.maxKeeperFeeMicro}`);
+    // Receiver and asset were BOTH unbound here while the collateral leg beside
+    // them was fully checked. An escrow redirected to an attacker passed, and so
+    // did one whose asset had been swapped — 100,000 units of an arbitrary ASA
+    // is not $0.10, and for a low-decimal asset it is arbitrary value.
+    if (String(x.receiver) !== orderOpsAddr) {
+      fail("keeper_escrow_receiver", "keeper-fee escrow does not go to the pinned OrderOps address");
+    }
+    if (Number(x.assetIndex) !== shownOpen.collateralAssetId) {
+      fail("keeper_escrow_asset", `keeper-fee escrow asset ${x.assetIndex}, expected ${shownOpen.collateralAssetId}`);
+    }
+    // The absolute cap is the control and it is read from config, never accepted
+    // from the caller. A ratio alone is not a control: both sides of a ratio come
+    // from the frontend, so displaying $400 and escrowing $800 would pass.
+    const absoluteCap = BigInt(Math.round(MAX_KEEPER_FEE_ESCROW_USDC * 1e6));
+    if (amt > absoluteCap) {
+      fail("keeper_escrow_cap", `escrow ${amt} exceeds the absolute cap ${absoluteCap}`);
     }
     if (amt === BigInt(0)) fail("keeper_escrow_zero", "keeper fee is zero; the order would never be executed");
   }
-  did("keeper-fee escrow: amount, absolute cap, non-zero");
+  did("keeper-fee escrow: amount, receiver, asset, absolute cap, non-zero");
 
   const mbr = txns.filter((t) => t.payment);
   if (mbr.length !== 1) {
     fail("mbr_count", `expected 1 storage payment, found ${mbr.length}`);
-  } else if (big(mbr[0].payment!.amount) !== ORDER_BOX_MBR_MICRO_ALGO) {
-    fail("order_box_mbr", `storage payment ${mbr[0].payment!.amount}, expected ${ORDER_BOX_MBR_MICRO_ALGO}`);
+  } else {
+    const pay = mbr[0].payment!;
+    if (big(pay.amount) !== ORDER_BOX_MBR_MICRO_ALGO) {
+      fail("order_box_mbr", `storage payment ${pay.amount}, expected ${ORDER_BOX_MBR_MICRO_ALGO}`);
+    }
+    // The receiver was unbound: the payment could be redirected while the amount
+    // still matched. Small per trade, but it rides inside a group the user has
+    // been told was verified.
+    if (String(pay.receiver) !== orderOpsAddr) {
+      fail("mbr_receiver", "order-box MBR does not go to the pinned OrderOps address");
+    }
   }
-  did("order-box MBR against the pinned constant");
+  did("order-box MBR: amount and receiver");
 
   const subs = txns.filter(
     (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps,
@@ -696,6 +763,14 @@ export function assertOpenWithTakeProfit(
   if (u64(A[6]) !== BigInt(shownOpen.collateralAssetId)) fail("tp_collateral_asset", `${u64(A[6])}`);
   if (u64(A[7]) !== shownTp.sizeUsdDeltaMicro) {
     fail("tp_size", `TP closes ${u64(A[7])}, position will be ${shownTp.sizeUsdDeltaMicro}`);
+  }
+  // ...and the displayed TP size must equal the position being opened. Without
+  // this the two are only checked against each other, so a take-profit sized at
+  // 1% of the position asserts clean — and the card never displays the TP size,
+  // so there is no "what was shown" to catch it. Take-profit is the only exit.
+  if (shownTp.sizeUsdDeltaMicro !== shownOpen.sizeUsdDeltaMicro) {
+    fail("tp_size_mismatch",
+      `take-profit covers ${shownTp.sizeUsdDeltaMicro} of a ${shownOpen.sizeUsdDeltaMicro} position`);
   }
   if (u64(A[8]) !== BigInt(0)) fail("tp_collateral_amount", `collateralAmount ${u64(A[8])}, expected 0`);
   did("TP identity: order id, kind, target, market, side, asset, size");

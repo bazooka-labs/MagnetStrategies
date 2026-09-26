@@ -143,6 +143,65 @@ nothing.
 
 ---
 
+## What has been fixed
+
+**Phase 1 — the six ship-blockers** (commit `c80f9a4`). B1–B5 as written above,
+plus a sixth found only by running the fix: the bar offered the solver's exact
+ceiling, and micro-unit rounding put it a hair over what the chain accepts.
+`confirmCeiling` now walks the last step down.
+
+**Phase 2 — make the screen trustworthy** (commit `9d03ec9`). H2, H3 and B4's
+second half. `error` now gates `tradable` rather than only rendering a banner;
+`dataTrusted` additionally requires a verified oracle signature. The market
+switch clears the take-profit. `attemptAt` keeps the staleness line ageing while
+a refresh repeatedly fails with an identical message.
+
+**Phase 3 — close the assertion gaps** (this commit). H1, and the Medium items
+that live in `perpsGroup.ts`:
+
+- The keeper-escrow leg's receiver and asset are bound, not just its amount.
+- The MBR payment's receiver is bound.
+- `CALL_BUDGET` enumerates how many calls each pinned app may receive, so an
+  extra call to an unrelated-but-pinned PEX app no longer passes.
+- `MAX_GROUP_FEE_MICRO_ALGO` cut 250,000 → 120,000 against a real cost of 51,000.
+- `acceptableWithin` replaces the `Math.abs` comparison that **structurally
+  could not catch B1**: it derives the side the price may move from the leg's
+  intent (opening vs closing) and the position side, so a wrong-side price is a
+  finding rather than a distance.
+- The take-profit's size is compared to the open's size.
+- `maxKeeperFee` is read from config rather than accepted as a parameter — a
+  parameter is only as trustworthy as its caller.
+- `simulateGroup` fails **closed** on a 200 with an unexpected shape.
+
+### The verification, and why it is in the repo
+
+`web/src/lib/perpsGroup.test.ts`, 27 cases under `npm test`. Each takes a group
+the assertion accepts, breaks exactly one thing that costs the user money, and
+requires the assertion to name it **by its own finding code** — "something was
+rejected" is not a pass, because B2 was a check firing for the wrong reason.
+
+Two things this suite exists to prevent recurring:
+
+1. **B1 escaped the old harness because the harness computed the price itself**
+   (`trigger * 0.997`) while production called the helper. These cases call the
+   same code the card does.
+2. **The earlier harnesses were written to a scratch directory that was then
+   deleted.** A test you cannot re-run is not a regression test. Hence in-repo.
+
+Writing them caught a third thing worth recording: three cases initially failed,
+and the tests were wrong, not the code. Each mutated the ABI argument while
+leaving the displayed value alone, so the equality check fired first and the
+directional bound never ran. The attack worth testing is a screen that displays
+what it sends — a *consistent* lie — so those cases now mutate both.
+
+**Still open from the lists above:** H4 (three controls with no callers) is
+Phase 4. The Medium/Low items outside `perpsGroup.ts` — the long take-profit
+upper bound, the solver's overstatement near the $5 floor, `assertBaseOrderIdFree`
+treating a 5xx as free, the NaN/Infinity and `"-5"` input guards, the per-keystroke
+quote cost, and `doi:` — remain.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.
