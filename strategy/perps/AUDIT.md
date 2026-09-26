@@ -195,6 +195,47 @@ production called a broken helper.
 
 ---
 
+## B6 — the take-profit leg is rejected by OrderOps (found 2026-09-26, after the audits)
+
+Not from either audit. It surfaced the first time `openPosition` was driven
+end-to-end against a funded account, which is exactly what the audits could not
+do and what the old harnesses never did.
+
+**Symptom.** Simulation fails at app `3690309166` (OrderOps), `pc=8175`,
+`opcodes=bz label191; intc_1 // 1; label193:; assert`.
+
+**Isolated to the attached-order leg.** The identical open *without* a
+take-profit simulates `ok=true` for the same account, and a trivial self-payment
+as that account also simulates fine — so this is neither a signature artefact nor
+an account prerequisite.
+
+Invariant across every variable tried:
+
+| Varied | Result |
+|---|---|
+| builder fee present / absent entirely | `pc=8175` |
+| keeper fee 0.10 → 0.25 USDC | `pc=8175` |
+| `baseOrderId` 1 → 9000 | `pc=8175` |
+| storage payment 99,700 / 129,000 / 29,300 | `pc=8175` |
+
+The trader-box hypothesis was tested and is **wrong**: the account has a `t2:`
+box on Trading but none on OrderOps, and funding the 29,300 µALGO
+`V2_TRADER_BOX_MBR_MICRO_ALGO` does not change the failure.
+
+**Context that may matter.** OrderOps holds **zero boxes exchange-wide** — no
+order is live anywhere on PEX — and `v2_order_executed` has never fired on
+MainNet. Orders were placed historically (49 bracket cleanups are on chain), so
+either something changed at an upgrade, or attached orders need something not
+present in the SDK's own builder output.
+
+**Next step:** this is a question for Ultrade rather than more black-box probing.
+Give them the pc and the isolation, and ask what a valid
+`submit_linked_order` requires that an SDK-built group does not carry. Do not
+guess further — four variables have already been eliminated and guessing a fifth
+is not evidence.
+
+---
+
 ## Open
 
 1. **Does PEX itself reject the escrow redirection (H1)?** Unresolved: simulating
