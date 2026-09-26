@@ -228,6 +228,14 @@ MainNet. Orders were placed historically (49 bracket cleanups are on chain), so
 either something changed at an upgrade, or attached orders need something not
 present in the SDK's own builder output.
 
+**Two further eliminations, 2026-09-26.** An exec trace shows the order
+arguments arriving correctly — `orderKind=2`, `linkMode=3`, and an acceptable
+price *below* the trigger, which is the side the contract requires for a long
+take-profit. The failure is immediately after a box read returning empty
+(`pc=8163` pushes `0x`, `pc=8165` pops it, `pc=8175` asserts). And the outcome is
+identical whether or not the account already holds a position on that market and
+side, which rules out the position box.
+
 **Next step:** this is a question for Ultrade rather than more black-box probing.
 Give them the pc and the isolation, and ask what a valid
 `submit_linked_order` requires that an SDK-built group does not carry. Do not
@@ -238,10 +246,22 @@ is not evidence.
 
 ## Open
 
-1. **Does PEX itself reject the escrow redirection (H1)?** Unresolved: simulating
-   as a fresh account fails a per-account box prerequisite. Settleable for free by
-   simulating as one of the known position holders. It changes the severity, not
-   the fix.
+1. **Does PEX itself reject a tampered transfer (H1)?** *Partly answered,
+   2026-09-26.* With a funded trader as sender, an open-only group simulates
+   `ok=true`, and redirecting the **collateral** transfer to an attacker is
+   **rejected by the chain**. So for that leg there is a real second line of
+   defence behind the assertion.
+
+   **The actual H1 leg is still unresolved.** The unbound keeper-fee escrow
+   exists only in the open+take-profit group, and that group cannot be simulated
+   at all while B6 stands. So "the chain would catch it" remains unproven for the
+   leg that is actually unbound. Fix it regardless; re-test once B6 clears.
+
+   A caution on method: a second mutation in the same run — inflating fees to the
+   group cap — also showed as rejected, but that mutation rewrote every
+   transaction's fee and so probably broke fee pooling rather than tripping a fee
+   ceiling. It is not evidence that an overpaid fee is refused, and is not
+   recorded as such.
 2. **`doi:` is pinned against nothing.** Ask Ultrade for a declared format, or
    pin by observation and say so.
 3. **These were two instances of the same model reviewing its own work.** That
