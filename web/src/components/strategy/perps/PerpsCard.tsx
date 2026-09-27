@@ -29,7 +29,6 @@ import { solveBar, type Side } from "@/lib/perpsSolver";
 import { price12ToUsd, usdToPrice12 } from "@/lib/perpsOracle";
 import {
   confirmCeiling,
-  maxPayoffUsd,
   payoffAtPrice,
   priceForPayoff,
   quoteOpen,
@@ -172,7 +171,14 @@ export function PerpsCard() {
   useEffect(() => {
     if (tpTouched || !quote?.ok) return;
     const p = priceForPayoff(quote, collateralUsd * 0.5);
-    if (p) setTpPrice(price12ToUsd(p).toFixed(indexUsd && indexUsd >= 1000 ? 0 : 6));
+    if (!p) return;
+    // Clamp into the valid band. At high leverage a +50%-of-stake target is a
+    // small percentage move, which can land inside the crossing guard — and a
+    // card that opens showing its own invalid default is worse than one that
+    // opens showing a conservative one.
+    const b = takeProfitBounds(quote);
+    const clamped = p < b.minPrice12 ? b.minPrice12 : p > b.maxPrice12 ? b.maxPrice12 : p;
+    setTpPrice(price12ToUsd(clamped).toFixed(indexUsd && indexUsd >= 1000 ? 0 : 6));
   }, [quote, collateralUsd, tpTouched, indexUsd]);
 
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
@@ -180,10 +186,19 @@ export function PerpsCard() {
   const bounds = quote?.ok ? takeProfitBounds(quote) : null;
   const tpValid = !!(quote?.ok && bounds
     && tp12 >= bounds.minPrice12 && tp12 <= bounds.maxPrice12);
-  /** Above the ceiling specifically — a different message from "too low". */
-  const tpTooHigh = !!(quote?.ok && bounds && tp12 > bounds.maxPrice12);
+  /**
+   * Which edge was missed, so the message can name the real problem.
+   *
+   * The two edges mean different things now. One is the crossing guard — too
+   * close to the current price, and PEX would execute the order on arrival —
+   * and the other is the typo guard. Telling a user to "choose a target above
+   * $X" when they are $X × 10 out, or vice versa, sends them the wrong way.
+   */
+  const tpTooNear = !!(quote?.ok && bounds && tp12 > BigInt(0)
+    && (side === "long" ? tp12 < bounds.minPrice12 : tp12 > bounds.maxPrice12));
+  const tpTypo = !!(quote?.ok && bounds && tp12 > BigInt(0)
+    && (side === "long" ? tp12 > bounds.maxPrice12 : tp12 < bounds.minPrice12));
   const tpPayoff = quote?.ok && tpValid ? payoffAtPrice(quote, tp12) : null;
-  const maxPayoff = quote?.ok ? maxPayoffUsd(quote) : null;
   // attemptAt changes on every load attempt, so this re-renders and keeps
   // ageing even when a repeated identical error would otherwise freeze it.
   void attemptAt;
@@ -351,13 +366,25 @@ export function PerpsCard() {
             </p>
           ) : (
             <p className="mt-1 text-xs text-amber-300/90">
-              {side === "short" && maxPayoff !== null && Number.isFinite(maxPayoff)
-                ? `A short can make at most ${fmtUsd(maxPayoff)} — its price can only fall to zero. Choose a target below ${fmtPrice(price12ToUsd(quote.entryPrice12))}.`
-                : tpTooHigh && bounds
-                  // Says "check it" rather than "impossible", because it is not
-                  // impossible — it is almost certainly a misplaced decimal.
-                  ? `That target is more than ${MAX_TAKE_PROFIT_MULTIPLE}× the current price — check the decimal point. The highest we accept is ${fmtPrice(price12ToUsd(bounds.maxPrice12))}.`
-                  : `Choose a target above ${fmtPrice(price12ToUsd(quote.entryPrice12))}.`}
+              {!bounds
+                ? "Enter a take-profit price."
+                : tpTooNear
+                  // The crossing guard. Named for what it does to the user's
+                  // money, not for the bound it failed.
+                  ? `That target is too close to the current price — it would trigger the moment the position opened, closing it straight away for a loss in fees. ${
+                      side === "long"
+                        ? `Choose a target above ${fmtPrice(price12ToUsd(bounds.minPrice12))}.`
+                        : `Choose a target below ${fmtPrice(price12ToUsd(bounds.maxPrice12))}.`}`
+                  : tpTypo
+                    // Says "check it" rather than "impossible", because it is
+                    // not impossible — it is almost certainly a stray decimal.
+                    ? `That target is ${MAX_TAKE_PROFIT_MULTIPLE}× away from the current price — check the decimal point. ${
+                        side === "long"
+                          ? `The highest we accept is ${fmtPrice(price12ToUsd(bounds.maxPrice12))}.`
+                          : `The lowest we accept is ${fmtPrice(price12ToUsd(bounds.minPrice12))}.`}`
+                    : side === "long"
+                      ? `Choose a target above ${fmtPrice(price12ToUsd(bounds.minPrice12))}.`
+                      : `Choose a target below ${fmtPrice(price12ToUsd(bounds.maxPrice12))}.`}
             </p>
           )
         )}

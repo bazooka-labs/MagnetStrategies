@@ -15,7 +15,10 @@
 // cost line rather than silently eating the tolerance with it.
 
 import { quoteV2OpenPosition } from "@pdex/sdk";
+import { quoteV2DecreaseOrder } from "@pdex/sdk";
+import { V2_ORDER_KIND } from "@pdex/sdk";
 import {
+  CROSS_MARGIN_BPS,
   DEFAULT_SLIPPAGE_BPS,
   MAX_TAKE_PROFIT_MULTIPLE,
   PEX_APPS,
@@ -37,6 +40,14 @@ export type OpenQuote = {
   entryPrice12: bigint;
   executionPrice12: bigint;
   indexPrice12: bigint;
+  /**
+   * The signed oracle's index band, carried through because **PEX measures
+   * whether an order is crossed against this band, not against the entry
+   * price**. Only the midpoint used to survive the quote, which is why
+   * `takeProfitBounds` was checking the wrong reference entirely.
+   */
+  indexMinPrice12: bigint;
+  indexMaxPrice12: bigint;
   acceptablePrice12: bigint;
   liquidationPrice12: bigint;
   liquidationDirection: string;
@@ -104,7 +115,9 @@ export function acceptableFromExecution(executionPrice12: bigint, side: Side, sl
     : (executionPrice12 * (ten_k - bps)) / ten_k;
 }
 
-function shape(raw: Record<string, unknown>, side: Side, collateralUsd: number): OpenQuote {
+function shape(
+  raw: Record<string, unknown>, side: Side, collateralUsd: number, oracle: OraclePayload,
+): OpenQuote {
   const notionalUsd = toUsd(raw.size_usd_delta);
   return {
     ok: Boolean(raw.ok),
@@ -116,6 +129,8 @@ function shape(raw: Record<string, unknown>, side: Side, collateralUsd: number):
     entryPrice12: big(raw.position_entry_price_after),
     executionPrice12: big(raw.execution_price),
     indexPrice12: big(raw.index_price),
+    indexMinPrice12: oracle.decoded.indexMinPrice,
+    indexMaxPrice12: oracle.decoded.indexMaxPrice,
     acceptablePrice12: big(raw.acceptable_price),
     liquidationPrice12: big(raw.liquidation_price_estimate),
     liquidationDirection: String(raw.liquidation_price_direction ?? ""),
@@ -199,7 +214,7 @@ export function quoteOpen(input: QuoteInput): OpenQuote {
     executionPrice12, side, input.slippageBps ?? DEFAULT_SLIPPAGE_BPS,
   );
   const real = quoteV2OpenPosition({ ...base, acceptablePrice }) as unknown as Record<string, unknown>;
-  return shape(real, side, collateralUsd);
+  return shape(real, side, collateralUsd, oracle);
 }
 
 /**
@@ -271,18 +286,130 @@ export function maxPayoffUsd(quote: OpenQuote): number {
 }
 
 /**
- * Valid take-profit prices, Price12. A TP sits on the profitable side of entry:
- * above it for a long, between zero and it for a short.
+ * Valid take-profit prices, Price12.
+ *
+ * ── The near edge: crossing ──────────────────────────────────────────────────
+ * This used to sit at `entryPrice12 ± 1`, on the reasoning that a take-profit
+ * just has to be on the profitable side of entry. **PEX does not measure
+ * crossing against entry — it measures against the signed oracle's index
+ * band.** When impact is favourable a long's entry lands *below* `indexMin`,
+ * and every target in the gap between them was accepted by the card while
+ * `quoteV2DecreaseOrder` reported `crossed: true`.
+ *
+ * A crossed take-profit executes immediately, so the position opens and closes
+ * in the same breath. Measured on live ALGO/USD: entry $0.116635848681 against
+ * `indexMin` $0.116855, a 0.188% window. On $50 of collateral at 9.27x that is
+ * open fee + close fee + two builder fees + keeper fee + exit impact — about
+ * **$1.58, 3.2% of the stake, and no position** — under a card that read
+ * "Closes for $0.87 profit before costs".
+ *
+ * So the near edge is the *far* side of the band plus `CROSS_MARGIN_BPS`. Using
+ * the far side is deliberately conservative: the measured boundary is the near
+ * side, and the only thing the extra width costs is a target sitting almost
+ * exactly at the current price — which is precisely the target most likely to
+ * cross between quoting and signing anyway.
+ *
+ * ── The far edge: typos ──────────────────────────────────────────────────────
+ * Symmetric, and a guard against a misplaced decimal rather than a claim about
+ * reachability. A short's floor was `1n` — $0.000000000001 — on the reasoning
+ * that `maxPayoffUsd` already bounds a short at zero. That bounds the *payoff*,
+ * not the *reachability*: on a live $134.86 short the card accepted that target
+ * and printed "Closes for $134.86 profit before costs", and a one-decimal typo
+ * printed $121.38. Take-profit is mandatory here precisely so a position
+ * closes, and there is no close UI and no stop-loss, so an unreachable target
+ * leaves the position with no exit but liquidation.
+ *
+ * The typo edge is **exclusive**, which matters more than it looks. A slipped
+ * decimal point is exactly a factor of ten, and `MAX_TAKE_PROFIT_MULTIPLE` is
+ * ten — so an inclusive bound accepts precisely the most likely typo and
+ * rejects only the ones nobody makes. Measured: `$8,429` for `$84,290` landed
+ * exactly on the floor and validated.
  */
 export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice12: bigint } {
+  const tenK = BigInt(10_000);
+  const margin = BigInt(Math.round(CROSS_MARGIN_BPS));
+  const mult = BigInt(MAX_TAKE_PROFIT_MULTIPLE);
   return quote.side === "long"
-    // A long is mathematically unbounded, so this ceiling is a typo guard, not
-    // a statement about what the price can do. See MAX_TAKE_PROFIT_MULTIPLE.
     ? {
-        minPrice12: quote.entryPrice12 + BigInt(1),
-        maxPrice12: quote.entryPrice12 * BigInt(MAX_TAKE_PROFIT_MULTIPLE),
+        minPrice12: (quote.indexMaxPrice12 * (tenK + margin)) / tenK,
+        maxPrice12: quote.entryPrice12 * mult - BigInt(1),
       }
-    : { minPrice12: BigInt(1), maxPrice12: quote.entryPrice12 - BigInt(1) };
+    : {
+        minPrice12: quote.entryPrice12 / mult + BigInt(1),
+        maxPrice12: (quote.indexMinPrice12 * (tenK - margin)) / tenK,
+      };
+}
+
+/**
+ * Ask PEX itself whether a take-profit would execute on arrival.
+ *
+ * `takeProfitBounds` is the cheap pre-filter the card renders against; this is
+ * the authority, and the write path refuses on it. Bounds are computed from the
+ * band we hold, but the band moves — a target that was clear when the card
+ * quoted it can cross by the time the group is built, which is exactly the
+ * window `CROSS_MARGIN_BPS` is sized for and exactly why the check has to run
+ * again immediately before signing rather than only in the UI.
+ *
+ * ── Reading the result ──────────────────────────────────────────────────────
+ * `ok` is **false on every call made before the open**, with the single reason
+ * `position_missing` — we are quoting a decrease against a position that does
+ * not exist yet. Blocking on `ok` would therefore block 100% of trades, which
+ * is the same shape as B1 and was nearly the shape of this fix: an earlier
+ * draft of this very docstring said to do exactly that.
+ *
+ * So `blocking` is the field callers use: true when PEX says the order would
+ * execute on arrival, or when the quote failed for any reason OTHER than the
+ * position not being open yet. An unquotable take-profit is still not a safe
+ * one — but "you have not opened it yet" is not unquotable, it is expected.
+ */
+/**
+ * Failure reasons that are the expected consequence of quoting a take-profit
+ * for a position that has not been opened yet, and so must not block the open.
+ */
+const EXPECTED_PRE_OPEN_REASONS: ReadonlySet<string> = new Set(["position_missing"]);
+
+export function quoteTakeProfitCrossed(input: {
+  state: MarketState;
+  oracle: OraclePayload;
+  side: Side;
+  owner: string;
+  notionalUsd: number;
+  triggerPrice12: bigint;
+  acceptablePrice12: bigint;
+  keeperFeeMicro: bigint;
+  collateralAssetId: number;
+  builderAddress: string;
+  builderFeeBps?: number;
+}): { crossed: boolean; ok: boolean; reasons: string[]; blocking: boolean } {
+  const raw = quoteV2DecreaseOrder({
+    market: marketRecord(input.state),
+    pool: { ...input.state.pool },
+    position: null,
+    owner: input.owner,
+    marketId: BigInt(input.state.marketId),
+    orderKind: V2_ORDER_KIND.DECREASE_TAKE_PROFIT,
+    collateralAssetId: BigInt(input.collateralAssetId),
+    side: SIDE_CODE[input.side],
+    sizeUsdDelta: BigInt(Math.round(input.notionalUsd * Number(USD_SCALE))),
+    triggerPrice: input.triggerPrice12,
+    acceptablePrice: input.acceptablePrice12,
+    keeperFeeAssetId: BigInt(input.collateralAssetId),
+    keeperFeeAmount: input.keeperFeeMicro,
+    prices: priceInput(input.oracle),
+    builderFee: {
+      builderAddress: input.builderAddress,
+      builderFeeBps: BigInt(input.builderFeeBps ?? POSITION_BUILDER_FEE_BPS),
+    },
+  }) as unknown as Record<string, unknown>;
+  const crossed = Boolean(raw.crossed);
+  const reasons = ((raw.failure_reasons as string[]) ?? []).slice();
+  const unexpected = reasons.filter((r) => !EXPECTED_PRE_OPEN_REASONS.has(r));
+  return {
+    crossed,
+    ok: Boolean(raw.ok),
+    reasons,
+    blocking: crossed || unexpected.length > 0,
+  };
 }
 
 /**

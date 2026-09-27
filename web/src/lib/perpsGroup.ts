@@ -68,6 +68,63 @@ const CALLABLE: ReadonlySet<number> = new Set(CALL_BUDGET.map((c) => c.app));
  */
 export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
 
+/**
+ * The transaction types a Perps flow contains, and how many of each.
+ *
+ * **This closes a whole class rather than an instance.** Every other check in
+ * this module finds its leg by looking for a sub-object — `t.assetTransfer`,
+ * `t.applicationCall`, `t.payment`. A transaction that has none of them is
+ * therefore invisible to all of them: an injected `acfg`, `keyreg` or `afrz`
+ * passed the entire assertion untouched. The `acfg` is the dangerous one — a
+ * single extra transaction, sender the user, reassigning `manager`/`clawback`
+ * on an ASA that user administers hands an attacker unilateral control of every
+ * holder's balance of that asset, and it appears as one more line in a wallet
+ * prompt on a screen that has just said the group was verified.
+ *
+ * The SDK is the group builder, so this is squarely inside the stated threat
+ * model: construction bugs and compromise confined to the group-building path.
+ *
+ * Counts are from real `@pdex/sdk` 0.6.3 output — see
+ * `__fixtures__/perpsGroups.json`, which is 9 transactions,
+ * `axfer,appl,appl,appl,appl,axfer,pay,appl,appl`, on both markets and sides.
+ * `appl` is bounded loosely here because `CALL_BUDGET` bounds it per app, which
+ * is the tighter and more meaningful constraint.
+ */
+export type GroupShape = { axfer: number; pay: number; applMin: number; applMax: number };
+
+/** Collateral transfer + app calls. No order box, so no MBR payment. */
+export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 10 };
+/** Adds the keeper-fee escrow transfer and the order-box MBR payment. */
+export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10 };
+/** Closing moves no value in the group itself. */
+export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10 };
+
+const ALLOWED_TXN_TYPES: ReadonlySet<string> = new Set(["axfer", "appl", "pay"]);
+
+function checkTxnShape(
+  txns: AnyTxn[], shape: GroupShape,
+  fail: (code: string, detail: string) => void,
+  did: (name: string) => void,
+): void {
+  const counts: Record<string, number> = {};
+  txns.forEach((t, i) => {
+    const type = String(t.type ?? "");
+    counts[type] = (counts[type] ?? 0) + 1;
+    if (!ALLOWED_TXN_TYPES.has(type)) {
+      fail("txn_type", `txn ${i} is "${type || "typeless"}" — this flow contains only axfer, appl and pay`);
+    }
+  });
+  const axfer = counts.axfer ?? 0;
+  const pay = counts.pay ?? 0;
+  const appl = counts.appl ?? 0;
+  if (axfer !== shape.axfer) fail("axfer_count", `expected ${shape.axfer} asset transfer(s), found ${axfer}`);
+  if (pay !== shape.pay) fail("pay_count", `expected ${shape.pay} payment(s), found ${pay}`);
+  if (appl < shape.applMin || appl > shape.applMax) {
+    fail("appl_count", `expected ${shape.applMin}..${shape.applMax} app calls, found ${appl}`);
+  }
+  did("every transaction is a type this flow contains, in the expected counts");
+}
+
 /** Checks every app call against CALL_BUDGET. */
 function checkCallBudget(
   txns: { applicationCall?: { appIndex: bigint | number } }[],
@@ -206,7 +263,9 @@ function abiBytes(arg: Uint8Array): Uint8Array | null {
  * Returns every finding rather than throwing on the first, so a failure report
  * shows the whole picture instead of one symptom at a time.
  */
-export function assertOpenGroup(txnsIn: unknown[], shown: DisplayedOpen): GroupAssertion {
+export function assertOpenGroup(
+  txnsIn: unknown[], shown: DisplayedOpen, shape: GroupShape = SHAPE_OPEN,
+): GroupAssertion {
   const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
   const findings: GroupFinding[] = [];
   const checked: string[] = [];
@@ -241,6 +300,7 @@ export function assertOpenGroup(txnsIn: unknown[], shown: DisplayedOpen): GroupA
     if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
     if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
   });
+  checkTxnShape(txns, shape, fail, did);
   checkCallBudget(txns, fail);
   did("sender is the user on every transaction");
   did("no rekeyTo / assetCloseTo / closeRemainderTo / clawback");
@@ -252,10 +312,10 @@ export function assertOpenGroup(txnsIn: unknown[], shown: DisplayedOpen): GroupA
   did("total fee under cap");
 
   // ── Asset movement ──────────────────────────────────────────────────────────
+  // Count is asserted by `checkTxnShape` against the flow's shape; this path
+  // only needs the collateral leg, which is the first transfer in every real
+  // group the SDK builds.
   const transfers = txns.filter((t) => t.assetTransfer);
-  if (transfers.length !== 1) {
-    fail("transfer_count", `expected exactly 1 asset transfer, found ${transfers.length}`);
-  }
   const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
   const xfer = transfers[0]?.assetTransfer;
   if (xfer) {
@@ -466,6 +526,8 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
     return { ok: false, findings, checked };
   }
 
+  checkTxnShape(txns, SHAPE_CLOSE, fail, did);
+
   const ids = new Set(txns.map((t) => t.txID()));
   if (ids.size !== txns.length) {
     fail("duplicate_txids", `${txns.length} transactions but ${ids.size} distinct IDs`);
@@ -672,22 +734,18 @@ export function assertOpenWithTakeProfit(
   shownTp: DisplayedTakeProfit,
 ): GroupAssertion {
   // Everything the plain open path checks still applies to the open leg.
-  const base = assertOpenGroup(txnsIn, shownOpen);
+  const base = assertOpenGroup(txnsIn, shownOpen, SHAPE_OPEN_TP);
   const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
   const findings = [...base.findings];
   const checked = [...base.checked];
   const fail = (code: string, detail: string) => findings.push({ code, detail });
   const did = (n: string) => checked.push(n);
 
-  // The open path asserts exactly one transfer; with a bracket there are two —
-  // collateral and the keeper-fee escrow. Re-evaluate rather than inherit.
-  const idx = findings.findIndex((f) => f.code === "transfer_count");
-  if (idx >= 0) findings.splice(idx, 1);
-
+  // Transfer and payment counts come from SHAPE_OPEN_TP, asserted above by the
+  // inherited `assertOpenGroup` call. This used to splice a `transfer_count`
+  // finding back out of the inherited list, which meant the correct count was
+  // never actually asserted on this path — only the wrong one was deleted.
   const transfers = txns.filter((t) => t.assetTransfer);
-  if (transfers.length !== 2) {
-    fail("transfer_count", `expected 2 transfers (collateral + keeper escrow), found ${transfers.length}`);
-  }
   const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
   const escrow = transfers.find((t) => big(t.assetTransfer!.amount) !== shownOpen.collateralAmountMicro);
   if (!escrow) {
@@ -791,6 +849,16 @@ export function assertOpenWithTakeProfit(
     tpAccept, shownTp.triggerPrice12, shownOpen.side, shownTp.slippageBps, "closing",
   );
   if (!tpBound.ok) fail("tp_slippage", `take-profit ${tpBound.why}`);
+  // Equality against the displayed value, not only the directional bound.
+  //
+  // `DisplayedTakeProfit.acceptablePrice12` was declared and documented and
+  // never read, so the TP leg was held only to "somewhere inside the slippage
+  // band around the trigger" while the open leg got both this and the bound.
+  // The slack is the full band: on a $772 short close that is up to $3.86 of
+  // worse fill, inside a group the user was told had been verified.
+  if (tpAccept !== shownTp.acceptablePrice12) {
+    fail("tp_acceptable_price", `arg ${tpAccept}, displayed ${shownTp.acceptablePrice12}`);
+  }
   if (u64(A[11]) !== BigInt(shownOpen.collateralAssetId)) fail("keeper_fee_asset", `keeperFeeAssetId ${u64(A[11])}`);
   if (u64(A[12]) !== shownTp.keeperFeeMicro) fail("keeper_fee_arg", `keeperFeeAmount ${u64(A[12])} vs escrow ${shownTp.keeperFeeMicro}`);
   if (u64(A[13]) !== BigInt(0)) fail("tp_swap_mode", `outputSwapMode ${u64(A[13])}, expected 0`);

@@ -481,7 +481,26 @@ export async function readPosition(
   try {
     const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
     return decodePosition(res.value);
-  } catch {
-    return null; // no box = no position
+  } catch (e) {
+    // **Only a 404 means "no position".**
+    //
+    // This used to swallow everything: a 5xx, a timeout, a dropped connection
+    // and a `decodePosition` length assertion (which is what a PEX box-layout
+    // change would raise) all returned null, i.e. "you have no position here".
+    //
+    // The whole one-position decision rests on this read. Reading null on a
+    // transient failure lets the open proceed as a PEX *increase*, which
+    // re-opens B3 and B5 together: the quote runs `position: null`, so the
+    // card's liquidation price is the standalone one — measured at a 27.5%
+    // understatement on a live position — and the take-profit is sized at the
+    // new notional, covering only part of the merged position.
+    //
+    // Identical in shape to the `assertBaseOrderIdFree` defect fixed in Phase 5,
+    // on the guard that matters more. Fail closed; the caller refuses the open.
+    if (!isNotFound(e)) {
+      throw new Error(`Could not check for an existing position: ${
+        e instanceof Error ? e.message : String(e)}`);
+    }
+    return null; // 404 = no box = no position
   }
 }

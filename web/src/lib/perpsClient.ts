@@ -35,7 +35,12 @@ import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { preflight } from "./perpsPreflight";
 import { assertOpenWithTakeProfit, simulateGroup, ORDER_BOX_MBR_MICRO_ALGO } from "./perpsGroup";
-import { acceptableForClose, quoteOpen } from "./perpsQuote";
+import {
+  acceptableForClose,
+  quoteOpen,
+  quoteTakeProfitCrossed,
+  takeProfitBounds,
+} from "./perpsQuote";
 import type { Side } from "./perpsSolver";
 
 type SignFn = (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>;
@@ -175,6 +180,38 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   // A take-profit CLOSES the position, so its acceptable price sits on the
   // opposite side of the trigger from an open. See acceptableForClose.
   const tpAcceptable = acceptableForClose(takeProfitPrice12, side, slippageBps);
+
+  // ── The take-profit must not already be crossed ──────────────────────────
+  //
+  // Checked HERE and not only in the card, for two reasons. The card's bounds
+  // are computed from a snapshot up to a refresh cycle old, and the band moves;
+  // and a bound is our arithmetic about PEX, whereas this is PEX's own answer.
+  //
+  // A crossed take-profit executes on arrival, so the position opens and closes
+  // in one group: the user pays open fee, close fee, two builder fees, the
+  // keeper fee and exit impact, and holds nothing. On $50 at 9.27x that is
+  // about $1.58 — and the card had just promised a profit.
+  const bounds = takeProfitBounds(probe);
+  if (takeProfitPrice12 < bounds.minPrice12 || takeProfitPrice12 > bounds.maxPrice12) {
+    throw new Error(
+      "That take-profit price is no longer valid at the current market price. Check it and try again.",
+    );
+  }
+  const crossCheck = quoteTakeProfitCrossed({
+    state, oracle, side, owner: sender, notionalUsd,
+    triggerPrice12: takeProfitPrice12,
+    acceptablePrice12: tpAcceptable,
+    keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    builderAddress: BUILDER_ADDRESS,
+  });
+  if (crossCheck.blocking) {
+    throw new Error(
+      crossCheck.crossed
+        ? "That take-profit would trigger immediately at the current price, closing the position as soon as it opened. Pick a target further away."
+        : `The exchange will not accept that take-profit: ${crossCheck.reasons.join(", ")}`,
+    );
+  }
 
   // ── One position per (market, side) ──────────────────────────────────────
   // PEX keeps exactly one position per (market, collateral asset, side) and a
