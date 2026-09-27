@@ -390,6 +390,108 @@ concurrency remain unverifiable while B6 blocks simulating any open+TP group.
 
 ---
 
+## Audit 4 (2026-09-26)
+
+Briefed to falsify audit 3's remediations and to hunt specifically for fixes
+that are **too strict** as well as too loose. It found no way to make the group
+carry a different number from the one the screen showed — the assertion layer
+held under tamper runs against real decoded groups. The money moved to the
+**input and display layers**, which three audits had treated as lower-stakes
+than the group layer and which are in fact where the user's decision is formed.
+
+### High
+
+- **H1 — a decimal comma multiplied the stake by 100.** `mustRefuseInput` was
+  `/-|[a-zA-Z]/`; a comma is neither, so it was stripped as punctuation.
+  Measured: `"12,50"` → `1250`, `"1,5"` → `15`, `"0,05"` → `5`. On a phone,
+  `inputMode="decimal"` renders a comma key in French, German, Spanish, Italian,
+  Dutch and Brazilian locales — so a user typing $12.50 the only way their
+  keyboard offers opens a **$1,250** position, with every figure on the card
+  internally consistent with it. The Swiss apostrophe and the Arabic decimal
+  separator failed identically.
+
+  **This was the third instance of one defect**, after `"-5"` → `"5"` (Phase 5)
+  and `"1e5"` → `"15"` (Phase 9). Both earlier fixes extended a blocklist. That
+  approach was always going to keep losing, and this is what losing looks like.
+
+- **H2 — the card printed a take-profit bound and then refused that exact
+  number.** `fmtPrice` rounds to whole dollars above $1,000; `tpValid` compared
+  against the unrounded bound. **5 of 8 measured edges were refused.** On a BTC
+  long the crossing floor is never an integer, so it was unreachable
+  essentially always — and take-profit is mandatory, so that is a dead end
+  rather than an inconvenience. This is the "too strict" class, in the crossing
+  guard added in Phase 6.
+
+### Medium and Low
+
+M1 `liquidationDirection` was decoded and **never read anywhere**, so with
+notional ≤ collateral the permanent red box printed "Liquidation **$0.000000** ·
+total loss of $1,000.00"; both markets are OI-capped far below $1,000, so anyone
+with that much collateral saw it at every slider position · M2 the mandatory
+take-profit was left **blank** (or silently stale) wherever +50%-of-stake
+exceeded what a short can pay, which on a $1,000 ALGO short was every slider
+position · M3 the debounced amount let the field lead every other figure, the
+one place a screen number and a signed number were allowed to disagree · M4 the
+drift guard covered two prices out of the four the user decides on, and its
+entry bound would false-positive on ALGO's flat 55 bps impact step · L1 a
+well-formed linked note passed on any leg · L2 accounts / foreign apps / foreign
+assets unbound on the two calls that move money · L3 `lease` and `genesisHash`
+never read · L4 the Math ceiling was tighter than a count we do not control ·
+L5 the preflight cache policy was decided by string-matching user-facing copy ·
+L6 `isNotFound` cannot distinguish "no box" from "no app" · L7 comment/config
+drift on the oracle window.
+
+## What audit 4's remediation changed
+
+**Phase 10 — the two High findings.** `perpsInput.ts` is now a **whitelist**
+stated positively: *strip only what cannot change the number, refuse everything
+else*. Currency symbols and whitespace are decoration and are stripped; a comma
+is not, and is refused rather than guessed at, because `1,000` is one thousand
+in en-US and one in de-DE and nothing in a keystroke resolves that. Refusals are
+now **visible**, with a hint — a silent no-op leaves a user on a comma keypad
+pressing their only decimal key and watching nothing happen. Multiple decimal
+points are refused rather than collapsed, which was itself silently changing the
+number.
+
+For H2, `displayTakeProfitBounds` rounds each edge **outward** to the precision
+it is printed at, and the card both displays and validates against that, so the
+number on screen is by construction acceptable. The write path keeps the true
+bounds, which are looser, so nothing the card accepts is refused there. The
+precision rule and the formatter moved into `perpsQuote.ts` beside the bounds:
+the card owning its own copy is precisely how the two drifted apart.
+
+**Phase 11 — the Mediums.** The liquidation box is gated on
+`liquidationDirection` and says plainly when a position cannot be liquidated.
+The take-profit default falls back to a fixed move from entry, clamped into the
+displayed bounds, so the mandatory field is never empty and never holds a target
+solved for a different size. `tradable` now requires `amount === settledAmount`,
+closing the debounce window before the button exists rather than after. The
+drift guard gained the liquidation price, separate tolerances
+(`MAX_ENTRY_DRIFT_BPS` sits above ALGO's 55 bps impact step so a pure impact
+flip is not reported as "the price moved"), and `asRendered`-prefixed field
+names so a future caller cannot quietly make the check circular again.
+
+**Phase 12 — the Lows.** Notes are permitted only on the escrow and MBR legs and
+pinned to this bracket's child order id; the collateral leg must carry none.
+Accounts, foreign apps and foreign assets are bounded on every app call. `lease`
+and `genesisHash` are read. The preflight caches on a `kind` discriminant rather
+than on the wording of a sentence. `isNotFound`'s blind spot is documented
+rather than papered over. And the capture script now mirrors production's fee
+pinning — the fixture's whole purpose is to be a faithful capture, and an
+"identical today" difference is still a difference.
+
+**The test that would have caught H2 on day one** now exists: bound → printed →
+retyped → validated, through the real formatter rather than a reimplementation
+of it.
+
+**Still open after audit 4:** B6 and the `doi:` format, both for Ultrade. H-1's
+chain-side defence and the one-position guard under true concurrency remain
+unverifiable while B6 blocks simulating any open+TP group. Whether
+`MAX_DISPLAY_DRIFT_BPS` is non-circular cannot be confirmed until the button is
+wired and there is a caller to inspect.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.

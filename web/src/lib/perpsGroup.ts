@@ -26,6 +26,7 @@
 
 import algosdk from "algosdk";
 import {
+  ALGORAND_MAINNET_GENESIS_HASH_HEX,
   BUILDER_ADDRESS,
   MAX_KEEPER_FEE_ESCROW_USDC,
   PEX_APPS,
@@ -54,15 +55,27 @@ export const PEX_SELECTORS = {
 const CALL_BUDGET: ReadonlyArray<{ app: number; name: string; min: number; max: number }> = [
   { app: PEX_APPS.trading, name: "Trading", min: 1, max: 1 },
   { app: PEX_APPS.orderOps, name: "OrderOps", min: 0, max: 1 },
-  // Real groups build exactly 4, on both markets and both sides (three before
-  // the OrderOps call and one after) — see __fixtures__/perpsGroups.json. The
-  // old ceiling of 8 allowed four more than anything builds; headroom for a
-  // resource carrier is worth one slot, not four.
-  { app: PEX_APPS.math, name: "Math carrier", min: 0, max: 5 },
+  // Real groups build exactly 4, on both markets and both sides — see
+  // __fixtures__/perpsGroups.json. But the count is NOT ours: the SDK derives
+  // it from pool and yield-vault state via `sharedCarrierOrderIds` and
+  // `appCall.resourceCarriers`, so it can legitimately grow without any change
+  // here. A tight ceiling would surface a benign SDK change to the user as
+  // "Safety check failed, nothing was sent", which reads as a security
+  // incident. The carriers are individually asserted to be bare noops
+  // (`checkMathCarriers`), so an extra one cannot do anything — the count is
+  // not the control, their contents are.
+  { app: PEX_APPS.math, name: "Math carrier", min: 0, max: 8 },
 ];
 const CALLABLE: ReadonlySet<number> = new Set(CALL_BUDGET.map((c) => c.app));
 
 const td = new TextDecoder();
+
+/** Every pinned PEX app id, for bounding foreign-app references. */
+const PINNED_APP_IDS: ReadonlySet<number> = new Set(Object.values(PEX_APPS).map(Number));
+/** Their application addresses — real groups name PEX's own accounts. */
+const PEX_APP_ADDRESSES: ReadonlySet<string> = new Set(
+  Object.values(PEX_APPS).map((id) => algosdk.getApplicationAddress(Number(id)).toString()),
+);
 /**
  * The only notes a legitimate group carries.
  *
@@ -204,6 +217,8 @@ type AnyTxn = {
   rekeyTo?: unknown;
   /** Free-form bytes the user signs without being shown them. */
   note?: Uint8Array;
+  lease?: Uint8Array;
+  genesisHash?: Uint8Array;
   firstValid?: bigint | number;
   lastValid?: bigint | number;
   assetTransfer?: {
@@ -363,13 +378,54 @@ export function assertOpenGroup(
     // captured groups caught that before it shipped. So: bound to the known
     // markers, with the exact values pinned in the bracket path where the
     // order id is known. Anything else is data being smuggled past the user.
-    if (t.note && t.note.length > 0 && !LINKED_NOTE_RE.test(td.decode(t.note))) {
-      fail("note", `txn ${i} carries an unrecognised ${t.note.length}-byte note`);
+    // A well-formed marker used to pass on ANY leg — including the collateral
+    // transfer and a Math carrier. Notes belong on the escrow and MBR legs
+    // only, and app calls never carry one.
+    if (t.note && t.note.length > 0) {
+      const text = td.decode(t.note);
+      if (t.type === "appl" || !LINKED_NOTE_RE.test(text)) {
+        fail("note", `txn ${i} (${t.type}) carries a ${t.note.length}-byte note: "${text.slice(0, 40)}"`);
+      }
+    }
+    // A lease squats the sender+lease pair for the validity window. Nothing
+    // here sets one, so anything that does was not put there by us.
+    if (t.lease && t.lease.length > 0) fail("lease", `txn ${i} sets a lease`);
+    // Resource references. Inert on their own — PEX decides what it touches —
+    // but these are unbound fields on the calls that move money, and the Math
+    // carriers beside them already bind exactly this. Real groups reference
+    // only the sender, the builder, PEX's own app addresses, USDC, and pinned
+    // PEX apps: see __fixtures__/perpsGroups.json.
+    const call = t.applicationCall;
+    if (call) {
+      for (const a of (call.accounts ?? [])) {
+        const addr = String(a);
+        if (addr !== shown.sender && addr !== BUILDER_ADDRESS && !PEX_APP_ADDRESSES.has(addr)) {
+          fail("foreign_account", `txn ${i} names account ${addr.slice(0, 10)}…`);
+        }
+      }
+      for (const x of (call.foreignAssets ?? [])) {
+        if (Number(x) !== shown.collateralAssetId) {
+          fail("foreign_asset", `txn ${i} references asset ${x}`);
+        }
+      }
+      for (const x of (call.foreignApps ?? [])) {
+        if (!PINNED_APP_IDS.has(Number(x))) fail("foreign_app", `txn ${i} references app ${x}`);
+      }
     }
   });
 
   // One validity window across the group. A leg with a longer window than its
   // neighbours can be replayed on its own after the rest has expired.
+  // One network. algod would refuse a foreign genesis hash, but the assertion
+  // is what runs before the wallet prompt, and it pinned the validity window
+  // without pinning what chain the window was on.
+  for (const [i, t] of txns.entries()) {
+    if (t.genesisHash && hex(t.genesisHash) !== ALGORAND_MAINNET_GENESIS_HASH_HEX) {
+      fail("genesis_hash", `txn ${i} is not for Algorand MainNet`);
+    }
+  }
+  did("every leg is for Algorand MainNet");
+
   const firsts = new Set(txns.map((t) => String(t.firstValid)));
   const lasts = new Set(txns.map((t) => String(t.lastValid)));
   if (firsts.size !== 1 || lasts.size !== 1) {
@@ -407,8 +463,15 @@ export function assertOpenGroup(
     if (String(xfer.receiver) !== tradingAddr) {
       fail("transfer_receiver", `transfer receiver is not the pinned Trading app address`);
     }
+    // The collateral leg carries NO note in any real group. Without this, a
+    // well-formed `pdex-v2-linked-*` marker passes here on the strength of
+    // being well-formed, even though it belongs on the escrow leg — the shape
+    // gate alone cannot tell the two transfers apart.
+    if (transfers[0].note && transfers[0].note.length > 0) {
+      fail("note", "the collateral transfer carries a note");
+    }
   }
-  did("collateral transfer: asset, amount, receiver");
+  did("collateral transfer: asset, amount, receiver, no note");
 
   // ── open_or_increase ────────────────────────────────────────────────────────
   const mainCalls = txns.filter(

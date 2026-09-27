@@ -243,6 +243,33 @@ export const CROSS_MARGIN_BPS = 50;
  */
 export const MAX_DISPLAY_DRIFT_BPS = 50;
 
+/**
+ * Tolerance for the *entry* price specifically, which is wider than the index.
+ *
+ * Entry is execution-impacted, and on ALGO/USD price impact is a **flat 55 bps
+ * step** that switches on and off with the sign of the open-interest imbalance
+ * (see `perpsSolver.ts`). If that imbalance flips between the card's last
+ * render and the click, entry moves ~55 bps while the index has not moved at
+ * all — and a 50 bps bound would refuse the trade with "the price moved", which
+ * is both false and unactionable, because re-quoting reproduces it.
+ *
+ * So this sits above the step: a pure impact flip passes, a genuine move on top
+ * of one does not. The index bound is the tight one and is what actually
+ * catches the market running away.
+ */
+export const MAX_ENTRY_DRIFT_BPS = 150;
+
+/**
+ * Tolerance for the liquidation price.
+ *
+ * The red box is the card's most prominent disclosure and it was not covered by
+ * any drift check — the guard bound the index and the entry, so the invariant
+ * ("verified against what the confirm screen displayed") held for two fields
+ * rather than for the screen. Liquidation moves roughly with entry, so this
+ * tracks the entry tolerance rather than the tighter index one.
+ */
+export const MAX_LIQUIDATION_DRIFT_BPS = 150;
+
 /** Keeper fee escrowed per bracket, in USDC. Floor 0.10; read policy live. */
 export const CHILD_KEEPER_FEE_USDC = 0.1;
 

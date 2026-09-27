@@ -5,7 +5,13 @@
 // network-free on purpose: the numbers are fixed evidence, not live state.
 
 import { describe, expect, it } from "vitest";
-import { takeProfitBounds } from "./perpsQuote";
+import {
+  displayTakeProfitBounds,
+  roundPrice12,
+  formatPriceUsd,
+  takeProfitBounds,
+} from "./perpsQuote";
+import { usdToPrice12 } from "./perpsOracle";
 import { CROSS_MARGIN_BPS, MAX_TAKE_PROFIT_MULTIPLE } from "./perps";
 import type { OpenQuote } from "./perpsQuote";
 
@@ -100,5 +106,62 @@ describe("takeProfitBounds — the typo guard (M-2)", () => {
   it("keeps the long ceiling at the stated multiple", () => {
     const b = takeProfitBounds(ALGO_LONG);
     expect(b.maxPrice12).toBe(ALGO_LONG.entryPrice12 * BigInt(MAX_TAKE_PROFIT_MULTIPLE) - BigInt(1));
+  });
+});
+
+
+// ── H2 (audit 4): the bound the card PRINTS must be a bound the card ACCEPTS ──
+//
+// `takeProfitBounds` was correct and its rendering was not: `fmtPrice` rounds to
+// whole dollars above $1,000, validation compared against the unrounded value,
+// and 5 of 8 measured edges printed a number the card then refused. On a BTC
+// long the crossing floor is never an integer, so it was refused essentially
+// always — with take-profit mandatory, that is a dead end, not an inconvenience.
+//
+// This is the round trip the user actually performs, through the real formatter.
+describe("displayTakeProfitBounds — printed bounds are typeable", () => {
+  const all = [
+    ["ALGO long", ALGO_LONG], ["ALGO short", ALGO_SHORT],
+    ["BTC long", BTC_LONG], ["BTC short", BTC_SHORT],
+  ] as const;
+
+  /** What the user gets if they read the screen and type it back in. */
+  const retype = (p12: bigint) => usdToPrice12(formatPriceUsd(Number(p12) / 1e12).replace(/[$,]/g, ""));
+
+  for (const [name, quote] of all) {
+    it(`${name}: the printed floor is accepted`, () => {
+      const b = displayTakeProfitBounds(quote);
+      const typed = retype(b.minPrice12);
+      expect(typed).not.toBeNull();
+      expect(typed! >= b.minPrice12 && typed! <= b.maxPrice12).toBe(true);
+    });
+
+    it(`${name}: the printed ceiling is accepted`, () => {
+      const b = displayTakeProfitBounds(quote);
+      const typed = retype(b.maxPrice12);
+      expect(typed).not.toBeNull();
+      expect(typed! >= b.minPrice12 && typed! <= b.maxPrice12).toBe(true);
+    });
+
+    it(`${name}: display bounds are no looser than the true bounds`, () => {
+      // The card may be stricter than the write path, never the reverse —
+      // otherwise it would accept something openPosition then refuses.
+      const t = takeProfitBounds(quote);
+      const d = displayTakeProfitBounds(quote);
+      expect(d.minPrice12).toBeGreaterThanOrEqual(t.minPrice12);
+      expect(d.maxPrice12).toBeLessThanOrEqual(t.maxPrice12);
+      expect(d.minPrice12).toBeLessThan(d.maxPrice12);
+    });
+  }
+
+  it("reproduces the exact BTC edge that was refused", () => {
+    // Measured live: bound.min 84868144575000000 printed "$84,868", which
+    // reparsed to 84868000000000000 — below the bound, so refused.
+    const raw = BigInt("84868144575000000");
+    expect(usdToPrice12(formatPriceUsd(Number(raw) / 1e12).replace(/[$,]/g, ""))!).toBeLessThan(raw);
+    // Rounded outward for display, the same round trip now lands inside.
+    const rounded = roundPrice12(raw, "up");
+    expect(usdToPrice12(formatPriceUsd(Number(rounded) / 1e12).replace(/[$,]/g, ""))!)
+      .toBeGreaterThanOrEqual(rounded);
   });
 });

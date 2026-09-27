@@ -266,6 +266,51 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
         [algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU")];
     }, "math_carrier_accounts");
 
+  // ── Audit 4: fields that were on the transaction and never read ──────────
+
+  tamper("a well-formed linked note on the WRONG leg",
+    (txns) => {
+      // Passes the regex; belongs on the escrow/MBR legs only. Used to pass.
+      (txns[0] as unknown as { note: Uint8Array }).note =
+        new TextEncoder().encode("pdex-v2-linked-escrow-999999999999");
+    }, "note");
+
+  tamper("a linked note on a Math carrier",
+    (txns) => {
+      const m = txns.find((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.math)!;
+      (m as unknown as { note: Uint8Array }).note =
+        new TextEncoder().encode("pdex-v2-linked-storage-1");
+    }, "note");
+
+  tamper("an attacker address appended to the Trading call's accounts",
+    (txns) => {
+      const t = txns.find((x) => Number(x.applicationCall?.appIndex) === PEX_APPS.trading)!;
+      const accts = t.applicationCall!.accounts as unknown[];
+      accts.push(algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU"));
+    }, "foreign_account");
+
+  tamper("an extra foreign asset on the Trading call",
+    (txns) => {
+      const t = txns.find((x) => Number(x.applicationCall?.appIndex) === PEX_APPS.trading)!;
+      (t.applicationCall!.foreignAssets as unknown[]).push(BigInt(1_284_444_444));
+    }, "foreign_asset");
+
+  tamper("an unpinned foreign app on the OrderOps call",
+    (txns) => {
+      const t = txns.find((x) => Number(x.applicationCall?.appIndex) === PEX_APPS.orderOps)!;
+      (t.applicationCall!.foreignApps as unknown[]).push(BigInt(123_456_789));
+    }, "foreign_app");
+
+  tamper("a lease set on the collateral leg",
+    (txns) => {
+      (txns[0] as unknown as { lease: Uint8Array }).lease = new Uint8Array(32).fill(7);
+    }, "lease");
+
+  tamper("one leg pointed at a different network",
+    (txns) => {
+      (txns[0] as unknown as { genesisHash: Uint8Array }).genesisHash = new Uint8Array(32).fill(1);
+    }, "genesis_hash");
+
   tamper("fees inflated across the group",
     (txns) => { txns.forEach((t) => { (t as unknown as { fee: bigint }).fee = BigInt(30_000); }); },
     "fee_cap");

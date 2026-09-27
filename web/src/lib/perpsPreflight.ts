@@ -32,6 +32,17 @@ export type PreflightResult = {
   reason: string | null;
   /** Detail for the console and for us — never rendered. */
   detail: string | null;
+  /**
+   * Why opens are refused, as a value rather than as prose.
+   *
+   * The cache policy used to be decided by `reason.startsWith("Could not
+   * verify")` — i.e. by string-matching the sentence shown to the user. Editing
+   * that copy would have silently started caching transient failures for the
+   * full TTL, holding trading down over one dropped request: exactly the
+   * outcome the comment below says it prevents. Copy is for people; this is for
+   * code.
+   */
+  kind: "ok" | "drift" | "builder" | "unreachable";
   checkedAt: number;
 };
 
@@ -64,7 +75,7 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
     // holding one — and the close path deliberately does not consult this.
     if (!pins.ok) {
       return {
-        canOpen: false,
+        canOpen: false, kind: "drift",
         reason: "PEX has been upgraded since this build was pinned. New positions are paused while we re-verify. Existing positions can still be closed.",
         detail: `program drift: ${pins.drifted.join("; ")}`,
         checkedAt,
@@ -75,13 +86,13 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
       // presents as our bug because it is one. Refuse early and plainly rather
       // than letting each user discover it at signing time.
       return {
-        canOpen: false,
+        canOpen: false, kind: "builder",
         reason: "Trading is temporarily unavailable. This is a configuration problem on our side, not with your wallet.",
         detail: `builder address: ${builder.problem}`,
         checkedAt,
       };
     }
-    return { canOpen: true, reason: null, detail: null, checkedAt };
+    return { canOpen: true, kind: "ok", reason: null, detail: null, checkedAt };
   } catch (e) {
     // Fail CLOSED. A read that did not complete is not evidence the programs are
     // unchanged, and this is the check that stands between a user and a PEX we
@@ -89,7 +100,7 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
     // this trade; the card offers a retry and the result is not cached, so the
     // next attempt re-runs rather than serving the failure for five minutes.
     return {
-      canOpen: false,
+      canOpen: false, kind: "unreachable",
       reason: "Could not verify the exchange contracts. Check your connection and try again.",
       detail: e instanceof Error ? e.message : String(e),
       checkedAt,
@@ -112,7 +123,7 @@ export function preflight(algod: algosdk.Algodv2, force = false): Promise<Prefli
     // hold trading down for the full TTL over one dropped request. Drift and a
     // misconfigured builder address ARE cached — both are real states that will
     // still be true in five minutes, and re-checking them every click is waste.
-    cached = r.detail && !r.canOpen && r.reason?.startsWith("Could not verify") ? null : r;
+    cached = r.kind === "unreachable" ? null : r;
     if (inFlight === p) inFlight = null;
     return r;
   }).catch((e) => {

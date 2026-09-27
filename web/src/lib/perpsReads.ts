@@ -362,7 +362,15 @@ export async function allocateBaseOrderId(
   };
 }
 
-/** True when an algod error is specifically "this box does not exist". */
+/**
+ * True when an algod error is specifically "this box does not exist".
+ *
+ * **It cannot distinguish "no box" from "no app".** algod returns the same
+ * `404` with `box not found` for a box under an application id that does not
+ * exist, so a wrong pinned app id would read as "you have no position" rather
+ * than as an error. Nothing better is available from algod; the program pins
+ * (`verifyProgramPins`) are what actually cover a wrong or upgraded app.
+ */
 function isNotFound(e: unknown): boolean {
   const status = (e as { status?: number; response?: { status?: number } })?.status
     ?? (e as { response?: { status?: number } })?.response?.status;

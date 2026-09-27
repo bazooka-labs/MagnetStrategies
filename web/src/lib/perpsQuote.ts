@@ -341,6 +341,69 @@ export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPri
 }
 
 /**
+ * How many decimals the card shows for a price of this magnitude.
+ *
+ * **The single source of truth for price precision.** It lives here, next to
+ * the bounds, rather than in the card, because having the rule in one place and
+ * the bound in another is exactly how H2 happened: the card printed a bound
+ * rounded to whole dollars and then refused that number, because validation
+ * compared against the unrounded value. On BTC the crossing bound is never an
+ * integer, so a long's floor was unreachable essentially always — and
+ * take-profit is mandatory, so there was no way past the screen.
+ */
+export function priceDisplayDecimals(usd: number): number {
+  return usd >= 1000 ? 0 : usd >= 1 ? 2 : 6;
+}
+
+/**
+ * A price, formatted exactly as the card prints it.
+ *
+ * Lives here so a test can call the function the product calls. The round trip
+ * that matters — bound -> printed -> retyped -> validated — is only meaningful
+ * if the test formats the way the screen formats, and the last two audits both
+ * turned up defects that escaped precisely because a harness reimplemented what
+ * production did instead of calling it.
+ */
+export function formatPriceUsd(usd: number): string {
+  const d = priceDisplayDecimals(usd);
+  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+}
+
+/**
+ * The take-profit bounds **as the card prints and enforces them**.
+ *
+ * Each edge is rounded OUTWARD — a floor up, a ceiling down — to the precision
+ * it will be displayed at, so the number on screen is by construction a number
+ * the card accepts. A user who is told "choose a target above $84,868" can type
+ * $84,868.
+ *
+ * These are strictly tighter than `takeProfitBounds`, never looser, so anything
+ * the card accepts the write path also accepts. The write path deliberately
+ * keeps using the true bounds: it is guarding against a real crossing, not
+ * against a rounding artefact, and it should not inherit a display concern.
+ */
+export function displayTakeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice12: bigint } {
+  const t = takeProfitBounds(quote);
+  return {
+    minPrice12: roundPrice12(t.minPrice12, "up"),
+    maxPrice12: roundPrice12(t.maxPrice12, "down"),
+  };
+}
+
+/** Round a Price12 to its displayed precision, in the named direction. */
+export function roundPrice12(p12: bigint, direction: "up" | "down"): bigint {
+  const decimals = priceDisplayDecimals(Number(p12) / 1e12);
+  // Price12 carries 12 decimals; keeping `decimals` of them means quantising to
+  // this unit. bigint throughout — at BTC magnitudes Price12 exceeds
+  // MAX_SAFE_INTEGER, and only the magnitude test above touches Number.
+  const unit = BigInt(10) ** BigInt(12 - decimals);
+  if (unit <= BigInt(1)) return p12;
+  const down = (p12 / unit) * unit;
+  if (direction === "down") return down;
+  return down === p12 ? p12 : down + unit;
+}
+
+/**
  * Ask PEX itself whether a take-profit would execute on arrival.
  *
  * `takeProfitBounds` is the cheap pre-filter the card renders against; this is

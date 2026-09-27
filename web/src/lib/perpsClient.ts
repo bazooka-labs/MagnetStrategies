@@ -31,6 +31,8 @@ import {
   COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS,
   MAX_DISPLAY_DRIFT_BPS,
+  MAX_ENTRY_DRIFT_BPS,
+  MAX_LIQUIDATION_DRIFT_BPS,
   ORACLE_MAX_AGE_SEC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
@@ -77,10 +79,18 @@ export type OpenPositionInput = {
    * whether the user saw these numbers.
    */
   displayed: {
-    /** Index price on the card, Price12. */
-    indexPrice12: bigint;
-    /** Entry price on the card, Price12. */
-    entryPrice12: bigint;
+    /**
+     * The field names carry `asRendered` deliberately.
+     *
+     * This check is only meaningful if these are the values that were on the
+     * screen. A caller that fills them from its own fresh read turns the guard
+     * back into the tautology it was built to remove, and the type cannot
+     * enforce provenance — so the name states the requirement at every call
+     * site instead. Pass the exact values the rendered memo held.
+     */
+    asRenderedIndexPrice12: bigint;
+    asRenderedEntryPrice12: bigint;
+    asRenderedLiquidationPrice12: bigint;
   };
   slippageBps?: number;
   onStage?: (s: OpenStage) => void;
@@ -234,7 +244,12 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
 
   // ── The oracle payload, fetched as LATE as possible ─────────────────────
   //
-  // PEX signs a ~30 second window. Fetching this up front alongside the other
+  // PEX publishes on a ~30 second cadence, but ORACLE_MAX_AGE_SEC is 20 and
+  // every budget number here is computed against OUR 20, not PEX's 30 — so a
+  // payload that passes these checks has more real chain validity left than the
+  // arithmetic claims. Deliberately the conservative direction.
+  //
+  // Fetching this up front alongside the other
   // reads put it 4-6 seconds old on arrival and, measured end to end on a fast
   // wired connection with a warm preflight, **about 12 seconds old by the time
   // the wallet prompt appeared** — leaving under 18 seconds for the entire
@@ -275,11 +290,14 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     const diff = a > b ? a - b : b - a;
     return (diff * BigInt(10_000)) / b;
   };
-  const indexDrift = drift(oracle.indexPrice12, displayed.indexPrice12);
-  const entryDrift = drift(probe.entryPrice12, displayed.entryPrice12);
-  if (indexDrift > BigInt(MAX_DISPLAY_DRIFT_BPS) || entryDrift > BigInt(MAX_DISPLAY_DRIFT_BPS)) {
+  const indexDrift = drift(oracle.indexPrice12, displayed.asRenderedIndexPrice12);
+  const entryDrift = drift(probe.entryPrice12, displayed.asRenderedEntryPrice12);
+  const liqDrift = drift(probe.liquidationPrice12, displayed.asRenderedLiquidationPrice12);
+  if (indexDrift > BigInt(MAX_DISPLAY_DRIFT_BPS)
+    || entryDrift > BigInt(MAX_ENTRY_DRIFT_BPS)
+    || liqDrift > BigInt(MAX_LIQUIDATION_DRIFT_BPS)) {
     throw new Error(
-      "The price moved while this was being prepared, so the figures you saw are out of date. Nothing was sent — check the new numbers and try again.",
+      "The figures on screen are out of date — the market moved while this was being prepared. Nothing was sent; check the new numbers and try again.",
     );
   }
 

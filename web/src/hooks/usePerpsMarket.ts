@@ -39,9 +39,10 @@ export type PerpsMarketStatus = {
 };
 
 /**
- * Oracle payloads expire. PEX signs a 30-second window and we hold ourselves to
- * 20, so the refresh has to beat that or the card shows a price it can no longer
- * trade on. Half the budget leaves room for a slow round trip.
+ * Oracle payloads expire. PEX publishes on a ~30-second cadence and we hold
+ * ourselves to ORACLE_MAX_AGE_SEC (20), so the refresh has to beat OUR limit or
+ * the card shows a price it will refuse to trade on. Half the budget leaves
+ * room for a slow round trip.
  */
 const REFRESH_MS = (ORACLE_MAX_AGE_SEC / 2) * 1000;
 

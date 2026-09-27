@@ -35,7 +35,7 @@ export function usePerpsPreflight() {
         // about, so landing here means something unexpected. Still fail closed.
         if (!alive) return;
         setResult({
-          canOpen: false,
+          canOpen: false, kind: "unreachable",
           reason: "Could not verify the exchange contracts. Check your connection and try again.",
           detail: e instanceof Error ? e.message : String(e),
           checkedAt: Date.now(),

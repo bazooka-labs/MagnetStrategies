@@ -43,6 +43,12 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
   await installProtocolManifest();
   const algod = new algosdk.Algodv2("", "https://mainnet-api.4160.nodely.dev", "");
   const sp = await algod.getTransactionParams().do();
+  // Mirror perpsClient's fee pinning. Identical today (algod returns fee: 0,
+  // minFee: 1000, so 51,000 either way) — but the point of this file is that
+  // the fixture is a faithful capture of the production build call, and an
+  // "identical today" difference is still a difference.
+  sp.fee = sp.minFee;
+  sp.flatFee = true;
   const out: Record<string, unknown> = {
     capturedAt: new Date().toISOString(),
     note: "Real @pdex/sdk 0.6.3 output against MainNet. Regenerate with scripts/capture-perps-groups.ts.",

@@ -32,20 +32,22 @@ import {
   payoffAtPrice,
   priceForPayoff,
   quoteOpen,
-  takeProfitBounds,
+  displayTakeProfitBounds,
+  formatPriceUsd,
+  priceDisplayDecimals,
   type OpenQuote,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
-import { mustRefuseInput, parseMoney, sanitizeDecimalInput } from "@/lib/perpsInput";
+import { parseMoney, readNumericInput } from "@/lib/perpsInput";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
 /** Prices span $0.10 and $83,000, so precision has to follow the magnitude. */
-const fmtPrice = (p: number) =>
-  p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-  : p >= 1 ? `$${p.toFixed(2)}`
-  : `$${p.toFixed(6)}`;
+// Formatting comes from perpsQuote, which is also where the take-profit bounds
+// are rounded for display. One rule, one place: the card having its own copy is
+// how a printed bound came to be a number the card then refused.
+const fmtPrice = formatPriceUsd;
 const fmtUsd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 
@@ -71,6 +73,16 @@ export function PerpsCard() {
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
   const [tpTouched, setTpTouched] = useState(false);
+  /**
+   * Why the last keystroke was refused, per field.
+   *
+   * Refusals used to be a silent `return`, which is safe but leaves a user
+   * on a comma keypad pressing the only decimal key they have and watching
+   * nothing happen. Saying why is the difference between a guard and a
+   * broken field.
+   */
+  const [amountHint, setAmountHint] = useState<string | null>(null);
+  const [tpHint, setTpHint] = useState<string | null>(null);
 
   const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
   const preflight = usePerpsPreflight();
@@ -89,6 +101,19 @@ export function PerpsCard() {
    */
   const settledAmount = useDebounced(amount, 120);
   const collateralUsd = parseMoney(settledAmount) ?? 0;
+  /**
+   * The field and the figures agree.
+   *
+   * For the debounce window plus the render that follows it, the input shows
+   * one amount while the liquidation price, the size, the leverage, the costs
+   * and the take-profit all still describe the previous one. The dangerous
+   * direction is downward — field reads "5" while everything else, and
+   * everything the write path would receive, still says "100".
+   *
+   * This is the one place on the card where a number on screen and the number
+   * that would be signed are allowed to disagree, so trading is gated on it.
+   */
+  const amountSettled = amount === settledAmount;
   const indexUsd = data ? price12ToUsd(data.oracle.indexPrice12) : null;
 
   // Both ends of the bar are solved live; neither is a constant.
@@ -145,7 +170,7 @@ export function PerpsCard() {
    */
   const dataTrusted = !!data && !error && data.oracle.signatureVerified;
   const tradable = !!(
-    dataTrusted && preflight.canOpen === true
+    dataTrusted && preflight.canOpen === true && amountSettled
     && bar?.open && confirmed && ceilingUsd >= bar.minNotionalUsd
   );
 
@@ -170,20 +195,37 @@ export function PerpsCard() {
   // Default the target to a round +50% on the stake, but never fight the user.
   useEffect(() => {
     if (tpTouched || !quote?.ok) return;
-    const p = priceForPayoff(quote, collateralUsd * 0.5);
-    if (!p) return;
-    // Clamp into the valid band. At high leverage a +50%-of-stake target is a
-    // small percentage move, which can land inside the crossing guard — and a
-    // card that opens showing its own invalid default is worse than one that
-    // opens showing a conservative one.
-    const b = takeProfitBounds(quote);
-    const clamped = p < b.minPrice12 ? b.minPrice12 : p > b.maxPrice12 ? b.maxPrice12 : p;
-    setTpPrice(price12ToUsd(clamped).toFixed(indexUsd && indexUsd >= 1000 ? 0 : 6));
-  }, [quote, collateralUsd, tpTouched, indexUsd]);
+    // `priceForPayoff` returns null when the requested profit exceeds what the
+    // position can pay — for a short that ceiling is its notional, and because
+    // both markets are OI-capped well below typical collateral, +50% of stake
+    // is unreachable across a wide band of ordinary inputs. Measured: on a
+    // $1,000 ALGO short it was null at EVERY slider position.
+    //
+    // The old code did `if (!p) return`, which wrote nothing — leaving the one
+    // mandatory field on the card empty on mount, or silently holding a target
+    // solved for a different size after a slider move. Falling back to a fixed
+    // move from entry keeps it populated and honest.
+    const wanted = priceForPayoff(quote, collateralUsd * 0.5)
+      ?? (side === "long"
+        ? (quote.entryPrice12 * BigInt(110)) / BigInt(100)
+        : (quote.entryPrice12 * BigInt(90)) / BigInt(100));
+    // Clamp into the band the card enforces. At high leverage a +50%-of-stake
+    // target is a small percentage move, which can land inside the crossing
+    // guard — and a card that opens showing its own invalid default is worse
+    // than one that opens showing a conservative one.
+    const b = displayTakeProfitBounds(quote);
+    const clamped = wanted < b.minPrice12 ? b.minPrice12
+      : wanted > b.maxPrice12 ? b.maxPrice12 : wanted;
+    setTpPrice(price12ToUsd(clamped).toFixed(priceDisplayDecimals(price12ToUsd(clamped))));
+  }, [quote, collateralUsd, side, tpTouched]);
 
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
   const tp12 = usdToPrice12(tpPrice) ?? BigInt(0);
-  const bounds = quote?.ok ? takeProfitBounds(quote) : null;
+  // Display bounds, not the true ones: each edge is rounded outward to the
+  // precision it is printed at, so the number the card tells the user to use is
+  // a number the card accepts. The write path re-checks against the true bounds,
+  // which are looser, so nothing accepted here is refused there.
+  const bounds = quote?.ok ? displayTakeProfitBounds(quote) : null;
   const tpValid = !!(quote?.ok && bounds
     && tp12 >= bounds.minPrice12 && tp12 <= bounds.maxPrice12);
   /**
@@ -199,6 +241,21 @@ export function PerpsCard() {
   const tpTypo = !!(quote?.ok && bounds && tp12 > BigInt(0)
     && (side === "long" ? tp12 > bounds.maxPrice12 : tp12 < bounds.minPrice12));
   const tpPayoff = quote?.ok && tpValid ? payoffAtPrice(quote, tp12) : null;
+  /**
+   * Whether a liquidation price exists at all.
+   *
+   * PEX signals "this position cannot be liquidated" by returning
+   * `liquidation_price_estimate = 0` with an empty
+   * `liquidation_price_direction`, which happens whenever notional is at or
+   * below collateral. `liquidationDirection` was decoded and **never read
+   * anywhere in the tree**, so the card rendered the zero as a price: the
+   * permanent red box, the single most prominent disclosure on the screen,
+   * read "Liquidation $0.000000 — falls to this and the position closes at a
+   * total loss of $1,000.00". Both markets are OI-capped well below $1,000, so
+   * anyone with that much collateral saw it at every slider position.
+   */
+  const liquidatable = !!(quote?.ok
+    && quote.liquidationDirection !== "" && quote.liquidationPrice12 > BigInt(0));
   // attemptAt changes on every load attempt, so this re-renders and keeps
   // ageing even when a repeated identical error would otherwise freeze it.
   void attemptAt;
@@ -279,10 +336,12 @@ export function PerpsCard() {
           <span className="text-white/40">$</span>
           <input id="perps-amount" inputMode="decimal" value={amount}
             onChange={(e) => {
-              // Refuse a negative rather than silently stripping the sign: "-5"
-              // used to become a real $5 position. See perpsInput.
-              if (mustRefuseInput(e.target.value)) return;
-              setAmount(sanitizeDecimalInput(e.target.value));
+              // Strip only what cannot change the number; refuse the rest and
+              // say why. "12,50" used to become 1250. See perpsInput.
+              const v = readNumericInput(e.target.value);
+              if (!v.ok) { setAmountHint(v.hint); return; }
+              setAmountHint(null);
+              setAmount(v.value);
               // NOT `setTpTouched(false)`. Changing the amount used to discard a
               // take-profit the user had deliberately typed, replacing it with
               // the +50%-on-stake default. Unlike the market and side buttons
@@ -294,6 +353,7 @@ export function PerpsCard() {
             className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none" />
           <span className="text-xs text-white/40">USDC</span>
         </div>
+        {amountHint && <p className="mt-1 text-xs text-amber-300/90">{amountHint}</p>}
       </label>
 
       {/* Risk */}
@@ -339,13 +399,19 @@ export function PerpsCard() {
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">Liquidation</span>
           <span className="text-base font-bold tabular-nums text-red-300">
-            {quote?.ok ? fmtPrice(price12ToUsd(quote.liquidationPrice12)) : "—"}
+            {!quote?.ok ? "—" : liquidatable ? fmtPrice(price12ToUsd(quote.liquidationPrice12)) : "None"}
           </span>
         </div>
-        {quote?.ok && indexUsd !== null && (
+        {quote?.ok && liquidatable && indexUsd !== null && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(collateralUsd)}
             {" · "}{(Math.abs(price12ToUsd(quote.liquidationPrice12) - indexUsd) / indexUsd * 100).toFixed(1)}% away
+          </p>
+        )}
+        {quote?.ok && !liquidatable && (
+          <p className="mt-0.5 text-[11px] text-red-200/60">
+            At this size your position is smaller than your collateral, so it cannot be liquidated.
+            You can still lose money if the price moves against you.
           </p>
         )}
       </div>
@@ -359,12 +425,15 @@ export function PerpsCard() {
           <span className="text-white/40">$</span>
           <input id="perps-tp" inputMode="decimal" value={tpPrice}
             onChange={(e) => {
-              if (mustRefuseInput(e.target.value)) return;
-              setTpPrice(sanitizeDecimalInput(e.target.value));
+              const v = readNumericInput(e.target.value);
+              if (!v.ok) { setTpHint(v.hint); return; }
+              setTpHint(null);
+              setTpPrice(v.value);
               setTpTouched(true);
             }}
             className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none" />
         </div>
+        {tpHint && <p className="mt-1 text-xs text-amber-300/90">{tpHint}</p>}
         {quote?.ok && (
           tpValid && tpPayoff !== null ? (
             <p className="mt-1 text-xs text-green-300/90">
