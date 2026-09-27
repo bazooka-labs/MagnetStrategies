@@ -35,6 +35,7 @@ import { quoteOpen, confirmCeiling, acceptableForClose } from "../perpsQuote";
 import {
   BUILDER_ADDRESS, CHILD_KEEPER_FEE_USDC, COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS, PEX_APPS, POSITION_BUILDER_FEE_BPS,
+  TAKE_PROFIT_TIME_IN_FORCE,
 } from "../perps";
 
 const micro = (x: number) => BigInt(Math.round(x * 1e6));
@@ -100,7 +101,8 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
         sizeUsdDelta: micro(notionalUsd), collateralAmount: BigInt(0),
         keeperFeeAssetId: COLLATERAL_ASSET_ID, keeperFeeAmount: micro(CHILD_KEEPER_FEE_USDC),
         outputSwapMode: BigInt(0), minPrimaryOutputAmount: BigInt(0),
-        minSecondaryOutputAmount: BigInt(0), timeInForce: BigInt(0), expiryTime: BigInt(0),
+        minSecondaryOutputAmount: BigInt(0),
+        timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE), expiryTime: BigInt(0),
       },
       v2MathAppId: PEX_APPS.math, v2MarketsAppId: PEX_APPS.markets,
       v2TradingAppId: PEX_APPS.trading, v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,

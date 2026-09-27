@@ -541,6 +541,62 @@ quote and the assertion are all in place and tested.
 
 ---
 
+## B6 resolved — and it was my assumption, not PEX (2026-09-27)
+
+**Ultrade's answer: set the attached leg's `timeInForce` to
+`TIME_IN_FORCE.GTC`, which is `1`. We were sending `0`.**
+
+`TIME_IN_FORCE.GTC === 1` was in the pinned SDK's own constants the whole time.
+I assumed `0` meant GTC and wrote that assumption into a comment as though it
+were established — *"GTC. The SDK default is right; an override is not otherwise
+caught."* — and then wrote an assertion that **enforced** `0`. So our own safety
+check agreed with the bug and could never have surfaced it.
+
+That one value is what the entire B6 investigation was chasing. It cost the
+elimination of the builder fee, the keeper fee, the baseOrderId, three storage
+payment amounts, the trader box, position existence, and both markets and sides,
+plus an exec trace and a message to Ultrade. Every one of those eliminations was
+correct and none of them could find it, because the cause was in the one place
+nobody was looking: a constant I had already decided I knew.
+
+Ultrade are shipping an SDK update that refuses bad values outright, and a
+manifest update that finally declares `doi:`.
+
+**Verified by simulation on MainNet**, same group, same funded sender, only the
+value changed:
+
+```
+timeInForce = 0        -> assert failed pc=8175   (the original B6)
+timeInForce = GTC (1)  -> assert failed pc=6359   (a DIFFERENT, later assert)
+```
+
+### What is still failing: `pc=6359`
+
+The take-profit leg now gets past B6's assert and fails at a later one. From the
+exec trace on the OrderOps call:
+
+```
+pc=6355  extract_uint64(<record>, 37)  -> 3690309160   (PDexV2Trading)
+pc=6356  global CurrentApplicationID   -> 3690309166   (PDexV2OrderOps)
+pc=6358  ==
+pc=6359  assert -> fail
+```
+
+OrderOps asserts that an app id held at offset 37 of a record equals **its own**
+app id, and the record carries **Trading's**. The record begins `0x50445832`
+("PDX2"). `targetKind` is `PAIR (1)`, which is correct for a two-token market, so
+that is not the cause.
+
+This may well be what Ultrade's SDK update fixes — the group is built entirely by
+`buildV2MarketOpenWithAttachedOrdersTransactions` from the pinned 0.6.3. **We
+cannot check: `@pdex/sdk` is not on public npm** (it is vendored here as a
+tarball), so the update has to come from them.
+
+**Status: the trade button is still blocked**, but by a different and
+better-characterised failure than before.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.

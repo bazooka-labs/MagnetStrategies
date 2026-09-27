@@ -31,6 +31,7 @@ import {
   MAX_KEEPER_FEE_ESCROW_USDC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
+  TAKE_PROFIT_TIME_IN_FORCE,
 } from "./perps";
 
 // ── Pinned method selectors ───────────────────────────────────────────────────
@@ -1042,7 +1043,11 @@ export function assertOpenWithTakeProfit(
   }
   if (tail.minSecondary !== BigInt(0)) fail("tp_min_secondary", `minSecondary ${tail.minSecondary}`);
   // GTC. The SDK default is right; an override is not otherwise caught.
-  if (tail.timeInForce !== BigInt(0)) fail("time_in_force", `timeInForce ${tail.timeInForce}, expected GTC (0)`);
+  // GTC is 1. This check used to demand 0 and so agreed with B6 rather than
+  // catching it — an assertion is only worth what its expected value is worth.
+  if (tail.timeInForce !== BigInt(TAKE_PROFIT_TIME_IN_FORCE)) {
+    fail("time_in_force", `timeInForce ${tail.timeInForce}, expected GTC (${TAKE_PROFIT_TIME_IN_FORCE})`);
+  }
   if (tail.expiryTime !== BigInt(0)) fail("expiry_time", `expiryTime ${tail.expiryTime}, expected 0`);
   if (tail.linkMode !== ORDER_LINK_MODE_CHILD_ACTIVE) fail("link_mode", `linkMode ${tail.linkMode}, expected child-active`);
   if (tail.linkBaseOrderId !== shownTp.baseOrderId) {

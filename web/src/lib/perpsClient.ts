@@ -36,6 +36,7 @@ import {
   ORACLE_MAX_AGE_SEC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
+  TAKE_PROFIT_TIME_IN_FORCE,
 } from "./perps";
 import { allocateBaseOrderId, assertBaseOrderIdFree, readMarketState, readPosition } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
@@ -382,7 +383,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       outputSwapMode: BigInt(0),
       minPrimaryOutputAmount: BigInt(0),
       minSecondaryOutputAmount: BigInt(0),
-      timeInForce: BigInt(0),
+      timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE),
       expiryTime: BigInt(0),
     },
     v2MathAppId: PEX_APPS.math,

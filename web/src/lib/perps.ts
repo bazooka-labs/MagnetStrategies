@@ -221,6 +221,25 @@ export const DEFAULT_SLIPPAGE_BPS = 50;
  * Provisional — derive from ORACLE_MAX_AGE_SEC x measured ALGO volatility.
  * At a ~2.3% buffer this is not a rounding detail.
  */
+/**
+ * Time-in-force for an attached take-profit: **GTC, which is 1, not 0.**
+ *
+ * This single wrong value was B6 — the blocker that stopped every attached
+ * take-profit for weeks. OrderOps rejected the leg at `pc=8175` and the
+ * investigation eliminated the builder fee, the keeper fee, the baseOrderId,
+ * the storage payment, the trader box and position existence before asking
+ * Ultrade.
+ *
+ * The cause was an assumption of mine, written into a comment as though it were
+ * a fact: "GTC. The SDK default is right". `TIME_IN_FORCE.GTC === 1` was in the
+ * pinned SDK's own constants the entire time, and we sent 0. The assertion then
+ * *enforced* 0, so our own check agreed with the bug and could never surface it.
+ *
+ * Confirmed by Ultrade (2026-09-27), who are shipping an SDK update that
+ * refuses bad values outright.
+ */
+export const TAKE_PROFIT_TIME_IN_FORCE = 1;
+
 export const CROSS_MARGIN_BPS = 50;
 
 /**
