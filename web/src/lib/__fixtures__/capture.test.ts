@@ -61,8 +61,13 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
   };
 
   for (const [marketId, side] of [[1, "long"], [1, "short"], [2, "long"], [2, "short"]] as const) {
-    const [state, oracle] = await Promise.all([
-      readMarketState(algod, marketId), getOraclePayload(PEX_APPS.trading, marketId),
+    // Two separately targeted payloads: the entry presents to Trading, the
+    // attached child to OrderOps. Mirrors perpsClient — a fixture that builds
+    // differently from production is not a faithful capture.
+    const [state, oracle, childOracle] = await Promise.all([
+      readMarketState(algod, marketId),
+      getOraclePayload(PEX_APPS.trading, marketId),
+      getOraclePayload(PEX_APPS.orderOps, marketId),
     ]);
     const sender = BUILDER_ADDRESS;
     const collateralUsd = 50;
@@ -103,6 +108,7 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
         outputSwapMode: BigInt(0), minPrimaryOutputAmount: BigInt(0),
         minSecondaryOutputAmount: BigInt(0),
         timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE), expiryTime: BigInt(0),
+        oracleMessage: childOracle.message, oracleSignature: childOracle.signature,
       },
       v2MathAppId: PEX_APPS.math, v2MarketsAppId: PEX_APPS.markets,
       v2TradingAppId: PEX_APPS.trading, v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,
@@ -127,6 +133,8 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       oracleMessage: b64(oracle.message), oracleSignature: b64(oracle.signature),
       tpTriggerPrice12: String(tp12), tpAcceptablePrice12: String(tpAcceptable),
       tpKeeperFeeMicro: String(micro(CHILD_KEEPER_FEE_USDC)),
+      tpOracleMessage: b64(childOracle.message),
+      tpOracleSignature: b64(childOracle.signature),
       baseOrderId: String(baseOrderId),
       txns: txns.map((t) => b64(algosdk.encodeUnsignedTransaction(t))),
     };

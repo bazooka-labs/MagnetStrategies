@@ -71,6 +71,16 @@ const CALLABLE: ReadonlySet<number> = new Set(CALL_BUDGET.map((c) => c.app));
 
 const td = new TextDecoder();
 
+/**
+ * Byte offset of `targetAppId` in a signed oracle message.
+ *
+ * The layout is `magic "PDX2"(4) | version(1) | genesisHash(32)` then twelve
+ * big-endian uint64s, the first of which is the target app — so 4 + 1 + 32 = 37.
+ * Mirrors `HEADER_LEN` in perpsOracle, and is the exact field OrderOps reads at
+ * `pc=6355` before asserting it against its own application id.
+ */
+const ORACLE_TARGET_APP_OFFSET = 37;
+
 /** Every pinned PEX app id, for bounding foreign-app references. */
 const PINNED_APP_IDS: ReadonlySet<number> = new Set(Object.values(PEX_APPS).map(Number));
 /** Their application addresses — real groups name PEX's own accounts. */
@@ -833,6 +843,17 @@ export type DisplayedTakeProfit = {
   /** Base id this bracket is allocated from. */
   baseOrderId: bigint;
   slippageBps: number;
+  /**
+   * The child leg's own oracle payload — targeted at **OrderOps**, not Trading.
+   *
+   * This is the second half of B6. A pair-market entry needs *two separately
+   * targeted* published payloads: the entry call goes to Trading and each
+   * attached child goes to OrderOps, and the signed message binds the app it
+   * may be presented to. Reusing the Trading payload on the child made OrderOps
+   * assert its own app id against Trading's and fail at `pc=6359`.
+   */
+  oracleMessage: Uint8Array;
+  oracleSignature: Uint8Array;
 };
 
 /** Decoded trailing tuple of submit_linked_order. */
@@ -1042,7 +1063,6 @@ export function assertOpenWithTakeProfit(
     return { ok: false, findings, checked };
   }
   if (tail.minSecondary !== BigInt(0)) fail("tp_min_secondary", `minSecondary ${tail.minSecondary}`);
-  // GTC. The SDK default is right; an override is not otherwise caught.
   // GTC is 1. This check used to demand 0 and so agreed with B6 rather than
   // catching it — an assertion is only worth what its expected value is worth.
   if (tail.timeInForce !== BigInt(TAKE_PROFIT_TIME_IN_FORCE)) {
@@ -1083,13 +1103,42 @@ export function assertOpenWithTakeProfit(
   }
   did("child builder address and fee bps");
 
-  if (!tail.oracleMessage || !sameBytes(tail.oracleMessage, shownOpen.oracleMessage)) {
-    fail("tp_oracle_message", "TP oracle message is not the verified payload bytes");
+  // Against the CHILD's payload, not the open leg's. This check used to compare
+  // with `shownOpen.oracleMessage`, which meant it actively enforced the second
+  // half of B6 — the assertion agreed with the bug, exactly as the timeInForce
+  // check did. Two of our own controls were holding the defect in place.
+  if (!tail.oracleMessage || !sameBytes(tail.oracleMessage, shownTp.oracleMessage)) {
+    fail("tp_oracle_message", "TP oracle message is not the verified child payload bytes");
   }
-  if (!tail.oracleSignature || !sameBytes(tail.oracleSignature, shownOpen.oracleSignature)) {
-    fail("tp_oracle_signature", "TP oracle signature is not the verified signature bytes");
+  if (!tail.oracleSignature || !sameBytes(tail.oracleSignature, shownTp.oracleSignature)) {
+    fail("tp_oracle_signature", "TP oracle signature is not the verified child signature bytes");
   }
-  did("TP oracle message and signature are the verified bytes");
+  // And bind the target directly, from the SIGNED bytes.
+  //
+  // Byte-equality with what the client fetched only proves the group matches the
+  // client; it cannot notice the client fetching the wrong payload, which is the
+  // mistake that actually happened. The signed message carries the app it may be
+  // presented to at offset 37 — read it and require OrderOps.
+  if (tail.oracleMessage && tail.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
+    const view = new DataView(
+      tail.oracleMessage.buffer, tail.oracleMessage.byteOffset, tail.oracleMessage.byteLength);
+    const target = view.getBigUint64(ORACLE_TARGET_APP_OFFSET, false);
+    if (target !== BigInt(PEX_APPS.orderOps)) {
+      fail("tp_oracle_target",
+        `TP oracle payload is bound to app ${target}, expected OrderOps (${PEX_APPS.orderOps})`);
+    }
+  }
+  // The open leg's payload must equally be Trading's, and must NOT be the child's.
+  if (shownOpen.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
+    const view = new DataView(
+      shownOpen.oracleMessage.buffer, shownOpen.oracleMessage.byteOffset, shownOpen.oracleMessage.byteLength);
+    const target = view.getBigUint64(ORACLE_TARGET_APP_OFFSET, false);
+    if (target !== BigInt(PEX_APPS.trading)) {
+      fail("open_oracle_target",
+        `entry oracle payload is bound to app ${target}, expected Trading (${PEX_APPS.trading})`);
+    }
+  }
+  did("TP and entry oracle payloads are the verified bytes, each bound to its own app");
 
   return { ok: findings.length === 0, findings, checked };
 }

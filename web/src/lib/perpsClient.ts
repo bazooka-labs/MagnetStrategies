@@ -262,10 +262,23 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // and is the slowest step) are all price-independent. So they run first and
   // the payload is fetched here, immediately before it is used.
   const oracleFetchedAt = Date.now();
-  const oracle = await getOraclePayload(PEX_APPS.trading, marketId);
-  if (!oracle.signatureVerified) {
+  // **Two separately targeted payloads, not one.**
+  //
+  // A signed oracle message binds the app it may be presented to. The entry call
+  // goes to Trading; the attached take-profit goes to OrderOps. Reusing the
+  // Trading payload on the child made OrderOps compare its own application id
+  // against Trading's and fail at `pc=6359` — the second half of B6, and the
+  // half our own assertion was enforcing rather than catching.
+  const [oracle, childOracle] = await Promise.all([
+    getOraclePayload(PEX_APPS.trading, marketId),
+    getOraclePayload(PEX_APPS.orderOps, marketId),
+  ]);
+  if (!oracle.signatureVerified || !childOracle.signatureVerified) {
     throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
   }
+  // Both payloads must survive the same signing window, so the budget is
+  // measured against whichever is older.
+  const oracleAgeSeconds = Math.max(oracle.ageSeconds, childOracle.ageSeconds);
   // No staleness check here: `getOraclePayload` throws on an over-age payload
   // before returning, and the bundle is fetched `no-store` every call, so a
   // check at this point could never fire. It read like a control and was not
@@ -385,6 +398,9 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       minSecondaryOutputAmount: BigInt(0),
       timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE),
       expiryTime: BigInt(0),
+      // The child's OWN payload, bound to OrderOps. See the fetch above.
+      oracleMessage: childOracle.message,
+      oracleSignature: childOracle.signature,
     },
     v2MathAppId: PEX_APPS.math,
     v2MarketsAppId: PEX_APPS.markets,
@@ -417,6 +433,8 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       keeperFeeMicro: keeperFee,
       baseOrderId: alloc.baseOrderId,
       slippageBps,
+      oracleMessage: childOracle.message,
+      oracleSignature: childOracle.signature,
     },
   );
   if (!assertion.ok) {
@@ -446,7 +464,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // rejected on chain after the user has already approved it — the worst place
   // to find out. Fetching the oracle late (see above) buys the budget; this
   // spends it honestly.
-  const budgetLeft = ORACLE_MAX_AGE_SEC - oracle.ageSeconds
+  const budgetLeft = ORACLE_MAX_AGE_SEC - oracleAgeSeconds
     - (Date.now() - oracleFetchedAt) / 1000;
   if (budgetLeft < MIN_SIGNING_BUDGET_SEC) {
     throw new Error(

@@ -592,8 +592,62 @@ This may well be what Ultrade's SDK update fixes — the group is built entirely
 cannot check: `@pdex/sdk` is not on public npm** (it is vendored here as a
 tarball), so the update has to come from them.
 
-**Status: the trade button is still blocked**, but by a different and
-better-characterised failure than before.
+### `pc=6359` — the second half, and it was also ours
+
+Found in `INTEGRATION_GUIDE.md`, new in SDK **0.6.4**:
+
+> "For a pair-market entry, obtain **two separately targeted published oracle
+> payloads**. The entry uses Trading; each child uses OrderOps. Never reuse the
+> Trading payload for an OrderOps call."
+
+A signed oracle message binds the app it may be presented to, and `targetAppId`
+sits at **offset 37** — `magic(4) + version(1) + genesisHash(32)`, which is
+exactly `HEADER_LEN` in `perpsOracle` and exactly the offset OrderOps reads at
+`pc=6355`. We passed the Trading payload to the child, so OrderOps compared its
+own application id against Trading's and refused.
+
+The oracle bundle publishes an OrderOps-targeted payload for both markets, and
+always has. We simply never asked for it.
+
+**And our assertion was enforcing this too.** It compared the child leg's oracle
+bytes against `shownOpen.oracleMessage` — the entry's payload — so a correct
+group would have *failed* our check. That is the second of two controls that were
+holding B6 in place rather than catching it.
+
+Fixed: `openPosition` fetches both payloads in one `Promise.all` and the signing
+budget is measured against whichever is older. The assertion now compares the
+child against `shownTp.oracleMessage` **and** reads `targetAppId` from the signed
+bytes to require OrderOps for the child and Trading for the entry — byte-equality
+with what the client fetched only proves the group matches the client, and cannot
+notice the client fetching the wrong payload, which is the mistake that happened.
+
+### Verified end to end (2026-09-27)
+
+Through the production build path, against MainNet, with a funded sender:
+
+```
+crossing check : blocking=false
+assertion      : ok=true, 29 checks, 0 findings
+simulation     : ok=true
+```
+
+**B6 is resolved and the trade button is no longer blocked.**
+
+### What 0.6.4 actually contains
+
+Validation and documentation only — `assertV2OrderTimeInForce` plus the
+integration guide. It changes no construction, so it would not have fixed
+`pc=6359`; what fixed that was the guide. It *would* have turned B6 into an
+immediate `RangeError` instead of a chain-level assert, which is worth having.
+
+Also worth recording: `V2AttachedOrderLegInput.timeInForce` is documented as
+*"defaults to childTimeInForce, then GTC"*. **Omitting it would have been
+correct.** Passing `0` explicitly is what overrode a sensible default — the bug
+came from being specific about something I had not checked.
+
+Upgrading to 0.6.4 is deliberately a separate change: `PEX_SDK_VERSION`, the
+vendored tarball, its SHA-256 and the solver re-verification all move together
+(see `web/vendor/README.md`).
 
 ---
 

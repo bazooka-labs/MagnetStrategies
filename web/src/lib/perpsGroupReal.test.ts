@@ -33,12 +33,22 @@ type Captured = {
   acceptablePrice12: string; executionPrice12: string; indexPrice12: string;
   slippageBps: number; oracleMessage: string; oracleSignature: string;
   tpTriggerPrice12: string; tpAcceptablePrice12: string;
-  tpKeeperFeeMicro: string; baseOrderId: string; txns: string[];
+  tpKeeperFeeMicro: string; baseOrderId: string;
+  tpOracleMessage: string; tpOracleSignature: string; txns: string[];
 };
 
 const groups = fixture.groups as unknown as Record<string, Captured>;
 const names = Object.keys(groups);
 const bytes = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
+
+/** First index at which `needle` occurs in `hay`, or -1. */
+function indexOfSub(hay: Uint8Array, needle: Uint8Array): number {
+  outer: for (let i = 0; i + needle.length <= hay.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
 
 /** Fresh Transaction objects each time, so a mutation cannot leak between tests. */
 function decode(c: Captured): algosdk.Transaction[] {
@@ -62,6 +72,8 @@ const shownTp = (c: Captured): DisplayedTakeProfit => ({
   keeperFeeMicro: BigInt(c.tpKeeperFeeMicro),
   baseOrderId: BigInt(c.baseOrderId),
   slippageBps: c.slippageBps,
+  oracleMessage: bytes(c.tpOracleMessage),
+  oracleSignature: bytes(c.tpOracleSignature),
 });
 
 describe("assertOpenWithTakeProfit — the assertion production calls", () => {
@@ -265,6 +277,60 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       (m.applicationCall as unknown as { accounts: unknown[] }).accounts =
         [algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU")];
     }, "math_carrier_accounts");
+
+  // ── B6, second half: the child payload is targeted at OrderOps ───────────
+  //
+  // A signed oracle message binds the app it may be presented to, at offset 37.
+  // The entry presents to Trading, the attached child to OrderOps, and reusing
+  // the Trading payload on the child is what failed at pc=6359. The assertion
+  // used to compare the child's bytes against the OPEN leg's, so it enforced the
+  // bug instead of catching it.
+  const targetOf = (b64: string) => {
+    const m = bytes(b64);
+    return new DataView(m.buffer, m.byteOffset, m.byteLength).getBigUint64(37, false);
+  };
+
+  it("the captured entry payload is bound to Trading", () => {
+    expect(targetOf(c.oracleMessage)).toBe(BigInt(PEX_APPS.trading));
+  });
+
+  it("the captured child payload is bound to OrderOps", () => {
+    expect(targetOf(c.tpOracleMessage)).toBe(BigInt(PEX_APPS.orderOps));
+    // And they are genuinely different payloads, not the same bytes twice.
+    expect(c.tpOracleMessage).not.toBe(c.oracleMessage);
+  });
+
+  it("catches the child leg carrying the entry's payload", () => {
+    // Exactly the B6 mistake. If the assertion ever goes back to comparing
+    // against `shownOpen`, this passes and the test fails.
+    const tp = shownTp(c);
+    tp.oracleMessage = bytes(c.oracleMessage);
+    tp.oracleSignature = bytes(c.oracleSignature);
+    const r = assertOpenWithTakeProfit(decode(c), shownOpen(c), tp);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("tp_oracle_message");
+  });
+
+  it("catches a displayed child payload bound to the wrong app", () => {
+    // The group and the screen agree, and both are wrong — a consistent lie, so
+    // only the target check read from the signed bytes can catch it.
+    const txns = decode(c);
+    const tp = shownTp(c);
+    const wrong = bytes(c.oracleMessage); // Trading-targeted
+    tp.oracleMessage = wrong;
+    tp.oracleSignature = bytes(c.oracleSignature);
+    const orderOps = txns.find((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.orderOps)!;
+    const args = orderOps.applicationCall!.appArgs as Uint8Array[];
+    // Rewrite the packed tail's oracle message to the Trading payload so the
+    // equality check passes and the target check is the thing under test.
+    const tail = args[15];
+    const idx = indexOfSub(tail, bytes(c.tpOracleMessage));
+    expect(idx).toBeGreaterThan(-1);
+    tail.set(wrong, idx);
+    const r = assertOpenWithTakeProfit(txns, shownOpen(c), tp);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("tp_oracle_target");
+  });
 
   // ── Audit 4: fields that were on the transaction and never read ──────────
 
