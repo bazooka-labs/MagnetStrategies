@@ -651,6 +651,47 @@ vendored tarball, its SHA-256 and the solver re-verification all move together
 
 ---
 
+## `doi:` — the finding was half right (2026-09-27)
+
+Ultrade said the `doi:` format went out in the latest SDK release. **I could not
+verify that, and the evidence says it did not** — but chasing it found something
+better, and the standing finding was partly my error.
+
+### What I checked
+
+| Check | Result |
+|---|---|
+| Newer release than 0.6.4? | No — remote HEAD is still `f54ebe3` |
+| 0.6.4's source diff | `src/transactions.ts` only, 15 added lines |
+| Does the SDK ship the protocol manifest? | **No.** `manifest.ts` only *loads* one, from `{baseUrl}/v2/protocol` on a builder backend |
+| Is the manifest on the public CDN? | No — seven plausible paths under `pub-…r2.dev`, all 404. That bucket serves oracle payloads and latest prices only |
+
+So the manifest is served by an API we do not have a URL for, and no manifest
+ships with the SDK at all. Our vendored `pexProtocolManifest.json` still declares
+eighteen box formats with no `dynamic_oi` among them.
+
+### What it found instead
+
+**`doi:` has been authoritatively declared all along — in SDK source, not in the
+manifest.** `V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS` in `src/v2Risk.ts` lists exactly
+our four fields in exactly our order, with
+`V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE = 32` (4 x uint64). It is unchanged since at
+least 0.6.3, so it was available while three audits recorded the layout as
+"pinned against nothing".
+
+That framing was wrong. The manifest does not declare it; the SDK does. We were
+inferring a layout that was published, and nobody looked in the second place.
+
+`DYNAMIC_OI_FIELDS` is now the SDK's own constant rather than a copy of it, with
+a module-load assertion that the field count still matches the declared byte
+size. Verified live afterwards: both markets decode `version=1`, `flags=1`
+(enabled), `k=1.0` on ALGO and `0.641026` on BTC — the values already documented.
+
+**Still worth asking Ultrade:** where the updated protocol manifest is served
+from, since we pin its SHA-256 and cannot re-fetch it from anywhere we know.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.

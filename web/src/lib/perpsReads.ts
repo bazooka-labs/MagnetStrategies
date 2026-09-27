@@ -8,6 +8,10 @@
 // a pinned layout, then asserting the manifest hash separately, breaks that loop.
 
 import algosdk from "algosdk";
+import {
+  V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS,
+  V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE,
+} from "@pdex/sdk";
 import { PEX_APPS, PEX_PROGRAM_SHA256 } from "./perps";
 
 // ── Box layouts ───────────────────────────────────────────────────────────────
@@ -80,10 +84,30 @@ const OPEN_INTEREST_FIELDS = [
   "collateral_sum_long_token_for_shorts", "collateral_sum_short_token_for_shorts",
 ] as const;
 
-const DYNAMIC_OI_FIELDS = [
-  "dynamic_oi_margin_version", "dynamic_oi_margin_flags",
-  "dynamic_oi_margin_long_factor_scaled", "dynamic_oi_margin_short_factor_scaled",
-] as const;
+/**
+ * `doi:` on TradingRiskOps — **taken from the SDK, not from observation.**
+ *
+ * The protocol manifest declares eighteen box formats and this is not among
+ * them, which is why the audits recorded it as "pinned against nothing". That
+ * was half right: the manifest does not declare it, but the SDK does, in
+ * `V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS` (`src/v2Risk.ts`) — and has since at
+ * least 0.6.3. We were inferring a layout that was published all along.
+ *
+ * So this is now the SDK's own list, asserted below rather than copied, and
+ * `V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE` (32 = 4 x uint64) gives the length a
+ * second, independent check.
+ */
+const DYNAMIC_OI_FIELDS = V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS;
+
+// Fail at module load if the SDK's declaration stops matching what we decode.
+// A silent layout change here misreads the dynamic-OI margin factors, which set
+// the leverage ceiling — so it is worth a hard stop rather than a wrong bar.
+if (DYNAMIC_OI_FIELDS.length * 8 !== V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE) {
+  throw new Error(
+    `perps: doi: layout is ${DYNAMIC_OI_FIELDS.length} words but the SDK declares ${
+      V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE} bytes`,
+  );
+}
 
 // `ma2:` on Markets. Carries opposing_trader_share_bps, which the SDK's cost
 // quote requires — without it quoteV2OpenPosition throws rather than returning a
