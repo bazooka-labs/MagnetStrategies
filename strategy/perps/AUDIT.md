@@ -492,6 +492,55 @@ wired and there is a caller to inspect.
 
 ---
 
+## The close path, and three gaps it exposed (2026-09-27)
+
+Done while B6 was with Ultrade, because it is the one substantial piece of work
+that does **not** depend on their answer — B6 could change the open+take-profit
+group's shape, so further work on that path carries rework risk, while the close
+path is a different flow entirely.
+
+`assertCloseGroup` had **no real-bytes coverage**: it was exercised only by
+hand-built object literals. That is the same weakness the open path had before
+`__fixtures__` existed, and the same shape as the B1 escape. Real
+`buildV2DecreaseOrCloseTransactions` output is now captured for both markets and
+both sides — **3 transactions, all `appl`** (Trading with 16 args plus two Math
+carriers), 40,000 µALGO — and `perpsCloseReal.test.ts` tampers it 14 ways.
+
+Writing those tests found **three real gaps, all from one cause**: the Phase 12
+per-transaction hardening went into `assertOpenGroup`'s loop, and
+`assertCloseGroup` had its own duplicated copy that never received it. On a
+close, a smuggled note, a lease, and an attacker address appended to the Trading
+call's `accounts` all passed clean.
+
+The fix is not three checks — it is `checkEveryTransaction`, one function both
+paths call. Duplicating that loop is what made hardening one path silently miss
+the other, and it would have happened again.
+
+### `mf2:` and the close preview
+
+`readMarketFunding` reads `market_funding_borrowing` — 15 uniform uint64s, 120
+bytes, prefix `mf2:`, owned by Markets — **from the manifest's declared format**,
+not by observation. (Worth noting by contrast: the manifest declares eighteen box
+formats and `doi:` is not among them, which is the standing finding.)
+
+Confirmed on a live $5.50 ALGO position why this was the blocker: **without
+`mf2:` `quoteV2DecreasePosition` throws `funding factor regression`; with it the
+quote returns `ok: true`.** It is deliberately not part of `readMarketState` — an
+open never needs it, and a sixth box read in the ten-second refresh would cost
+every user a round trip for a number only the close preview consumes.
+
+`quoteClose` then needed the **same execution anchoring as `quoteOpen`**, for the
+same reason B2 taught: measured on a live position, an index-anchored close quote
+returns `ok: false` where the execution-anchored one returns `ok: true`. Verified
+across five live positions, full and half closes, with payouts and PnL in both
+directions.
+
+**What is still missing before a user can close:** the management UI itself
+(listing positions, choosing a size), and the close write path. The reads, the
+quote and the assertion are all in place and tested.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.

@@ -23,7 +23,10 @@
 import { it } from "vitest";
 import fs from "node:fs";
 import algosdk from "algosdk";
-import { buildV2MarketOpenWithAttachedOrdersTransactions } from "@pdex/sdk/transactions";
+import {
+  buildV2DecreaseOrCloseTransactions,
+  buildV2MarketOpenWithAttachedOrdersTransactions,
+} from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
 import { readMarketState } from "../perpsReads";
 import { getOraclePayload } from "../perpsOracle";
@@ -51,8 +54,9 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
   sp.flatFee = true;
   const out: Record<string, unknown> = {
     capturedAt: new Date().toISOString(),
-    note: "Real @pdex/sdk 0.6.3 output against MainNet. Regenerate with scripts/capture-perps-groups.ts.",
+    note: "Real @pdex/sdk 0.6.3 output against MainNet. Regenerate with CAPTURE=1.",
     groups: {},
+    closeGroups: {},
   };
 
   for (const [marketId, side] of [[1, "long"], [1, "short"], [2, "long"], [2, "short"]] as const) {
@@ -123,6 +127,72 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       tpKeeperFeeMicro: String(micro(CHILD_KEEPER_FEE_USDC)),
       baseOrderId: String(baseOrderId),
       txns: txns.map((t) => b64(algosdk.encodeUnsignedTransaction(t))),
+    };
+
+    // ── The close group ─────────────────────────────────────────────────────
+    //
+    // `assertCloseGroup` had no real-bytes coverage at all — only hand-built
+    // object literals, which is the same weakness the open path had before the
+    // fixture existed and the same shape as the B1 escape.
+    //
+    // Two things worth knowing about this build:
+    //
+    //   1. `yieldRecallMode` is supplied directly rather than obtained from
+    //      `prepareV2DecreaseOrCloseInput`. That helper needs a PdexApiClient
+    //      (Ultrade's `v2MarketYieldActionRecallPlan`), which is a network
+    //      dependency we do not have wired. The SDK only requires the mode to
+    //      be present and 0 or 1, and `DisplayedClose` already treats these
+    //      three fields as "asserted, not trusted" for exactly this reason.
+    //   2. The execution price is stood in by the index. A real close quote
+    //      needs a live position, and we deliberately hold none. The fixture's
+    //      job is to exercise FIELD BINDING on real SDK bytes, which does not
+    //      depend on the anchor being a live quote — but it means these are not
+    //      numbers to reason about economically.
+    const closePositionId = BigInt(7);
+    const closeSizeMicro = micro(notionalUsd);
+    const closeExec = oracle.indexPrice12;
+    const closeAcceptable = acceptableForClose(closeExec, side, DEFAULT_SLIPPAGE_BPS);
+    const closeGroup = buildV2DecreaseOrCloseTransactions({
+      sender, marketId, collateralAssetId: COLLATERAL_ASSET_ID,
+      side: side === "long" ? BigInt(1) : BigInt(2),
+      sizeUsdDelta: closeSizeMicro,
+      acceptablePrice: closeAcceptable,
+      minPrimaryOutput: BigInt(0),
+      expectedPositionId: closePositionId,
+      yieldRecallMode: BigInt(0),
+      maxLongReceiptAmount: BigInt(0),
+      maxShortReceiptAmount: BigInt(0),
+      marketYieldRecallCount: BigInt(0),
+      oracleMessage: oracle.message, oracleSignature: oracle.signature,
+      indexAssetId: Number(state.core.index_asset_id),
+      longAssetId: Number(state.core.long_asset_id),
+      shortAssetId: Number(state.core.short_asset_id),
+      builderFee: { builderAddress: BUILDER_ADDRESS, builderFeeBps: BigInt(POSITION_BUILDER_FEE_BPS) },
+      v2MathAppId: PEX_APPS.math, v2MarketsAppId: PEX_APPS.markets,
+      v2TradingAppId: PEX_APPS.trading, v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,
+      v2MarketXalgoYieldVaultAppId: PEX_APPS.marketXAlgoYieldVault,
+      v2AdminControlAppId: PEX_APPS.adminControl,
+    }, sp) as unknown[];
+    const closeTxns = closeGroup.map(
+      (t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction);
+    console.log(`m${marketId} ${side} CLOSE: ${closeTxns.length} txns [${
+      closeTxns.map((t) => t.type).join(",")}] fee=${closeTxns.reduce((a, t) => a + Number(t.fee), 0)}`);
+
+    (out.closeGroups as Record<string, unknown>)[`m${marketId}_${side}`] = {
+      marketId, side, sender,
+      sizeUsdDeltaMicro: String(closeSizeMicro),
+      positionSizeUsdMicro: String(closeSizeMicro),
+      fullClose: true,
+      acceptablePrice12: String(closeAcceptable),
+      executionPrice12: String(closeExec),
+      indexPrice12: String(oracle.indexPrice12),
+      slippageBps: DEFAULT_SLIPPAGE_BPS,
+      expectedPositionId: String(closePositionId),
+      oracleMessage: b64(oracle.message), oracleSignature: b64(oracle.signature),
+      yieldRecallMode: "0",
+      maxLongReceiptAmount: "0",
+      maxShortReceiptAmount: "0",
+      txns: closeTxns.map((t) => b64(algosdk.encodeUnsignedTransaction(t))),
     };
   }
   fs.writeFileSync(new URL("./perpsGroups.json", import.meta.url), JSON.stringify(out, null, 2));

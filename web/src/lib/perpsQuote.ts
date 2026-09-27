@@ -14,7 +14,7 @@
 // price, then anchor the user's tolerance to that, and surface impact as its own
 // cost line rather than silently eating the tolerance with it.
 
-import { quoteV2OpenPosition } from "@pdex/sdk";
+import { quoteV2DecreasePosition, quoteV2OpenPosition } from "@pdex/sdk";
 import { quoteV2DecreaseOrder } from "@pdex/sdk";
 import { V2_ORDER_KIND } from "@pdex/sdk";
 import {
@@ -24,7 +24,7 @@ import {
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
 } from "./perps";
-import { USD_SCALE, type MarketState } from "./perpsReads";
+import { USD_SCALE, type MarketFunding, type MarketState } from "./perpsReads";
 import type { OraclePayload } from "./perpsOracle";
 import { solveBar, steppedCeilingUsd, type Side } from "./perpsSolver";
 
@@ -61,6 +61,25 @@ export type OpenQuote = {
   netCollateralUsd: number;
   effectiveInitialMarginBps: number;
   /** The SDK's own record, for anything the card does not model. */
+  raw: Record<string, unknown>;
+};
+
+export type CloseQuote = {
+  ok: boolean;
+  reasons: string[];
+  /** PEX's own words when it refuses, which are not always in `reasons`. */
+  blockedReason: string;
+  side: Side;
+  executionPrice12: bigint;
+  acceptablePrice12: bigint;
+  payoutUsd: number;
+  pnlUsd: number;
+  closeFeeUsd: number;
+  builderFeeUsd: number;
+  fundingFeeUsd: number;
+  borrowingFeeUsd: number;
+  impactUsd: number;
+  liquidatable: boolean;
   raw: Record<string, unknown>;
 };
 
@@ -338,6 +357,93 @@ export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPri
         minPrice12: quote.entryPrice12 / mult + BigInt(1),
         maxPrice12: (quote.indexMinPrice12 * (tenK - margin)) / tenK,
       };
+}
+
+/**
+ * Quote closing a position, in full or in part.
+ *
+ * ── Two things this needs that an open does not ─────────────────────────────
+ *
+ * **`mf2:` (funding and borrowing).** Without it `quoteV2DecreasePosition`
+ * *throws* `funding factor regression` rather than returning a failure.
+ * Confirmed against a live $5.50 ALGO position: without `mf2:` it throws, with
+ * it the quote returns `ok: true`. This is why the close preview could not be
+ * built until `readMarketFunding` existed. Opens never need it, because we
+ * permit one position per market and side and so every open starts from nothing.
+ *
+ * **Execution anchoring.** Same discipline as `quoteOpen`, and for the same
+ * reason B2 taught us: an acceptable price anchored to the index fails once
+ * impact is charged. Measured — an index-anchored close quote on a live position
+ * returned `ok: false` where the execution-anchored one returns `ok: true`. So
+ * the first pass is permissive purely to learn where this size would execute,
+ * and the second is the real quote.
+ */
+export function quoteClose(input: {
+  state: MarketState;
+  /** From `readMarketFunding`. Not optional — the SDK throws without it. */
+  funding: MarketFunding;
+  position: Record<string, bigint>;
+  oracle: OraclePayload;
+  side: Side;
+  owner: string;
+  /** How much of the position to close, 1e6-scaled USD. */
+  sizeUsdMicro: bigint;
+  collateralAssetId: number;
+  builderAddress: string;
+  slippageBps?: number;
+  builderFeeBps?: number;
+}): CloseQuote {
+  const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  const base = {
+    market: { ...marketRecord(input.state), ...input.funding },
+    pool: { ...input.state.pool },
+    position: input.position,
+    owner: input.owner,
+    marketId: BigInt(input.state.marketId),
+    collateralAssetId: BigInt(input.collateralAssetId),
+    side: SIDE_CODE[input.side],
+    sizeUsdDelta: input.sizeUsdMicro,
+    prices: priceInput(input.oracle),
+    builderFee: {
+      builderAddress: input.builderAddress,
+      builderFeeBps: BigInt(input.builderFeeBps ?? POSITION_BUILDER_FEE_BPS),
+    },
+  };
+
+  // Pass 1 — permissive, read execution_price back out. Closing a long SELLS,
+  // so the permissive bound is the lowest possible price; a short BUYS, so it is
+  // the highest. This is the mirror of quoteOpen's probe.
+  const permissive = input.side === "long" ? BigInt(1) : input.oracle.indexPrice12 * BigInt(1000);
+  const probe = quoteV2DecreasePosition(
+    { ...base, acceptablePrice: permissive } as never,
+  ) as unknown as Record<string, unknown>;
+  const executionPrice12 = big(probe.execution_price) || input.oracle.indexPrice12;
+
+  // Pass 2 — the real quote, anchored to where it actually executes.
+  const acceptablePrice12 = acceptableForClose(executionPrice12, input.side, slippageBps);
+  const raw = quoteV2DecreasePosition(
+    { ...base, acceptablePrice: acceptablePrice12 } as never,
+  ) as unknown as Record<string, unknown>;
+
+  return {
+    ok: Boolean(raw.ok),
+    reasons: ((raw.failure_reasons as string[]) ?? []).slice(),
+    blockedReason: String(raw.blocked_reason ?? ""),
+    side: input.side,
+    executionPrice12: big(raw.execution_price),
+    acceptablePrice12,
+    /** What lands in the wallet, after PEX's fee and ours. 1e6-scaled USD. */
+    payoutUsd: toUsd(raw.collateral_delta),
+    /** Signed: PEX reports profit and loss separately. */
+    pnlUsd: toUsd(raw.effective_profit_usd) - toUsd(raw.loss_usd),
+    closeFeeUsd: toUsd(raw.close_fee_usd ?? raw.platform_fee_amount),
+    builderFeeUsd: toUsd(raw.builder_fee_paid),
+    fundingFeeUsd: toUsd(raw.funding_fee_collateral_amount),
+    borrowingFeeUsd: toUsd(raw.borrowing_fee_collateral_amount),
+    impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
+    liquidatable: Boolean(raw.liquidatable),
+    raw,
+  };
 }
 
 /**

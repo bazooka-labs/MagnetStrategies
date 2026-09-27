@@ -30,6 +30,38 @@ const MARKET_RISK_FIELDS = [
   "optimal_usage_factor_long_bps", "optimal_usage_factor_short_bps",
 ] as const;
 
+/**
+ * `mf2:` on Markets — `MarketFundingBorrowingV2`, 120 bytes, 15 uniform uint64s.
+ *
+ * Taken from the vendored manifest's `market_funding_borrowing` format
+ * (`prefix_hex: 6d66323a`, `key_parts: [prefix, market_id:uint64]`,
+ * `value_size: 120`), not inferred by observation — unlike `doi:`, which the
+ * manifest does not declare at all.
+ *
+ * **This is required for any position-aware quote.** Without it the SDK throws
+ * `funding factor regression` rather than returning a failure, which is why the
+ * close preview could not be built until now. Opens do not need it, because we
+ * support one position per market and side and so every open we permit starts
+ * from nothing.
+ */
+const MARKET_FUNDING_FIELDS = [
+  "long_funding_fee_per_size_with_long_collateral_milli_bps",
+  "long_funding_fee_per_size_with_short_collateral_milli_bps",
+  "short_funding_fee_per_size_with_long_collateral_milli_bps",
+  "short_funding_fee_per_size_with_short_collateral_milli_bps",
+  "long_token_claimable_funding_per_size_for_longs",
+  "short_token_claimable_funding_per_size_for_longs",
+  "long_token_claimable_funding_per_size_for_shorts",
+  "short_token_claimable_funding_per_size_for_shorts",
+  "long_borrowing_factor_milli_bps",
+  "short_borrowing_factor_milli_bps",
+  "last_funding_time",
+  "last_borrowing_time",
+  "last_oracle_timestamp",
+  "long_total_borrowing_snapshot_usd",
+  "short_total_borrowing_snapshot_usd",
+] as const;
+
 const MARKET_POOL_FIELDS = [
   "long_pool_amount", "short_pool_amount", "long_fee_amount", "short_fee_amount",
   "long_protocol_fee_amount", "short_protocol_fee_amount",
@@ -76,6 +108,7 @@ export type AdaptiveFunding = Record<(typeof ADAPTIVE_FUNDING_FIELDS)[number], b
 export type MarketRisk = Record<(typeof MARKET_RISK_FIELDS)[number], bigint>;
 export type MarketPool = Record<(typeof MARKET_POOL_FIELDS)[number], bigint>;
 export type OpenInterest = Record<(typeof OPEN_INTEREST_FIELDS)[number], bigint>;
+export type MarketFunding = Record<(typeof MARKET_FUNDING_FIELDS)[number], bigint>;
 export type DynamicOiConfig = Record<(typeof DYNAMIC_OI_FIELDS)[number], bigint>;
 
 // ── Scales ────────────────────────────────────────────────────────────────────
@@ -132,6 +165,16 @@ export const readMarketPool = (algod: algosdk.Algodv2, marketId: number) =>
 
 export const readOpenInterest = (algod: algosdk.Algodv2, marketId: number) =>
   readBox(algod, PEX_APPS.markets, "mo2:", marketId, OPEN_INTEREST_FIELDS) as Promise<OpenInterest>;
+
+/**
+ * Funding and borrowing state. Needed only by position-aware quotes.
+ *
+ * Deliberately NOT part of `readMarketState`: an open never needs it, and adding
+ * a sixth box read to the ten-second refresh would cost every user a round trip
+ * for a number only the close preview consumes.
+ */
+export const readMarketFunding = (algod: algosdk.Algodv2, marketId: number) =>
+  readBox(algod, PEX_APPS.markets, "mf2:", marketId, MARKET_FUNDING_FIELDS) as Promise<MarketFunding>;
 
 /**
  * Dynamic OI margin config — on TradingRiskOps, NOT Markets.

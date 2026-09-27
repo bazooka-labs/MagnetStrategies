@@ -325,6 +325,104 @@ function abiBytes(arg: Uint8Array): Uint8Array | null {
 }
 
 /**
+ * Every check that applies to every transaction, on every path.
+ *
+ * **Extracted because duplicating it cost us.** The open and close assertions
+ * each had their own copy of this loop, and the Phase 12 hardening — notes,
+ * lease, resource references, onComplete, genesis hash — went into the open
+ * one only. The close path silently kept the old, weaker set, and the real-bytes
+ * close tests found it: a smuggled note, a lease and an attacker address
+ * appended to the Trading call's accounts all passed on a close.
+ *
+ * One function, two callers. Hardening it cannot now miss a path.
+ *
+ * Returns the group's total fee, which the caller bounds against its own cap.
+ */
+function checkEveryTransaction(
+  txns: AnyTxn[],
+  ctx: { sender: string; collateralAssetId: number },
+  fail: (code: string, detail: string) => void,
+  did: (name: string) => void,
+): bigint {
+  let totalFee = BigInt(0);
+  txns.forEach((t, i) => {
+    totalFee += big(t.fee);
+    if (String(t.sender) !== ctx.sender) {
+      fail("foreign_sender", `txn ${i} sender is not the user`);
+    }
+    // Any of these three silently reassign the account or sweep a balance.
+    if (t.rekeyTo) fail("rekey", `txn ${i} sets rekeyTo`);
+    if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
+    if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
+    if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
+    // `onComplete` 0 is NoOp. Anything else — OptIn, CloseOut, UpdateApplication,
+    // DeleteApplication — is a different operation wearing this group's shape.
+    const onComplete = Number(t.applicationCall?.onComplete ?? 0);
+    if (onComplete !== 0) {
+      fail("on_complete", `txn ${i} app call has onComplete ${onComplete}, expected NoOp`);
+    }
+    // A note is free-form bytes the user signs without being shown them. The
+    // SDK uses two functionally, to mark the linked escrow and storage legs, so
+    // banning notes outright would block every open — the real captured groups
+    // caught that before it shipped. Bound to those markers instead, with the
+    // exact values pinned in the bracket path where the order id is known, and
+    // never on an app call or on the collateral leg.
+    if (t.note && t.note.length > 0) {
+      const text = td.decode(t.note);
+      if (t.type === "appl" || !LINKED_NOTE_RE.test(text)) {
+        fail("note", `txn ${i} (${t.type}) carries a ${t.note.length}-byte note: "${text.slice(0, 40)}"`);
+      }
+    }
+    // A lease squats the sender+lease pair for the validity window. Nothing
+    // here sets one, so anything that does was not put there by us.
+    if (t.lease && t.lease.length > 0) fail("lease", `txn ${i} sets a lease`);
+    // Resource references. Inert on their own — PEX decides what it touches —
+    // but these are unbound fields on the calls that move money, and the Math
+    // carriers beside them already bind exactly this. Real groups reference
+    // only the sender, the builder, PEX's own app addresses, USDC, and pinned
+    // PEX apps: see __fixtures__/perpsGroups.json.
+    const call = t.applicationCall;
+    if (call) {
+      for (const a of (call.accounts ?? [])) {
+        const addr = String(a);
+        if (addr !== ctx.sender && addr !== BUILDER_ADDRESS && !PEX_APP_ADDRESSES.has(addr)) {
+          fail("foreign_account", `txn ${i} names account ${addr.slice(0, 10)}…`);
+        }
+      }
+      for (const x of (call.foreignAssets ?? [])) {
+        if (Number(x) !== ctx.collateralAssetId) {
+          fail("foreign_asset", `txn ${i} references asset ${x}`);
+        }
+      }
+      for (const x of (call.foreignApps ?? [])) {
+        if (!PINNED_APP_IDS.has(Number(x))) fail("foreign_app", `txn ${i} references app ${x}`);
+      }
+    }
+    // One network. algod would refuse a foreign genesis hash, but the assertion
+    // is what runs before the wallet prompt, and it pinned the validity window
+    // without pinning what chain the window was on.
+    if (t.genesisHash && hex(t.genesisHash) !== ALGORAND_MAINNET_GENESIS_HASH_HEX) {
+      fail("genesis_hash", `txn ${i} is not for Algorand MainNet`);
+    }
+  });
+
+  // One validity window across the group. A leg with a longer window than its
+  // neighbours can be replayed on its own after the rest has expired.
+  const firsts = new Set(txns.map((t) => String(t.firstValid)));
+  const lasts = new Set(txns.map((t) => String(t.lastValid)));
+  if (firsts.size !== 1 || lasts.size !== 1) {
+    fail("validity_window", `group spans ${firsts.size} first-valid and ${lasts.size} last-valid rounds`);
+  }
+
+  did("sender is the user on every transaction");
+  did("no rekeyTo / assetCloseTo / closeRemainderTo / clawback");
+  did("no onComplete change, no unexpected note, no lease");
+  did("accounts, foreign apps and foreign assets all bounded");
+  did("every leg is for Algorand MainNet, in one validity window");
+  return totalFee;
+}
+
+/**
  * Assert a complete open group against what was displayed.
  *
  * Returns every finding rather than throwing on the first, so a failure report
@@ -355,84 +453,9 @@ export function assertOpenGroup(
   }
   did("distinct transaction IDs");
 
-  let totalFee = BigInt(0);
-  txns.forEach((t, i) => {
-    totalFee += big(t.fee);
-    if (String(t.sender) !== shown.sender) {
-      fail("foreign_sender", `txn ${i} sender is not the user`);
-    }
-    // Any of these three silently reassign the account or sweep a balance.
-    if (t.rekeyTo) fail("rekey", `txn ${i} sets rekeyTo`);
-    if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
-    if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
-    if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
-    // `onComplete` 0 is NoOp. Anything else — OptIn, CloseOut, UpdateApplication,
-    // DeleteApplication — is a different operation wearing this group's shape.
-    const onComplete = Number(t.applicationCall?.onComplete ?? 0);
-    if (onComplete !== 0) {
-      fail("on_complete", `txn ${i} app call has onComplete ${onComplete}, expected NoOp`);
-    }
-    // A note is free-form bytes the user signs without being shown them — but
-    // the SDK uses two functionally, to mark the linked escrow and storage
-    // legs. Banning notes outright would have blocked every trade; the real
-    // captured groups caught that before it shipped. So: bound to the known
-    // markers, with the exact values pinned in the bracket path where the
-    // order id is known. Anything else is data being smuggled past the user.
-    // A well-formed marker used to pass on ANY leg — including the collateral
-    // transfer and a Math carrier. Notes belong on the escrow and MBR legs
-    // only, and app calls never carry one.
-    if (t.note && t.note.length > 0) {
-      const text = td.decode(t.note);
-      if (t.type === "appl" || !LINKED_NOTE_RE.test(text)) {
-        fail("note", `txn ${i} (${t.type}) carries a ${t.note.length}-byte note: "${text.slice(0, 40)}"`);
-      }
-    }
-    // A lease squats the sender+lease pair for the validity window. Nothing
-    // here sets one, so anything that does was not put there by us.
-    if (t.lease && t.lease.length > 0) fail("lease", `txn ${i} sets a lease`);
-    // Resource references. Inert on their own — PEX decides what it touches —
-    // but these are unbound fields on the calls that move money, and the Math
-    // carriers beside them already bind exactly this. Real groups reference
-    // only the sender, the builder, PEX's own app addresses, USDC, and pinned
-    // PEX apps: see __fixtures__/perpsGroups.json.
-    const call = t.applicationCall;
-    if (call) {
-      for (const a of (call.accounts ?? [])) {
-        const addr = String(a);
-        if (addr !== shown.sender && addr !== BUILDER_ADDRESS && !PEX_APP_ADDRESSES.has(addr)) {
-          fail("foreign_account", `txn ${i} names account ${addr.slice(0, 10)}…`);
-        }
-      }
-      for (const x of (call.foreignAssets ?? [])) {
-        if (Number(x) !== shown.collateralAssetId) {
-          fail("foreign_asset", `txn ${i} references asset ${x}`);
-        }
-      }
-      for (const x of (call.foreignApps ?? [])) {
-        if (!PINNED_APP_IDS.has(Number(x))) fail("foreign_app", `txn ${i} references app ${x}`);
-      }
-    }
-  });
-
-  // One validity window across the group. A leg with a longer window than its
-  // neighbours can be replayed on its own after the rest has expired.
-  // One network. algod would refuse a foreign genesis hash, but the assertion
-  // is what runs before the wallet prompt, and it pinned the validity window
-  // without pinning what chain the window was on.
-  for (const [i, t] of txns.entries()) {
-    if (t.genesisHash && hex(t.genesisHash) !== ALGORAND_MAINNET_GENESIS_HASH_HEX) {
-      fail("genesis_hash", `txn ${i} is not for Algorand MainNet`);
-    }
-  }
-  did("every leg is for Algorand MainNet");
-
-  const firsts = new Set(txns.map((t) => String(t.firstValid)));
-  const lasts = new Set(txns.map((t) => String(t.lastValid)));
-  if (firsts.size !== 1 || lasts.size !== 1) {
-    fail("validity_window", `group spans ${firsts.size} first-valid and ${lasts.size} last-valid rounds`);
-  }
-  did("one validity window across every leg");
-  did("no app call changes onComplete, and no leg carries a note");
+  const totalFee = checkEveryTransaction(
+    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+  );
   checkTxnShape(txns, shape, fail, did);
   checkCallBudget(txns, fail);
   checkMathCarriers(txns, fail, did);
@@ -675,17 +698,12 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
   }
   did("distinct transaction IDs");
 
-  let totalFee = BigInt(0);
-  txns.forEach((t, i) => {
-    totalFee += big(t.fee);
-    if (String(t.sender) !== shown.sender) fail("foreign_sender", `txn ${i} sender is not the user`);
-    if (t.rekeyTo) fail("rekey", `txn ${i} sets rekeyTo`);
-    if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
-    if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
-    if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
-  });
+  const totalFee = checkEveryTransaction(
+    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+  );
   checkCallBudget(txns, fail);
-  did("sender, rekey/close/clawback, app-call budget");
+  checkMathCarriers(txns, fail, did);
+  did("app calls within the flow's budget, by app and by count");
 
   if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
     fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO}`);
