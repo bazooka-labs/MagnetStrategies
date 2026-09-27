@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksNegative, parseMoney, sanitizeDecimalInput } from "./perpsInput";
+import { mustRefuseInput, parseMoney, sanitizeDecimalInput } from "./perpsInput";
 
 describe("sanitizeDecimalInput", () => {
   it("leaves ordinary input alone", () => {
@@ -32,9 +32,27 @@ describe("sanitizeDecimalInput", () => {
   // The finding: "-5" became "5", so a negative turned into a real position.
   it("cannot turn a negative into a positive on its own", () => {
     expect(sanitizeDecimalInput("-5")).toBe("5");
-    expect(looksNegative("-5")).toBe(true);
-    expect(looksNegative("5")).toBe(false);
-    expect(looksNegative("1-2")).toBe(true);
+    expect(mustRefuseInput("-5")).toBe(true);
+    expect(mustRefuseInput("5")).toBe(false);
+    expect(mustRefuseInput("1-2")).toBe(true);
+  });
+
+  // Audit 3, L-4: the same family, missed when the minus was fixed.
+  it("refuses scientific notation rather than rewriting it", () => {
+    // "1e5" sanitises to "15", a completely different number.
+    expect(sanitizeDecimalInput("1e5")).toBe("15");
+    expect(mustRefuseInput("1e5")).toBe(true);
+    expect(mustRefuseInput("1E5")).toBe(true);
+    expect(mustRefuseInput("Infinity")).toBe(true);
+    expect(mustRefuseInput("NaN")).toBe(true);
+  });
+
+  it("still accepts formatting that does not change the number", () => {
+    // Stripping these is safe: "$1,000" and "1000" are the same number.
+    for (const v of ["$1,000", "1 000", "12.34", "0.5"]) {
+      expect(mustRefuseInput(v)).toBe(false);
+    }
+    expect(sanitizeDecimalInput("$1,000")).toBe("1000");
   });
 });
 

@@ -54,9 +54,55 @@ export const PEX_SELECTORS = {
 const CALL_BUDGET: ReadonlyArray<{ app: number; name: string; min: number; max: number }> = [
   { app: PEX_APPS.trading, name: "Trading", min: 1, max: 1 },
   { app: PEX_APPS.orderOps, name: "OrderOps", min: 0, max: 1 },
-  { app: PEX_APPS.math, name: "Math carrier", min: 0, max: 8 },
+  // Real groups build exactly 4, on both markets and both sides (three before
+  // the OrderOps call and one after) — see __fixtures__/perpsGroups.json. The
+  // old ceiling of 8 allowed four more than anything builds; headroom for a
+  // resource carrier is worth one slot, not four.
+  { app: PEX_APPS.math, name: "Math carrier", min: 0, max: 5 },
 ];
 const CALLABLE: ReadonlySet<number> = new Set(CALL_BUDGET.map((c) => c.app));
+
+const td = new TextDecoder();
+/**
+ * The only notes a legitimate group carries.
+ *
+ * `pdex-v2-linked-escrow-<childOrderId>` on the keeper-fee escrow transfer and
+ * `pdex-v2-linked-storage-<childOrderId>` on the order-box MBR payment. The
+ * exact values are pinned in `assertOpenWithTakeProfit`, where the base order
+ * id is known; this is the shape gate for every other path.
+ */
+/** A transaction's note as text, or "" when it has none. */
+const noteText = (t: AnyTxn): string => (t.note && t.note.length > 0 ? td.decode(t.note) : "");
+
+const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
+
+/**
+ * Math carriers exist to buy opcode budget; they must do nothing else.
+ *
+ * They were counted and never inspected — selector, arguments, accounts,
+ * foreign apps and assets all unbound. The blast radius is small (the Math app
+ * account holds exactly its own minimum balance and no ASAs, so this costs fees
+ * rather than funds), but "the target happens to be empty" is not a control.
+ */
+function checkMathCarriers(
+  txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
+): void {
+  txns.forEach((t, i) => {
+    const call = t.applicationCall;
+    if (!call || Number(call.appIndex) !== PEX_APPS.math) return;
+    const args = (call.appArgs ?? []) as Uint8Array[];
+    if (args.length !== 1 || hex(args[0]) !== PEX_SELECTORS.mathNoop) {
+      fail("math_carrier_args",
+        `txn ${i}: Math call carries ${args.length} arg(s), selector ${hex(args[0] ?? new Uint8Array())}`);
+    }
+    if ((call.accounts ?? []).length > 0) fail("math_carrier_accounts", `txn ${i}: Math call names accounts`);
+    if ((call.foreignAssets ?? []).length > 0) fail("math_carrier_assets", `txn ${i}: Math call names assets`);
+    // Foreign APPS are deliberately not checked: real carriers reference one or
+    // two, which is how they buy the opcode budget they exist for. Accounts and
+    // assets are the fields that could move value, and real carriers name none.
+  });
+  did("Math carriers are bare noops: selector, no accounts, no assets, no apps");
+}
 
 /**
  * Ceiling on total group fee, microALGO.
@@ -156,6 +202,10 @@ type AnyTxn = {
   sender: unknown;
   fee?: bigint | number;
   rekeyTo?: unknown;
+  /** Free-form bytes the user signs without being shown them. */
+  note?: Uint8Array;
+  firstValid?: bigint | number;
+  lastValid?: bigint | number;
   assetTransfer?: {
     assetIndex: bigint | number;
     amount: bigint | number;
@@ -167,6 +217,8 @@ type AnyTxn = {
   applicationCall?: {
     appIndex: bigint | number;
     appArgs: Uint8Array[];
+    /** 0 is NoOp; anything else is a different operation. */
+    onComplete?: bigint | number;
     accounts?: unknown[];
     foreignApps?: (bigint | number)[];
     foreignAssets?: (bigint | number)[];
@@ -299,9 +351,35 @@ export function assertOpenGroup(
     if (t.assetTransfer?.closeRemainderTo) fail("asset_close_to", `txn ${i} sets assetCloseTo`);
     if (t.payment?.closeRemainderTo) fail("close_remainder_to", `txn ${i} sets closeRemainderTo`);
     if (t.assetTransfer?.assetSender) fail("clawback", `txn ${i} sets assetSender (clawback)`);
+    // `onComplete` 0 is NoOp. Anything else — OptIn, CloseOut, UpdateApplication,
+    // DeleteApplication — is a different operation wearing this group's shape.
+    const onComplete = Number(t.applicationCall?.onComplete ?? 0);
+    if (onComplete !== 0) {
+      fail("on_complete", `txn ${i} app call has onComplete ${onComplete}, expected NoOp`);
+    }
+    // A note is free-form bytes the user signs without being shown them — but
+    // the SDK uses two functionally, to mark the linked escrow and storage
+    // legs. Banning notes outright would have blocked every trade; the real
+    // captured groups caught that before it shipped. So: bound to the known
+    // markers, with the exact values pinned in the bracket path where the
+    // order id is known. Anything else is data being smuggled past the user.
+    if (t.note && t.note.length > 0 && !LINKED_NOTE_RE.test(td.decode(t.note))) {
+      fail("note", `txn ${i} carries an unrecognised ${t.note.length}-byte note`);
+    }
   });
+
+  // One validity window across the group. A leg with a longer window than its
+  // neighbours can be replayed on its own after the rest has expired.
+  const firsts = new Set(txns.map((t) => String(t.firstValid)));
+  const lasts = new Set(txns.map((t) => String(t.lastValid)));
+  if (firsts.size !== 1 || lasts.size !== 1) {
+    fail("validity_window", `group spans ${firsts.size} first-valid and ${lasts.size} last-valid rounds`);
+  }
+  did("one validity window across every leg");
+  did("no app call changes onComplete, and no leg carries a note");
   checkTxnShape(txns, shape, fail, did);
   checkCallBudget(txns, fail);
+  checkMathCarriers(txns, fail, did);
   did("sender is the user on every transaction");
   did("no rekeyTo / assetCloseTo / closeRemainderTo / clawback");
   did("app calls within the flow's budget, by app and by count");
@@ -747,6 +825,9 @@ export function assertOpenWithTakeProfit(
   // never actually asserted on this path — only the wrong one was deleted.
   const transfers = txns.filter((t) => t.assetTransfer);
   const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
+  // The take-profit is the first linked child: base + 1. The SDK stamps that id
+  // into the escrow and storage notes, so it is checkable rather than assumed.
+  const childOrderId = shownTp.baseOrderId + BigInt(1);
   const escrow = transfers.find((t) => big(t.assetTransfer!.amount) !== shownOpen.collateralAmountMicro);
   if (!escrow) {
     fail("keeper_escrow_missing", "no keeper-fee escrow transfer found");
@@ -774,8 +855,13 @@ export function assertOpenWithTakeProfit(
       fail("keeper_escrow_cap", `escrow ${amt} exceeds the absolute cap ${absoluteCap}`);
     }
     if (amt === BigInt(0)) fail("keeper_escrow_zero", "keeper fee is zero; the order would never be executed");
+    // Bound to THIS bracket's child order id, not merely to the marker shape.
+    // A well-formed note naming a different order is a leg from another bracket.
+    if (noteText(escrow) !== `pdex-v2-linked-escrow-${childOrderId}`) {
+      fail("escrow_note", `escrow note "${noteText(escrow)}", expected pdex-v2-linked-escrow-${childOrderId}`);
+    }
   }
-  did("keeper-fee escrow: amount, receiver, asset, absolute cap, non-zero");
+  did("keeper-fee escrow: amount, receiver, asset, absolute cap, non-zero, linked note");
 
   const mbr = txns.filter((t) => t.payment);
   if (mbr.length !== 1) {
@@ -791,8 +877,11 @@ export function assertOpenWithTakeProfit(
     if (String(pay.receiver) !== orderOpsAddr) {
       fail("mbr_receiver", "order-box MBR does not go to the pinned OrderOps address");
     }
+    if (noteText(mbr[0]) !== `pdex-v2-linked-storage-${childOrderId}`) {
+      fail("mbr_note", `storage note "${noteText(mbr[0])}", expected pdex-v2-linked-storage-${childOrderId}`);
+    }
   }
-  did("order-box MBR: amount and receiver");
+  did("order-box MBR: amount, receiver, linked note");
 
   const subs = txns.filter(
     (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps,

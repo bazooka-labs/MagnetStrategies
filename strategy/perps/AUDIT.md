@@ -276,6 +276,120 @@ sits with B6 in the list below.
 
 ---
 
+## Audit 3 (2026-09-26, post-remediation)
+
+A third adversarial pass, briefed to falsify the Phase 1–5 claims rather than
+accept them, and to derive the leg/field list from the group **the SDK actually
+builds** rather than from the assertion's own list of checks.
+
+It confirmed most remediations held — and found that one claim in this file did
+not.
+
+### The overstated claim, corrected
+
+**Phase 3's verification section was wrong.** `perpsGroup.test.ts` contained
+zero cases for `assertOpenWithTakeProfit`, which is the only assertion
+`openPosition` calls. The 27 cases covered `assertOpenGroup` and
+`assertCloseGroup`, neither of which production uses, and every group in them
+was a hand-written object literal. So every Phase 3 take-profit fix shipped
+untested — the B1 lesson wearing a different mask, recorded in that file's own
+header.
+
+Fixed in Phase 7: `perpsGroupReal.test.ts`, 28 cases over **real `@pdex/sdk`
+0.6.3 groups captured from MainNet** and committed as a fixture.
+
+### High
+
+- **H-1 — the take-profit was validated against the wrong reference.**
+  `takeProfitBounds` floored a long at `entry + 1`. PEX measures crossing
+  against the signed oracle's **index band**, and with favourable impact a
+  long's entry sits *below* `indexMin`. Reproduced live: entry
+  `$0.115649238181`, `indexMin` `$0.115861449825`, and the old bound quotes
+  `crossed: true`. A crossed take-profit executes on arrival, so the position
+  opens and closes in one group — about **$1.58 on $50 at 9.27x, and no
+  position**, under a card reading "Closes for $0.87 profit before costs".
+  `CROSS_MARGIN_BPS` existed with exactly one reference in the tree: its own
+  definition, and SPEC Invariant 12 was unimplemented.
+- **H-2 — the assertion never read `t.type`.** Not once in 852 lines. Every
+  check finds its leg by looking for a sub-object, so a transaction with none of
+  them was invisible to all of them. An injected `acfg` reassigning
+  `manager`/`clawback` on an ASA the user administers passed clean.
+- **H-3 — `readPosition` failed open.** A bare `catch { return null }` meant a
+  5xx, a timeout or a `decodePosition` throw all read as "no position". The
+  whole one-position decision rests on that read, and a transient failure let
+  the open proceed as a PEX *increase*, re-opening B3 and B5 together.
+
+### Medium and Low
+
+M-1 the assertion compared prices against values `openPosition` computed itself,
+not against the screen, so Invariant 9 was not met for any price field · M-2 a
+short's take-profit floor was `1n` · M-3 the oracle payload was ~12 s old at the
+wallet prompt against a ~30 s window · M-4 `DisplayedTakeProfit.acceptablePrice12`
+declared and never read · M-5 fees taken unpinned from `getTransactionParams`, so
+a congested-network suggestion would build an **8.4 ALGO** group and the
+assertion would hard-refuse every open · L-1 Math carriers counted but never
+inspected · L-2 `onComplete`, `note` and the validity window unbound · L-3 an
+amount edit discarded a deliberately-chosen take-profit · L-4 `"1e5"` → `"15"`,
+the same family as the fixed `"-5"` · L-5 an oracle staleness check that could
+never fire · L-7 no re-entrancy guard.
+
+## What audit 3's remediation changed
+
+**Phase 6 — the three High findings.** Take-profit bounds now derive from the
+index band plus `CROSS_MARGIN_BPS`, and `openPosition` additionally asks PEX
+itself via `quoteV2DecreaseOrder` and refuses on `crossed` — the card's bounds
+are our arithmetic against a snapshot, this is the exchange's own answer
+immediately before signing. `checkTxnShape` binds transaction types and exact
+`axfer`/`pay` counts. `readPosition` fails closed.
+
+**Phase 7 — test what production calls** (above).
+
+**Phase 8 — M-1 through M-5.** `displayed` is now a **required** input to
+`openPosition` and the fresh quote is refused if it has drifted past
+`MAX_DISPLAY_DRIFT_BPS`; an optional field here would have been the fourth
+documented control with no caller. The oracle is fetched **last**, after the
+preflight, balance checks, one-position guard and order-id allocation — none of
+which need a price — and the wallet prompt is refused outright if under
+`MIN_SIGNING_BUDGET_SEC` of validity remains. Fees are pinned to `minFee` with
+`flatFee`, so `MAX_GROUP_FEE_MICRO_ALGO` is a tripwire rather than the thing
+deciding whether trading works.
+
+**Phase 9 — the Lows.** Math carriers are asserted to be bare noops; `onComplete`,
+notes and the validity window are bound; an amount edit no longer discards the
+user's take-profit; `mustRefuseInput` refuses any input whose cleaning would
+*change the number* (a minus sign or scientific notation) while still accepting
+formatting that does not (`$1,000`); the unreachable staleness check is gone;
+and a re-entrancy guard replaces relying on an `o2:` box collision to stop a
+double click.
+
+### Three bugs the fixes themselves introduced, caught before shipping
+
+Worth recording, because in each case the thing that caught it was testing
+against reality rather than against my model of it:
+
+1. **The crossing check would have blocked 100% of trades.** `ok` is false on
+   every pre-open `quoteV2DecreaseOrder` call, with the single reason
+   `position_missing` — we are quoting a decrease against a position that does
+   not exist yet. An earlier draft of the docstring said to block on `ok`.
+   `blocking` now encodes the real rule.
+2. **The typo guard accepted precisely the most likely typo.** A slipped decimal
+   is exactly a factor of ten and `MAX_TAKE_PROFIT_MULTIPLE` is ten, so an
+   inclusive bound accepted `$8,429` for `$84,290` exactly on the boundary. The
+   typo edge is now exclusive.
+3. **Banning notes and Math foreign-apps would also have blocked every trade.**
+   Real groups carry `pdex-v2-linked-escrow-<id>` and
+   `pdex-v2-linked-storage-<id>` notes, and Math carriers reference one or two
+   foreign apps to buy opcode budget. Notes are now *bound* to those markers and
+   pinned to the bracket's own child order id; foreign apps on carriers are
+   deliberately not checked, while accounts and assets — the fields that could
+   move value — are.
+
+**Still open after audit 3:** B6 and the `doi:` format, both questions for
+Ultrade. H-1's chain-side behaviour and the one-position guard under true
+concurrency remain unverifiable while B6 blocks simulating any open+TP group.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.

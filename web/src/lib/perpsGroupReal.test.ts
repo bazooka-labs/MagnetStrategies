@@ -224,6 +224,48 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       args[10] = algosdk.encodeUint64((cur * BigInt(9_999)) / BigInt(10_000));
     }, "tp_acceptable_price");
 
+  // ── L-1 / L-2: fields that were declared on the transaction and never read ─
+
+  tamper("a note smuggled onto the collateral leg",
+    (txns) => {
+      (txns[0] as unknown as { note: Uint8Array }).note =
+        new TextEncoder().encode("pay attention to nothing");
+    }, "note");
+
+  tamper("the escrow note renamed to another bracket's order id",
+    (txns) => {
+      const e = escrowOf(txns);
+      // Well-formed marker, wrong order — passes the shape gate, so only the
+      // exact binding to this bracket's child id can catch it.
+      (e as unknown as { note: Uint8Array }).note =
+        new TextEncoder().encode("pdex-v2-linked-escrow-999");
+    }, "escrow_note");
+
+  tamper("an app call switched off NoOp",
+    (txns) => {
+      const t = txns.find((x) => x.applicationCall)!;
+      (t.applicationCall as unknown as { onComplete: number }).onComplete = 5; // DeleteApplication
+    }, "on_complete");
+
+  tamper("one leg given a longer validity window than the rest",
+    (txns) => {
+      (txns[0] as unknown as { lastValid: bigint }).lastValid = txns[0].lastValid + BigInt(50_000);
+    }, "validity_window");
+
+  tamper("a Math carrier given a different selector",
+    (txns) => {
+      const m = txns.find((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.math)!;
+      (m.applicationCall!.appArgs as Uint8Array[])[0] =
+        Uint8Array.from([0xde, 0xad, 0xbe, 0xef]);
+    }, "math_carrier_args");
+
+  tamper("a Math carrier made to name an account",
+    (txns) => {
+      const m = txns.find((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.math)!;
+      (m.applicationCall as unknown as { accounts: unknown[] }).accounts =
+        [algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU")];
+    }, "math_carrier_accounts");
+
   tamper("fees inflated across the group",
     (txns) => { txns.forEach((t) => { (t as unknown as { fee: bigint }).fee = BigInt(30_000); }); },
     "fee_cap");

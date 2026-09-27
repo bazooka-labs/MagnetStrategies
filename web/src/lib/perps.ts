@@ -223,6 +223,26 @@ export const DEFAULT_SLIPPAGE_BPS = 50;
  */
 export const CROSS_MARGIN_BPS = 50;
 
+/**
+ * How far the market may move between what the card showed and what is signed.
+ *
+ * `openPosition` re-reads everything, which is right — but it then built its
+ * own `DisplayedOpen` from that fresh re-quote and asserted the group against
+ * *itself*. That is self-consistency, not agreement with the screen, and
+ * Invariant 9 claims the latter: "every app-call argument verified against what
+ * the confirm screen displayed".
+ *
+ * The entry price is protected on chain by the acceptable-price bound, so the
+ * exposure is not the fill — it is that the liquidation price, the payoff line
+ * and the take-profit the user chose were all reasoned about against a price
+ * that has since moved. Beyond this, the right answer is to show them the new
+ * numbers rather than to sign the old decision.
+ *
+ * 50 bps, matching the slippage tolerance: a move the fill itself would not
+ * have accepted is not one the user's decision should be carried through.
+ */
+export const MAX_DISPLAY_DRIFT_BPS = 50;
+
 /** Keeper fee escrowed per bracket, in USDC. Floor 0.10; read policy live. */
 export const CHILD_KEEPER_FEE_USDC = 0.1;
 

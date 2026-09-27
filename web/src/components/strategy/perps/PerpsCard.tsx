@@ -37,7 +37,7 @@ import {
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
-import { looksNegative, parseMoney, sanitizeDecimalInput } from "@/lib/perpsInput";
+import { mustRefuseInput, parseMoney, sanitizeDecimalInput } from "@/lib/perpsInput";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
@@ -281,9 +281,15 @@ export function PerpsCard() {
             onChange={(e) => {
               // Refuse a negative rather than silently stripping the sign: "-5"
               // used to become a real $5 position. See perpsInput.
-              if (looksNegative(e.target.value)) return;
+              if (mustRefuseInput(e.target.value)) return;
               setAmount(sanitizeDecimalInput(e.target.value));
-              setTpTouched(false);
+              // NOT `setTpTouched(false)`. Changing the amount used to discard a
+              // take-profit the user had deliberately typed, replacing it with
+              // the +50%-on-stake default. Unlike the market and side buttons
+              // above, an amount edit does not make a price meaningless — the
+              // target is still the target. While `tpTouched` is false the
+              // default effect still tracks the amount, so the untouched case
+              // is unaffected.
             }}
             className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none" />
           <span className="text-xs text-white/40">USDC</span>
@@ -353,7 +359,7 @@ export function PerpsCard() {
           <span className="text-white/40">$</span>
           <input id="perps-tp" inputMode="decimal" value={tpPrice}
             onChange={(e) => {
-              if (looksNegative(e.target.value)) return;
+              if (mustRefuseInput(e.target.value)) return;
               setTpPrice(sanitizeDecimalInput(e.target.value));
               setTpTouched(true);
             }}

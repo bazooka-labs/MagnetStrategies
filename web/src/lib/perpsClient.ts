@@ -4,16 +4,20 @@
 // a group to a wallet. The order of operations is the point:
 //
 //   1. install the pinned protocol manifest      (never fetched)
-//   2. re-read market state and oracle           (fresh, not the card's copy)
-//   3. verify PEX's programs still match the pins (and that we can be paid)
-//   4. refuse if a position is already open      (we do not support increases)
-//   5. allocate baseOrderId from chain           (never from local state)
-//   6. build the group
-//   7. ASSERT the group against what was displayed
-//   8. simulate as a pre-flight
-//   9. only then prompt the wallet
+//   2. re-read market state + verify the pins    (fresh, not the card's copy)
+//   3. refuse if a position is already open      (we do not support increases)
+//   4. allocate baseOrderId from chain           (never from local state)
+//   5. fetch the signed oracle payload           (LAST — it expires in ~30s)
+//   6. quote, and refuse a crossed take-profit   (PEX's answer, not ours)
+//   7. refuse if the market moved past what the card showed
+//   8. build the group
+//   9. ASSERT the group against what was displayed
+//  10. simulate as a pre-flight
+//  11. only then prompt the wallet
 //
-// Step 7 gates step 9. A group that fails assertion is never presented for
+// Step 9 gates step 11. Steps 3-4 deliberately precede step 5: none of them
+// need a price, and every second spent before fetching the payload is a second
+// of its validity window spent before the user ever sees the wallet prompt. A group that fails assertion is never presented for
 // signature — see strategy/perps/SPEC.md, Invariant 9. That is a defence against
 // construction bugs, not against a compromised frontend, which would own this
 // file too.
@@ -26,6 +30,7 @@ import {
   CHILD_KEEPER_FEE_USDC,
   COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS,
+  MAX_DISPLAY_DRIFT_BPS,
   ORACLE_MAX_AGE_SEC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
@@ -61,6 +66,22 @@ export type OpenPositionInput = {
   notionalUsd: number;
   /** Take-profit trigger, Price12, exactly as displayed. */
   takeProfitPrice12: bigint;
+  /**
+   * The prices the card had on screen when the user decided.
+   *
+   * **Required, deliberately.** As an optional field this would be the fourth
+   * documented control in this codebase with no caller, and it is the one that
+   * makes Invariant 9 true rather than merely stated: without it the assertion
+   * compares the group against numbers `openPosition` computed itself moments
+   * earlier, which proves the builder is self-consistent and nothing about
+   * whether the user saw these numbers.
+   */
+  displayed: {
+    /** Index price on the card, Price12. */
+    indexPrice12: bigint;
+    /** Entry price on the card, Price12. */
+    entryPrice12: bigint;
+  };
   slippageBps?: number;
   onStage?: (s: OpenStage) => void;
 };
@@ -99,10 +120,43 @@ const CONFIRM_ROUNDS = 40;
 /** ALGO needed for the order-box MBR plus group fees, with headroom. */
 const MIN_ALGO_MICRO = ORDER_BOX_MBR_MICRO_ALGO + BigInt(200_000);
 
+/**
+ * Seconds of oracle validity that must remain when the wallet is prompted.
+ *
+ * A wallet round trip is a human action: read the prompt, approve it, maybe
+ * unlock a device. Under this, the signature would very likely land against an
+ * expired price and be rejected on chain — after approval, which is the worst
+ * moment to discover it.
+ */
+const MIN_SIGNING_BUDGET_SEC = 8;
+
+/**
+ * One open at a time, per tab.
+ *
+ * Two rapid clicks used to run two full flows and raise two wallet prompts.
+ * That was not a doubling path — both allocate the same `baseOrderId` and the
+ * `o2:` box collision makes the second group fail atomically on chain — but
+ * relying on that is relying on an accident of PEX's storage model to protect
+ * a UI mistake. It also wastes a prompt and reads as a bug.
+ */
+let openInFlight = false;
+
 export async function openPosition(input: OpenPositionInput): Promise<OpenPositionResult> {
+  if (openInFlight) {
+    throw new Error("An open is already in progress. Wait for it to finish.");
+  }
+  openInFlight = true;
+  try {
+    return await openPositionInner(input);
+  } finally {
+    openInFlight = false;
+  }
+}
+
+async function openPositionInner(input: OpenPositionInput): Promise<OpenPositionResult> {
   const {
     algod, signTransactions, sender, marketId, side,
-    collateralUsd, notionalUsd, takeProfitPrice12,
+    collateralUsd, notionalUsd, takeProfitPrice12, displayed,
   } = input;
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const stage = (s: OpenStage) => input.onStage?.(s);
@@ -127,11 +181,10 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   // Encoding without a verified ABI is the one thing we never do.
   await installProtocolManifest();
 
-  // Deliberately re-read rather than trusting the card's snapshot: an oracle
-  // payload is only valid for a few seconds, and parameters move.
-  const [state, oracle, account, pre] = await Promise.all([
+  // Deliberately re-read rather than trusting the card's snapshot: parameters
+  // move. **The oracle is NOT fetched here** — see the note before it below.
+  const [state, account, pre] = await Promise.all([
     readMarketState(algod, marketId),
-    getOraclePayload(PEX_APPS.trading, marketId),
     algod.accountInformation(sender).do(),
     // Normally cached and warm — the card starts it on mount. Re-checked here
     // rather than taken from the caller: the card's gate is there so the button
@@ -143,13 +196,6 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   if (!pre.canOpen) {
     if (pre.detail) console.warn(`perps: preflight refused the open — ${pre.detail}`);
     throw new Error(pre.reason ?? "Trading is unavailable right now.");
-  }
-
-  if (!oracle.signatureVerified) {
-    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
-  }
-  if (oracle.ageSeconds > ORACLE_MAX_AGE_SEC) {
-    throw new Error("The price is stale. Try again.");
   }
 
   // Fail with something actionable rather than letting the chain reject it.
@@ -167,6 +213,49 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
     throw new Error("Not enough USDC for the position plus its keeper fee.");
   }
 
+  // ── One position per (market, side) ──────────────────────────────────────
+  // PEX keeps exactly one position per (market, collateral asset, side) and a
+  // second open INCREASES it. We do not support increases: it is a second
+  // economic path with its own quoting and assertion surface, and it is what
+  // turns an unobserved confirmation into a doubled position. Refuse instead.
+  //
+  // This also makes `position: null` in the quote correct rather than merely
+  // convenient — every open we permit really does start from nothing.
+  const existing = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
+  if (existing && existing.size_usd > BigInt(0)) {
+    throw new PositionAlreadyOpenError(existing.size_usd);
+  }
+
+  stage("allocating");
+  const alloc = await allocateBaseOrderId(algod, sender);
+  if (!(await assertBaseOrderIdFree(algod, sender, alloc))) {
+    throw new Error("Order id was taken while preparing. Try again.");
+  }
+
+  // ── The oracle payload, fetched as LATE as possible ─────────────────────
+  //
+  // PEX signs a ~30 second window. Fetching this up front alongside the other
+  // reads put it 4-6 seconds old on arrival and, measured end to end on a fast
+  // wired connection with a warm preflight, **about 12 seconds old by the time
+  // the wallet prompt appeared** — leaving under 18 seconds for the entire
+  // signing round trip. A mobile deep link or a hardware wallet routinely takes
+  // longer, and the group then fails on chain after the user has already signed.
+  //
+  // Nothing above this line needs a price: the preflight, the balance checks,
+  // the one-position guard and the order-id allocation (which paginates boxes,
+  // and is the slowest step) are all price-independent. So they run first and
+  // the payload is fetched here, immediately before it is used.
+  const oracleFetchedAt = Date.now();
+  const oracle = await getOraclePayload(PEX_APPS.trading, marketId);
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
+  // No staleness check here: `getOraclePayload` throws on an over-age payload
+  // before returning, and the bundle is fetched `no-store` every call, so a
+  // check at this point could never fire. It read like a control and was not
+  // one. The budget check before the wallet prompt is the real guard, and it
+  // measures elapsed time since THIS fetch, which is a thing that can change.
+
   // Slippage is anchored to the quoted execution price, not the index — an
   // index-anchored bound fails at every size once impact is charged.
   const probe = quoteOpen({
@@ -176,6 +265,24 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   if (!probe.ok) {
     throw new Error(`The exchange will not accept this position: ${probe.reasons.join(", ")}`);
   }
+  // ── What the screen said, against what is about to be signed ────────────
+  //
+  // The one check this module was premised on and did not perform. Both
+  // references are Price12 bigints, so the comparison is exact arithmetic with
+  // no Number round-trip at BTC magnitudes.
+  const drift = (a: bigint, b: bigint): bigint => {
+    if (b === BigInt(0)) return BigInt(0);
+    const diff = a > b ? a - b : b - a;
+    return (diff * BigInt(10_000)) / b;
+  };
+  const indexDrift = drift(oracle.indexPrice12, displayed.indexPrice12);
+  const entryDrift = drift(probe.entryPrice12, displayed.entryPrice12);
+  if (indexDrift > BigInt(MAX_DISPLAY_DRIFT_BPS) || entryDrift > BigInt(MAX_DISPLAY_DRIFT_BPS)) {
+    throw new Error(
+      "The price moved while this was being prepared, so the figures you saw are out of date. Nothing was sent — check the new numbers and try again.",
+    );
+  }
+
   const acceptablePrice = probe.acceptablePrice12;
   // A take-profit CLOSES the position, so its acceptable price sits on the
   // opposite side of the trigger from an open. See acceptableForClose.
@@ -213,27 +320,22 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
     );
   }
 
-  // ── One position per (market, side) ──────────────────────────────────────
-  // PEX keeps exactly one position per (market, collateral asset, side) and a
-  // second open INCREASES it. We do not support increases: it is a second
-  // economic path with its own quoting and assertion surface, and it is what
-  // turns an unobserved confirmation into a doubled position. Refuse instead.
-  //
-  // This also makes `position: null` in the quote correct rather than merely
-  // convenient — every open we permit really does start from nothing.
-  const existing = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
-  if (existing && existing.size_usd > BigInt(0)) {
-    throw new PositionAlreadyOpenError(existing.size_usd);
-  }
-
-  stage("allocating");
-  const alloc = await allocateBaseOrderId(algod, sender);
-  if (!(await assertBaseOrderIdFree(algod, sender, alloc))) {
-    throw new Error("Order id was taken while preparing. Try again.");
-  }
-
   stage("building");
   const sp = await algod.getTransactionParams().do();
+  // **Pin the fee to the network minimum.**
+  //
+  // algod returns a per-byte `fee` suggestion that rises with congestion, and
+  // the SDK multiplies it across every transaction. MainNet currently returns
+  // `fee: 0, minFee: 1000`, so groups cost 51,000 microALGO and all is well —
+  // but at a suggestion of 10,000 the same group builds at 8,388,000, i.e.
+  // **8.4 ALGO**. The assertion would correctly refuse it, except that the user
+  // would then read "Safety check failed, nothing was sent" — which sounds like
+  // a security incident — and every open would be dead until congestion eased.
+  //
+  // Flat minimum fees, so MAX_GROUP_FEE_MICRO_ALGO stays a tripwire for a
+  // construction bug rather than the thing that decides whether trading works.
+  sp.fee = sp.minFee;
+  sp.flatFee = true;
   const sideCode = side === "long" ? BigInt(1) : BigInt(2);
   const keeperFee = micro(CHILD_KEEPER_FEE_USDC);
 
@@ -318,6 +420,19 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
   const stillClear = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
   if (stillClear && stillClear.size_usd > BigInt(0)) {
     throw new PositionAlreadyOpenError(stillClear.size_usd);
+  }
+
+  // The payload has to survive the wallet round trip, not just reach it. Every
+  // check above has cost time, and a signature over an expired price is
+  // rejected on chain after the user has already approved it — the worst place
+  // to find out. Fetching the oracle late (see above) buys the budget; this
+  // spends it honestly.
+  const budgetLeft = ORACLE_MAX_AGE_SEC - oracle.ageSeconds
+    - (Date.now() - oracleFetchedAt) / 1000;
+  if (budgetLeft < MIN_SIGNING_BUDGET_SEC) {
+    throw new Error(
+      "Preparing this took longer than the price is valid for. Nothing was sent — try again.",
+    );
   }
 
   stage("signing");

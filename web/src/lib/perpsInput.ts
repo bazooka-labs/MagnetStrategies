@@ -33,12 +33,20 @@ export function sanitizeDecimalInput(raw: string): string {
 }
 
 /**
- * True when the raw input contained a minus sign.
+ * True when the input must be REFUSED rather than cleaned.
  *
- * The caller uses this to refuse rather than to correct. `sanitizeDecimalInput`
- * cannot express "negative" in its output, so the fact has to travel separately.
+ * The line is whether stripping a character changes the number:
+ *
+ *   "$1,000" -> "1000"   same number, so strip and accept
+ *   "-5"     -> "5"      different number, so refuse
+ *   "1e5"    -> "15"     different number, so refuse
+ *
+ * A minus sign and scientific notation both fail that test — the second was
+ * missed when the first was fixed, which is why this is one predicate and not
+ * two. Any letter counts: there is no notation we want to interpret, and
+ * silently reinterpreting one is the whole defect.
  */
-export const looksNegative = (raw: string): boolean => /-/.test(raw);
+export const mustRefuseInput = (raw: string): boolean => /-|[a-zA-Z]/.test(raw);
 
 /**
  * Parse a sanitised money string to a finite, non-negative number.
