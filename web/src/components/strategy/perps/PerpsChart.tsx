@@ -73,6 +73,19 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  /**
+   * Vertical zoom, as a divisor on the auto-fitted price range.
+   *
+   * 1 is "fit everything". Above 1 the visible range shrinks, so the same price
+   * move covers more pixels — candles get taller and small moves become
+   * readable. Dragging the price axis changes it, which is the gesture people
+   * already know from every trading chart.
+   *
+   * Clamped both ways: far enough in to read a tick, not so far out that the
+   * series becomes a flat line.
+   */
+  const [zoom, setZoom] = useState(1);
+  const drag = useRef<{ y: number; zoom: number } | null>(null);
   /** 0 until measured — `geom` is null anyway until candles arrive. */
   const [width, setWidth] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -113,6 +126,8 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     setCandles(null);
     setError(null);
     setHover(null);
+    // A zoom fitted to one range means nothing against another.
+    setZoom(1);
     const load = (first: boolean) => {
       fetchCandles(marketId, range)
         .then((c) => { if (alive) setCandles(c); })
@@ -141,6 +156,15 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     const padY = (max - min) * 0.08;
     min -= padY; max += padY;
 
+    // Zoom around the LAST CLOSE rather than the midpoint: the current price is
+    // what a trader is reading against, and anchoring there keeps it on screen
+    // however far in you go. A midpoint anchor drifts it off the top or bottom.
+    if (zoom !== 1) {
+      const anchor = candles[candles.length - 1].c;
+      min = anchor - (anchor - min) / zoom;
+      max = anchor + (max - anchor) / zoom;
+    }
+
     const innerW = width - PAD.left - PAD.right;
     const innerH = H - PAD.top - PAD.bottom;
     const y = (v: number) => PAD.top + (1 - (v - min) / (max - min)) * innerH;
@@ -164,15 +188,30 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     // Four gridlines is enough to read a level without becoming a ledger.
     const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4);
     return { bars, bodyW, y, cx, min, max, innerW, innerH, slot, ticks };
-  }, [candles, indexUsd, width, lines]);
+  }, [candles, indexUsd, width, lines, zoom]);
 
   const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    // A drag on the price axis owns the pointer until it is released.
+    if (drag.current) {
+      const dy = drag.current.y - e.clientY;
+      // Up zooms in. 180px of travel doubles or halves, which is a comfortable
+      // amount of movement for a full step.
+      const next = drag.current.zoom * Math.pow(2, dy / 180);
+      setZoom(Math.min(40, Math.max(0.35, next)));
+      return;
+    }
     if (!geom || !candles) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const i = Math.floor((x - PAD.left) / geom.slot);
     setHover(i >= 0 && i < candles.length ? i : null);
   }, [geom, candles]);
+
+  const endDrag = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!drag.current) return;
+    drag.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  }, []);
 
   const change = candles ? changePct(candles) : null;
   const up = (change ?? 0) >= 0;
@@ -208,7 +247,14 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
             </div>
           )}
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          {zoom !== 1 && (
+            <button onClick={() => setZoom(1)}
+              title="Reset the price scale"
+              className="mr-1 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors hover:text-white/90">
+              {zoom.toFixed(1)}× · reset
+            </button>
+          )}
           {CHART_RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
               className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
@@ -238,8 +284,19 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
         )}
         {!error && geom && candles && (
           <svg width={width} height={H} className="touch-pan-y select-none"
-            onPointerMove={onMove} onPointerLeave={() => setHover(null)}
+            onPointerMove={onMove}
+            onPointerUp={endDrag} onPointerCancel={endDrag}
+            onPointerLeave={(e) => { endDrag(e); setHover(null); }}
             role="img" aria-label={`${label} price candles, last ${rangeLabel(range)}`}>
+            <defs>
+              {/* Zoomed candles must not paint over the axis or escape the
+                  panel. Everything price-scaled is drawn inside this. */}
+              <clipPath id={`plot-${marketId}`}>
+                <rect x={PAD.left} y={PAD.top}
+                  width={Math.max(0, width - PAD.left - PAD.right)}
+                  height={H - PAD.top - PAD.bottom} />
+              </clipPath>
+            </defs>
             {/* Gridlines and price axis */}
             {geom.ticks.map((v, i) => (
               <g key={i}>
@@ -252,6 +309,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
             ))}
 
             {/* Candles */}
+            <g clipPath={`url(#plot-${marketId})`}>
             {geom.bars.map((b, i) => (
               <g key={i} opacity={hover === null || hover === i ? 1 : 0.55}>
                 <line x1={b.cx} x2={b.cx} y1={b.wickTop} y2={b.wickBottom}
@@ -260,6 +318,8 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
                   fill={b.up ? UP : DOWN} opacity="0.9" />
               </g>
             ))}
+
+            </g>
 
             {/* Time axis — a few labels, not one per candle. */}
             {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
@@ -291,7 +351,13 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
                 above the candles and labelled in the margin, so the distance to
                 each is readable at a glance rather than inferred from numbers
                 in a panel below. */}
-            {lines.map((l) => (
+            {lines.filter((l) => {
+              // Zooming can push a price out of view. Drawing it clamped at the
+              // edge would put a liquidation line somewhere it is not, which is
+              // worse than not drawing it — the panel still states the number.
+              const y = geom.y(l.price);
+              return y >= PAD.top && y <= H - PAD.bottom;
+            }).map((l) => (
               <g key={l.label} pointerEvents="none">
                 <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(l.price)} y2={geom.y(l.price)}
                   stroke={l.colour} strokeWidth="1" strokeDasharray={l.dash} opacity="0.85" />
@@ -307,9 +373,27 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
               </g>
             ))}
 
+            {/* The price axis, as a grab handle. Dragging it up zooms in and
+                down zooms out, which is the gesture this control has everywhere
+                else. Double-click restores the fit. */}
+            <rect x={width - PAD.right} y={PAD.top}
+              width={PAD.right} height={H - PAD.top - PAD.bottom}
+              fill="transparent"
+              // touchAction none on the strip only: the chart itself keeps
+              // pan-y so the page still scrolls, but a vertical drag HERE is a
+              // zoom rather than a scroll.
+              style={{ cursor: "ns-resize", touchAction: "none" }}
+              onPointerDown={(e) => {
+                drag.current = { y: e.clientY, zoom };
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                setHover(null);
+              }}
+              onDoubleClick={() => setZoom(1)} />
+
             {/* PEX's live index — drawn last so it sits above the candles and
                 cannot be read as one of them. */}
-            {indexUsd !== null && (
+            {indexUsd !== null
+              && geom.y(indexUsd) >= PAD.top && geom.y(indexUsd) <= H - PAD.bottom && (
               <g pointerEvents="none">
                 <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(indexUsd)} y2={geom.y(indexUsd)}
                   stroke={INDEX_COLOUR} strokeWidth="1" strokeDasharray="4 3" opacity="0.8" />
