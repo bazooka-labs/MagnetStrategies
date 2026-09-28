@@ -307,6 +307,22 @@ export const MAX_ENTRY_DRIFT_BPS = 150;
  */
 export const MAX_LIQUIDATION_DRIFT_BPS = 150;
 
+/**
+ * Tolerance on the collateral actually backing the position.
+ *
+ * The cost table's "Backing the position" is `netCollateralUsd` — collateral
+ * after PEX's open fee, our builder fee and impact. Those fee rates are
+ * admin-mutable and have moved intra-day. Worked example: `open_fee_bps` 6 to
+ * 60 between the card's read and the click turns a displayed $0.044 fee into
+ * $0.44, five percent of a $7.40 stake, and shifts the liquidation price by
+ * only ~60 bps — comfortably inside its own 150 bps tolerance, so the one guard
+ * that could have caught it does not.
+ *
+ * Tighter than the price tolerances because this is a fee, not a market price:
+ * it should not move at all between a quote and a click.
+ */
+export const MAX_NET_COLLATERAL_DRIFT_BPS = 50;
+
 /** Keeper fee escrowed per bracket, in USDC. Floor 0.10; read policy live. */
 export const CHILD_KEEPER_FEE_USDC = 0.1;
 

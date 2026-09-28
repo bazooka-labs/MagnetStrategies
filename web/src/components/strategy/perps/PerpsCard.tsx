@@ -46,6 +46,7 @@ import { ALGOD_URLS } from "@/lib/constants";
 import {
   openPosition,
   PositionAlreadyOpenError,
+  SubmissionUnknownError,
   type OpenStage,
   type OpenPositionResult,
 } from "@/lib/perpsClient";
@@ -210,6 +211,15 @@ export function PerpsCard() {
 
   // Default the target to a round +50% on the stake, but never fight the user.
   useEffect(() => {
+    // **Frozen while signing.** `disabled={submitting}` stops the USER editing
+    // this field; it does nothing about this effect, which fires on every
+    // 10-second market refresh because `quote` is a memo over `data` and
+    // `tpTouched` is false for anyone who did not hand-edit — i.e. the default
+    // path. Measured live: the default string changed on essentially every
+    // tick. So the number on screen drifted while the wallet prompt was open
+    // and the group carried the value from the click. That is the one
+    // "screen says X, group carries Y" gap the assertion layer cannot see.
+    if (submitting) return;
     if (tpTouched || !quote?.ok) return;
     // `priceForPayoff` returns null when the requested profit exceeds what the
     // position can pay — for a short that ceiling is its notional, and because
@@ -296,17 +306,24 @@ export function PerpsCard() {
    * mistaken for a confirmed one on the NEXT attempt.
    */
   useEffect(() => {
+    // **Only the market and side.** This used to depend on `tpPrice` too, and
+    // `tpPrice` is rewritten by the auto-default effect above on every refresh
+    // tick — so the result banner and its txid deleted themselves within about
+    // ten seconds of the trade completing, taking the "do not open again"
+    // warning with them and re-arming the button. Market and side are genuine
+    // user gestures that mean "different trade"; an amount or slider nudge does
+    // not, and neither does a machine-driven take-profit refresh.
+    //
+    // `submitting` is deliberately not a dependency either: it flips false
+    // immediately after `setResult`, so including it wiped the result too.
     setResult(null);
     setSubmitError(null);
-    // `submitting` is deliberately NOT a dependency. It flips false at the end
-    // of `submit()`, immediately after `setResult` — so including it made this
-    // effect fire and wipe the result the user is waiting to see. The inputs
-    // are locked while a signature is in flight, so they cannot change
-    // mid-submission and this cannot clear a live attempt.
-  }, [marketId, side, amount, tpPrice, barPos]);
+  }, [marketId, side]);
 
   async function submit() {
     if (!canSubmit || !quote?.ok || !wallet.address || !data) return;
+    // The previous outcome is cleared HERE, by the gesture that supersedes it,
+    // rather than by whichever input happened to change.
     setSubmitError(null);
     setResult(null);
     try {
@@ -343,12 +360,22 @@ export function PerpsCard() {
           asRenderedIndexPrice12: data.oracle.indexPrice12,
           asRenderedEntryPrice12: quote.entryPrice12,
           asRenderedLiquidationPrice12: quote.liquidationPrice12,
+          // The same `netCollateralUsd` the cost table prints as
+          // "Backing the position", scaled the way the guard compares it.
+          asRenderedNetCollateralMicro: BigInt(Math.round(quote.netCollateralUsd * 1e6)),
         },
         onStage: setStage,
       });
       setResult(r);
     } catch (e) {
-      if (e instanceof PositionAlreadyOpenError) {
+      if (e instanceof SubmissionUnknownError) {
+        // Sent, response lost. Never "failed" — show it like an unconfirmed
+        // submission, with the link, because the group may already be on chain.
+        setResult({
+          txId: e.txId, outcome: "unknown", reason: e.cause,
+          baseOrderId: BigInt(0), checks: [], confirmed: false,
+        });
+      } else if (e instanceof PositionAlreadyOpenError) {
         setSubmitError(
           `You already have a position on this market and side (${fmtUsd(Number(e.sizeUsdMicro) / 1e6)}). Close it before opening another.`,
         );
@@ -630,7 +657,12 @@ export function PerpsCard() {
       {/* One signature, and what it commits to — shown before the prompt, not after. */}
       {wallet.isConnected && !submitting && canSubmit && (
         <p className="mt-2 text-center text-[11px] text-white/35">
-          One signature. {fmtUsd(collateralUsd)} collateral plus {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper fee leaves your wallet.
+          {/* The group also sends ALGO: the order-box MBR always, and a storage
+              escrow on a first trade. Cents — but this sentence is an
+              enumeration in a product whose promise is saying exactly what
+              moves, so it either lists everything or it stops listing. */}
+          One signature. {fmtUsd(collateralUsd)} collateral plus {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper
+          fee, and a small amount of ALGO for on-chain storage that is returned when you close.
         </p>
       )}
 
@@ -642,20 +674,28 @@ export function PerpsCard() {
       )}
 
       {result && (
+        /* Three outcomes, three treatments. An unobserved confirmation is NOT a
+           failure — the group stays valid and will most likely commit, and
+           calling it failed is what produced the retry that doubled a position.
+           A REJECTION is a failure, and saying "this will most likely confirm"
+           about one is worse: it steers the user away from the correct action. */
         <div className={`mt-3 rounded-lg border px-3 py-2.5 text-xs ${
-          result.confirmed
+          result.outcome === "confirmed"
             ? "border-green-400/30 bg-green-500/10 text-green-200"
-            : "border-amber-400/30 bg-amber-500/10 text-amber-200"}`}>
-          {/* An unobserved confirmation is NOT a failure — the group stays valid
-              for the rest of its window and will most likely commit. Saying
-              "failed" here is what produced a retry that doubled a position. */}
+            : result.outcome === "rejected"
+              ? "border-red-400/30 bg-red-500/10 text-red-200"
+              : "border-amber-400/30 bg-amber-500/10 text-amber-200"}`}>
           <p className="font-medium">
-            {result.confirmed ? "Position opened." : "Submitted — confirmation not seen yet."}
+            {result.outcome === "confirmed" ? "Position opened."
+              : result.outcome === "rejected" ? "The network rejected this — nothing was opened."
+              : "Submitted — confirmation not seen yet."}
           </p>
           <p className="mt-1 text-[11px] opacity-80">
-            {result.confirmed
+            {result.outcome === "confirmed"
               ? "Your take-profit is live and will close the position automatically."
-              : "This is not a failure. The transaction is still valid and will most likely confirm. Check the link before trying again — opening a second time would add to the position."}
+              : result.outcome === "rejected"
+                ? `Nothing left your wallet and no position exists. You can safely try again.${result.reason ? ` Reason: ${result.reason}` : ""}`
+                : "This is not a failure. The transaction is still valid and will most likely confirm. Check the link before trying again — opening a second time would add to the position."}
           </p>
           <a href={`https://allo.info/tx/${result.txId}`} target="_blank" rel="noopener noreferrer"
             className="mt-1.5 inline-block break-all underline underline-offset-2 opacity-90 hover:opacity-100">

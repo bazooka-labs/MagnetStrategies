@@ -17,7 +17,7 @@
 
 import algosdk from "algosdk";
 import { BUILDER_ADDRESS, COLLATERAL_ASSET_ID } from "./perps";
-import { assertBuilderAddressUsable, verifyProgramPins } from "./perpsReads";
+import { assertBuilderAddressUsable, dynamicOiLayoutProblem, verifyProgramPins } from "./perpsReads";
 
 export type PreflightResult = {
   /** False means opens must be refused. Exits are unaffected — see below. */
@@ -42,7 +42,7 @@ export type PreflightResult = {
    * outcome the comment below says it prevents. Copy is for people; this is for
    * code.
    */
-  kind: "ok" | "drift" | "builder" | "unreachable";
+  kind: "ok" | "drift" | "builder" | "layout" | "unreachable";
   checkedAt: number;
 };
 
@@ -61,6 +61,18 @@ let inFlight: Promise<PreflightResult> | null = null;
 
 async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
   const checkedAt = Date.now();
+  // Cheapest first, and entirely local: if our three declarations of the `doi:`
+  // layout disagree, the dynamic-OI margin factors are being misread and those
+  // set the leverage ceiling. Stop trading; do not stop the page.
+  const layout = dynamicOiLayoutProblem();
+  if (layout) {
+    return {
+      canOpen: false, kind: "layout",
+      reason: "New positions are paused: the exchange's data format no longer matches what this build expects.",
+      detail: layout,
+      checkedAt,
+    };
+  }
   try {
     const [pins, builder] = await Promise.all([
       verifyProgramPins(algod),

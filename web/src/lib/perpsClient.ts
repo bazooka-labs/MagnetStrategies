@@ -33,6 +33,7 @@ import {
   MAX_DISPLAY_DRIFT_BPS,
   MAX_ENTRY_DRIFT_BPS,
   MAX_LIQUIDATION_DRIFT_BPS,
+  MAX_NET_COLLATERAL_DRIFT_BPS,
   ORACLE_MAX_AGE_SEC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
@@ -99,13 +100,37 @@ export type OpenPositionInput = {
     asRenderedIndexPrice12: bigint;
     asRenderedEntryPrice12: bigint;
     asRenderedLiquidationPrice12: bigint;
+    /** "Backing the position" on the cost table, 1e6-scaled USD. */
+    asRenderedNetCollateralMicro: bigint;
   };
   slippageBps?: number;
   onStage?: (s: OpenStage) => void;
 };
 
+/**
+ * How the submission ended.
+ *
+ * `unknown` is not a failure — see the note at the confirmation step. `rejected`
+ * is, definitively, and must be rendered as one.
+ */
+export type OpenOutcome = "confirmed" | "unknown" | "rejected";
+
+/** Thrown when submission itself failed but the group may already be on chain. */
+export class SubmissionUnknownError extends Error {
+  constructor(readonly txId: string, readonly cause: string) {
+    super(
+      "The transaction was sent but the response was lost, so its outcome is unknown. Check the link before trying again — opening a second time would add to the position.",
+    );
+    this.name = "SubmissionUnknownError";
+  }
+}
+
 export type OpenPositionResult = {
   txId: string;
+  /** Prefer this over `confirmed`; it distinguishes rejected from unknown. */
+  outcome: OpenOutcome;
+  /** Node's reason, when there is one. For display on a rejection. */
+  reason?: string;
   baseOrderId: bigint;
   /** What the assertion actually checked, for the receipt. */
   checks: string[];
@@ -330,12 +355,36 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     const diff = a > b ? a - b : b - a;
     return (diff * BigInt(10_000)) / b;
   };
+  /**
+   * A zero reference means "the screen showed no value", not "no drift".
+   *
+   * PEX returns `liquidation_price_estimate = 0` when a position cannot be
+   * liquidated, and the card correctly renders "None". Feeding that into
+   * `drift` hit the zero-denominator branch and returned zero — disabling the
+   * check rather than refusing an unverifiable comparison. Measured: 27% of
+   * slider positions produce that sentinel, and on every one of them a
+   * documented control was failing open.
+   *
+   * So: if the screen showed "None", the fresh probe must also say "None".
+   */
+  const sentinelMismatch = (fresh: bigint, shown: bigint) =>
+    (shown === BigInt(0)) !== (fresh === BigInt(0));
   const indexDrift = drift(oracle.indexPrice12, displayed.asRenderedIndexPrice12);
   const entryDrift = drift(probe.entryPrice12, displayed.asRenderedEntryPrice12);
   const liqDrift = drift(probe.liquidationPrice12, displayed.asRenderedLiquidationPrice12);
+  // `netCollateralUsd` is what actually backs the position, and it moves with
+  // PEX's admin-mutable fee parameters. It was displayed ("Backing the
+  // position") and never compared — and a fee change large enough to matter
+  // moves the liquidation price by less than its own tolerance, so the guard
+  // that could have noticed did not.
+  const netDrift = drift(
+    micro(probe.netCollateralUsd), displayed.asRenderedNetCollateralMicro,
+  );
   if (indexDrift > BigInt(MAX_DISPLAY_DRIFT_BPS)
     || entryDrift > BigInt(MAX_ENTRY_DRIFT_BPS)
-    || liqDrift > BigInt(MAX_LIQUIDATION_DRIFT_BPS)) {
+    || liqDrift > BigInt(MAX_LIQUIDATION_DRIFT_BPS)
+    || netDrift > BigInt(MAX_NET_COLLATERAL_DRIFT_BPS)
+    || sentinelMismatch(probe.liquidationPrice12, displayed.asRenderedLiquidationPrice12)) {
     throw new Error(
       "The figures on screen are out of date — the market moved while this was being prepared. Nothing was sent; check the new numbers and try again.",
     );
@@ -511,7 +560,17 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   if (blobs.length !== txns.length) throw new Error("Signing cancelled.");
 
   stage("submitting");
-  const res = await algod.sendRawTransaction(blobs).do();
+  // Computed BEFORE submission. A dropped socket or a timeout after the node
+  // accepted the group used to reject out of `sendRawTransaction`, discarding
+  // the id — so the user got "failed" with no link for a group that may well
+  // have committed. That is B5 one call earlier, and nothing forces it: the id
+  // is a property of the signed bytes, not of the response.
+  const txId = txns[0].txID();
+  try {
+    await algod.sendRawTransaction(blobs).do();
+  } catch (e) {
+    throw new SubmissionUnknownError(txId, e instanceof Error ? e.message : String(e));
+  }
 
   // Past this line the money may already have moved. Nothing below may throw
   // away the txid, and a wait that runs out is NOT a failure.
@@ -523,15 +582,38 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // open reported as failed was not an edge case; it was the expected outcome of
   // a slow round. The user then retried and opened a second position.
   stage("confirming");
-  let confirmed = false;
+  // **Three outcomes, not two.**
+  //
+  // `waitForConfirmation` throws for two structurally different things:
+  // `Transaction Rejected: <poolError>`, where the node has definitively
+  // refused the group, and `Transaction not confirmed after N rounds`, where
+  // the answer is genuinely unknown. Collapsing both into `confirmed: false`
+  // made the card tell a user whose transaction had been REJECTED that "this is
+  // not a failure, it will most likely confirm, do not open again" — every
+  // clause false, and it steers them away from the one correct action. That is
+  // B5 inverted, and worse: B5 understated a success, this overstates a failure.
+  let outcome: OpenOutcome = "unknown";
+  let reason: string | undefined;
   try {
-    await algosdk.waitForConfirmation(algod, res.txid, CONFIRM_ROUNDS);
-    confirmed = true;
-  } catch {
-    // Deliberately swallowed. The caller is told `confirmed: false` and given the
-    // txid; it must not present this as a failure.
-    confirmed = false;
+    await algosdk.waitForConfirmation(algod, txId, CONFIRM_ROUNDS);
+    outcome = "confirmed";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/^Transaction Rejected:/i.test(msg)) {
+      outcome = "rejected";
+      reason = msg.replace(/^Transaction Rejected:\s*/i, "");
+    } else {
+      // A wait that runs out is NOT a failure. The group stays valid for the
+      // rest of its window and will most likely commit; algod here is
+      // load-balanced and the SDK swallows the 404s from polling a node other
+      // than the one that accepted it.
+      outcome = "unknown";
+      reason = msg;
+    }
   }
 
-  return { txId: res.txid, baseOrderId: alloc.baseOrderId, checks: assertion.checked, confirmed };
+  return {
+    txId, baseOrderId: alloc.baseOrderId, checks: assertion.checked,
+    outcome, reason, confirmed: outcome === "confirmed",
+  };
 }
