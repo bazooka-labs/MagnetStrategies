@@ -86,9 +86,33 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
    */
   const [zoom, setZoom] = useState(1);
   const drag = useRef<{ y: number; zoom: number } | null>(null);
+
+  /**
+   * The visible slice of the series: how many candles, ending where.
+   *
+   * `span` null means "all of them" — the default, and what a range button
+   * resets to. Narrowing it is the horizontal counterpart of the price zoom:
+   * fewer candles across the same width means each one is wider, which is how
+   * you get a handful of bars to actually fill the chart.
+   *
+   * `end` is an index into the full series, so panning is just moving it.
+   */
+  const [span, setSpan] = useState<number | null>(null);
+  const [end, setEnd] = useState<number | null>(null);
+  const pan = useRef<{ x: number; end: number } | null>(null);
+
+  /** The candles actually drawn, and where the slice starts in the full array. */
+  const visible = useMemo(() => {
+    if (!candles) return null;
+    if (span === null) return { rows: candles, from: 0 };
+    const last = Math.min(candles.length - 1, end ?? candles.length - 1);
+    const from = Math.max(0, last - span + 1);
+    return { rows: candles.slice(from, last + 1), from };
+  }, [candles, span, end]);
   /** 0 until measured — `geom` is null anyway until candles arrive. */
   const [width, setWidth] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // Real pixel width, so pointer position maps back to a candle exactly.
   useEffect(() => {
@@ -126,8 +150,10 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     setCandles(null);
     setError(null);
     setHover(null);
-    // A zoom fitted to one range means nothing against another.
+    // A zoom or a window fitted to one series means nothing against another.
     setZoom(1);
+    setSpan(null);
+    setEnd(null);
     const load = (first: boolean) => {
       fetchCandles(marketId, range)
         .then((c) => { if (alive) setCandles(c); })
@@ -142,6 +168,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   }, [marketId, range]);
 
   const geom = useMemo(() => {
+    const candles = visible?.rows;
     if (!candles || candles.length < 2 || width <= 0) return null;
     // Every drawn line is included in the scale, or a liquidation far below the
     // visible range would silently fall outside the plot — which is the one
@@ -188,10 +215,17 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     // Four gridlines is enough to read a level without becoming a ledger.
     const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4);
     return { bars, bodyW, y, cx, min, max, innerW, innerH, slot, ticks };
-  }, [candles, indexUsd, width, lines, zoom]);
+  }, [visible, indexUsd, width, lines, zoom]);
 
   const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     // A drag on the price axis owns the pointer until it is released.
+    if (pan.current && geom && candles && span !== null) {
+      // Whole candles, so the series never lands between slots and shimmers.
+      const moved = Math.round((pan.current.x - e.clientX) / geom.slot);
+      const target = pan.current.end + moved;
+      setEnd(Math.min(candles.length - 1, Math.max(span - 1, target)));
+      return;
+    }
     if (drag.current) {
       const dy = drag.current.y - e.clientY;
       // Up zooms in. 180px of travel doubles or halves, which is a comfortable
@@ -200,23 +234,62 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
       setZoom(Math.min(40, Math.max(0.35, next)));
       return;
     }
-    if (!geom || !candles) return;
+    if (!geom || !visible) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const i = Math.floor((x - PAD.left) / geom.slot);
-    setHover(i >= 0 && i < candles.length ? i : null);
-  }, [geom, candles]);
+    setHover(i >= 0 && i < (visible?.rows.length ?? 0) ? i : null);
+  }, [geom, visible, candles, span]);
 
   const endDrag = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!drag.current) return;
+    if (!drag.current && !pan.current) return;
     drag.current = null;
+    pan.current = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
   }, []);
 
+  /**
+   * Wheel over the plot zooms horizontally, anchored under the cursor.
+   *
+   * Anchoring matters: zooming toward the middle drags whatever you were
+   * looking at off to one side, so you end up chasing it. Keeping the candle
+   * under the pointer fixed is what makes this feel like magnifying rather than
+   * scrolling.
+   */
+  const onWheel = useCallback((e: WheelEvent) => {
+    if (!candles || !geom || !visible) return;
+    // Non-passive, so this actually stops the page scrolling underneath.
+    e.preventDefault();
+    const total = candles.length;
+    const current = span ?? total;
+    const next = Math.round(current * Math.pow(1.2, e.deltaY > 0 ? 1 : -1));
+    // Ten candles is about as far in as stays legible; the whole series is as
+    // far out as there is anything to show.
+    const clamped = Math.min(total, Math.max(10, next));
+    if (clamped === current) return;
+
+    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left - PAD.left) / geom.innerW));
+    const underCursor = visible.from + Math.round(frac * (visible.rows.length - 1));
+    const newLast = Math.round(underCursor + (1 - frac) * (clamped - 1));
+    setSpan(clamped === total ? null : clamped);
+    setEnd(clamped === total ? null : Math.min(total - 1, Math.max(clamped - 1, newLast)));
+  }, [candles, geom, visible, span]);
+
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [onWheel]);
+
   const change = candles ? changePct(candles) : null;
   const up = (change ?? 0) >= 0;
-  const active = hover !== null && candles ? candles[hover] : null;
+  const rows = visible?.rows ?? null;
+  const active = hover !== null && rows ? rows[hover] : null;
   // While hovering, the header reads out the hovered candle instead of the range.
+  // The headline price is the latest in the SERIES, not the latest visible —
+  // panning back in time should not look like the price has changed.
   const headline = active ?? (candles ? candles[candles.length - 1] : null);
 
   return (
@@ -248,11 +321,11 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {zoom !== 1 && (
-            <button onClick={() => setZoom(1)}
-              title="Reset the price scale"
+          {(zoom !== 1 || span !== null) && (
+            <button onClick={() => { setZoom(1); setSpan(null); setEnd(null); }}
+              title="Reset the price scale and the visible range"
               className="mr-1 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors hover:text-white/90">
-              {zoom.toFixed(1)}× · reset
+              reset
             </button>
           )}
           {CHART_RANGES.map((r) => (
@@ -283,10 +356,18 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
           <div className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02]" style={{ height: H }} />
         )}
         {!error && geom && candles && (
-          <svg width={width} height={H} className="touch-pan-y select-none"
+          <svg ref={svgRef} width={width} height={H} className="touch-pan-y select-none"
             onPointerMove={onMove}
+            onPointerDown={(e) => {
+              // The price axis strip has its own handler and stops propagation
+              // there, so a pointer down reaching the svg is over the plot.
+              if (!candles || !visible) return;
+              pan.current = { x: e.clientX, end: visible.from + visible.rows.length - 1 };
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+            }}
             onPointerUp={endDrag} onPointerCancel={endDrag}
             onPointerLeave={(e) => { endDrag(e); setHover(null); }}
+            onDoubleClick={() => { setSpan(null); setEnd(null); setZoom(1); }}
             role="img" aria-label={`${label} price candles, last ${rangeLabel(range)}`}>
             <defs>
               {/* Zoomed candles must not paint over the axis or escape the
@@ -323,11 +404,11 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
 
             {/* Time axis — a few labels, not one per candle. */}
             {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
-              const idx = Math.min(candles.length - 1, Math.round(f * (candles.length - 1)));
+              const idx = Math.min(rows!.length - 1, Math.round(f * (rows!.length - 1)));
               return (
                 <text key={i} x={geom.cx(idx)} y={H - 8} textAnchor="middle"
                   fill="#ffffff" fillOpacity="0.28" fontSize="10"
-                  fontFamily="ui-monospace, monospace">{fmtTime(candles[idx].t, range)}</text>
+                  fontFamily="ui-monospace, monospace">{fmtTime(rows![idx].t, range)}</text>
               );
             })}
 
