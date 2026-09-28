@@ -118,7 +118,13 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(Math.max(280, e.contentRect.width)));
+    // Whole pixels only. Sub-pixel churn re-runs the geometry on every frame,
+    // and a panel that resizes in response can feed itself a ResizeObserver
+    // loop — which is one of the ways this flickered.
+    const ro = new ResizeObserver(([e]) => {
+      const w = Math.max(280, Math.round(e.contentRect.width));
+      setWidth((prev) => (prev === w ? prev : w));
+    });
     ro.observe(el);
     setWidth(Math.max(280, el.getBoundingClientRect().width));
     return () => ro.disconnect();
@@ -228,9 +234,9 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     }
     if (drag.current) {
       const dy = drag.current.y - e.clientY;
-      // Up zooms in. 180px of travel doubles or halves, which is a comfortable
-      // amount of movement for a full step.
-      const next = drag.current.zoom * Math.pow(2, dy / 180);
+      // Up zooms in. 420px of travel is one doubling — 180 made a small wrist
+      // movement jump several steps, which is unusable for fine adjustment.
+      const next = drag.current.zoom * Math.pow(2, dy / 420);
       setZoom(Math.min(40, Math.max(0.35, next)));
       return;
     }
@@ -262,10 +268,15 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     e.preventDefault();
     const total = candles.length;
     const current = span ?? total;
-    const next = Math.round(current * Math.pow(1.2, e.deltaY > 0 ? 1 : -1));
+    // 8% per notch rather than 20%: a trackpad sends many small events and a
+    // fifth of the window per event made it impossible to land anywhere.
+    const step = Math.pow(1.08, e.deltaY > 0 ? 1 : -1);
+    const next = Math.round(current * step);
+    // Rounding can stall on small windows — force at least one candle of change.
+    const moved = next === current ? current + (e.deltaY > 0 ? 1 : -1) : next;
     // Ten candles is about as far in as stays legible; the whole series is as
     // far out as there is anything to show.
-    const clamped = Math.min(total, Math.max(10, next));
+    const clamped = Math.min(total, Math.max(10, moved));
     if (clamped === current) return;
 
     const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
@@ -287,10 +298,18 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const up = (change ?? 0) >= 0;
   const rows = visible?.rows ?? null;
   const active = hover !== null && rows ? rows[hover] : null;
-  // While hovering, the header reads out the hovered candle instead of the range.
-  // The headline price is the latest in the SERIES, not the latest visible —
-  // panning back in time should not look like the price has changed.
-  const headline = active ?? (candles ? candles[candles.length - 1] : null);
+  /**
+   * The headline price is ALWAYS the latest in the series.
+   *
+   * It used to switch to whatever was hovered, which made the largest number on
+   * the panel change under the cursor — and because the OHLC row only existed
+   * while hovering, the header grew and shrank with it and the whole panel
+   * jumped. The hovered values belong in the readout row, which is now always
+   * present, so nothing reflows.
+   */
+  const headline = candles ? candles[candles.length - 1] : null;
+  /** Hovered candle when there is one, otherwise the latest — never absent. */
+  const readout = active ?? headline;
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
@@ -303,22 +322,26 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
                 {fmtPrice(headline.c)}
               </span>
             )}
-            {change !== null && !active && (
+            {change !== null && (
               <span className={`text-xs font-medium tabular-nums ${up ? "text-green-300" : "text-red-300"}`}>
                 {up ? "+" : ""}{change.toFixed(2)}%
               </span>
             )}
           </div>
-          {/* OHLC readout, the thing a crosshair is actually for. */}
-          {active && (
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-white/45">
-              <span>{fmtTime(active.t, range)}</span>
-              <span>O <span className="text-white/70">{fmtAxis(active.o)}</span></span>
-              <span>H <span className="text-white/70">{fmtAxis(active.h)}</span></span>
-              <span>L <span className="text-white/70">{fmtAxis(active.l)}</span></span>
-              <span>C <span className={active.c >= active.o ? "text-green-300" : "text-red-300"}>{fmtAxis(active.c)}</span></span>
-            </div>
-          )}
+          {/* Always rendered, so hovering cannot change the header's height.
+              Showing the latest candle when nothing is hovered is more useful
+              than a blank row of the same size. */}
+          <div className="mt-1 flex h-4 flex-wrap items-center gap-x-3 text-[11px] tabular-nums text-white/45">
+            {readout && (
+              <>
+                <span>{fmtTime(readout.t, range)}</span>
+                <span>O <span className="text-white/70">{fmtAxis(readout.o)}</span></span>
+                <span>H <span className="text-white/70">{fmtAxis(readout.h)}</span></span>
+                <span>L <span className="text-white/70">{fmtAxis(readout.l)}</span></span>
+                <span>C <span className={readout.c >= readout.o ? "text-green-300" : "text-red-300"}>{fmtAxis(readout.c)}</span></span>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           {(zoom !== 1 || span !== null) && (
@@ -389,10 +412,13 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
               </g>
             ))}
 
-            {/* Candles */}
+            {/* Candles. No per-bar dimming on hover: tying every candle's
+                opacity to `hover` re-rendered all of them on every pointer
+                move, and at 168 bars that is the jank. The crosshair already
+                marks which one is selected. */}
             <g clipPath={`url(#plot-${marketId})`}>
             {geom.bars.map((b, i) => (
-              <g key={i} opacity={hover === null || hover === i ? 1 : 0.55}>
+              <g key={i}>
                 <line x1={b.cx} x2={b.cx} y1={b.wickTop} y2={b.wickBottom}
                   stroke={b.up ? UP : DOWN} strokeWidth="1" opacity="0.85" />
                 <rect x={b.cx - geom.bodyW / 2} y={b.bodyY} width={geom.bodyW} height={b.bodyH}
@@ -465,6 +491,11 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
               // zoom rather than a scroll.
               style={{ cursor: "ns-resize", touchAction: "none" }}
               onPointerDown={(e) => {
+                // **Stop here.** Pointer events bubble, so without this the
+                // svg's own handler also fired and started a horizontal pan on
+                // the same gesture — `onMove` checks pan first, so dragging the
+                // price axis scrolled the chart sideways instead of zooming.
+                e.stopPropagation();
                 drag.current = { y: e.clientY, zoom };
                 e.currentTarget.setPointerCapture?.(e.pointerId);
                 setHover(null);
