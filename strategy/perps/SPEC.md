@@ -1050,6 +1050,31 @@ Display accuracy is a security property here, because there is no contract to ex
 
 ---
 
+## Close Payout Semantics — Settled by Ultrade, 2026-09-28
+
+**A close is not a single-asset payout.** This is the governing fact and it was got wrong in shipped code for six audits — see [AUDIT.md](./AUDIT.md#the-close-payout-was-wrong-in-both-directions-2026-09-28).
+
+On ALGO/USD a long returns its collateral in **USDC** and its realized profit in **ALGO**. Any interface that reports one dollar figure is not rounding — it is omitting a leg.
+
+**Do not read `collateral_delta`.** Ultrade, verbatim: *"Don't use `collateral_delta`. Aggregate `primary_output_amount`, `pnl_output_amount` and the claimable token outputs by asset ID."* Measured against live positions, `collateral_delta` was wrong in **both** directions — understating by up to 37% where a second asset was hidden, and **overstating by 12.4%** on a single-asset close.
+
+The aggregation is over four fields, keyed by their own asset id:
+
+| Field | Asset id field |
+|---|---|
+| `primary_output_amount` | `primary_output_asset_id` |
+| `pnl_output_amount` | `pnl_output_asset_id` |
+| `claimable_long_token_output` | `core.long_asset_id` |
+| `claimable_short_token_output` | `core.short_asset_id` |
+
+**Do not subtract funding and borrowing again.** Per Ultrade those costs are already settled into collateral *before* the proportional withdrawal is computed — which is also why they do not scale with the close fraction. The breakdown is informational; netting it a second time double-counts.
+
+**A USD total is optional; the per-asset amounts are not.** USDC values 1:1 and the market's index asset is priced by the signed oracle payload. An output in any other asset **withholds the total** rather than guessing at it, and the per-asset amounts are shown regardless. The type is `payoutUsd: number | null` for exactly this reason.
+
+**Deficit closes.** SDK 0.6.6 charges `forcedAccruedCostUsd` to `costUsd` on *every* close, where 0.6.4 and earlier charged it only on liquidation and ADL. Where accrued costs exceed position collateral, quotes from before 0.6.6 **overstated** the payout. 0.6.6 is the floor for any close quote; it does not touch the open path.
+
+---
+
 ## State
 
 Perps holds **no protocol state of its own**. Everything economically meaningful lives in PEX boxes: the position in `p2:`, the bracket order in `o2:`, market context in `mp2:` / `mo2:` / `mf2:` / `ma2:`.
@@ -1165,6 +1190,26 @@ What a Perps user is trusting, stated plainly because the product's honesty depe
    Then the five close notifications and Perps History.
 
 Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec marked TestNet is a placeholder until step 2 replaces it.
+
+---
+
+## Build Status — 2026-09-28
+
+Tracked against [Build Order](#build-order) above, because that list describes the plan and this describes the tree.
+
+**Built and verified against MainNet simulation:** steps 1, 2 (with the gaps noted in that step), 5, 6, 7. The open path is complete, including the attached take-profit — `openPosition` in `perpsClient.ts` is the only place a group reaches a wallet, and `perpsGroup.ts` asserts every transaction in it before it does.
+
+**Built, read-only:** step 9's *reading* half. `PositionsPanel` shows live per-position quotes with the per-asset payout breakdown above. **There is no close, partial-close, add, add-collateral or reclaim write path**, and that is deliberate rather than unfinished — see the yield-recall question below.
+
+**Built and not in the Build Order at all**, because they were added after it was written:
+
+- **Charts.** Candles from Coinbase, plus a TradingView embed as an advanced view. Neither is the feed PEX prices against; this is a **disclosure obligation**, discharged by drawing PEX's oracle as a dashed line on our own chart from the same signed payload the card quotes from, and by a caption stating it in both views. The advanced view is a third-party iframe with no runtime API and **cannot carry the overlay** — there the order card is the only place the oracle price appears.
+- **`PerpsInfoModal`.** Risk disclosure, consolidated out of inline explainers. Now the sole location of some of it.
+- **Take-profit quick-picks.** Target profit percentages that solve back to a trigger price. On the money path: that price is signed.
+
+**Not started:** steps 3, 4, 8, 10. Step 4's operational prerequisite — `BUILDER_ADDRESS` opted in to USDC — is confirmed; the supply-chain controls are not.
+
+**The gap that no step covers: nothing here has ever been signed by a real wallet.** Every verification in this document, across six audits, is `simulate_transactions`. Simulation does not reach wallet encoding, group ordering as the wallet presents it, the signing budget, or submission.
 
 ---
 

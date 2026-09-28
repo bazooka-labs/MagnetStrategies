@@ -1037,18 +1037,124 @@ is not evidence.
 
 ---
 
+## The close payout was wrong in both directions (2026-09-28)
+
+Found by asking Ultrade a question, not by auditing. Worth recording because the
+lesson is about method: this code had survived six audits, and no audit caught it
+because every audit checked the arithmetic we had written rather than whether we
+were reading the right field.
+
+**What we did:** read `collateral_delta` from `quoteV2CloseLike` and showed it as
+the payout.
+
+**What Ultrade said (2026-09-28):** *"Don't use `collateral_delta`. Aggregate
+`primary_output_amount`, `pnl_output_amount` and the claimable token outputs by
+asset ID."*
+
+**Why one number could never have been right.** A close is not a single-asset
+payout. On ALGO/USD a long gets its collateral back in **USDC** and its profit in
+**ALGO**. One dollar figure did not just misstate the total — it hid an entire
+leg. Measured against live MainNet positions:
+
+| Position | Actually receives | We showed | Error |
+|---|---|---|---|
+| `DGJOWLTV…` | 15.88 ALGO + 5.57 USDC = $7.64 | $5.58 | understated 37.1% |
+| `J65HYZUN…` | 13.79 ALGO + 5.19 USDC = $6.99 | $5.19 | understated 34.5% |
+| `KANJIGXR…` | 45.40 USDC = $45.40 | $51.82 | **overstated 12.4%** |
+
+Wrong in **both** directions, which matters: an understatement is a bad
+experience, an overstatement is a number a user makes a decision on that the
+chain will not honour.
+
+**Fixed:** `quoteClose` aggregates outputs by asset; the panel lists them
+per-asset ("You receive 15.88 ALGO + 5.57 USDC") rather than collapsing two
+assets into one figure. `payoutUsd` is now **nullable** — USDC values 1:1 and the
+market's index asset is priced by the signed oracle, and an output in anything
+else withholds the total rather than guessing, while still showing the
+per-asset amounts.
+
+Per Ultrade, the funding/borrowing breakdown is **not** subtracted again: those
+costs are already settled into collateral before the proportional withdrawal is
+computed, which is also why they do not scale with the close fraction.
+
+**SDK 0.6.4 → 0.6.6** in the same change. Its only quote change is one line in
+`quoteV2CloseLike`: `forcedAccruedCostUsd` is now always charged to `costUsd`,
+where it was previously charged only on liquidation and ADL. On a deficit close —
+accrued costs exceeding position collateral — older quotes **overstated** the
+payout. Solver re-verified on 0.6.6 as `vendor/README` requires: 240 randomised
+cases, 2 overstatements, both at the $5 floor and both corrected by
+`confirmCeiling` — the same documented imprecision as the 0.6.4 run. 0.6.6 does
+not touch the open path.
+
+**Method note.** Two of the three defects in this section came from asking the
+protocol author a direct question. Neither was reachable by reading our own code
+more carefully, because our code was internally consistent and wrong at the
+boundary. Where a field's meaning is the protocol's to define, ask; do not audit
+harder.
+
+---
+
+## Unaudited surface (2026-09-28) — scope for audit 7
+
+Everything below landed **after** audit 6 and has had no adversarial review. It
+is recorded here so the next audit has a list rather than a diff to rediscover.
+
+**On the money path — audit these first.**
+
+1. **Take-profit quick-picks** (`PerpsCard`, `TP_TARGETS = [0.1, 0.25, 0.5]`).
+   These compute a take-profit **trigger price from a target profit percentage**,
+   and that price is **signed**. The default stake was also removed, so the
+   amount field now starts empty. Arithmetic here reaches the chain.
+2. **The overlay contract** (`PerpsCard` → `PerpsView` → `PerpsChart`). The card
+   reports entry, liquidation, take-profit and stop as `CardOverlay`; the chart
+   draws them. Deliberately one-directional — the chart derives nothing — because
+   two components computing a liquidation price separately is how they come to
+   disagree. Verify the direction has not been reversed anywhere, and that a
+   stale overlay cannot outlive the quote it came from.
+3. **The `frozen` snapshot** during signing. What the user is agreeing to while
+   the wallet is open must not be re-derived from live state underneath them.
+4. **`PositionsPanel`'s per-asset payout rendering** — new code on the numbers
+   the section above corrects.
+
+**Presentational, but with a safety property.**
+
+5. **The chart** (`PerpsChart`, `perpsChart.ts`, `PerpsChartPanel`). Candles come
+   from **Coinbase**; the advanced view is a **TradingView** embed. Neither is
+   the feed PEX prices against. The guard is that the basic chart draws PEX's
+   oracle as a dashed violet line from the *same signed payload the card quotes
+   from*, and the caption states plainly that neither chart is the price you
+   trade at. **The advanced view cannot carry that overlay** — it is a
+   third-party iframe with no runtime API — so in that view the order card is the
+   only place the oracle price appears. Check the caption still says so.
+   Interaction state (zoom, 2D pan, axis drags) is local to the chart and touches
+   no quote.
+6. **The single card.** Chart, order form and positions are one `Panel` divided
+   by `Seam`s; each section draws the seam above itself so the positions list
+   takes its rule with it when no wallet is connected. Sections render no border
+   or background of their own.
+7. **`PerpsInfoModal`** — the risk disclosure moved here from inline explainers.
+   Confirm nothing load-bearing was lost in the move: this is now the only place
+   some of it is stated.
+
+**Known-absent, not a finding.** There is no close **write** path, by design —
+see the yield-recall question below. `PositionsPanel` says so in the UI rather
+than showing a button it cannot honour.
+
+---
+
 ## Open
 
 1. **Does PEX itself reject a tampered transfer (H1)?** *Partly answered,
-   2026-09-26.* With a funded trader as sender, an open-only group simulates
-   `ok=true`, and redirecting the **collateral** transfer to an attacker is
-   **rejected by the chain**. So for that leg there is a real second line of
-   defence behind the assertion.
+   2026-09-26; the blocking dependency has since cleared.* With a funded trader
+   as sender, an open-only group simulates `ok=true`, and redirecting the
+   **collateral** transfer to an attacker is **rejected by the chain**. So for
+   that leg there is a real second line of defence behind the assertion.
 
    **The actual H1 leg is still unresolved.** The unbound keeper-fee escrow
-   exists only in the open+take-profit group, and that group cannot be simulated
-   at all while B6 stands. So "the chain would catch it" remains unproven for the
-   leg that is actually unbound. Fix it regardless; re-test once B6 clears.
+   exists only in the open+take-profit group. That group could not be simulated
+   at all while B6 stood — **B6 is now resolved** (see above: it was our
+   `timeInForce=0`, and a child leg needing its own OrderOps payload), so this
+   test is now *possible* and simply has not been run. Run it.
 
    A caution on method: a second mutation in the same run — inflating fees to the
    group cap — also showed as rejected, but that mutation rewrote every
@@ -1056,8 +1162,23 @@ is not evidence.
    ceiling. It is not evidence that an overpaid fee is refused, and is not
    recorded as such.
 2. **`doi:` is pinned against nothing.** Ask Ultrade for a declared format, or
-   pin by observation and say so.
-3. **These were two instances of the same model reviewing its own work.** That
+   pin by observation and say so. Raised with Ultrade; unanswered.
+3. **The yield-recall question gates the close write path.** Whether pool state
+   can make a recall *mandatory* on close — ALGO legs show
+   `observed_available_underlying = 0`, and profit on an ALGO/USD long is paid in
+   ALGO. Sent to Ultrade 2026-09-28, unanswered. See
+   [YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md).
+   Until it is answered the positions view is read-only, and a position opened
+   through our UI has exactly two exits: the take-profit fires, or it liquidates.
+4. **No group in this codebase has ever been signed by a real wallet.** Six
+   audits, entirely against `simulate_transactions`. This is the largest
+   remaining category of unknown and it is **not** blocked on Ultrade. Simulation
+   cannot reach wallet encoding, group ordering as the wallet presents it, the
+   signing budget, or submission. The `fixSigners: true` fix from audit 6 —
+   rekeyed accounts — has likewise only ever run in simulation.
+5. **These were instances of the same model reviewing its own work.** That
    catches assumptions and arithmetic — it did, repeatedly — but it is weakest
-   where the error is systematic rather than local. Before this holds meaningful
-   money, an outside reviewer is worth more than a third bot.
+   where the error is systematic rather than local. The close-payout defect above
+   is the case in point: internally consistent, wrong at the boundary, invisible
+   to six passes. Before this holds meaningful money, an outside reviewer is
+   worth more than another bot.

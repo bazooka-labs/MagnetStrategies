@@ -7,10 +7,17 @@ Perps does not operate an exchange. It integrates **PEX**, a third-party perpetu
 protocol built by Ultrade. Magnet Strategies writes no exchange contracts, custodies
 no user funds, and holds no protocol role.
 
-**Status:** Integration under construction — config, on-chain reads, the risk-bar
-solver, oracle verification and the quote layer are built and verified against
-MainNet. No contract is deployed because none exists. **The product name is
-provisional** — "Perps" describes the instrument, not the product.
+**Status (2026-09-28):** The **open path is complete** — config, on-chain reads, the
+risk-bar solver, oracle verification, the quote layer, group construction and the
+signing flow, including an attached take-profit. All of it verified against MainNet
+**simulation**; no group has yet been signed by a real wallet. Positions are
+**read-only**: closing is blocked on an open question to Ultrade about yield recall,
+so a position opened here exits only by its take-profit firing or by liquidation.
+No contract is deployed because none exists. **The product name is provisional** —
+"Perps" describes the instrument, not the product.
+
+Detail: [SPEC.md](./SPEC.md#build-status--2026-09-28) for what is built,
+[AUDIT.md](./AUDIT.md#open) for what is open.
 
 > **Its own tree inside Strategy, deliberately.** Perps was briefly its own top-level
 > arm, and placing it inside [`predict/`](../../predict/) was considered and rejected.
@@ -99,5 +106,8 @@ MagnetFi state at all.
 | [SPEC.md](./SPEC.md) | Product definition, architecture, threat model, invariants |
 | [PEX.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
 | [AUDIT.md](./AUDIT.md) | Adversarial audit findings, the one-position decision, and what the earlier verification got wrong |
+| [B6-QUESTION-FOR-ULTRADE.md](./B6-QUESTION-FOR-ULTRADE.md) | **Resolved.** The attached take-profit leg rejected by OrderOps — kept for the elimination method |
+| [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md) | **Answered 2026-09-28.** Partial-close payout semantics — the answer found two defects in shipped code |
+| [YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md) | **Open.** Whether pool state can make a yield recall mandatory on close — gates the close write path |
 | [../ORACLE.md](../ORACLE.md) | Arm-level price doctrine — Perps consumes PEX's signed payloads and runs no feed of its own |
 | [../OVERVIEW.md](../OVERVIEW.md) | The Strategy arm — admission criterion and arm-wide commitments |
