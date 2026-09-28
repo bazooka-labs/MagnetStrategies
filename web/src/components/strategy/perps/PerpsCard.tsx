@@ -138,6 +138,23 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
    *
    * Only the derived numbers wait; the field itself never does.
    */
+  /**
+   * Clear the take-profit whenever the market changes.
+   *
+   * This used to live in the market buttons' onClick. Those buttons moved above
+   * the chart, and the guard has to move with them — a price means nothing
+   * across markets: $0.30 is a plausible ALGO target and an absurd BTC one, and
+   * a short's lower bound is a ten-thousandth of a cent, so a carried value
+   * VALIDATES and the card cheerfully prints a 389% return. That was H2.
+   *
+   * Keyed on `marketId` rather than on a click, so the guard holds however the
+   * market is changed — including by a caller that does not exist yet.
+   */
+  useEffect(() => {
+    setTpPrice("");
+    setTpTouched(false);
+  }, [marketId]);
+
   const settledAmount = useDebounced(amount, 120);
   const collateralUsd = parseMoney(settledAmount) ?? 0;
   /**
@@ -463,30 +480,12 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
 
   return (
     <Panel className="p-5 sm:p-6">
-      {/* Market */}
-      <div className="flex items-center gap-2">
-        {MARKETS.map((m) => {
-          const on = m.id === marketId;
-          return (
-            <button key={m.id} disabled={submitting} onClick={() => {
-                if (m.id === marketId) return;
-                setMarketId(m.id);
-                // A price means nothing across markets. $0.30 is a plausible ALGO
-                // target and an absurd BTC one, and a short's lower bound is a
-                // ten-thousandth of a cent — so a carried value validates and the
-                // card cheerfully prints a 389% return. Clear it outright.
-                setTpPrice("");
-                setTpTouched(false);
-              }}
-              className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                on ? "border-magnet-400/60 bg-magnet-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}>
-              <div className={`text-sm font-semibold ${on ? "text-white" : "text-white/70"}`}>{m.label}</div>
-              <div className="text-xs tabular-nums text-white/50">
-                {on && indexUsd !== null ? fmtPrice(indexUsd) : on && loading ? "…" : " "}
-              </div>
-            </button>
-          );
-        })}
+      {/* The market toggle lives above the chart now, not here. */}
+      <div className="flex items-baseline justify-between">
+        <span className="font-display text-base font-semibold text-white">{market.label}</span>
+        <span className="text-xs tabular-nums text-white/45">
+          {indexUsd !== null ? fmtPrice(indexUsd) : loading ? "…" : ""}
+        </span>
       </div>
 
       {(error || (data && !data.oracle.signatureVerified) || preflight.canOpen === false) && (

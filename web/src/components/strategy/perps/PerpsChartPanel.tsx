@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
-import { PEX_APPS, PEX_MARKETS } from "@/lib/perps";
+import { ENABLED_MARKET_IDS, PEX_APPS, PEX_MARKETS } from "@/lib/perps";
 import { PerpsChart } from "./PerpsChart";
 
 /**
@@ -41,15 +41,53 @@ const SYMBOL: Record<number, string> = {
 
 const SCRIPT_SRC =
   "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-const HEIGHT = 520;
+/**
+ * The chart's height in pixels.
+ *
+ * With `autosize: true` the widget measures its CONTAINER, so the container is
+ * what carries the height and the inner element is 100% of it. Setting a fixed
+ * pixel height on the inner div as well left the iframe sizing itself against a
+ * box that was already constrained, which is what pancaked it.
+ */
+const HEIGHT = 560;
 
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
 
-type Props = { marketId: number; label: string };
+const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
-export function PerpsChartPanel({ marketId, label }: Props) {
+/**
+ * The market toggle, shared by both branches.
+ *
+ * It has to be reachable on the fallback path too: the card no longer carries a
+ * selector, so a blocked TradingView script would otherwise leave the user with
+ * no way to switch markets at all.
+ */
+function MarketToggle({ marketId, onChange }: { marketId: number; onChange: (id: number) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+      {MARKETS.map((m) => {
+        const on = m.id === marketId;
+        return (
+          <button key={m.id} onClick={() => onChange(m.id)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+              on ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
+            {m.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type Props = {
+  marketId: number;
+  label: string;
+  onMarketChange: (id: number) => void;
+};
+
+export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
 
@@ -78,7 +116,9 @@ export function PerpsChartPanel({ marketId, label }: Props) {
     el.innerHTML = "";
     const inner = document.createElement("div");
     inner.className = "tradingview-widget-container__widget";
-    inner.style.height = `${HEIGHT}px`;
+    // 100% of a container that carries the real height — see HEIGHT.
+    inner.style.height = "100%";
+    inner.style.width = "100%";
     el.appendChild(inner);
 
     const script = document.createElement("script");
@@ -111,12 +151,22 @@ export function PerpsChartPanel({ marketId, label }: Props) {
     return () => { el.innerHTML = ""; };
   }, [marketId]);
 
-  if (blocked || !SYMBOL[marketId]) return <PerpsChart marketId={marketId} label={label} />;
+  if (blocked || !SYMBOL[marketId]) {
+    return (
+      <div className="space-y-3">
+        <MarketToggle marketId={marketId} onChange={onMarketChange} />
+        <PerpsChart marketId={marketId} label={label} />
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold text-white">{label}</h2>
+        {/* Market toggle. It lives here rather than in the card because the
+            chart is what it most obviously governs — and because the card and
+            the chart must never disagree about which market is shown. */}
+        <MarketToggle marketId={marketId} onChange={onMarketChange} />
 
         {/* The number the card actually prices against. Outside the chart now,
             because the widget cannot carry the overlay — but never absent. */}
@@ -131,7 +181,7 @@ export function PerpsChartPanel({ marketId, label }: Props) {
       </div>
 
       <div className="tradingview-widget-container mt-3 overflow-hidden rounded-xl"
-        ref={holder} style={{ height: HEIGHT }} />
+        ref={holder} style={{ height: HEIGHT, width: "100%" }} />
 
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
         Chart by TradingView, showing Coinbase as a market reference.{" "}

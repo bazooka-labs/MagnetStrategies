@@ -85,7 +85,7 @@ export function PerpsView() {
           every number in the card is read against. The card sits beneath it
           rather than beside it: at 420px in a column the chart was too small to
           be worth having. */}
-      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""} />
+      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""} onMarketChange={setMarketId} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
