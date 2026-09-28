@@ -27,7 +27,12 @@ import {
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
 } from "@/lib/perps";
-import { solveBar, type Side } from "@/lib/perpsSolver";
+import {
+  minimumCollateralUsd,
+  notionalAtBarPosition,
+  solveBar,
+  type Side,
+} from "@/lib/perpsSolver";
 import { price12ToUsd, usdToPrice12 } from "@/lib/perpsOracle";
 import {
   confirmCeiling,
@@ -193,7 +198,11 @@ export function PerpsCard() {
 
   const notional = useMemo(() => {
     if (!bar?.open || !tradable) return 0;
-    return bar.minNotionalUsd + (ceilingUsd - bar.minNotionalUsd) * barPos;
+    // The solver's own function, not a copy of its arithmetic. The inline
+    // version omitted its clamp on `t` — harmless while the slider is the only
+    // caller, and exactly the "card owns its own copy" pattern that let the
+    // display precision drift away from the bound it was printing.
+    return notionalAtBarPosition({ ...bar, maxNotionalUsd: ceilingUsd }, barPos);
   }, [bar, ceilingUsd, tradable, barPos]);
 
   const quote: OpenQuote | null = useMemo(() => {
@@ -286,8 +295,39 @@ export function PerpsCard() {
   // ageing even when a repeated identical error would otherwise freeze it.
   void attemptAt;
   const age = oracleAgeSeconds(data);
+  /** The smallest stake this market will accept right now. */
+  const minCollateral = useMemo(() => {
+    if (!data) return null;
+    try {
+      return minimumCollateralUsd(
+        data.state, data.state.core, data.oracle.indexPrice12, POSITION_BUILDER_FEE_BPS,
+      );
+    } catch { return null; }
+    // Not side-dependent: the floor comes from `min_collateral_usd` and the fee
+    // fraction, neither of which differs by side.
+  }, [data]);
 
   const submitting = stage !== null;
+  /**
+   * The money figures as they were when the user clicked.
+   *
+   * Audit 5 froze the take-profit while signing but not the other fourteen
+   * figures derived from `quote`, `bar` and `notional` — all memos over `data`,
+   * which the hook replaces every ten seconds. During a 20-40 second mobile or
+   * hardware prompt the position size, liquidation price and whole cost table
+   * kept repainting while the group being signed carried the click-time values;
+   * and if `bar.open` or the preflight flipped, `tradable` went false and those
+   * figures **vanished** mid-prompt.
+   *
+   * The drift guard is structurally blind to this — it compares the fresh probe
+   * against the click-time `displayed` values, not against what the screen is
+   * showing now. Freezing the view is the fix.
+   */
+  const [frozen, setFrozen] = useState<{
+    quote: OpenQuote | null; notional: number; collateralUsd: number; tpPrice: string;
+  } | null>(null);
+  /** What the card renders. The live memos keep updating underneath. */
+  const view = frozen ?? { quote, notional, collateralUsd, tpPrice };
   /**
    * Everything required to sign, all of it already true for `tradable`, plus a
    * connected wallet and a valid target.
@@ -318,7 +358,11 @@ export function PerpsCard() {
     // immediately after `setResult`, so including it wiped the result too.
     setResult(null);
     setSubmitError(null);
-  }, [marketId, side]);
+    // `wallet.address` belongs here for the same reason market and side do: it
+    // is a genuine gesture meaning "different trade". Without it, account A's
+    // "confirmation not seen yet" banner, its txid and its "opening a second
+    // time would add to the position" warning sat under account B's card.
+  }, [marketId, side, wallet.address]);
 
   async function submit() {
     if (!canSubmit || !quote?.ok || !wallet.address || !data) return;
@@ -326,6 +370,7 @@ export function PerpsCard() {
     // rather than by whichever input happened to change.
     setSubmitError(null);
     setResult(null);
+    setFrozen({ quote, notional, collateralUsd, tpPrice });
     try {
       const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
       const r = await openPosition({
@@ -384,6 +429,7 @@ export function PerpsCard() {
       }
     } finally {
       setStage(null);
+      setFrozen(null);
     }
   }
 
@@ -499,7 +545,7 @@ export function PerpsCard() {
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-white/50">Risk</span>
           <span className="text-sm font-semibold tabular-nums text-white">
-            {tradable && quote?.ok ? `${quote.leverage.toFixed(2)}×` : "—"}
+            {tradable && view.quote?.ok ? `${view.quote.leverage.toFixed(2)}×` : "—"}
           </span>
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
@@ -508,10 +554,16 @@ export function PerpsCard() {
           className="mt-2 w-full accent-magnet-400 disabled:opacity-30" />
         <div className="flex justify-between text-[11px] tabular-nums text-white/40">
           <span>{tradable ? `${bar!.minLeverage.toFixed(2)}×` : ""}</span>
-          <span>{tradable && collateralUsd > 0 ? `${(ceilingUsd / collateralUsd).toFixed(2)}×` : ""}</span>
+          <span>{tradable && collateralUsd > 0 ? `${(ceilingUsd / view.collateralUsd).toFixed(2)}×` : ""}</span>
         </div>
         {bar && !bar.open && (
-          <p className="mt-1 text-xs text-amber-300/90">{bar.closedReason}</p>
+          <p className="mt-1 text-xs text-amber-300/90">
+            {bar.closedReason}
+            {/* `minimumCollateralUsd` existed to answer exactly this and had no
+                caller, so the card said "too small" without saying too small
+                for what. */}
+            {minCollateral !== null && ` You need at least ${fmtUsd(minCollateral)}.`}
+          </p>
         )}
         {/* Only blame the amount when the amount is actually the problem. This
             line used to render for every cause of `!tradable`, so during the
@@ -527,7 +579,7 @@ export function PerpsCard() {
         )}
         {tradable && (
           <p className="mt-1 text-[11px] text-white/35">
-            Position size {fmtUsd(notional)} · limited by {bar.binding.replace(/_/g, " ")}
+            Position size {fmtUsd(view.notional)} · limited by {bar.binding.replace(/_/g, " ")}
           </p>
         )}
       </div>
@@ -537,16 +589,16 @@ export function PerpsCard() {
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">Liquidation</span>
           <span className="text-base font-bold tabular-nums text-red-300">
-            {!quote?.ok ? "—" : liquidatable ? fmtPrice(price12ToUsd(quote.liquidationPrice12)) : "None"}
+            {!view.quote?.ok ? "—" : liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
           </span>
         </div>
-        {quote?.ok && liquidatable && indexUsd !== null && (
+        {view.quote?.ok && liquidatable && indexUsd !== null && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
-            {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(collateralUsd)}
-            {" · "}{(Math.abs(price12ToUsd(quote.liquidationPrice12) - indexUsd) / indexUsd * 100).toFixed(1)}% away
+            {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
+            {" · "}{(Math.abs(price12ToUsd(view.quote.liquidationPrice12) - indexUsd) / indexUsd * 100).toFixed(1)}% away
           </p>
         )}
-        {quote?.ok && !liquidatable && (
+        {view.quote?.ok && !liquidatable && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             At this size your position is smaller than your collateral, so it cannot be liquidated.
             You can still lose money if the price moves against you.
@@ -561,7 +613,7 @@ export function PerpsCard() {
         </span>
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
-          <input id="perps-tp" inputMode="decimal" value={tpPrice}
+          <input id="perps-tp" inputMode="decimal" value={view.tpPrice}
             onChange={(e) => {
               const v = readNumericInput(e.target.value);
               if (!v.ok) { setTpHint(v.hint); return; }
@@ -573,7 +625,7 @@ export function PerpsCard() {
             className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
         </div>
         {tpHint && <p className="mt-1 text-xs text-amber-300/90">{tpHint}</p>}
-        {quote?.ok && (
+        {view.quote?.ok && (
           tpValid && tpPayoff !== null ? (
             <p className="mt-1 text-xs text-green-300/90">
               Closes for {fmtUsd(tpPayoff)} profit before costs
@@ -616,14 +668,14 @@ export function PerpsCard() {
       )}
 
       {/* Costs */}
-      {quote?.ok && (
+      {view.quote?.ok && (
         <dl className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">
           {[
-            ["Entry price", fmtPrice(price12ToUsd(quote.entryPrice12))],
-            ["PEX fee", fmtUsd(quote.openFeeUsd)],
-            [`Magnet fee (${POSITION_BUILDER_FEE_BPS} bps, charged again on close)`, fmtUsd(quote.builderFeeUsd)],
-            ["Price impact", `${quote.impactUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(quote.impactUsd))}`],
-            ["Backing the position", fmtUsd(quote.netCollateralUsd)],
+            ["Entry price", fmtPrice(price12ToUsd(view.quote.entryPrice12))],
+            ["PEX fee", fmtUsd(view.quote.openFeeUsd)],
+            [`Magnet fee (${POSITION_BUILDER_FEE_BPS} bps, charged again on close)`, fmtUsd(view.quote.builderFeeUsd)],
+            ["Price impact", `${view.quote.impactUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(view.quote.impactUsd))}`],
+            ["Backing the position", fmtUsd(view.quote.netCollateralUsd)],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between">
               <dt className="text-white/45">{k}</dt>
@@ -650,19 +702,25 @@ export function PerpsCard() {
             canSubmit
               ? "bg-magnet-500 text-white hover:bg-magnet-400"
               : "bg-magnet-500/20 text-white/40 cursor-not-allowed"}`}>
-          {submitting ? STAGE_LABEL[stage] : `Open ${side} · ${fmtUsd(notional)}`}
+          {submitting ? STAGE_LABEL[stage] : `Open ${side} · ${fmtUsd(view.notional)}`}
         </button>
       )}
 
       {/* One signature, and what it commits to — shown before the prompt, not after. */}
-      {wallet.isConnected && !submitting && canSubmit && (
+      {/* Visible DURING signing too. This is the only line that enumerates what
+          moves, and gating it on `!submitting` hid it exactly when the user was
+          being asked to approve. */}
+      {wallet.isConnected && (canSubmit || submitting) && (
         <p className="mt-2 text-center text-[11px] text-white/35">
-          {/* The group also sends ALGO: the order-box MBR always, and a storage
-              escrow on a first trade. Cents — but this sentence is an
-              enumeration in a product whose promise is saying exactly what
-              moves, so it either lists everything or it stops listing. */}
-          One signature. {fmtUsd(collateralUsd)} collateral plus {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper
-          fee, and a small amount of ALGO for on-chain storage that is returned when you close.
+          {/* "Returned when you close" was false. Closing moves the escrow from
+              locked to available INSIDE PEX, not back to the wallet — recovering
+              it needs withdraw_storage_credit or close_storage_account, and we
+              offer neither. Nine of the nineteen live PEX traders are sitting on
+              idle escrow right now. And ~0.15-0.25 ALGO is not "small" against
+              the stakes this card is built for, so it is quantified. */}
+          One signature. {fmtUsd(view.collateralUsd)} collateral and {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper
+          fee leave your wallet, plus about 0.15 ALGO for the on-chain order record
+          — or 0.25 on your first PEX trade, which also sets up a storage record PEX keeps.
         </p>
       )}
 

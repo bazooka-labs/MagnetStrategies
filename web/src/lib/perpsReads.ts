@@ -12,6 +12,7 @@ import {
   V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS,
   V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE,
   V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO,
+  V2_POSITION_BOX_MBR_MICRO_ALGO,
 } from "@pdex/sdk";
 import manifestJson from "./pexProtocolManifest.json";
 import { PEX_APPS, PEX_PROGRAM_SHA256 } from "./perps";
@@ -570,9 +571,24 @@ export async function readTraderState(
  * payment can be omitted, and omitting it keeps the 9-transaction group.
  */
 export function storagePaymentNeeded(trader: TraderState | null): bigint {
-  const required = BigInt(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO);
-  if (!trader) return required;                       // no box at all
-  return trader.storage_available_microalgo >= required ? BigInt(0) : required;
+  // No box: the full escrow, which is 70,900 of position-box MBR plus the
+  // 29,300 consumed creating the `t2:` box itself.
+  if (!trader) return BigInt(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO);
+
+  // **With a box, the chain requires 70,900, not 100,200.** Measured by ladder:
+  // 99,700 fails at `pc=3180`, 100,200 passes, and the assert is
+  // `storage_available >= V2_POSITION_BOX_MBR_MICRO_ALGO`. Across all nineteen
+  // live `t2:` boxes, `locked = 29,300 + 70,900 x open_position_count` exactly.
+  //
+  // Demanding 100,200 here was over-strict in the one state repeat users land
+  // in: close your only position and `available` returns to 70,900 — enough to
+  // open again — yet this asked for another 0.1002 ALGO into an escrow the UI
+  // cannot withdraw from. Nine of the nineteen live traders sit in that state
+  // today, which is exactly what this function's docstring claims to avoid.
+  const required = BigInt(V2_POSITION_BOX_MBR_MICRO_ALGO);
+  if (trader.storage_available_microalgo >= required) return BigInt(0);
+  // Top up by the position-box MBR, the amount the assert actually tests.
+  return required;
 }
 
 // ── Positions ─────────────────────────────────────────────────────────────────

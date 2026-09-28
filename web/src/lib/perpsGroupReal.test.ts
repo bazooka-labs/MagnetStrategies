@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import fixture from "./__fixtures__/perpsGroups.json";
 import {
+  POSITION_BOX_MBR_MICRO_ALGO,
   assertOpenWithTakeProfit,
   type DisplayedOpen,
   type DisplayedTakeProfit,
@@ -337,6 +338,36 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const r = assertOpenWithTakeProfit(txns, shownOpenStorage(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("storage_payment_missing");
+  });
+
+  it("catches a storage payment the SCREEN also lies about", () => {
+    // The tamper that passed: move the group AND the displayed value together,
+    // so the equality check agrees and only an anchor outside the caller can
+    // object. Every other value-moving leg had one; this one did not.
+    const txns = decodeStorage(c);
+    const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+    const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
+    const inflated = BigInt(c.storagePaymentMicro) * BigInt(10);
+    (pay.payment as unknown as { amount: bigint }).amount = inflated;
+    const shown = shownOpenStorage(c);
+    shown.storagePaymentMicro = inflated;
+    const r = assertOpenWithTakeProfit(txns, shown, shownTp(c));
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("storage_payment_unpinned");
+  });
+
+  it("accepts the 70,900 top-up amount a repeat trader pays", () => {
+    // A trader whose box exists but whose escrow is spent pays the position-box
+    // MBR, not the full first-trade escrow. Both are legitimate; the assertion
+    // must accept exactly these two and nothing else.
+    const txns = decodeStorage(c);
+    const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+    const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
+    (pay.payment as unknown as { amount: bigint }).amount = POSITION_BOX_MBR_MICRO_ALGO;
+    const shown = shownOpenStorage(c);
+    shown.storagePaymentMicro = POSITION_BOX_MBR_MICRO_ALGO;
+    const r = assertOpenWithTakeProfit(txns, shown, shownTp(c));
+    expect(r.findings).toEqual([]);
   });
 
   it("catches the storage payment inflated beyond what was displayed", () => {

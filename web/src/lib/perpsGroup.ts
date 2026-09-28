@@ -26,6 +26,10 @@
 
 import algosdk from "algosdk";
 import {
+  V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO,
+  V2_POSITION_BOX_MBR_MICRO_ALGO,
+} from "@pdex/sdk";
+import {
   ALGORAND_MAINNET_GENESIS_HASH_HEX,
   BUILDER_ADDRESS,
   MAX_KEEPER_FEE_ESCROW_USDC,
@@ -140,6 +144,18 @@ function checkMathCarriers(
  * keeps ~2x headroom for extra resource carriers without leaving that room.
  */
 export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
+
+/**
+ * The only two storage-escrow payments a legitimate group makes.
+ *
+ * `V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO` (100,200) on a first
+ * trade — 70,900 of position-box MBR plus 29,300 consumed creating the `t2:`
+ * box — and `V2_POSITION_BOX_MBR_MICRO_ALGO` (70,900) to top an existing
+ * escrow back up. Pinned from the SDK so the assertion has an anchor the
+ * caller does not control.
+ */
+export const STORAGE_ESCROW_MICRO_ALGO = BigInt(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO);
+export const POSITION_BOX_MBR_MICRO_ALGO = BigInt(V2_POSITION_BOX_MBR_MICRO_ALGO);
 
 /**
  * The transaction types a Perps flow contains, and how many of each.
@@ -658,6 +674,22 @@ export async function simulateGroup(
       txns: txns.map((t) => new algosdk.SignedTransaction({ txn: t })),
     })],
     allowEmptySignatures: true,
+    /**
+     * **Required for rekeyed accounts.**
+     *
+     * With an empty signature, algod resolves the authorizing address to the
+     * sender. For a rekeyed account that is wrong — it must be the auth address
+     * — so simulation refused a group a real wallet would sign correctly:
+     * "should have been authorized by X but was actually authorized by Y".
+     * Confirmed on a live rekeyed PEX trader: without this, refused; with it,
+     * ok, same group.
+     *
+     * Rekeying is routine on Algorand (Pera/Defly vaults, multisig, hardware
+     * rekeys, contract-controlled accounts), so this blocked that entire
+     * audience with an error that named PEX for a defect that was ours.
+     * Setting `authAddr` on the SignedTransaction instead does not work.
+     */
+    fixSigners: true,
   });
   try {
     const res = await algod.simulateTransactions(req).do();
@@ -1032,6 +1064,20 @@ export function assertOpenWithTakeProfit(
     } else if (big(storagePay.payment!.amount) !== shownOpen.storagePaymentMicro) {
       fail("storage_payment_amount",
         `storage payment ${storagePay.payment!.amount}, displayed ${shownOpen.storagePaymentMicro}`);
+    }
+    // And against the PINNED constants, not only against the caller's number.
+    //
+    // Equality with `shownOpen.storagePaymentMicro` alone proves the group
+    // matches whatever `openPosition` computed — it cannot notice
+    // `openPosition` computing the wrong thing, and a tamper that moved both
+    // together passed. Every other value-moving leg has an anchor outside the
+    // caller: the collateral against a figure the card renders, the keeper
+    // escrow against MAX_KEEPER_FEE_ESCROW_USDC, the order-box MBR against
+    // ORDER_BOX_MBR_MICRO_ALGO. This one had none.
+    const amt = storagePay ? big(storagePay.payment!.amount) : BigInt(0);
+    if (amt !== STORAGE_ESCROW_MICRO_ALGO && amt !== POSITION_BOX_MBR_MICRO_ALGO) {
+      fail("storage_payment_unpinned",
+        `storage payment ${amt} is neither ${STORAGE_ESCROW_MICRO_ALGO} (first trade) nor ${POSITION_BOX_MBR_MICRO_ALGO} (top-up)`);
     }
     // And the call it pays for: `fund_storage` on Trading, the group's first
     // Trading call. Binding the payment without binding what consumes it would

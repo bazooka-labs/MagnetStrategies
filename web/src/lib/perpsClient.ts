@@ -160,8 +160,21 @@ const micro = (usd: number): bigint => BigInt(Math.round(usd * 1e6));
  */
 const CONFIRM_ROUNDS = 40;
 
-/** ALGO needed for the order-box MBR plus group fees, with headroom. */
-const MIN_ALGO_MICRO = ORDER_BOX_MBR_MICRO_ALGO + BigInt(200_000);
+/**
+ * ALGO this group actually needs, given whether it also funds storage.
+ *
+ * The old flat 299,700 fitted neither case. Measured: 252,900 microALGO for a
+ * first trade (100,200 escrow + 99,700 order-box MBR + 53,000 fees) and 150,700
+ * for a funded trader (99,700 + 51,000). So it refused a repeat trader holding
+ * 0.20 spendable ALGO — plenty — while telling them they need 0.30, and left
+ * only 46,800 of margin in the case that needs the most.
+ *
+ * It also ran *before* the trader-state read that decides the storage payment,
+ * so it could not have known which case it was in.
+ */
+const GROUP_FEE_HEADROOM_MICRO = BigInt(60_000);
+const minAlgoMicro = (storagePayment: bigint): bigint =>
+  storagePayment + ORDER_BOX_MBR_MICRO_ALGO + GROUP_FEE_HEADROOM_MICRO;
 
 /**
  * Seconds of oracle validity that must remain when the wallet is prompted.
@@ -242,12 +255,8 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   }
 
   // Fail with something actionable rather than letting the chain reject it.
+  // The ALGO check waits until the storage payment is known — see below.
   const algoSpendable = BigInt(account.amount) - BigInt(account.minBalance);
-  if (algoSpendable < MIN_ALGO_MICRO) {
-    throw new Error(
-      `Needs about ${(Number(MIN_ALGO_MICRO) / 1e6).toFixed(2)} spendable ALGO for the order record and fees.`,
-    );
-  }
   const usdcHeld = (account.assets ?? []).find(
     (a: { assetId?: bigint | number }) => Number(a.assetId) === COLLATERAL_ASSET_ID,
   );
@@ -288,6 +297,16 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const storagePayment = storagePaymentNeeded(trader);
   const fundsStorage = storagePayment > BigInt(0);
 
+  // Now the ALGO requirement is knowable, so it can be both correct and honest.
+  const algoNeeded = minAlgoMicro(storagePayment);
+  if (algoSpendable < algoNeeded) {
+    throw new Error(
+      `Needs about ${(Number(algoNeeded) / 1e6).toFixed(2)} spendable ALGO${
+        fundsStorage ? " — this is your first trade on PEX, which sets up an on-chain storage record" : ""
+      }. You have ${(Number(algoSpendable) / 1e6).toFixed(2)}.`,
+    );
+  }
+
   stage("allocating");
   const alloc = await allocateBaseOrderId(algod, sender);
   if (!(await assertBaseOrderIdFree(algod, sender, alloc))) {
@@ -296,7 +315,11 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
 
   // ── The oracle payload, fetched as LATE as possible ─────────────────────
   //
-  // PEX publishes on a ~30 second cadence, but ORACLE_MAX_AGE_SEC is 20 and
+  // PEX publishes every **2-3 seconds** — measured over 86 samples, not the
+  // "~30 second cadence" this comment used to claim, which was wrong by an
+  // order of magnitude and is the number anyone tuning the constants below
+  // would have reasoned from. The 30 seconds is the payload's validity window,
+  // not its cadence. ORACLE_MAX_AGE_SEC is 20 and
   // every budget number here is computed against OUR 20, not PEX's 30 — so a
   // payload that passes these checks has more real chain validity left than the
   // arithmetic claims. Deliberately the conservative direction.
@@ -527,7 +550,11 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   stage("simulating");
   const sim = await simulateGroup(algod, group);
   if (!sim.ok) {
-    throw new Error(`The exchange rejected this in simulation, so it was not sent: ${sim.message ?? "unknown"}`);
+    // Deliberately does not say "the exchange rejected this" — a simulation
+    // failure can equally be our own harness (it was, for every rekeyed
+    // account until `fixSigners` was set), and naming PEX for our defect sends
+    // the user to the wrong place.
+    throw new Error(`The pre-flight check did not pass, so nothing was sent: ${sim.message ?? "unknown"}`);
   }
 
   // Re-check immediately before the prompt. This narrows the window rather than
