@@ -92,12 +92,13 @@ type PriceLine = { price: number; label: string; colour: string; dash: string };
 type Props = {
   marketId: number;
   label: string;
+  /** Owned by the panel, so both views share one interval control. */
+  range: ChartRange;
   /** Entry, liquidation, take-profit and stop-loss, as the card quotes them. */
   lines?: PriceLine[];
 };
 
-export function PerpsChart({ marketId, label, lines = [] }: Props) {
-  const [range, setRange] = useState<ChartRange>("1d");
+export function PerpsChart({ marketId, label, range, lines = [] }: Props) {
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -399,57 +400,36 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const readout = active ?? headline;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-baseline gap-2.5">
-            <h2 className="font-display text-lg font-semibold text-white">{label}</h2>
-            {headline && (
-              <span className="font-display text-lg font-bold tabular-nums text-white">
-                {fmtPrice(headline.c)}
-              </span>
-            )}
-            {change !== null && (
-              <span className={`text-xs font-medium tabular-nums ${up ? "text-green-300" : "text-red-300"}`}>
-                {up ? "+" : ""}{change.toFixed(2)}%
-              </span>
-            )}
-            {/* A 1W chart is built from HOURLY candles. Without this the bars
-                read as days and every one of them is misinterpreted. */}
-            <span className="text-[11px] text-white/35">{candleInterval(range)} candles</span>
-          </div>
-          {/* Always rendered, so hovering cannot change the header's height.
-              Showing the latest candle when nothing is hovered is more useful
-              than a blank row of the same size. */}
-          <div className="mt-1 flex h-4 flex-wrap items-center gap-x-3 text-[11px] tabular-nums text-white/45">
-            {readout && (
-              <>
-                <span>{fmtReadoutTime(readout.t, range)}</span>
-                <span>O <span className="text-white/70">{fmtAxis(readout.o)}</span></span>
-                <span>H <span className="text-white/70">{fmtAxis(readout.h)}</span></span>
-                <span>L <span className="text-white/70">{fmtAxis(readout.l)}</span></span>
-                <span>C <span className={readout.c >= readout.o ? "text-green-300" : "text-red-300"}>{fmtAxis(readout.c)}</span></span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {(zoom !== 1 || span !== null || priceOffset !== 0) && (
-            <button onClick={() => { setZoom(1); setSpan(null); setEnd(null); setPriceOffset(0); }}
-              title="Reset the price scale and the visible range"
-              className="mr-1 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors hover:text-white/90">
-              reset
-            </button>
+    <div>
+      {/* Just a readout row: the label, the market toggle, the interval buttons
+          and the panel chrome all live in PerpsChartPanel now, so the basic and
+          advanced views share one frame instead of each drawing their own. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex h-4 flex-wrap items-center gap-x-3 text-[11px] tabular-nums text-white/45">
+          {readout && (
+            <>
+              <span className="text-white/70">{fmtReadoutTime(readout.t, range)}</span>
+              <span>O <span className="text-white/70">{fmtAxis(readout.o)}</span></span>
+              <span>H <span className="text-white/70">{fmtAxis(readout.h)}</span></span>
+              <span>L <span className="text-white/70">{fmtAxis(readout.l)}</span></span>
+              <span>C <span className={readout.c >= readout.o ? "text-green-300" : "text-red-300"}>{fmtAxis(readout.c)}</span></span>
+              {change !== null && (
+                <span className={up ? "text-green-300" : "text-red-300"}>
+                  {up ? "+" : ""}{change.toFixed(2)}%
+                </span>
+              )}
+            </>
           )}
-          {CHART_RANGES.map((r) => (
-            <button key={r} onClick={() => setRange(r)}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                r === range ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
-              {rangeLabel(r)}
-            </button>
-          ))}
         </div>
+        {(zoom !== 1 || span !== null || priceOffset !== 0) && (
+          <button onClick={() => { setZoom(1); setSpan(null); setEnd(null); setPriceOffset(0); }}
+            title="Reset the price scale and the visible range"
+            className="rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors hover:text-white/90">
+            reset view
+          </button>
+        )}
       </div>
+
 
       {/* overflow-hidden because the svg is sized in real pixels from a
           measurement: between a container resize and the next render it can
@@ -646,13 +626,6 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
         )}
       </div>
 
-      {/* Naming both prices, because they are not the same price. */}
-      <p className="mt-2 text-[10px] leading-relaxed text-white/30">
-        Candles from Coinbase as a market reference.{" "}
-        <span className="text-violet-300/60">Dashed violet</span> is PEX&apos;s live oracle price, which is
-        what your trade is quoted against — your entry also includes PEX&apos;s price impact, so it
-        will differ from both.
-      </p>
     </div>
   );
 }

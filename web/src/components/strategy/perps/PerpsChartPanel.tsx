@@ -26,6 +26,7 @@ import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
 import { ENABLED_MARKET_IDS, PEX_APPS, PEX_MARKETS } from "@/lib/perps";
 import { PerpsChart } from "./PerpsChart";
+import { CHART_RANGES, rangeLabel, type ChartRange } from "@/lib/perpsChart";
 
 /**
  * TradingView symbols, on the same venue our own chart used.
@@ -48,22 +49,46 @@ const SYMBOL: Record<number, string> = {
  */
 function ViewToggle({ advanced, onChange }: { advanced: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="mb-3 flex justify-center">
-      <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
-        {([
-          ["Position lines", false, "Entry, liquidation and take-profit drawn on the candles"],
-          ["Drawing tools", true, "TradingView: indicators and drawing tools, without the position lines"],
-        ] as const).map(([text, v, title]) => (
-          <button key={text} onClick={() => onChange(v)} title={title}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              advanced === v ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
-            {text}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+      {([
+        ["Basic Chart", false, "Entry, liquidation and take-profit drawn on the candles"],
+        ["Advanced Chart", true, "TradingView: indicators and drawing tools, without the position lines"],
+      ] as const).map(([text, v, title]) => (
+        <button key={text} onClick={() => onChange(v)} title={title}
+          className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            advanced === v ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
+          {text}
+        </button>
+      ))}
     </div>
   );
 }
+
+/** Interval buttons. Shared, so the header does not change between views. */
+function IntervalToggle({ range, onChange }: { range: ChartRange; onChange: (r: ChartRange) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {CHART_RANGES.map((r) => (
+        <button key={r} onClick={() => onChange(r)}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            r === range ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
+          {rangeLabel(r)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Our interval, in TradingView's vocabulary.
+ *
+ * So the one interval control drives both views. Without this the advanced
+ * chart ignored the buttons above it and showed whatever it opened on, which is
+ * two controls disagreeing in the same frame.
+ */
+const TV_INTERVAL: Record<ChartRange, string> = {
+  "1h": "60", "4h": "240", "1d": "D", "1w": "W",
+};
 
 const SCRIPT_SRC =
   "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -137,6 +162,8 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
    * deliberate step up rather than the thing you land on.
    */
   const [advanced, setAdvanced] = useState(false);
+  /** Owned here so one interval control drives whichever chart is showing. */
+  const [range, setRange] = useState<ChartRange>("1d");
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
 
@@ -180,7 +207,7 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
     script.type = "text/javascript";
     script.innerHTML = JSON.stringify({
       symbol,
-      interval: "60",
+      interval: TV_INTERVAL[range],
       timezone: "Etc/UTC",
       theme: "dark",
       style: "1",                  // candles
@@ -205,37 +232,28 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
     el.appendChild(script);
 
     return () => { el.innerHTML = ""; };
-  }, [marketId, advanced]);
+  }, [marketId, advanced, range]);
 
   const canSwitch = !blocked && !!SYMBOL[marketId];
-
-  // Our chart when chosen, and whenever TradingView is unavailable.
-  if (!advanced || !canSwitch) {
-    return (
-      <div>
-        {canSwitch && <ViewToggle advanced={false} onChange={setAdvanced} />}
-        <div className="space-y-3">
-          <MarketToggle marketId={marketId} onChange={onMarketChange} />
-          <PerpsChart marketId={marketId} label={label} lines={lines} />
-        </div>
-      </div>
-    );
-  }
+  // TradingView only when chosen AND available; otherwise the basic chart fills
+  // the same frame rather than the panel changing shape.
+  const showAdvanced = advanced && canSwitch;
 
   return (
-    <>
-    <ViewToggle advanced onChange={setAdvanced} />
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
+      {/* ONE header, both views. Market and price on top, then the view and
+          interval controls — so switching charts changes the chart and nothing
+          else. Each view used to draw its own chrome, which put the view toggle
+          on screen twice, inside the panel and outside it. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {/* Market toggle. It lives here rather than in the card because the
-            chart is what it most obviously governs — and because the card and
-            the chart must never disagree about which market is shown. */}
-        <MarketToggle marketId={marketId} onChange={onMarketChange} />
+        <div className="flex items-center gap-2.5">
+          <MarketToggle marketId={marketId} onChange={onMarketChange} />
+          <span className="font-display text-base font-semibold text-white">{label}</span>
+        </div>
 
-        <ViewToggle advanced onChange={setAdvanced} />
-
-        {/* The number the card actually prices against. Outside the chart now,
-            because the widget cannot carry the overlay — but never absent. */}
+        {/* The number the card actually prices against. Outside the chart
+            because the widget cannot carry the overlay — but never absent, and
+            in the same place in both views. */}
         <div className="flex items-center gap-2 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-1.5">
           <span className="text-[10px] font-medium uppercase tracking-wide text-violet-200/70">
             PEX oracle
@@ -246,19 +264,38 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
         </div>
       </div>
 
-      {/* No fixed height: the widget sizes its own iframe, and constraining the
-          wrapper as well is what squashed it. `minHeight` only reserves space
-          so the page does not jump while the script loads. */}
-      <div className="tradingview-widget-container mt-3 overflow-hidden rounded-xl"
-        ref={holder} style={{ minHeight: HEIGHT, width: "100%" }} />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        {canSwitch
+          ? <ViewToggle advanced={advanced} onChange={setAdvanced} />
+          : <span className="text-xs text-white/35">Basic Chart</span>}
+        <IntervalToggle range={range} onChange={setRange} />
+      </div>
 
+      {/* Only the body changes between views. The container is always mounted
+          so the widget effect has somewhere to build into; hiding it rather
+          than unmounting also means switching back does not refetch. */}
+      <div className="mt-3">
+        <div className={showAdvanced ? "" : "hidden"}>
+          {/* No fixed height: the widget sizes its own iframe, and constraining
+              the wrapper too is what squashed it. `minHeight` only reserves
+              space so the page does not jump while the script loads. */}
+          <div className="tradingview-widget-container overflow-hidden rounded-xl"
+            ref={holder} style={{ minHeight: HEIGHT, width: "100%" }} />
+        </div>
+        {!showAdvanced && (
+          <PerpsChart marketId={marketId} label={label} range={range} lines={lines} />
+        )}
+      </div>
+
+      {/* Same caption slot in both views, because they have the same problem:
+          the chart is not the price you trade at. */}
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
-        Chart by TradingView, showing Coinbase as a market reference.{" "}
+        {showAdvanced ? "Chart by TradingView, showing Coinbase" : "Candles from Coinbase"} as a
+        market reference.{" "}
         <span className="text-violet-300/60">PEX oracle</span> above is the price your trade is
-        quoted against — it is a different feed and will not match the chart exactly. Your entry
-        also includes PEX&apos;s price impact, so it will differ from both.
+        quoted against — a different feed, which will not match the chart exactly. Your entry also
+        includes PEX&apos;s price impact, so it will differ from both.
       </p>
     </div>
-    </>
   );
 }
