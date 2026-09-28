@@ -26,8 +26,8 @@ import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
 import { PEX_APPS } from "@/lib/perps";
 import {
-  CHART_RANGES, ChartUnavailableError, candleInterval, changePct, fetchCandles,
-  rangeGranularity, rangeLabel,
+  CHART_RANGES, ChartUnavailableError, candleInterval, changePct, defaultVisible,
+  fetchCandles, rangeGranularity, rangeLabel,
   type Candle, type ChartRange,
 } from "@/lib/perpsChart";
 
@@ -55,9 +55,13 @@ const fmtAxis = (p: number) =>
  */
 const fmtAxisTime = (t: number, range: ChartRange) => {
   const d = new Date(t * 1000);
-  return rangeGranularity(range) >= 3600 && range === "1w"
+  // A day or more per candle: the clock time is always midnight and says
+  // nothing. Below that, the date alone cannot distinguish one bar from the
+  // twenty-three next to it.
+  return rangeGranularity(range) >= 86400
     ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      + " " + d.toLocaleTimeString("en-US", { hour: "2-digit", hour12: false });
 };
 
 /**
@@ -72,9 +76,9 @@ const fmtReadoutTime = (t: number, range: ChartRange) => {
   const d = new Date(t * 1000);
   const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
   // Anything spanning more than a day needs the date to be unambiguous.
-  return range === "1w" || range === "24h"
-    ? `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${time}`
-    : time;
+  return rangeGranularity(range) >= 86400
+    ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${time}`;
 };
 
 /**
@@ -93,7 +97,7 @@ type Props = {
 };
 
 export function PerpsChart({ marketId, label, lines = [] }: Props) {
-  const [range, setRange] = useState<ChartRange>("24h");
+  const [range, setRange] = useState<ChartRange>("1d");
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -203,7 +207,20 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     setPriceOffset(0);
     const load = (first: boolean) => {
       fetchCandles(marketId, range)
-        .then((c) => { if (alive) setCandles(c); })
+        .then((c) => {
+          if (!alive) return;
+          setCandles(c);
+          // Show a window rather than the whole series, so there is history to
+          // drag into from the moment it loads. First load only — a refresh
+          // must not yank the view back from wherever the user panned it.
+          if (first) {
+            const visibleCount = defaultVisible(c.length);
+            if (visibleCount < c.length) {
+              setSpan(visibleCount);
+              setEnd(c.length - 1);
+            }
+          }
+        })
         .catch((e) => {
           // Keep the last good series on a refresh failure rather than blanking.
           if (alive && first) setError(e instanceof ChartUnavailableError ? e.message : String(e));

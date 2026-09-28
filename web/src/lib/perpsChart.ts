@@ -39,7 +39,7 @@ export type Candle = {
   c: number;
 };
 
-export type ChartRange = "1h" | "4h" | "24h" | "1w";
+export type ChartRange = "1h" | "4h" | "1d" | "1w";
 
 /** Coinbase product per market. Market 2 is synthetic — there is no ASA to price. */
 const PRODUCT: Record<number, string> = {
@@ -48,28 +48,53 @@ const PRODUCT: Record<number, string> = {
 };
 
 /**
- * Granularity and span per range.
+ * **These are candle INTERVALS, not ranges.**
  *
- * Coinbase only accepts 60, 300, 900, 3600, 21600 and 86400 as granularities,
- * and caps a response at 300 candles — so each row is chosen to land between
- * about 48 and 170 candles, which is enough to read a shape without becoming a
- * picket fence at the widths this chart renders at.
+ * "1D" means one candle covers one day, and the axis shows as many days as fit
+ * — which is what the control means on every other trading chart. An earlier
+ * version read them as ranges ("show me the last day") and chose the
+ * granularity itself, so picking 1D gave 96 fifteen-minute candles. Same
+ * buttons, completely different chart.
+ *
+ * Coinbase only serves 60, 300, 900, 3600, 21600 and 86400 second candles, so
+ * 4h and 1w are built by aggregating: four 1h candles, or seven 1d candles.
+ * Aggregation is open-of-first, max-high, min-low, close-of-last — the same
+ * arithmetic the exchange would do.
+ *
+ * `fetchSec` is sized to stay under Coinbase's 300-row response cap.
  */
-const RANGE: Record<ChartRange, { granularity: number; spanSec: number; label: string }> = {
-  "1h": { granularity: 60, spanSec: 3600, label: "1H" },              // 1m x 60
-  "4h": { granularity: 300, spanSec: 4 * 3600, label: "4H" },         // 5m x 48
-  "24h": { granularity: 900, spanSec: 24 * 3600, label: "1D" },       // 15m x 96
-  "1w": { granularity: 3600, spanSec: 7 * 24 * 3600, label: "1W" },   // 1h x 168
+const INTERVAL: Record<ChartRange, {
+  granularity: number; aggregate: number; fetchSec: number; label: string;
+}> = {
+  "1h": { granularity: 3600, aggregate: 1, fetchSec: 280 * 3600, label: "1H" },
+  "4h": { granularity: 3600, aggregate: 4, fetchSec: 280 * 3600, label: "4H" },
+  "1d": { granularity: 86400, aggregate: 1, fetchSec: 280 * 86400, label: "1D" },
+  "1w": { granularity: 86400, aggregate: 7, fetchSec: 280 * 86400, label: "1W" },
 };
 
-/** The ranges the chart offers, shortest first. */
-export const CHART_RANGES: ChartRange[] = ["1h", "4h", "24h", "1w"];
+/** The intervals the chart offers, shortest first. */
+export const CHART_RANGES: ChartRange[] = ["1h", "4h", "1d", "1w"];
 
-/** Short label for the range buttons. */
-export const rangeLabel = (r: ChartRange): string => RANGE[r].label;
+/**
+ * How many candles to show before the user pans or zooms.
+ *
+ * A FRACTION of what was fetched, not a fixed count. Showing everything left
+ * nothing to drag into, so panning silently did nothing at the default view —
+ * and a fixed count breaks the other way: 4H returns only ~70 candles, so a
+ * 90-candle window would again have shown all of them and had no slack.
+ *
+ * Two-thirds leaves a third of the series to pan back through on every
+ * interval, whatever the exchange's row cap allows us to fetch.
+ */
+export const defaultVisible = (total: number): number =>
+  Math.max(20, Math.floor(total * 0.66));
 
-/** Seconds per candle for a range. One 1W candle is an HOUR, not a day. */
-export const rangeGranularity = (r: ChartRange): number => RANGE[r].granularity;
+/** Short label for the interval buttons. */
+export const rangeLabel = (r: ChartRange): string => INTERVAL[r].label;
+
+/** Seconds one candle covers, after aggregation. */
+export const rangeGranularity = (r: ChartRange): number =>
+  INTERVAL[r].granularity * INTERVAL[r].aggregate;
 
 /**
  * How long one candle covers, for display.
@@ -78,7 +103,7 @@ export const rangeGranularity = (r: ChartRange): number => RANGE[r].granularity;
  * reader who assumes the bars are daily is misreading every one of them.
  */
 export function candleInterval(r: ChartRange): string {
-  const g = RANGE[r].granularity;
+  const g = rangeGranularity(r);
   if (g >= 86400) return `${g / 86400}d`;
   if (g >= 3600) return `${g / 3600}h`;
   return `${g / 60}m`;
@@ -104,9 +129,9 @@ export async function fetchCandles(
   const product = PRODUCT[marketId];
   if (!product) throw new ChartUnavailableError(`no price history configured for market ${marketId}`);
 
-  const { granularity, spanSec } = RANGE[range];
+  const { granularity, aggregate, fetchSec } = INTERVAL[range];
   const end = Math.floor(Date.now() / 1000);
-  const start = end - spanSec;
+  const start = end - fetchSec;
   const url = `https://api.exchange.coinbase.com/products/${product}/candles`
     + `?granularity=${granularity}&start=${new Date(start * 1000).toISOString()}`
     + `&end=${new Date(end * 1000).toISOString()}`;
@@ -131,7 +156,37 @@ export async function fetchCandles(
     candles.push({ t, l, h, o, c });
   }
   if (candles.length === 0) throw new ChartUnavailableError("price history was empty");
-  return candles.sort((a, b) => a.t - b.t);
+  candles.sort((a, b) => a.t - b.t);
+  return aggregate > 1 ? aggregateCandles(candles, aggregate, granularity) : candles;
+}
+
+/**
+ * Combine `n` candles into one, for intervals the exchange does not serve.
+ *
+ * Buckets are aligned to absolute time rather than to the start of the array,
+ * so a 4h candle always covers 00:00-04:00 and not whatever four hours the
+ * response happened to begin on. A partial trailing bucket is kept: the current
+ * period is genuinely in progress, and dropping it would hide the live candle.
+ */
+function aggregateCandles(rows: Candle[], n: number, granularity: number): Candle[] {
+  const bucketSec = granularity * n;
+  const out: Candle[] = [];
+  let cur: Candle | null = null;
+  let curBucket = -1;
+  for (const c of rows) {
+    const bucket = Math.floor(c.t / bucketSec);
+    if (bucket !== curBucket) {
+      if (cur) out.push(cur);
+      curBucket = bucket;
+      cur = { t: bucket * bucketSec, o: c.o, h: c.h, l: c.l, c: c.c };
+      continue;
+    }
+    cur!.h = Math.max(cur!.h, c.h);
+    cur!.l = Math.min(cur!.l, c.l);
+    cur!.c = c.c;
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 /**
