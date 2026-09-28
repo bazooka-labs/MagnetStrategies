@@ -81,14 +81,16 @@ export function PerpsView() {
       </div>
 
       {/* Card, and what sits behind it */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+      {/* The chart runs the full width and leads, because it is the context
+          every number in the card is read against. The card sits beneath it
+          rather than beside it: at 420px in a column the chart was too small to
+          be worth having. */}
+      <PerpsChart marketId={marketId} label={market?.label ?? ""} />
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
 
         <div className="space-y-4">
-          {/* Context first: the chart is what makes the numbers in the card
-              legible, so it sits above the explainers. */}
-          <PerpsChart marketId={marketId} label={market?.label ?? ""} />
-
           {/* Above the explainers: someone with money at risk should see it
               before they read about how the product works. Renders nothing at
               all when no wallet is connected. */}

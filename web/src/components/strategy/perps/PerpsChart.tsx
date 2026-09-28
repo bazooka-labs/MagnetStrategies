@@ -1,19 +1,27 @@
 "use client";
 
-// Price history beside the trade card.
+// Price history, as the page's centrepiece.
 //
-// Hand-rolled SVG rather than a charting library: this needs a line, a fill and
-// a marker, and the page is deliberately lean. A dependency for that would cost
-// bundle size and supply-chain surface for no capability we use.
+// Hand-rolled SVG rather than a charting library. This needs candles, axes, a
+// crosshair and a readout; `lightweight-charts` would add ~45 kB gzipped to a
+// 99 kB page for that plus zoom, pan and drawing tools — capability that fights
+// a product whose whole thesis is "not a trading terminal". If indicators or
+// drawings are ever wanted, that is when a library earns its weight.
 //
 // ── The one thing this component must not do ────────────────────────────────
 // It must not let the reference price be mistaken for the price you trade at.
 // The card quotes an EXECUTION price — the oracle index plus PEX's impact,
 // which on ALGO is a flat 55 bps step that routinely puts a long's entry below
 // the index. So PEX's live index is drawn ON the chart, labelled, and the
-// source of the history is named underneath. Two prices, visibly two.
+// history's source is named underneath. Two prices, visibly two.
+//
+// ── Why it measures its own width ───────────────────────────────────────────
+// The first version used `preserveAspectRatio="none"`, which stretches the
+// viewBox to the container and distorts everything non-uniformly. That is
+// survivable for a line and wrong for a crosshair: mapping a pointer position
+// back to a candle needs the rendered geometry to match the drawn geometry.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
 import { PEX_APPS } from "@/lib/perps";
@@ -22,36 +30,56 @@ import {
   type Candle, type ChartRange,
 } from "@/lib/perpsChart";
 
-
-
-/** Candle colours, shared by the bars and the header change figure. */
 const UP = "#4ade80";
 const DOWN = "#f87171";
+const INDEX_COLOUR = "#c4b5fd";
+
+const H = 380;
+const PAD = { top: 16, right: 64, bottom: 28, left: 12 };
 
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
 
-type Props = {
-  marketId: number;
-  label: string;
+/** Axis labels want fewer digits than a quote does. */
+const fmtAxis = (p: number) =>
+  p >= 1000 ? p.toLocaleString("en-US", { maximumFractionDigits: 0 })
+  : p >= 1 ? p.toFixed(2) : p.toFixed(5);
+
+const fmtTime = (t: number, range: ChartRange) => {
+  const d = new Date(t * 1000);
+  return range === "1w"
+    ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
-const W = 600;
-const H = 200;
-const PAD = { top: 12, right: 52, bottom: 18, left: 8 };
+type Props = { marketId: number; label: string };
 
 export function PerpsChart({ marketId, label }: Props) {
   const [range, setRange] = useState<ChartRange>("24h");
+  const [candles, setCandles] = useState<Candle[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  /** 0 until measured — `geom` is null anyway until candles arrive. */
+  const [width, setWidth] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Real pixel width, so pointer position maps back to a candle exactly.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(280, e.contentRect.width)));
+    ro.observe(el);
+    setWidth(Math.max(280, el.getBoundingClientRect().width));
+    return () => ro.disconnect();
+  }, []);
+
   /**
-   * PEX's live index, read from the SAME signed payload the card quotes from.
+   * PEX's live index, from the SAME signed payload the card quotes from.
    *
-   * Deliberately not a prop and deliberately not the unsigned `latest-prices`
-   * convenience bundle: the dashed line's whole job is to be the number the
-   * trade is priced against, and sourcing it from anywhere else would let it
-   * drift from the card by exactly the amount nobody would notice.
-   *
-   * This is one small fetch, not the card's six box reads.
+   * Deliberately not the unsigned `latest-prices` bundle: this line's whole job
+   * is to be the number the trade is priced against, and sourcing it elsewhere
+   * would let it drift from the card by exactly the amount nobody would notice.
    */
   const [indexUsd, setIndexUsd] = useState<number | null>(null);
   useEffect(() => {
@@ -66,37 +94,29 @@ export function PerpsChart({ marketId, label }: Props) {
     const id = setInterval(read, 10_000);
     return () => { alive = false; clearInterval(id); };
   }, [marketId]);
-  const [candles, setCandles] = useState<Candle[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     setCandles(null);
     setError(null);
-    fetchCandles(marketId, range)
-      .then((c) => { if (alive) setCandles(c); })
-      .catch((e) => {
-        if (!alive) return;
-        setError(e instanceof ChartUnavailableError ? e.message : String(e));
-      });
-    // Refreshed on an interval deliberately longer than the card's: this is
-    // context, and a candle bucket does not close more often than this anyway.
-    const id = setInterval(() => {
+    setHover(null);
+    const load = (first: boolean) => {
       fetchCandles(marketId, range)
         .then((c) => { if (alive) setCandles(c); })
-        .catch(() => { /* keep the last good series rather than blanking */ });
-    }, 60_000);
+        .catch((e) => {
+          // Keep the last good series on a refresh failure rather than blanking.
+          if (alive && first) setError(e instanceof ChartUnavailableError ? e.message : String(e));
+        });
+    };
+    load(true);
+    const id = setInterval(() => load(false), 60_000);
     return () => { alive = false; clearInterval(id); };
   }, [marketId, range]);
 
   const geom = useMemo(() => {
-    if (!candles || candles.length < 2) return null;
-    const lows = candles.map((c) => c.l);
-    const highs = candles.map((c) => c.h);
-    // Include the live index in the scale, so the marker can never fall outside
-    // the plot and silently disappear.
-    let min = Math.min(...lows, indexUsd ?? Infinity);
-    let max = Math.max(...highs, indexUsd ?? -Infinity);
+    if (!candles || candles.length < 2 || width <= 0) return null;
+    let min = Math.min(...candles.map((c) => c.l), indexUsd ?? Infinity);
+    let max = Math.max(...candles.map((c) => c.h), indexUsd ?? -Infinity);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
       const base = candles[candles.length - 1].c;
       min = base * 0.995; max = base * 1.005;
@@ -104,51 +124,77 @@ export function PerpsChart({ marketId, label }: Props) {
     const padY = (max - min) * 0.08;
     min -= padY; max += padY;
 
-    const innerW = W - PAD.left - PAD.right;
+    const innerW = width - PAD.left - PAD.right;
     const innerH = H - PAD.top - PAD.bottom;
-    const x = (i: number) => PAD.left + (i / (candles.length - 1)) * innerW;
     const y = (v: number) => PAD.top + (1 - (v - min) / (max - min)) * innerH;
-
-    // Candle geometry. `slot` is the horizontal space one candle owns; the body
-    // takes 60% of it so neighbouring candles stay visually separate even at
-    // 168 of them.
     const slot = innerW / candles.length;
-    const bodyW = Math.max(slot * 0.6, 0.6);
+    const bodyW = Math.max(slot * 0.62, 1);
+    const cx = (i: number) => PAD.left + slot * (i + 0.5);
+
     const bars = candles.map((c, i) => {
-      const cx = PAD.left + slot * (i + 0.5);
-      const up = c.c >= c.o;
       const top = y(Math.max(c.o, c.c));
       const bottom = y(Math.min(c.o, c.c));
       return {
-        cx, up,
-        wickTop: y(c.h),
-        wickBottom: y(c.l),
+        cx: cx(i), up: c.c >= c.o,
+        wickTop: y(c.h), wickBottom: y(c.l),
         bodyY: top,
-        // A doji would otherwise be invisible: floor the body at a hairline.
-        bodyH: Math.max(bottom - top, 0.8),
+        // A doji would otherwise be a zero-height rect — invisible, leaving a
+        // bare wick that reads as a rendering fault.
+        bodyH: Math.max(bottom - top, 1),
       };
     });
-    return { bars, bodyW, y, min, max, innerW };
-  }, [candles, indexUsd]);
+
+    // Four gridlines is enough to read a level without becoming a ledger.
+    const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4);
+    return { bars, bodyW, y, cx, min, max, innerW, innerH, slot, ticks };
+  }, [candles, indexUsd, width]);
+
+  const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!geom || !candles) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const i = Math.floor((x - PAD.left) / geom.slot);
+    setHover(i >= 0 && i < candles.length ? i : null);
+  }, [geom, candles]);
 
   const change = candles ? changePct(candles) : null;
   const up = (change ?? 0) >= 0;
+  const active = hover !== null && candles ? candles[hover] : null;
+  // While hovering, the header reads out the hovered candle instead of the range.
+  const headline = active ?? (candles ? candles[candles.length - 1] : null);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <h2 className="font-display text-base font-semibold text-white">{label}</h2>
-          {change !== null && (
-            <span className={`text-xs font-medium tabular-nums ${up ? "text-green-300" : "text-red-300"}`}>
-              {up ? "+" : ""}{change.toFixed(2)}% · {rangeLabel(range)}
-            </span>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-baseline gap-2.5">
+            <h2 className="font-display text-lg font-semibold text-white">{label}</h2>
+            {headline && (
+              <span className="font-display text-lg font-bold tabular-nums text-white">
+                {fmtPrice(headline.c)}
+              </span>
+            )}
+            {change !== null && !active && (
+              <span className={`text-xs font-medium tabular-nums ${up ? "text-green-300" : "text-red-300"}`}>
+                {up ? "+" : ""}{change.toFixed(2)}%
+              </span>
+            )}
+          </div>
+          {/* OHLC readout, the thing a crosshair is actually for. */}
+          {active && (
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-white/45">
+              <span>{fmtTime(active.t, range)}</span>
+              <span>O <span className="text-white/70">{fmtAxis(active.o)}</span></span>
+              <span>H <span className="text-white/70">{fmtAxis(active.h)}</span></span>
+              <span>L <span className="text-white/70">{fmtAxis(active.l)}</span></span>
+              <span>C <span className={active.c >= active.o ? "text-green-300" : "text-red-300"}>{fmtAxis(active.c)}</span></span>
+            </div>
           )}
         </div>
         <div className="flex gap-1">
           {CHART_RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
-              className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 r === range ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
               {rangeLabel(r)}
             </button>
@@ -156,9 +202,14 @@ export function PerpsChart({ marketId, label }: Props) {
         </div>
       </div>
 
-      <div className="mt-3">
+      {/* overflow-hidden because the svg is sized in real pixels from a
+          measurement: between a container resize and the next render it can
+          briefly be wider than its parent, and on a phone that would show up
+          as horizontal page scroll. */}
+      <div ref={boxRef} className="mt-3 overflow-hidden">
         {error && (
-          <div className="flex h-[200px] items-center justify-center rounded-xl border border-white/5 bg-white/[0.02]">
+          <div className="flex items-center justify-center rounded-xl border border-white/5 bg-white/[0.02]"
+            style={{ height: H }}>
             <p className="flex items-center gap-2 px-4 text-center text-xs text-white/40">
               <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
               Price history is unavailable right now. This does not affect trading.
@@ -166,35 +217,70 @@ export function PerpsChart({ marketId, label }: Props) {
           </div>
         )}
         {!error && !geom && (
-          <div className="h-[200px] animate-pulse rounded-xl border border-white/5 bg-white/[0.02]" />
+          <div className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02]" style={{ height: H }} />
         )}
-        {!error && geom && (
-          <svg viewBox={`0 0 ${W} ${H}`} className="h-[200px] w-full" preserveAspectRatio="none"
+        {!error && geom && candles && (
+          <svg width={width} height={H} className="touch-pan-y select-none"
+            onPointerMove={onMove} onPointerLeave={() => setHover(null)}
             role="img" aria-label={`${label} price candles, last ${rangeLabel(range)}`}>
-            {/* Candles. Wicks are lines with a non-scaling stroke so they stay
-                hairline-thin when the viewBox is stretched to the container;
-                bodies are rects, which stretch with it and should. */}
-            {geom.bars.map((b, i) => (
+            {/* Gridlines and price axis */}
+            {geom.ticks.map((v, i) => (
               <g key={i}>
+                <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(v)} y2={geom.y(v)}
+                  stroke="#ffffff" strokeOpacity="0.05" strokeWidth="1" />
+                <text x={width - PAD.right + 8} y={geom.y(v) + 3.5}
+                  fill="#ffffff" fillOpacity="0.3" fontSize="10"
+                  fontFamily="ui-monospace, monospace">{fmtAxis(v)}</text>
+              </g>
+            ))}
+
+            {/* Candles */}
+            {geom.bars.map((b, i) => (
+              <g key={i} opacity={hover === null || hover === i ? 1 : 0.55}>
                 <line x1={b.cx} x2={b.cx} y1={b.wickTop} y2={b.wickBottom}
-                  stroke={b.up ? UP : DOWN} strokeWidth="1" vectorEffect="non-scaling-stroke"
-                  opacity="0.85" />
-                <rect x={b.cx - geom.bodyW / 2} y={b.bodyY}
-                  width={geom.bodyW} height={b.bodyH}
+                  stroke={b.up ? UP : DOWN} strokeWidth="1" opacity="0.85" />
+                <rect x={b.cx - geom.bodyW / 2} y={b.bodyY} width={geom.bodyW} height={b.bodyH}
                   fill={b.up ? UP : DOWN} opacity="0.9" />
               </g>
             ))}
 
-            {/* PEX's live index — the number the card actually quotes from.
-                Drawn on top so the reference series cannot be read as it. */}
+            {/* Time axis — a few labels, not one per candle. */}
+            {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+              const idx = Math.min(candles.length - 1, Math.round(f * (candles.length - 1)));
+              return (
+                <text key={i} x={geom.cx(idx)} y={H - 8} textAnchor="middle"
+                  fill="#ffffff" fillOpacity="0.28" fontSize="10"
+                  fontFamily="ui-monospace, monospace">{fmtTime(candles[idx].t, range)}</text>
+              );
+            })}
+
+            {/* Crosshair */}
+            {active && hover !== null && (
+              <g pointerEvents="none">
+                <line x1={geom.cx(hover)} x2={geom.cx(hover)} y1={PAD.top} y2={H - PAD.bottom}
+                  stroke="#ffffff" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="3 3" />
+                <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(active.c)} y2={geom.y(active.c)}
+                  stroke="#ffffff" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="3 3" />
+                <rect x={width - PAD.right + 2} y={geom.y(active.c) - 8} width={PAD.right - 4} height={16}
+                  rx="3" fill="#ffffff" fillOpacity="0.12" />
+                <text x={width - PAD.right + 8} y={geom.y(active.c) + 3.5}
+                  fill="#ffffff" fontSize="10" fontFamily="ui-monospace, monospace">
+                  {fmtAxis(active.c)}
+                </text>
+              </g>
+            )}
+
+            {/* PEX's live index — drawn last so it sits above the candles and
+                cannot be read as one of them. */}
             {indexUsd !== null && (
-              <g>
-                <line x1={PAD.left} x2={W - PAD.right} y1={geom.y(indexUsd)} y2={geom.y(indexUsd)}
-                  stroke="#c4b5fd" strokeWidth="1" strokeDasharray="3 3"
-                  vectorEffect="non-scaling-stroke" opacity="0.75" />
-                <text x={W - PAD.right + 6} y={geom.y(indexUsd) + 3.5}
-                  fill="#c4b5fd" fontSize="10" fontFamily="ui-monospace, monospace">
-                  {fmtPrice(indexUsd)}
+              <g pointerEvents="none">
+                <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(indexUsd)} y2={geom.y(indexUsd)}
+                  stroke={INDEX_COLOUR} strokeWidth="1" strokeDasharray="4 3" opacity="0.8" />
+                <rect x={width - PAD.right + 2} y={geom.y(indexUsd) - 8} width={PAD.right - 4} height={16}
+                  rx="3" fill={INDEX_COLOUR} fillOpacity="0.18" />
+                <text x={width - PAD.right + 8} y={geom.y(indexUsd) + 3.5}
+                  fill={INDEX_COLOUR} fontSize="10" fontFamily="ui-monospace, monospace">
+                  {fmtAxis(indexUsd)}
                 </text>
               </g>
             )}
@@ -204,8 +290,8 @@ export function PerpsChart({ marketId, label }: Props) {
 
       {/* Naming both prices, because they are not the same price. */}
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
-        History from Coinbase as a market reference.{" "}
-        <span className="text-violet-300/60">Dashed line</span> is PEX&apos;s live oracle price, which is
+        Candles from Coinbase as a market reference.{" "}
+        <span className="text-violet-300/60">Dashed violet</span> is PEX&apos;s live oracle price, which is
         what your trade is quoted against — your entry also includes PEX&apos;s price impact, so it
         will differ from both.
       </p>
