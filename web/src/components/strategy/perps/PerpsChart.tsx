@@ -18,11 +18,15 @@ import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
 import { PEX_APPS } from "@/lib/perps";
 import {
-  ChartUnavailableError, changePct, fetchCandles,
+  CHART_RANGES, ChartUnavailableError, changePct, fetchCandles, rangeLabel,
   type Candle, type ChartRange,
 } from "@/lib/perpsChart";
 
-const RANGES: ChartRange[] = ["24h", "7d"];
+
+
+/** Candle colours, shared by the bars and the header change figure. */
+const UP = "#4ade80";
+const DOWN = "#f87171";
 
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
@@ -105,15 +109,30 @@ export function PerpsChart({ marketId, label }: Props) {
     const x = (i: number) => PAD.left + (i / (candles.length - 1)) * innerW;
     const y = (v: number) => PAD.top + (1 - (v - min) / (max - min)) * innerH;
 
-    const line = candles.map((c, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(2)},${y(c.c).toFixed(2)}`).join("");
-    const area = `${line}L${x(candles.length - 1).toFixed(2)},${(H - PAD.bottom).toFixed(2)}`
-      + `L${x(0).toFixed(2)},${(H - PAD.bottom).toFixed(2)}Z`;
-    return { line, area, y, min, max, innerW };
+    // Candle geometry. `slot` is the horizontal space one candle owns; the body
+    // takes 60% of it so neighbouring candles stay visually separate even at
+    // 168 of them.
+    const slot = innerW / candles.length;
+    const bodyW = Math.max(slot * 0.6, 0.6);
+    const bars = candles.map((c, i) => {
+      const cx = PAD.left + slot * (i + 0.5);
+      const up = c.c >= c.o;
+      const top = y(Math.max(c.o, c.c));
+      const bottom = y(Math.min(c.o, c.c));
+      return {
+        cx, up,
+        wickTop: y(c.h),
+        wickBottom: y(c.l),
+        bodyY: top,
+        // A doji would otherwise be invisible: floor the body at a hairline.
+        bodyH: Math.max(bottom - top, 0.8),
+      };
+    });
+    return { bars, bodyW, y, min, max, innerW };
   }, [candles, indexUsd]);
 
   const change = candles ? changePct(candles) : null;
   const up = (change ?? 0) >= 0;
-  const stroke = up ? "#4ade80" : "#f87171";
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
@@ -122,16 +141,16 @@ export function PerpsChart({ marketId, label }: Props) {
           <h2 className="font-display text-base font-semibold text-white">{label}</h2>
           {change !== null && (
             <span className={`text-xs font-medium tabular-nums ${up ? "text-green-300" : "text-red-300"}`}>
-              {up ? "+" : ""}{change.toFixed(2)}% · {range}
+              {up ? "+" : ""}{change.toFixed(2)}% · {rangeLabel(range)}
             </span>
           )}
         </div>
         <div className="flex gap-1">
-          {RANGES.map((r) => (
+          {CHART_RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
               className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
                 r === range ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
-              {r}
+              {rangeLabel(r)}
             </button>
           ))}
         </div>
@@ -151,16 +170,20 @@ export function PerpsChart({ marketId, label }: Props) {
         )}
         {!error && geom && (
           <svg viewBox={`0 0 ${W} ${H}`} className="h-[200px] w-full" preserveAspectRatio="none"
-            role="img" aria-label={`${label} price, last ${range}`}>
-            <defs>
-              <linearGradient id={`fill-${marketId}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
-                <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={geom.area} fill={`url(#fill-${marketId})`} />
-            <path d={geom.line} fill="none" stroke={stroke} strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            role="img" aria-label={`${label} price candles, last ${rangeLabel(range)}`}>
+            {/* Candles. Wicks are lines with a non-scaling stroke so they stay
+                hairline-thin when the viewBox is stretched to the container;
+                bodies are rects, which stretch with it and should. */}
+            {geom.bars.map((b, i) => (
+              <g key={i}>
+                <line x1={b.cx} x2={b.cx} y1={b.wickTop} y2={b.wickBottom}
+                  stroke={b.up ? UP : DOWN} strokeWidth="1" vectorEffect="non-scaling-stroke"
+                  opacity="0.85" />
+                <rect x={b.cx - geom.bodyW / 2} y={b.bodyY}
+                  width={geom.bodyW} height={b.bodyH}
+                  fill={b.up ? UP : DOWN} opacity="0.9" />
+              </g>
+            ))}
 
             {/* PEX's live index — the number the card actually quotes from.
                 Drawn on top so the reference series cannot be read as it. */}

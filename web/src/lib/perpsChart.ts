@@ -39,7 +39,7 @@ export type Candle = {
   c: number;
 };
 
-export type ChartRange = "24h" | "7d";
+export type ChartRange = "1h" | "4h" | "24h" | "1w";
 
 /** Coinbase product per market. Market 2 is synthetic — there is no ASA to price. */
 const PRODUCT: Record<number, string> = {
@@ -47,11 +47,26 @@ const PRODUCT: Record<number, string> = {
   [PEX_MARKETS.btcUsd.id]: "BTC-USD",
 };
 
-/** Granularity and span per range. Coinbase caps a response at 300 candles. */
-const RANGE: Record<ChartRange, { granularity: number; spanSec: number }> = {
-  "24h": { granularity: 900, spanSec: 24 * 3600 },      // 15m x 96
-  "7d": { granularity: 3600, spanSec: 7 * 24 * 3600 },  // 1h x 168
+/**
+ * Granularity and span per range.
+ *
+ * Coinbase only accepts 60, 300, 900, 3600, 21600 and 86400 as granularities,
+ * and caps a response at 300 candles — so each row is chosen to land between
+ * about 48 and 170 candles, which is enough to read a shape without becoming a
+ * picket fence at the widths this chart renders at.
+ */
+const RANGE: Record<ChartRange, { granularity: number; spanSec: number; label: string }> = {
+  "1h": { granularity: 60, spanSec: 3600, label: "1H" },              // 1m x 60
+  "4h": { granularity: 300, spanSec: 4 * 3600, label: "4H" },         // 5m x 48
+  "24h": { granularity: 900, spanSec: 24 * 3600, label: "1D" },       // 15m x 96
+  "1w": { granularity: 3600, spanSec: 7 * 24 * 3600, label: "1W" },   // 1h x 168
 };
+
+/** The ranges the chart offers, shortest first. */
+export const CHART_RANGES: ChartRange[] = ["1h", "4h", "24h", "1w"];
+
+/** Short label for the range buttons. */
+export const rangeLabel = (r: ChartRange): string => RANGE[r].label;
 
 export class ChartUnavailableError extends Error {
   constructor(message: string) {

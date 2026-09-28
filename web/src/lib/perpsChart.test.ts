@@ -7,7 +7,10 @@
 // a chart that is backwards or reads the wrong field as the price.
 
 import { describe, expect, it } from "vitest";
-import { ChartUnavailableError, changePct, fetchCandles, type Candle } from "./perpsChart";
+import {
+  CHART_RANGES, ChartUnavailableError, changePct, fetchCandles, rangeLabel,
+  type Candle,
+} from "./perpsChart";
 import { PEX_MARKETS } from "./perps";
 
 const ALGO = PEX_MARKETS.algoUsd.id;
@@ -57,6 +60,35 @@ describe("fetchCandles", () => {
   it("propagates a network failure as ChartUnavailableError", async () => {
     const boom = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
     await expect(fetchCandles(ALGO, "24h", boom)).rejects.toBeInstanceOf(ChartUnavailableError);
+  });
+});
+
+describe("ranges", () => {
+  it("every offered range has a granularity and a label", async () => {
+    // A missing entry would fetch `undefined` granularity and 422 at runtime.
+    for (const r of CHART_RANGES) {
+      expect(rangeLabel(r)).toMatch(/^[0-9]+[HDW]$/);
+      const c = await fetchCandles(ALGO, r, ok(ROWS));
+      expect(c).toHaveLength(2);
+    }
+  });
+
+  it("offers them shortest first", () => {
+    expect(CHART_RANGES).toEqual(["1h", "4h", "24h", "1w"]);
+  });
+});
+
+describe("candle invariants", () => {
+  it("keeps low <= min(open, close) and high >= max(open, close)", async () => {
+    // The chart draws the body between open and close and the wick between low
+    // and high. A row violating this renders inside-out — the body escaping its
+    // own wick — so it is worth asserting on the parsed shape rather than
+    // trusting the feed.
+    const c = await fetchCandles(ALGO, "24h", ok(ROWS));
+    for (const x of c) {
+      expect(x.l).toBeLessThanOrEqual(Math.min(x.o, x.c));
+      expect(x.h).toBeGreaterThanOrEqual(Math.max(x.o, x.c));
+    }
   });
 });
 
