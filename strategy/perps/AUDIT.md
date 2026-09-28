@@ -849,6 +849,93 @@ breakdown for a partial close.** A question for Ultrade.
 
 ---
 
+## Audit 6 (2026-09-27) — the account matrix
+
+Briefed to enumerate the states a real user can be in, because audit 5's F1
+existed only because every prior audit had tested one or two accounts. It found
+the same defect class again, in a different costume.
+
+### F1 — high: every rekeyed account was blocked, 100% of the time
+
+`simulateGroup` built an empty signature without `fixSigners`, so algod resolved
+the authorizing address to the **sender** rather than the **auth address**:
+*"should have been authorized by X but was actually authorized by Y"*. The group
+was correct and a real wallet would have signed it correctly — **only our
+pre-flight refused it**, and the error named PEX for a defect that was ours.
+
+Rekeying is routine on Algorand: Pera and Defly vaults, multisig, hardware
+rekeys, contract-controlled accounts. Confirmed on a live rekeyed PEX trader:
+without `fixSigners`, refused; with it, `ok`, same group. Setting `authAddr` on
+the `SignedTransaction` instead does **not** work.
+
+This is audit 5's F1 in a different costume — a path recorded as verified end to
+end, verified with senders that happened not to be rekeyed.
+
+### F5 — we over-charged for the storage escrow, in exactly the repeat-user state
+
+The chain asserts `storage_available >= V2_POSITION_BOX_MBR_MICRO_ALGO`
+(**70,900**). The 100,200 constant is 70,900 plus the 29,300 consumed creating
+the `t2:` box, so it is right only for a *first* trade. Measured by ladder:
+99,700 fails at `pc=3180`, 100,200 passes. Across **all nineteen** live `t2:`
+boxes, `locked = 29,300 + 70,900 × open_position_count` holds exactly, zero
+mismatches.
+
+Close your only position and `available` returns to 70,900 — enough to open
+again — yet we asked for another 0.1002 ALGO into an escrow the UI cannot
+withdraw from. **Nine of the nineteen live traders sit in that state today**,
+which is precisely what `storagePaymentNeeded`'s own docstring claimed to
+prevent.
+
+### F2, F3, F4 and the rest
+
+- **F3.** The storage payment was the only value-moving leg with **no anchor
+  outside the caller**, so a tamper moving the group and the displayed value
+  together passed. Now pinned to the SDK's constants.
+- **F2.** Audit 5 froze the take-profit while signing — and not the other
+  fourteen money figures, all memos over `data`. During a 20-40 second prompt
+  the position size, liquidation price and cost table kept repainting while the
+  group carried click-time values, and vanished entirely if `bar.open` flipped.
+  The drift guard is structurally blind to this: it compares the fresh probe
+  against the click-time `displayed` values, never against what the screen shows
+  now. The whole view is snapshotted at click.
+- **F4.** *"A small amount of ALGO… returned when you close"* was false twice: a
+  first trade moves **252,900 µALGO**, and closing moves the escrow from locked
+  to available **inside PEX**, not to the wallet. `withdraw_storage_credit` and
+  `close_storage_account` are both in the pinned manifest; we offer neither.
+- **F6** the ALGO minimum was a flat figure checked before the read that decides
+  it · **F7** the result banner survived a wallet account switch · **F9** two
+  more controls with no callers, `notionalAtBarPosition` (reimplemented in the
+  card without its clamp) and `minimumCollateralUsd` · **F10** every oracle
+  budget argument reasoned from a "~30 second cadence"; measured over 86
+  samples, PEX publishes every **2-3 seconds** — 30 s is the validity window.
+  The guards are correctly sized, but the number anyone would next tune them
+  from was wrong by an order of magnitude.
+
+### The account matrix, verified
+
+Every row driven through production `openPosition` with a throwing signer:
+never traded · funded trader · box exists but escrow spent · escrow exactly at
+the threshold · position open on the same market+side (refused, accurately) ·
+on a different one (proceeds) · not opted in to USDC · insufficient USDC. **No
+raw TEAL assert reached a user in any constructible state.**
+
+Not verifiable: insufficient spendable ALGO (every such account fails the USDC
+check first, which runs earlier) and stale `o2:` boxes (OrderOps holds zero
+boxes exchange-wide, so no account on MainNet is in that state).
+
+### Still open
+
+**No group in this codebase has ever been signed by a real wallet.** Every run,
+across six audits, used a throwing signer. That is the one remaining link with
+no execution behind it — and given F1, the first real signature is worth taking
+on a rekeyed account specifically.
+
+**F7 from audit 5** — `quoteClose`'s funding and borrowing fees do not scale
+with a partial close while payout and PnL do. Still a question for Ultrade,
+still blocking a partial-close cost breakdown.
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.
