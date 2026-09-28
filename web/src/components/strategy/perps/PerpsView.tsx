@@ -38,9 +38,9 @@ const PerpsInfoModal = dynamic(
 
 const PerpsChartPanel = dynamic(
   () => import("@/components/strategy/perps/PerpsChartPanel").then((m) => m.PerpsChartPanel),
-  { ssr: false, loading: () => (
-    <div className="h-[620px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
-  ) },
+  // Section-shaped, like the card's pulse: no border or background, because
+  // the Panel around it draws those.
+  { ssr: false, loading: () => <div className="m-4 h-[600px] rounded-xl bg-white/5 animate-pulse sm:m-5" /> },
 );
 
 export function PerpsView() {
@@ -121,24 +121,20 @@ export function PerpsView() {
         </div>
       </div>
 
-      {/* The chart runs the full width and leads, because it is the context
-          every number in the card is read against. The card sits beneath it
-          rather than beside it: at 420px in a column the chart was too small to
-          be worth having. */}
-      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
-        onMarketChange={setMarketId} lines={lines} />
-
-      {/* ONE card: the order form and what you already hold, separated by a
-          seam rather than by a gap. They were two panels with 24px between
-          them, which read as two unrelated products — opening a position and
-          watching it are the same activity, and a position you just opened
-          appearing in a different box was the clearest case of that.
+      {/* ONE box. The chart, the order form and what you already hold are a
+          single card divided by seams, not three panels stacked with 24px of
+          page showing between them — which read as three unrelated products.
+          Reading the market, opening a position and watching it are one
+          activity, and the chart is the context every number in the form is
+          read against, so it leads.
 
           The Panel carries no padding: each section supplies its own, so the
-          seam can run edge to edge. `PositionsPanel` draws that seam itself and
-          renders nothing at all without a wallet, so with none connected this
-          is just the order form in a card, with no rule under it. */}
-      <Panel className="mt-6">
+          seams can run edge to edge. Each section draws the seam ABOVE itself,
+          which is what lets `PositionsPanel` take its rule with it when no
+          wallet is connected. */}
+      <Panel>
+        <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
+          onMarketChange={setMarketId} lines={lines} />
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
           onOverlayChange={setOverlay} />
         <PositionsPanel />

@@ -14,6 +14,7 @@
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
 import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
+import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
 const fmtUsd = (n: number) =>
@@ -48,13 +49,10 @@ export function PositionsPanel() {
 
   // The seam lives HERE rather than in PerpsView, so it disappears with the
   // section it separates: this component returns null with no wallet connected,
-  // and a divider under nothing is a card that looks broken.
+  // and a rule under nothing is a card that looks broken.
   return (
     <div>
-      {/* Full-bleed, because the wrapping Panel holds no padding of its own —
-          each section carries it. Tinted like the Panel's own top hairline so
-          the seam reads as part of one card rather than a join between two. */}
-      <div className="h-px bg-gradient-to-r from-transparent via-magnet-500/30 to-transparent" />
+      <Seam />
 
       {/* A hair lighter than the card above it: enough to separate holdings
           from the order form at a glance, not enough to look like a new panel. */}

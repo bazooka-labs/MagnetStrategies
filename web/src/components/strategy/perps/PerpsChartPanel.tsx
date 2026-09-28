@@ -1,7 +1,11 @@
 "use client";
 
-// The chart frame: market, view and interval controls over whichever chart is
-// showing.
+// The chart section: market, view and interval controls over whichever chart
+// is showing.
+//
+// A section, not a panel — it is the top of the single Perps card, above the
+// order form and the positions list. It draws no border, background or
+// hairline of its own; the Panel in PerpsView holds those.
 //
 // ── Where PEX's oracle price lives now ──────────────────────────────────────
 // This panel used to carry its own copy of it in the header. It no longer does,
@@ -223,7 +227,7 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
   const showAdvanced = advanced && canSwitch;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
+    <div className="p-4 sm:p-5">
       {/* ONE header, both views — switching charts changes the chart and
           nothing else. Each view used to draw its own chrome, which put the
           view toggle on screen twice, inside the panel and outside it.

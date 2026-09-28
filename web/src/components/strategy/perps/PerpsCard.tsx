@@ -26,6 +26,7 @@ import {
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
 } from "@/lib/perps";
+import { Seam } from "./Seam";
 import {
   minimumCollateralUsd,
   notionalAtBarPosition,
@@ -542,11 +543,14 @@ export function PerpsCard({
     confirming: "Waiting for confirmation…",
   };
 
-  // A section, not a panel. PerpsView wraps this and the positions list in
-  // ONE card so opening a position and watching it are visibly the same
-  // surface; the border, background and top hairline live on that wrapper.
+  // A section, not a panel. PerpsView wraps the chart, this and the positions
+  // list in ONE card, so reading the market, opening a position and watching
+  // it are visibly the same surface; the border, background and top hairline
+  // live on that wrapper. The seam separates this from the chart above it.
   return (
-    <div className="p-5 sm:p-6">
+    <>
+      <Seam />
+      <div className="p-5 sm:p-6">
       {/* The market toggle lives above the chart now, not here. */}
       <div className="flex items-baseline justify-between">
         <span className="font-display text-base font-semibold text-white">{market.label}</span>
@@ -901,6 +905,7 @@ export function PerpsCard({
       </p>
       </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
