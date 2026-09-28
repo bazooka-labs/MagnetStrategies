@@ -19,6 +19,12 @@ const PerpsCard = dynamic(
   { ssr: false, loading: pulse },
 );
 
+// Also client-only: it reads chain state for the connected wallet.
+const PositionsPanel = dynamic(
+  () => import("@/components/strategy/perps/PositionsPanel").then((m) => m.PositionsPanel),
+  { ssr: false },
+);
+
 export function PerpsView() {
   return (
     <>
@@ -62,6 +68,11 @@ export function PerpsView() {
         <PerpsCard />
 
         <div className="space-y-4">
+          {/* Above the explainers: someone with money at risk should see it
+              before they read about how the product works. Renders nothing at
+              all when no wallet is connected. */}
+          <PositionsPanel />
+
           <div className="rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-sm">
             <h2 className="font-display text-lg font-semibold text-white">How this works</h2>
             <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-300">
