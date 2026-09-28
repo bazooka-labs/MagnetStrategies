@@ -53,9 +53,22 @@ const fmtTime = (t: number, range: ChartRange) => {
     : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
-type Props = { marketId: number; label: string };
+/**
+ * A price line drawn across the chart.
+ *
+ * Colours are the card's: red for liquidation, green for take-profit, so the
+ * chart and the card say the same thing in the same language.
+ */
+type PriceLine = { price: number; label: string; colour: string; dash: string };
 
-export function PerpsChart({ marketId, label }: Props) {
+type Props = {
+  marketId: number;
+  label: string;
+  /** Entry, liquidation, take-profit and stop-loss, as the card quotes them. */
+  lines?: PriceLine[];
+};
+
+export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const [range, setRange] = useState<ChartRange>("24h");
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,8 +128,12 @@ export function PerpsChart({ marketId, label }: Props) {
 
   const geom = useMemo(() => {
     if (!candles || candles.length < 2 || width <= 0) return null;
-    let min = Math.min(...candles.map((c) => c.l), indexUsd ?? Infinity);
-    let max = Math.max(...candles.map((c) => c.h), indexUsd ?? -Infinity);
+    // Every drawn line is included in the scale, or a liquidation far below the
+    // visible range would silently fall outside the plot — which is the one
+    // line a user most needs to see the distance to.
+    const drawn = lines.map((l) => l.price).filter((v) => Number.isFinite(v));
+    let min = Math.min(...candles.map((c) => c.l), indexUsd ?? Infinity, ...drawn);
+    let max = Math.max(...candles.map((c) => c.h), indexUsd ?? -Infinity, ...drawn);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
       const base = candles[candles.length - 1].c;
       min = base * 0.995; max = base * 1.005;
@@ -147,7 +164,7 @@ export function PerpsChart({ marketId, label }: Props) {
     // Four gridlines is enough to read a level without becoming a ledger.
     const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4);
     return { bars, bodyW, y, cx, min, max, innerW, innerH, slot, ticks };
-  }, [candles, indexUsd, width]);
+  }, [candles, indexUsd, width, lines]);
 
   const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (!geom || !candles) return;
@@ -269,6 +286,26 @@ export function PerpsChart({ marketId, label }: Props) {
                 </text>
               </g>
             )}
+
+            {/* The card's prices: entry, liquidation, take-profit, stop. Drawn
+                above the candles and labelled in the margin, so the distance to
+                each is readable at a glance rather than inferred from numbers
+                in a panel below. */}
+            {lines.map((l) => (
+              <g key={l.label} pointerEvents="none">
+                <line x1={PAD.left} x2={width - PAD.right} y1={geom.y(l.price)} y2={geom.y(l.price)}
+                  stroke={l.colour} strokeWidth="1" strokeDasharray={l.dash} opacity="0.85" />
+                <text x={PAD.left + 4} y={geom.y(l.price) - 4}
+                  fill={l.colour} fontSize="9.5" fontFamily="ui-monospace, monospace"
+                  opacity="0.95">{l.label}</text>
+                <rect x={width - PAD.right + 2} y={geom.y(l.price) - 8} width={PAD.right - 4} height={16}
+                  rx="3" fill={l.colour} fillOpacity="0.16" />
+                <text x={width - PAD.right + 8} y={geom.y(l.price) + 3.5}
+                  fill={l.colour} fontSize="10" fontFamily="ui-monospace, monospace">
+                  {fmtAxis(l.price)}
+                </text>
+              </g>
+            ))}
 
             {/* PEX's live index — drawn last so it sits above the candles and
                 cannot be read as one of them. */}

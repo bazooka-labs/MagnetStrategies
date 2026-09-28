@@ -89,12 +89,32 @@ function useDebounced<T>(value: T, ms: number): T {
  * they must agree. A chart captioned ALGO/USD next to a BTC quote is the same
  * class of defect as any other "screen says one thing" bug.
  */
+/**
+ * The prices the card is currently quoting, for the chart to draw.
+ *
+ * Reported up rather than recomputed: the chart drawing its own entry or
+ * liquidation would be a second opinion about a number the card already owns,
+ * and two components deriving the same figure separately is how they come to
+ * disagree. Nulls mean "nothing to draw" — no amount entered, or no
+ * liquidation because notional is below collateral.
+ */
+export type CardOverlay = {
+  entryPrice12: bigint | null;
+  liquidationPrice12: bigint | null;
+  takeProfitPrice12: bigint | null;
+  stopLossPrice12: bigint | null;
+  side: Side;
+};
+
 export type PerpsCardProps = {
   marketId?: number;
   onMarketChange?: (id: number) => void;
+  onOverlayChange?: (o: CardOverlay) => void;
 };
 
-export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: PerpsCardProps = {}) {
+export function PerpsCard({
+  marketId: controlledMarketId, onMarketChange, onOverlayChange,
+}: PerpsCardProps = {}) {
   const [ownMarketId, setOwnMarketId] = useState<number>(ACTIVE_MARKET_ID);
   const marketId = controlledMarketId ?? ownMarketId;
   const setMarketId = (id: number) => {
@@ -331,6 +351,26 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
    * total loss of $1,000.00". Both markets are OI-capped well below $1,000, so
    * anyone with that much collateral saw it at every slider position.
    */
+  /**
+   * Report the quoted prices up for the chart to draw.
+   *
+   * Keyed on the live quote rather than the frozen view: the chart should show
+   * where the market actually is, even mid-signature. `tpValid` gates the
+   * take-profit so a half-typed target does not draw a line at $1.
+   */
+  useEffect(() => {
+    onOverlayChange?.({
+      entryPrice12: quote?.ok ? quote.entryPrice12 : null,
+      liquidationPrice12: quote?.ok && quote.liquidationDirection !== ""
+        && quote.liquidationPrice12 > BigInt(0) ? quote.liquidationPrice12 : null,
+      takeProfitPrice12: tpValid && tp12 > BigInt(0) ? tp12 : null,
+      // Protection is not enabled yet; when it is, its trigger goes here and
+      // the chart already knows how to draw it.
+      stopLossPrice12: null,
+      side,
+    });
+  }, [quote, tpValid, tp12, side, onOverlayChange]);
+
   const liquidatable = !!(quote?.ok
     && quote.liquidationDirection !== "" && quote.liquidationPrice12 > BigInt(0));
   // attemptAt changes on every load attempt, so this re-renders and keeps

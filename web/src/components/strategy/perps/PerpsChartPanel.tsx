@@ -39,6 +39,27 @@ const SYMBOL: Record<number, string> = {
   [PEX_MARKETS.btcUsd.id]: "COINBASE:BTCUSD",
 };
 
+/**
+ * Simple vs Advanced.
+ *
+ * Named for what the user gets, not for which library renders it: "Advanced"
+ * buys indicators and drawing tools and costs the position lines, because a
+ * third-party iframe cannot be told where your liquidation price is.
+ */
+function ViewToggle({ advanced, onChange }: { advanced: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-0.5">
+      {([["Position lines", false], ["Drawing tools", true]] as const).map(([text, v]) => (
+        <button key={text} onClick={() => onChange(v)}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            advanced === v ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const SCRIPT_SRC =
   "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
 /**
@@ -90,9 +111,25 @@ type Props = {
   marketId: number;
   label: string;
   onMarketChange: (id: number) => void;
+  /** Entry, liquidation and take-profit, as the card quotes them. */
+  lines?: { price: number; label: string; colour: string; dash: string }[];
 };
 
-export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
+export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }: Props) {
+  /**
+   * Which chart is showing.
+   *
+   * These are not interchangeable and the choice is a real one. TradingView has
+   * the indicator library and the drawing palette; it is an iframe rendering
+   * its own feed, so it cannot draw OUR prices — the embed exposes no runtime
+   * API and no price-line configuration.
+   *
+   * Our chart can draw them, because we own every pixel: entry, liquidation,
+   * take-profit and the PEX oracle, all on the candles.
+   *
+   * Position lines are what a user checks most often, so they are the default.
+   */
+  const [advanced, setAdvanced] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
 
@@ -157,11 +194,17 @@ export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
     return () => { el.innerHTML = ""; };
   }, [marketId]);
 
-  if (blocked || !SYMBOL[marketId]) {
+  // Our chart when chosen, and whenever TradingView is unavailable.
+  if (!advanced || blocked || !SYMBOL[marketId]) {
     return (
       <div className="space-y-3">
-        <MarketToggle marketId={marketId} onChange={onMarketChange} />
-        <PerpsChart marketId={marketId} label={label} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <MarketToggle marketId={marketId} onChange={onMarketChange} />
+          {!blocked && SYMBOL[marketId] && (
+            <ViewToggle advanced={false} onChange={setAdvanced} />
+          )}
+        </div>
+        <PerpsChart marketId={marketId} label={label} lines={lines} />
       </div>
     );
   }
@@ -173,6 +216,8 @@ export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
             chart is what it most obviously governs — and because the card and
             the chart must never disagree about which market is shown. */}
         <MarketToggle marketId={marketId} onChange={onMarketChange} />
+
+        <ViewToggle advanced onChange={setAdvanced} />
 
         {/* The number the card actually prices against. Outside the chart now,
             because the widget cannot carry the overlay — but never absent. */}

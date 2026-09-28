@@ -6,7 +6,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import Image from "next/image";
@@ -48,6 +49,29 @@ export function PerpsView() {
    */
   const [marketId, setMarketId] = useState<number>(ACTIVE_MARKET_ID);
   const [infoOpen, setInfoOpen] = useState(false);
+  /**
+   * The card's quoted prices, for the chart to draw.
+   *
+   * The card owns these numbers and reports them; the chart never derives its
+   * own. Two components computing an entry or liquidation price separately is
+   * how they come to disagree, and disagreeing about a liquidation price is not
+   * a cosmetic failure.
+   */
+  const [overlay, setOverlay] = useState<CardOverlay | null>(null);
+
+  const lines = useMemo(() => {
+    if (!overlay) return [];
+    const out: { price: number; label: string; colour: string; dash: string }[] = [];
+    const add = (p: bigint | null, label: string, colour: string, dash: string) => {
+      if (p !== null && p > BigInt(0)) out.push({ price: Number(p) / 1e12, label, colour, dash });
+    };
+    // Same colours the card uses for the same concepts.
+    add(overlay.entryPrice12, "Entry", "#e5e7eb", "5 4");
+    add(overlay.liquidationPrice12, "Liquidation", "#f87171", "2 3");
+    add(overlay.takeProfitPrice12, "Take profit", "#4ade80", "6 4");
+    add(overlay.stopLossPrice12, "Stop", "#fbbf24", "2 3");
+    return out;
+  }, [overlay]);
   const market = Object.values(PEX_MARKETS).find((m) => m.id === marketId);
 
   return (
@@ -100,12 +124,14 @@ export function PerpsView() {
           every number in the card is read against. The card sits beneath it
           rather than beside it: at 420px in a column the chart was too small to
           be worth having. */}
-      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""} onMarketChange={setMarketId} />
+      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
+        onMarketChange={setMarketId} lines={lines} />
 
       {/* Full width, laid out across. The card used to sit in a 420px column
           beside empty space once the explainers moved into the modal. */}
       <div className="mt-6">
-        <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
+        <PerpsCard marketId={marketId} onMarketChange={setMarketId}
+          onOverlayChange={setOverlay} />
       </div>
 
       {/* Below the card, where a position naturally follows the act of opening
