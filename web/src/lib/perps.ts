@@ -86,13 +86,25 @@ export const PEX_PROGRAM_SHA256 = {
 
 /**
  * Protocol manifest SHA-256 over the raw bytes as served.
- * The manifest supplies the ABI specs used to ENCODE args and the box formats used
- * to DECODE state — so whoever controls it controls both what we send and what we
- * display. One hash covers every method and every format; per-method pins cannot
- * be enumerated completely.
+ *
+ * The manifest supplies the ABI specs used to ENCODE args and the box formats
+ * used to DECODE state — so whoever controls it controls both what we send and
+ * what we display. One hash covers every method and every format; per-method
+ * pins cannot be enumerated completely.
+ *
+ * **Now re-fetchable.** Ultrade publish the manifest to the public artifact
+ * bucket as of SDK 0.6.5, content-addressed and hash-verified:
+ *
+ *   pointer   {base}/v2/protocol/mainnet/current.json   -> artifact_hash, artifact_path
+ *   artifact  {base}/v2/protocol/mainnet/<hash>.json
+ *
+ * with `base` = the public artifact URL in PEX.md. Before this it came only from
+ * a builder backend we had no URL for, so the pin was unverifiable against
+ * anything upstream. `artifact_hash` in the pointer equals this constant, which
+ * makes the pin checkable against PEX rather than only against our own copy.
  */
 export const PEX_PROTOCOL_MANIFEST_SHA256 =
-  "d594c876fcd253ea18ff66607c41752102c75db233a4ba43a7ca5d17b55ca173";
+  "3bbce88472676525d208094ee8157a175b75f451d6c70781956be97c837a3b8f";
 
 /**
  * The SAME manifest hashed in canonical form — `JSON.stringify(JSON.parse(raw))`.
@@ -105,9 +117,15 @@ export const PEX_PROTOCOL_MANIFEST_SHA256 =
  * parse/stringify round-trips (verified), which makes it checkable in the browser.
  *
  * Asserting only the raw hash would mean asserting nothing at runtime.
+ *
+ * **These two are currently identical**, because the R2 artifact is already
+ * serialised in canonical form — `JSON.stringify(JSON.parse(raw))` round-trips
+ * byte-for-byte. That is a property of how Ultrade publish it, not a guarantee,
+ * so both constants stay: they check different things and a future
+ * cosmetically-reformatted artifact would separate them again.
  */
 export const PEX_PROTOCOL_MANIFEST_CANONICAL_SHA256 =
-  "10a879f93baef40a48649c1e9b6a2bb4664e593008e115c4acd6c550af737d3d";
+  "3bbce88472676525d208094ee8157a175b75f451d6c70781956be97c837a3b8f";
 
 /**
  * Oracle signer public key, read from PDexV2OrderOps global key "oc" and

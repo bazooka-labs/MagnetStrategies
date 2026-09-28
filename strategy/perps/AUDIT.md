@@ -687,8 +687,44 @@ a module-load assertion that the field count still matches the declared byte
 size. Verified live afterwards: both markets decode `version=1`, `flags=1`
 (enabled), `k=1.0` on ALGO and `0.641026` on BTC — the values already documented.
 
-**Still worth asking Ultrade:** where the updated protocol manifest is served
-from, since we pin its SHA-256 and cannot re-fetch it from anywhere we know.
+### Resolved the same day: the manifest is published, and declares `doi:`
+
+Ultrade published the protocol manifest to the public artifact bucket and
+shipped **SDK 0.6.5** ("verified R2 protocol loading") to read it from there,
+falling back to their backend. Content-addressed and hash-verified:
+
+```
+pointer   {base}/v2/protocol/mainnet/current.json   -> artifact_hash, artifact_path
+artifact  {base}/v2/protocol/mainnet/<hash>.json
+```
+
+Fetched, and the artifact's SHA-256 matches its pointer. Compared against our
+vendored copy:
+
+- **+1 box format: `dynamic_oi_margin_config`** — prefix `646f693a` (`doi:`),
+  `owner_app: PDexV2TradingRiskOps`, `value_size: 32`, four uint64s in our exact
+  order. The field names differ from the SDK's (`version` vs
+  `dynamic_oi_margin_version`) but the shape is identical.
+- **`receipts` gained `enums` and `field_enums`** — additive metadata only. Same
+  fields, same count, same order on all four order receipt types; no byte-layout
+  change.
+- Everything else byte-identical: apps, oracle, conformance, market types,
+  `mbr_formula`, and all eighteen pre-existing box formats.
+
+Adopted. Both pins updated to
+`3bbce88472676525d208094ee8157a175b75f451d6c70781956be97c837a3b8f` — and they
+are now **the same value**, because the published artifact is already serialised
+canonically, so `JSON.stringify(JSON.parse(raw))` round-trips byte-for-byte.
+Both constants stay: they check different things and a future reformat would
+separate them again.
+
+`doi:` is now cross-checked at module load against **three independent sources**
+— the SDK's constants, the manifest's declared format (size, field count, field
+widths, prefix and owner app), and the live box. The finding is closed.
+
+Verified after adopting: manifest gate passes, program pins show no drift, `doi:`
+and `mf2:` decode correctly on both markets, and an open+take-profit group still
+asserts 29 checks with zero findings and simulates `ok=true`.
 
 ---
 

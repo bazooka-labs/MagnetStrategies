@@ -12,6 +12,7 @@ import {
   V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS,
   V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE,
 } from "@pdex/sdk";
+import manifestJson from "./pexProtocolManifest.json";
 import { PEX_APPS, PEX_PROGRAM_SHA256 } from "./perps";
 
 // ── Box layouts ───────────────────────────────────────────────────────────────
@@ -99,14 +100,51 @@ const OPEN_INTEREST_FIELDS = [
  */
 const DYNAMIC_OI_FIELDS = V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS;
 
-// Fail at module load if the SDK's declaration stops matching what we decode.
-// A silent layout change here misreads the dynamic-OI margin factors, which set
-// the leverage ceiling — so it is worth a hard stop rather than a wrong bar.
-if (DYNAMIC_OI_FIELDS.length * 8 !== V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE) {
-  throw new Error(
-    `perps: doi: layout is ${DYNAMIC_OI_FIELDS.length} words but the SDK declares ${
-      V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE} bytes`,
-  );
+/**
+ * Fail at module load if the three sources stop agreeing.
+ *
+ * `doi:` is now declared in three independent places: the SDK's
+ * `V2_DYNAMIC_OI_MARGIN_CONFIG_*` constants, the protocol manifest's
+ * `dynamic_oi_margin_config` format (added by Ultrade on 2026-09-27, which is
+ * what closed the long-standing "pinned against nothing" finding), and the live
+ * box itself. The manifest names the fields differently — `version` where the
+ * SDK says `dynamic_oi_margin_version` — so only the shape is comparable, which
+ * is the part that decides how bytes are read.
+ *
+ * A silent layout change here misreads the dynamic-OI margin factors, and those
+ * set the leverage ceiling. Worth a hard stop rather than a quietly wrong bar.
+ */
+{
+  const declared = (manifestJson as {
+    boxes: { formats: Record<string, { value_size?: number; prefix_hex?: string; owner_app?: string;
+      fields?: { size?: number }[] }> };
+  }).boxes.formats.dynamic_oi_margin_config;
+
+  if (DYNAMIC_OI_FIELDS.length * 8 !== V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE) {
+    throw new Error(
+      `perps: doi: layout is ${DYNAMIC_OI_FIELDS.length} words but the SDK declares ${
+        V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE} bytes`,
+    );
+  }
+  if (!declared) {
+    throw new Error("perps: the protocol manifest no longer declares dynamic_oi_margin_config");
+  }
+  if (declared.value_size !== V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE
+    || (declared.fields ?? []).length !== DYNAMIC_OI_FIELDS.length
+    || (declared.fields ?? []).some((f) => f.size !== 8)) {
+    throw new Error(
+      `perps: doi: manifest format disagrees with the SDK — manifest ${
+        declared.value_size} bytes / ${(declared.fields ?? []).length} fields, SDK ${
+        V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE} bytes / ${DYNAMIC_OI_FIELDS.length} fields`,
+    );
+  }
+  // "doi:" and the app that owns the box, both from the manifest rather than
+  // from our own constant, so a prefix or owner change is visible too.
+  if (declared.prefix_hex !== "646f693a" || declared.owner_app !== "PDexV2TradingRiskOps") {
+    throw new Error(
+      `perps: doi: manifest prefix/owner changed — ${declared.prefix_hex} on ${declared.owner_app}`,
+    );
+  }
 }
 
 // `ma2:` on Markets. Carries opposing_trader_share_bps, which the SDK's cost
