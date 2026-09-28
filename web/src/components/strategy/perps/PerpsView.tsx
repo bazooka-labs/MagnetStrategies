@@ -4,9 +4,12 @@
 // same product family — same rounded-2xl panel, hairline, drifting blob, display
 // face and status pill.
 
+"use client";
+
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { PEX_MARKETS } from "@/lib/perps";
+import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
 
 const pulse = () => (
   <div className="h-[620px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
@@ -25,7 +28,21 @@ const PositionsPanel = dynamic(
   { ssr: false },
 );
 
+const PerpsChart = dynamic(
+  () => import("@/components/strategy/perps/PerpsChart").then((m) => m.PerpsChart),
+  { ssr: false, loading: () => (
+    <div className="h-[286px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
+  ) },
+);
+
 export function PerpsView() {
+  /**
+   * Lifted so the chart and the card cannot disagree about which market is
+   * being shown. The card keeps its own fallback state for standalone use.
+   */
+  const [marketId, setMarketId] = useState<number>(ACTIVE_MARKET_ID);
+  const market = Object.values(PEX_MARKETS).find((m) => m.id === marketId);
+
   return (
     <>
       {/* Hero */}
@@ -65,9 +82,13 @@ export function PerpsView() {
 
       {/* Card, and what sits behind it */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-        <PerpsCard />
+        <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
 
         <div className="space-y-4">
+          {/* Context first: the chart is what makes the numbers in the card
+              legible, so it sits above the explainers. */}
+          <PerpsChart marketId={marketId} label={market?.label ?? ""} />
+
           {/* Above the explainers: someone with money at risk should see it
               before they read about how the product works. Renders nothing at
               all when no wallet is connected. */}

@@ -82,8 +82,25 @@ function useDebounced<T>(value: T, ms: number): T {
   return settled;
 }
 
-export function PerpsCard() {
-  const [marketId, setMarketId] = useState<number>(ACTIVE_MARKET_ID);
+/**
+ * The market is lifted so the chart beside the card shows the same one.
+ *
+ * Optional, so the card still works standalone — but when both are rendered
+ * they must agree. A chart captioned ALGO/USD next to a BTC quote is the same
+ * class of defect as any other "screen says one thing" bug.
+ */
+export type PerpsCardProps = {
+  marketId?: number;
+  onMarketChange?: (id: number) => void;
+};
+
+export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: PerpsCardProps = {}) {
+  const [ownMarketId, setOwnMarketId] = useState<number>(ACTIVE_MARKET_ID);
+  const marketId = controlledMarketId ?? ownMarketId;
+  const setMarketId = (id: number) => {
+    setOwnMarketId(id);
+    onMarketChange?.(id);
+  };
   const [side, setSide] = useState<Side>("long");
   const [amount, setAmount] = useState<string>("100");
   const [barPos, setBarPos] = useState<number>(0.5);
