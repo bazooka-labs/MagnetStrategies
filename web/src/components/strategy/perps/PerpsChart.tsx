@@ -73,6 +73,8 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const [candles, setCandles] = useState<Candle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  /** Drives the grab cursor; a ref alone would not re-render to show it. */
+  const [dragging, setDragging] = useState(false);
   /**
    * Vertical zoom, as a divisor on the auto-fitted price range.
    *
@@ -97,9 +99,21 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
    *
    * `end` is an index into the full series, so panning is just moving it.
    */
+  /**
+   * How far the visible price range is shifted from its auto fit, in price.
+   *
+   * Zero fits the data. Non-zero lets the view move past the series' own high
+   * and low — which is the point: a take-profit above every candle drawn, or a
+   * liquidation below them, is exactly the level worth looking at, and with a
+   * pure auto-fit it can only ever sit pinned to the edge.
+   *
+   * Held in price units rather than pixels so it stays meaningful when the
+   * zoom or the data changes underneath it.
+   */
+  const [priceOffset, setPriceOffset] = useState(0);
   const [span, setSpan] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
-  const pan = useRef<{ x: number; end: number } | null>(null);
+  const pan = useRef<{ x: number; y: number; end: number; offset: number } | null>(null);
 
   /** The candles actually drawn, and where the slice starts in the full array. */
   const visible = useMemo(() => {
@@ -160,6 +174,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     setZoom(1);
     setSpan(null);
     setEnd(null);
+    setPriceOffset(0);
     const load = (first: boolean) => {
       fetchCandles(marketId, range)
         .then((c) => { if (alive) setCandles(c); })
@@ -197,6 +212,9 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
       min = anchor - (anchor - min) / zoom;
       max = anchor + (max - anchor) / zoom;
     }
+    // Then shift the whole window. Applied after the zoom so dragging moves by
+    // the same number of pixels however far in you are.
+    min += priceOffset; max += priceOffset;
 
     const innerW = width - PAD.left - PAD.right;
     const innerH = H - PAD.top - PAD.bottom;
@@ -221,15 +239,26 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
     // Four gridlines is enough to read a level without becoming a ledger.
     const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4);
     return { bars, bodyW, y, cx, min, max, innerW, innerH, slot, ticks };
-  }, [visible, indexUsd, width, lines, zoom]);
+  }, [visible, indexUsd, width, lines, zoom, priceOffset]);
 
   const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     // A drag on the price axis owns the pointer until it is released.
-    if (pan.current && geom && candles && span !== null) {
-      // Whole candles, so the series never lands between slots and shimmers.
-      const moved = Math.round((pan.current.x - e.clientX) / geom.slot);
-      const target = pan.current.end + moved;
-      setEnd(Math.min(candles.length - 1, Math.max(span - 1, target)));
+    if (pan.current && geom && candles) {
+      // Vertical: drag down and the content follows, which means the visible
+      // price window moves up. Converted through the current scale so a pixel
+      // of movement is a pixel of movement at any zoom.
+      const dy = e.clientY - pan.current.y;
+      const perPixel = (geom.max - geom.min) / geom.innerH;
+      setPriceOffset(pan.current.offset + dy * perPixel);
+
+      // Horizontal: whole candles, so the series never lands between slots and
+      // shimmers. Only when a window is actually set — at full span there is
+      // nothing to scroll through.
+      if (span !== null) {
+        const moved = Math.round((pan.current.x - e.clientX) / geom.slot);
+        const target = pan.current.end + moved;
+        setEnd(Math.min(candles.length - 1, Math.max(span - 1, target)));
+      }
       return;
     }
     if (drag.current) {
@@ -248,6 +277,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   }, [geom, visible, candles, span]);
 
   const endDrag = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    setDragging(false);
     if (!drag.current && !pan.current) return;
     drag.current = null;
     pan.current = null;
@@ -344,8 +374,8 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {(zoom !== 1 || span !== null) && (
-            <button onClick={() => { setZoom(1); setSpan(null); setEnd(null); }}
+          {(zoom !== 1 || span !== null || priceOffset !== 0) && (
+            <button onClick={() => { setZoom(1); setSpan(null); setEnd(null); setPriceOffset(0); }}
               title="Reset the price scale and the visible range"
               className="mr-1 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-white/60 transition-colors hover:text-white/90">
               reset
@@ -379,18 +409,30 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
           <div className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02]" style={{ height: H }} />
         )}
         {!error && geom && candles && (
-          <svg ref={svgRef} width={width} height={H} className="touch-pan-y select-none"
+          /* touch-pan-y, deliberately: the browser keeps vertical touch
+             gestures so the page still scrolls past a full-width chart, and
+             horizontal ones come to us for panning. Vertical chart panning is
+             mouse and trackpad only — trapping page scroll on a phone is a
+             worse trade than losing one gesture. */
+          <svg ref={svgRef} width={width} height={H}
+            style={{ cursor: dragging ? "grabbing" : "crosshair" }}
+            className="touch-pan-y select-none"
             onPointerMove={onMove}
             onPointerDown={(e) => {
               // The price axis strip has its own handler and stops propagation
               // there, so a pointer down reaching the svg is over the plot.
               if (!candles || !visible) return;
-              pan.current = { x: e.clientX, end: visible.from + visible.rows.length - 1 };
+              pan.current = {
+                x: e.clientX, y: e.clientY,
+                end: visible.from + visible.rows.length - 1,
+                offset: priceOffset,
+              };
               e.currentTarget.setPointerCapture?.(e.pointerId);
+              setDragging(true);
             }}
             onPointerUp={endDrag} onPointerCancel={endDrag}
             onPointerLeave={(e) => { endDrag(e); setHover(null); }}
-            onDoubleClick={() => { setSpan(null); setEnd(null); setZoom(1); }}
+            onDoubleClick={() => { setSpan(null); setEnd(null); setZoom(1); setPriceOffset(0); }}
             role="img" aria-label={`${label} price candles, last ${rangeLabel(range)}`}>
             <defs>
               {/* Zoomed candles must not paint over the axis or escape the
