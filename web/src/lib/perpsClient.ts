@@ -38,7 +38,14 @@ import {
   POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
 } from "./perps";
-import { allocateBaseOrderId, assertBaseOrderIdFree, readMarketState, readPosition } from "./perpsReads";
+import {
+  allocateBaseOrderId,
+  assertBaseOrderIdFree,
+  readMarketState,
+  readPosition,
+  readTraderState,
+  storagePaymentNeeded,
+} from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { preflight } from "./perpsPreflight";
@@ -232,10 +239,29 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   //
   // This also makes `position: null` in the quote correct rather than merely
   // convenient — every open we permit really does start from nothing.
-  const existing = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
+  // Both boxes in one round trip: the position guard, and the trader-state box
+  // that decides whether this group must fund storage.
+  const [existing, trader] = await Promise.all([
+    readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2),
+    readTraderState(algod, sender),
+  ]);
   if (existing && existing.size_usd > BigInt(0)) {
     throw new PositionAlreadyOpenError(existing.size_usd);
   }
+
+  // ── Storage escrow ───────────────────────────────────────────────────────
+  //
+  // Trading asserts the caller's `t2:` box exists before it will open anything.
+  // The group only creates that box when a storage payment leads it, so without
+  // one a first-time trader dies in simulation at `pc=2907` — and since only
+  // nineteen accounts on MainNet hold this box, that was **every real user**.
+  //
+  // The escrow is persistent and reusable: opening locks from it, closing
+  // returns to it. So this tops it up only when short, which keeps the
+  // nine-transaction group for anyone already funded rather than accumulating
+  // idle ALGO in their escrow on every trade.
+  const storagePayment = storagePaymentNeeded(trader);
+  const fundsStorage = storagePayment > BigInt(0);
 
   stage("allocating");
   const alloc = await allocateBaseOrderId(algod, sender);
@@ -383,6 +409,9 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     builderFee: { builderAddress: BUILDER_ADDRESS, builderFeeBps: BigInt(POSITION_BUILDER_FEE_BPS) },
     baseOrderId: alloc.baseOrderId,
     targetKind: V2_ORDER_TARGET.PAIR,
+    // Omitted entirely when already funded — passing 0 is not the same as not
+    // passing it, and only the omission yields the audited nine-txn shape.
+    ...(fundsStorage ? { storagePaymentMicroAlgo: storagePayment } : {}),
     indexAssetId: Number(state.core.index_asset_id),
     longAssetId: Number(state.core.long_asset_id),
     shortAssetId: Number(state.core.short_asset_id),
@@ -415,6 +444,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const assertion = assertOpenWithTakeProfit(
     group,
     {
+      storagePaymentMicro: storagePayment,
       sender, marketId, side: side === "long" ? 1 : 2,
       collateralAssetId: COLLATERAL_ASSET_ID,
       collateralAmountMicro: micro(collateralUsd),

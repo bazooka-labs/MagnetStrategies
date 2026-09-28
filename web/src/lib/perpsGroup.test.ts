@@ -94,6 +94,7 @@ function openGroup(): Leg[] {
 }
 
 const shownOpen = (): DisplayedOpen => ({
+  storagePaymentMicro: BigInt(0),
   sender: USER, marketId: 1, side: 1, collateralAssetId: PEX_ASSETS.usdc,
   collateralAmountMicro: COLLATERAL, sizeUsdDeltaMicro: SIZE,
   acceptablePrice12: (EXEC * BigInt(10_030)) / BigInt(10_000),

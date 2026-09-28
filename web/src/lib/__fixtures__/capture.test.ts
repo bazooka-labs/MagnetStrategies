@@ -37,6 +37,7 @@ import {
   DEFAULT_SLIPPAGE_BPS, PEX_APPS, POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
 } from "../perps";
+import { V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO } from "@pdex/sdk";
 
 const micro = (x: number) => BigInt(Math.round(x * 1e6));
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
@@ -90,7 +91,11 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
     const tpAcceptable = acceptableForClose(tp12, side, DEFAULT_SLIPPAGE_BPS);
     const baseOrderId = BigInt(1);
 
-    const group = buildV2MarketOpenWithAttachedOrdersTransactions({
+    // Captured twice: with and without the storage-escrow prefix. A first-time
+    // trader's group is eleven transactions and a second Trading call, and the
+    // assertion fail-closes on that shape unless it is taught — so both must be
+    // fixtures, not just the one that happened to be audited first.
+    const buildGroup = (storage: bigint | null) => buildV2MarketOpenWithAttachedOrdersTransactions({
       sender, marketId, collateralAssetId: COLLATERAL_ASSET_ID,
       side: side === "long" ? BigInt(1) : BigInt(2),
       collateralAmount: micro(collateralUsd), sizeUsdDelta: micro(notionalUsd),
@@ -98,6 +103,7 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       oracleMessage: oracle.message, oracleSignature: oracle.signature,
       builderFee: { builderAddress: BUILDER_ADDRESS, builderFeeBps: BigInt(POSITION_BUILDER_FEE_BPS) },
       baseOrderId, targetKind: V2_ORDER_TARGET.PAIR,
+      ...(storage === null ? {} : { storagePaymentMicroAlgo: storage }),
       indexAssetId: Number(state.core.index_asset_id),
       longAssetId: Number(state.core.long_asset_id),
       shortAssetId: Number(state.core.short_asset_id),
@@ -117,9 +123,17 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       v2AdminControlAppId: PEX_APPS.adminControl,
     }, sp) as unknown[];
 
+    const enc = (g: unknown[]) => g
+      .map((t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction)
+      .map((t) => b64(algosdk.encodeUnsignedTransaction(t)));
+
+    const group = buildGroup(null);
+    const storageGroup = buildGroup(BigInt(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO));
     const txns = group.map((t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction);
+    const stx = storageGroup.map((t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction);
     console.log(`m${marketId} ${side}: ${txns.length} txns [${txns.map((t) => t.type).join(",")}] fee=${
-      txns.reduce((a, t) => a + Number(t.fee), 0)}`);
+      txns.reduce((a, t) => a + Number(t.fee), 0)} | storage: ${stx.length} txns fee=${
+      stx.reduce((a, t) => a + Number(t.fee), 0)}`);
 
     (out.groups as Record<string, unknown>)[`m${marketId}_${side}`] = {
       marketId, side, sender, collateralUsd, notionalUsd,
@@ -136,7 +150,10 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       tpOracleMessage: b64(childOracle.message),
       tpOracleSignature: b64(childOracle.signature),
       baseOrderId: String(baseOrderId),
-      txns: txns.map((t) => b64(algosdk.encodeUnsignedTransaction(t))),
+      txns: enc(group),
+      /** The same open, for a trader whose storage escrow needs funding. */
+      storagePaymentMicro: String(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO),
+      storageTxns: enc(storageGroup),
     };
 
     // ── The close group ─────────────────────────────────────────────────────

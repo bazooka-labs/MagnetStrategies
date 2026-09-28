@@ -35,6 +35,7 @@ type Captured = {
   tpTriggerPrice12: string; tpAcceptablePrice12: string;
   tpKeeperFeeMicro: string; baseOrderId: string;
   tpOracleMessage: string; tpOracleSignature: string; txns: string[];
+  storagePaymentMicro: string; storageTxns: string[];
 };
 
 const groups = fixture.groups as unknown as Record<string, Captured>;
@@ -54,7 +55,15 @@ function indexOfSub(hay: Uint8Array, needle: Uint8Array): number {
 function decode(c: Captured): algosdk.Transaction[] {
   return c.txns.map((t) => algosdk.decodeUnsignedTransaction(bytes(t)));
 }
+/** The same open for a trader whose storage escrow needs funding. */
+function decodeStorage(c: Captured): algosdk.Transaction[] {
+  return c.storageTxns.map((t) => algosdk.decodeUnsignedTransaction(bytes(t)));
+}
+const shownOpenStorage = (c: Captured): DisplayedOpen => ({
+  ...shownOpen(c), storagePaymentMicro: BigInt(c.storagePaymentMicro),
+});
 const shownOpen = (c: Captured): DisplayedOpen => ({
+  storagePaymentMicro: BigInt(0),
   sender: c.sender, marketId: c.marketId, side: c.side === "long" ? 1 : 2,
   collateralAssetId: COLLATERAL_ASSET_ID,
   collateralAmountMicro: BigInt(c.collateralAmountMicro),
@@ -277,6 +286,68 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       (m.applicationCall as unknown as { accounts: unknown[] }).accounts =
         [algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU")];
     }, "math_carrier_accounts");
+
+  // ── The storage-funding shape (audit 5, F1) ──────────────────────────────
+  //
+  // Trading asserts the caller's `t2:` box exists, and the group only creates
+  // it when a storage payment leads. Nineteen accounts on MainNet have that box
+  // — so this eleven-transaction shape is what EVERY new user signs, and it had
+  // no coverage at all. The nine-transaction shape was the exception being
+  // tested as if it were the rule.
+  for (const name of names) {
+    const cc = groups[name];
+    it(`${name}: accepts the real storage-funding group`, () => {
+      const r = assertOpenWithTakeProfit(decodeStorage(cc), shownOpenStorage(cc), shownTp(cc));
+      expect(r.findings).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+
+    it(`${name}: the storage-funding group is the shape we assert`, () => {
+      const txns = decodeStorage(cc);
+      expect(txns.map((t) => t.type)).toEqual([
+        "pay", "appl", "axfer", "appl", "appl", "appl", "appl", "axfer", "pay", "appl", "appl",
+      ]);
+      expect(txns.reduce((a, t) => a + Number(t.fee), 0)).toBe(53_000);
+      // Two Trading calls: fund_storage, then the open.
+      expect(txns.filter((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.trading)).toHaveLength(2);
+    });
+  }
+
+  it("refuses a storage-funding group presented as a plain open", () => {
+    // The screen says no storage payment; the group funds storage anyway.
+    // Shape, payment count and the Trading call count must all object.
+    const r = assertOpenWithTakeProfit(decodeStorage(c), shownOpen(c), shownTp(c));
+    expect(r.ok).toBe(false);
+    const codes = r.findings.map((f) => f.code);
+    expect(codes).toContain("pay_count");
+  });
+
+  it("refuses a plain open presented as storage-funding", () => {
+    const r = assertOpenWithTakeProfit(decode(c), shownOpenStorage(c), shownTp(c));
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("pay_count");
+  });
+
+  it("catches the storage payment redirected to an attacker", () => {
+    const txns = decodeStorage(c);
+    const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+    const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
+    (pay.payment as unknown as { receiver: algosdk.Address }).receiver =
+      algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU");
+    const r = assertOpenWithTakeProfit(txns, shownOpenStorage(c), shownTp(c));
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("storage_payment_missing");
+  });
+
+  it("catches the storage payment inflated beyond what was displayed", () => {
+    const txns = decodeStorage(c);
+    const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+    const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
+    (pay.payment as unknown as { amount: bigint }).amount = BigInt(5_000_000);
+    const r = assertOpenWithTakeProfit(txns, shownOpenStorage(c), shownTp(c));
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("storage_payment_amount");
+  });
 
   // ── B6, second half: the child payload is targeted at OrderOps ───────────
   //

@@ -11,6 +11,7 @@ import algosdk from "algosdk";
 import {
   V2_DYNAMIC_OI_MARGIN_CONFIG_FIELDS,
   V2_DYNAMIC_OI_MARGIN_CONFIG_SIZE,
+  V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO,
 } from "@pdex/sdk";
 import manifestJson from "./pexProtocolManifest.json";
 import { PEX_APPS, PEX_PROGRAM_SHA256 } from "./perps";
@@ -519,6 +520,69 @@ export async function assertBaseOrderIdFree(
     }
   }
   return true;
+}
+
+// ── Trader state ──────────────────────────────────────────────────────────────
+
+/**
+ * `t2:` on Trading — `TraderStateV2`, 32 bytes, four uniform uint64s.
+ *
+ * Layout from the manifest's `trader_state` format (`prefix_hex: 74323a`,
+ * `key_parts: [prefix, owner:address]`, `value_size: 32`).
+ *
+ * **This box gates every open.** Trading asserts it exists (`box_len; assert`),
+ * and the group only creates it when a storage payment is included — so without
+ * one, a first-time trader's open dies in simulation at `pc=2907`. Nineteen
+ * accounts on all of MainNet hold this box; everyone else is a first-time
+ * trader, which is why this read is not an optimisation.
+ *
+ * `storage_available_microalgo` is a persistent, reusable escrow: opening locks
+ * from it, closing returns to it. It accumulates across trades rather than
+ * being consumed, which is why we top it up only when it is short.
+ */
+export const TRADER_STATE_FIELDS = [
+  "storage_available_microalgo",
+  "storage_locked_microalgo",
+  "open_position_count",
+  "open_order_count",
+] as const;
+
+export type TraderState = Record<(typeof TRADER_STATE_FIELDS)[number], bigint>;
+
+/** Null means the box does not exist — i.e. this account has never traded on PEX. */
+export async function readTraderState(
+  algod: algosdk.Algodv2, owner: string,
+): Promise<TraderState | null> {
+  const name = new Uint8Array([
+    ...new TextEncoder().encode("t2:"),
+    ...algosdk.decodeAddress(owner).publicKey,
+  ]);
+  try {
+    const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
+    return decodeWords(res.value, TRADER_STATE_FIELDS) as TraderState;
+  } catch (e) {
+    // Same discipline as readPosition: only a 404 means "no box". A transient
+    // failure read as "no trader state" would attach a storage payment that is
+    // not needed, changing the group shape on a guess.
+    if (!isNotFound(e)) {
+      throw new Error(`Could not read trader state: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * How much storage escrow this open must fund, in microALGO. Zero means none.
+ *
+ * Measured on MainNet: with the escrow short, the group needs the full
+ * `V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO` — 29,300 alone fails a
+ * later assert (`escrow >= 70,900` at `pc=3180`). With it already funded the
+ * payment can be omitted, and omitting it keeps the 9-transaction group.
+ */
+export function storagePaymentNeeded(trader: TraderState | null): bigint {
+  const required = BigInt(V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO);
+  if (!trader) return required;                       // no box at all
+  return trader.storage_available_microalgo >= required ? BigInt(0) : required;
 }
 
 // ── Positions ─────────────────────────────────────────────────────────────────

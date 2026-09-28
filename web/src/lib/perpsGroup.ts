@@ -38,6 +38,8 @@ import {
 export const PEX_SELECTORS = {
   /** PDexV2Trading.open_or_increase — 7 args after the selector. */
   openOrIncrease: "316981bf",
+  /** `PDexV2Trading.fund_storage` — leads the group when the escrow is short. */
+  fundStorage: "ade7203b",
   /** PDexV2Math.noop — the resource/budget carrier. Zero args. */
   mathNoop: "e83a87ab",
 } as const;
@@ -54,6 +56,7 @@ export const PEX_SELECTORS = {
  * Math carriers vary with pool state, so they are bounded rather than fixed.
  */
 const CALL_BUDGET: ReadonlyArray<{ app: number; name: string; min: number; max: number }> = [
+  // Trading's bound is overridden per shape — see `checkCallBudget`.
   { app: PEX_APPS.trading, name: "Trading", min: 1, max: 1 },
   { app: PEX_APPS.orderOps, name: "OrderOps", min: 0, max: 1 },
   // Real groups build exactly 4, on both markets and both sides — see
@@ -160,14 +163,28 @@ export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
  * `appl` is bounded loosely here because `CALL_BUDGET` bounds it per app, which
  * is the tighter and more meaningful constraint.
  */
-export type GroupShape = { axfer: number; pay: number; applMin: number; applMax: number };
+export type GroupShape = {
+  axfer: number; pay: number; applMin: number; applMax: number;
+  /** Trading app calls. Two when the group funds storage: `fund_storage` then the open. */
+  trading: number;
+};
 
 /** Collateral transfer + app calls. No order box, so no MBR payment. */
-export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 10 };
+export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 10, trading: 1 };
 /** Adds the keeper-fee escrow transfer and the order-box MBR payment. */
-export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10 };
+export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10, trading: 1 };
+/**
+ * The same, for a trader whose storage escrow needs funding first.
+ *
+ * Real MainNet output for a first-time trader is eleven transactions:
+ * `pay, appl(Trading fund_storage), axfer, appl(Trading open), appl x3 (Math),
+ * axfer, pay, appl(OrderOps), appl(Math)` — so a second payment and a **second
+ * Trading call**. Without this shape the assertion fail-closes on a correct
+ * group, which is how a fix for one thing becomes a block on everything.
+ */
+export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3, applMax: 11, trading: 2 };
 /** Closing moves no value in the group itself. */
-export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10 };
+export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10, trading: 1 };
 
 const ALLOWED_TXN_TYPES: ReadonlySet<string> = new Set(["axfer", "appl", "pay"]);
 
@@ -199,6 +216,7 @@ function checkTxnShape(
 function checkCallBudget(
   txns: { applicationCall?: { appIndex: bigint | number } }[],
   fail: (code: string, detail: string) => void,
+  shape: GroupShape,
 ): void {
   const counts = new Map<number, number>();
   for (const t of txns) {
@@ -212,8 +230,12 @@ function checkCallBudget(
   }
   for (const c of CALL_BUDGET) {
     const seen = counts.get(c.app) ?? 0;
-    if (seen < c.min || seen > c.max) {
-      fail("call_budget", `${c.name} called ${seen} times, expected ${c.min}..${c.max}`);
+    // Trading is exact and comes from the shape: one call normally, two when
+    // the group funds storage first.
+    const [min, max] = c.app === PEX_APPS.trading
+      ? [shape.trading, shape.trading] : [c.min, c.max];
+    if (seen < min || seen > max) {
+      fail("call_budget", `${c.name} called ${seen} times, expected ${min}..${max}`);
     }
   }
 }
@@ -255,6 +277,14 @@ type AnyTxn = {
 
 /** What the confirm screen showed. Every field is compared, not sanity-checked. */
 export type DisplayedOpen = {
+  /**
+   * MicroALGO this group pays into the trader's storage escrow, or 0n.
+   *
+   * Non-zero changes the group's shape — a leading payment and a second Trading
+   * call — so it is part of what is displayed and asserted, not an incidental
+   * detail. See SHAPE_OPEN_TP_STORAGE.
+   */
+  storagePaymentMicro: bigint;
   sender: string;
   marketId: number;
   /** 1 long, 2 short. */
@@ -468,7 +498,7 @@ export function assertOpenGroup(
     txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
   );
   checkTxnShape(txns, shape, fail, did);
-  checkCallBudget(txns, fail);
+  checkCallBudget(txns, fail, shape);
   checkMathCarriers(txns, fail, did);
   did("sender is the user on every transaction");
   did("no rekeyTo / assetCloseTo / closeRemainderTo / clawback");
@@ -508,11 +538,24 @@ export function assertOpenGroup(
   did("collateral transfer: asset, amount, receiver, no note");
 
   // ── open_or_increase ────────────────────────────────────────────────────────
-  const mainCalls = txns.filter(
+  //
+  // Found by SELECTOR, not by being the only Trading call. A storage-funding
+  // group carries two Trading calls — `fund_storage` then the open — and
+  // assuming one was a hardcoded assumption about the nine-transaction shape.
+  const tradingCallsAll = txns.filter(
     (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.trading,
   );
+  if (tradingCallsAll.length !== shape.trading) {
+    fail("main_call_count",
+      `expected ${shape.trading} Trading app call(s), found ${tradingCallsAll.length}`);
+    return { ok: findings.length === 0, findings, checked };
+  }
+  const mainCalls = tradingCallsAll.filter(
+    (t) => hex((t.applicationCall!.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.openOrIncrease,
+  );
   if (mainCalls.length !== 1) {
-    fail("main_call_count", `expected exactly 1 Trading app call, found ${mainCalls.length}`);
+    fail("main_call_count",
+      `expected exactly 1 open_or_increase call, found ${mainCalls.length}`);
     return { ok: findings.length === 0, findings, checked };
   }
   const ac = mainCalls[0].applicationCall!;
@@ -712,7 +755,7 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
   const totalFee = checkEveryTransaction(
     txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
   );
-  checkCallBudget(txns, fail);
+  checkCallBudget(txns, fail, SHAPE_CLOSE);
   checkMathCarriers(txns, fail, did);
   did("app calls within the flow's budget, by app and by count");
 
@@ -915,7 +958,10 @@ export function assertOpenWithTakeProfit(
   shownTp: DisplayedTakeProfit,
 ): GroupAssertion {
   // Everything the plain open path checks still applies to the open leg.
-  const base = assertOpenGroup(txnsIn, shownOpen, SHAPE_OPEN_TP);
+  const fundsStorage = shownOpen.storagePaymentMicro > BigInt(0);
+  const base = assertOpenGroup(
+    txnsIn, shownOpen, fundsStorage ? SHAPE_OPEN_TP_STORAGE : SHAPE_OPEN_TP,
+  );
   const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
   const findings = [...base.findings];
   const checked = [...base.checked];
@@ -966,9 +1012,43 @@ export function assertOpenWithTakeProfit(
   }
   did("keeper-fee escrow: amount, receiver, asset, absolute cap, non-zero, linked note");
 
-  const mbr = txns.filter((t) => t.payment);
+  // ── Payments ─────────────────────────────────────────────────────────────
+  //
+  // One when the escrow is already funded (the order-box MBR to OrderOps), two
+  // when it is not (an escrow payment to Trading, first). They go to different
+  // apps for different amounts, so each is found by its receiver rather than by
+  // position — a group that reordered them must not slip through.
+  const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+  const payments = txns.filter((t) => t.payment);
+  const expectedPayments = fundsStorage ? 2 : 1;
+  if (payments.length !== expectedPayments) {
+    fail("mbr_count", `expected ${expectedPayments} payment(s), found ${payments.length}`);
+  }
+
+  if (fundsStorage) {
+    const storagePay = payments.find((t) => String(t.payment!.receiver) === tradingAddr);
+    if (!storagePay) {
+      fail("storage_payment_missing", "no storage escrow payment to the pinned Trading app address");
+    } else if (big(storagePay.payment!.amount) !== shownOpen.storagePaymentMicro) {
+      fail("storage_payment_amount",
+        `storage payment ${storagePay.payment!.amount}, displayed ${shownOpen.storagePaymentMicro}`);
+    }
+    // And the call it pays for: `fund_storage` on Trading, the group's first
+    // Trading call. Binding the payment without binding what consumes it would
+    // leave an unattached payment to a correct address.
+    const tradingCalls = txns.filter((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.trading);
+    const fundCall = tradingCalls.find(
+      (t) => hex((t.applicationCall!.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.fundStorage,
+    );
+    if (!fundCall) {
+      fail("fund_storage_missing", "storage is paid for but no Trading fund_storage call is present");
+    }
+  }
+  did(fundsStorage ? "storage escrow: payment amount, receiver, and its fund_storage call" : "no storage payment expected");
+
+  const mbr = payments.filter((t) => String(t.payment!.receiver) !== tradingAddr);
   if (mbr.length !== 1) {
-    fail("mbr_count", `expected 1 storage payment, found ${mbr.length}`);
+    fail("mbr_count", `expected 1 order-box MBR payment, found ${mbr.length}`);
   } else {
     const pay = mbr[0].payment!;
     if (big(pay.amount) !== ORDER_BOX_MBR_MICRO_ALGO) {
@@ -1078,8 +1158,11 @@ export function assertOpenWithTakeProfit(
   // The binding pair. On a same-group open the position does not exist yet, so
   // expectedPositionId is 0 and the offset points back at the entry. Measured on
   // a real group: the offset is the distance between the two transactions.
+  // By selector again: with a storage prefix the first Trading call is
+  // `fund_storage`, and measuring the offset from it is off by two.
   const openIdx = txns.findIndex(
-    (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.trading,
+    (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.trading
+      && hex((t.applicationCall.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.openOrIncrease,
   );
   const tpIdx = txns.findIndex((t) => t === subs[0]);
   if (tail.expectedPositionId !== BigInt(0)) {
