@@ -42,12 +42,17 @@ const SYMBOL: Record<number, string> = {
 const SCRIPT_SRC =
   "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
 /**
- * The chart's height in pixels.
+ * The chart's height in pixels, passed to the widget EXPLICITLY.
  *
- * With `autosize: true` the widget measures its CONTAINER, so the container is
- * what carries the height and the inner element is 100% of it. Setting a fixed
- * pixel height on the inner div as well left the iframe sizing itself against a
- * box that was already constrained, which is what pancaked it.
+ * `autosize: true` defers sizing to whatever the embed decides the container
+ * is, and two attempts at feeding it the right container both came out
+ * pancaked. An explicit `height` is deterministic: the widget builds its iframe
+ * at exactly this many pixels and nothing has to agree about anything.
+ *
+ * The container is therefore NOT given a fixed height — it wraps whatever the
+ * widget produces, plus the ~32px copyright strip the embed appends. Forcing a
+ * height on it as well is what left the iframe fighting a box that was already
+ * constrained.
  */
 const HEIGHT = 560;
 
@@ -116,9 +121,7 @@ export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
     el.innerHTML = "";
     const inner = document.createElement("div");
     inner.className = "tradingview-widget-container__widget";
-    // 100% of a container that carries the real height — see HEIGHT.
-    inner.style.height = "100%";
-    inner.style.width = "100%";
+    // Deliberately unsized: the widget sets the iframe from the config below.
     el.appendChild(inner);
 
     const script = document.createElement("script");
@@ -132,7 +135,10 @@ export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
       theme: "dark",
       style: "1",                  // candles
       locale: "en",
-      autosize: true,
+      // Explicit rather than autosize — see HEIGHT.
+      autosize: false,
+      width: "100%",
+      height: HEIGHT,
       // The point of the swap: the drawing palette and the indicator picker.
       hide_side_toolbar: false,
       hide_top_toolbar: false,
@@ -180,8 +186,11 @@ export function PerpsChartPanel({ marketId, label, onMarketChange }: Props) {
         </div>
       </div>
 
+      {/* No fixed height: the widget sizes its own iframe, and constraining the
+          wrapper as well is what squashed it. `minHeight` only reserves space
+          so the page does not jump while the script loads. */}
       <div className="tradingview-widget-container mt-3 overflow-hidden rounded-xl"
-        ref={holder} style={{ height: HEIGHT, width: "100%" }} />
+        ref={holder} style={{ minHeight: HEIGHT, width: "100%" }} />
 
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
         Chart by TradingView, showing Coinbase as a market reference.{" "}

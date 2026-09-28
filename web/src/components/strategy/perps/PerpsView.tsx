@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
+import { Info } from "lucide-react";
 import Image from "next/image";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
 
@@ -28,6 +29,11 @@ const PositionsPanel = dynamic(
   { ssr: false },
 );
 
+const PerpsInfoModal = dynamic(
+  () => import("@/components/strategy/perps/PerpsInfoModal").then((m) => m.PerpsInfoModal),
+  { ssr: false },
+);
+
 const PerpsChartPanel = dynamic(
   () => import("@/components/strategy/perps/PerpsChartPanel").then((m) => m.PerpsChartPanel),
   { ssr: false, loading: () => (
@@ -41,6 +47,7 @@ export function PerpsView() {
    * being shown. The card keeps its own fallback state for standalone use.
    */
   const [marketId, setMarketId] = useState<number>(ACTIVE_MARKET_ID);
+  const [infoOpen, setInfoOpen] = useState(false);
   const market = Object.values(PEX_MARKETS).find((m) => m.id === marketId);
 
   return (
@@ -76,11 +83,19 @@ export function PerpsView() {
               <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
               Live on MainNet
             </span>
+
+            {/* Amber, matching the risk warnings it opens. A help-link grey
+                would read as optional; this is where "you can lose everything
+                you put in" now lives. */}
+            <button onClick={() => setInfoOpen(true)}
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15">
+              <Info className="h-3.5 w-3.5" />
+              More info
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Card, and what sits behind it */}
       {/* The chart runs the full width and leads, because it is the context
           every number in the card is read against. The card sits beneath it
           rather than beside it: at 420px in a column the chart was too small to
@@ -90,53 +105,14 @@ export function PerpsView() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
 
+        {/* What the user holds, beside the card. Renders nothing at all when
+            no wallet is connected — the explainers that used to fill this
+            column are in the info modal now. */}
         <div className="space-y-4">
-          {/* Above the explainers: someone with money at risk should see it
-              before they read about how the product works. Renders nothing at
-              all when no wallet is connected. */}
           <PositionsPanel />
-
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-sm">
-            <h2 className="font-display text-lg font-semibold text-white">How this works</h2>
-            <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-300">
-              <li>
-                <span className="text-white/90">Trades run on PEX</span>, a third-party perpetuals
-                protocol on Algorand built by Ultrade. Magnet Strategies operates no exchange and
-                never holds your funds — every action is a PEX call signed by your own wallet.
-              </li>
-              <li>
-                <span className="text-white/90">Your position is backed by the USDC you put in.</span>{" "}
-                Leverage multiplies both directions: a move against you reaches the liquidation
-                price faster the higher you go.
-              </li>
-              <li>
-                <span className="text-white/90">Every position carries a take-profit.</span> It
-                closes automatically at the price you set, so you do not have to watch it.
-              </li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-amber-400/20 bg-amber-500/[0.06] p-5">
-            <h2 className="font-display text-lg font-semibold text-amber-200">Before you trade</h2>
-            <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-amber-100/80">
-              <li>
-                <span className="font-medium text-amber-100">You can lose everything you put in.</span>{" "}
-                If the price reaches your liquidation level the position closes at a total loss.
-              </li>
-              <li>
-                <span className="font-medium text-amber-100">PEX has had no external audit.</span>{" "}
-                Its team reports twelve rounds of internal AI-assisted review and is candid that
-                bugs remain possible. It is a young protocol holding real collateral.
-              </li>
-              <li>
-                <span className="font-medium text-amber-100">Size is limited by the exchange.</span>{" "}
-                PEX is early and its pools are thin, so the most you can open moves with available
-                depth — sometimes a side is unavailable entirely.
-              </li>
-            </ul>
-          </div>
         </div>
       </div>
+      <PerpsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
     </>
   );
 }
