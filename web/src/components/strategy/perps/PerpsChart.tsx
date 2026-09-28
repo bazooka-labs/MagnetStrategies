@@ -26,7 +26,8 @@ import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
 import { PEX_APPS } from "@/lib/perps";
 import {
-  CHART_RANGES, ChartUnavailableError, changePct, fetchCandles, rangeLabel,
+  CHART_RANGES, ChartUnavailableError, candleInterval, changePct, fetchCandles,
+  rangeGranularity, rangeLabel,
   type Candle, type ChartRange,
 } from "@/lib/perpsChart";
 
@@ -46,11 +47,34 @@ const fmtAxis = (p: number) =>
   p >= 1000 ? p.toLocaleString("en-US", { maximumFractionDigits: 0 })
   : p >= 1 ? p.toFixed(2) : p.toFixed(5);
 
-const fmtTime = (t: number, range: ChartRange) => {
+/**
+ * Axis labels: enough to place a candle in the span, not enough to clutter.
+ *
+ * A week of hourly candles wants dates across the bottom; four hours of 5m
+ * candles wants clock times.
+ */
+const fmtAxisTime = (t: number, range: ChartRange) => {
   const d = new Date(t * 1000);
-  return range === "1w"
+  return rangeGranularity(range) >= 3600 && range === "1w"
     ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+/**
+ * The readout must identify the exact candle under the cursor.
+ *
+ * The axis formatter was doing both jobs, which meant hovering an HOURLY candle
+ * on the 1W chart showed only "Sep 25" — no hour, on a bar that covers one. A
+ * label that cannot distinguish a candle from its twenty-three neighbours is
+ * not a label for that candle.
+ */
+const fmtReadoutTime = (t: number, range: ChartRange) => {
+  const d = new Date(t * 1000);
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  // Anything spanning more than a day needs the date to be unambiguous.
+  return range === "1w" || range === "24h"
+    ? `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${time}`
+    : time;
 };
 
 /**
@@ -373,6 +397,9 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
                 {up ? "+" : ""}{change.toFixed(2)}%
               </span>
             )}
+            {/* A 1W chart is built from HOURLY candles. Without this the bars
+                read as days and every one of them is misinterpreted. */}
+            <span className="text-[11px] text-white/35">{candleInterval(range)} candles</span>
           </div>
           {/* Always rendered, so hovering cannot change the header's height.
               Showing the latest candle when nothing is hovered is more useful
@@ -380,7 +407,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
           <div className="mt-1 flex h-4 flex-wrap items-center gap-x-3 text-[11px] tabular-nums text-white/45">
             {readout && (
               <>
-                <span>{fmtTime(readout.t, range)}</span>
+                <span>{fmtReadoutTime(readout.t, range)}</span>
                 <span>O <span className="text-white/70">{fmtAxis(readout.o)}</span></span>
                 <span>H <span className="text-white/70">{fmtAxis(readout.h)}</span></span>
                 <span>L <span className="text-white/70">{fmtAxis(readout.l)}</span></span>
@@ -492,7 +519,7 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
               return (
                 <text key={i} x={geom.cx(idx)} y={H - 8} textAnchor="middle"
                   fill="#ffffff" fillOpacity="0.28" fontSize="10"
-                  fontFamily="ui-monospace, monospace">{fmtTime(rows![idx].t, range)}</text>
+                  fontFamily="ui-monospace, monospace">{fmtAxisTime(rows![idx].t, range)}</text>
               );
             })}
 

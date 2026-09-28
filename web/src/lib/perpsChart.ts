@@ -68,6 +68,22 @@ export const CHART_RANGES: ChartRange[] = ["1h", "4h", "24h", "1w"];
 /** Short label for the range buttons. */
 export const rangeLabel = (r: ChartRange): string => RANGE[r].label;
 
+/** Seconds per candle for a range. One 1W candle is an HOUR, not a day. */
+export const rangeGranularity = (r: ChartRange): number => RANGE[r].granularity;
+
+/**
+ * How long one candle covers, for display.
+ *
+ * Worth stating on screen: a 1W chart is built from hourly candles, and a
+ * reader who assumes the bars are daily is misreading every one of them.
+ */
+export function candleInterval(r: ChartRange): string {
+  const g = RANGE[r].granularity;
+  if (g >= 86400) return `${g / 86400}d`;
+  if (g >= 3600) return `${g / 3600}h`;
+  return `${g / 60}m`;
+}
+
 export class ChartUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -117,6 +133,20 @@ export async function fetchCandles(
   if (candles.length === 0) throw new ChartUnavailableError("price history was empty");
   return candles.sort((a, b) => a.t - b.t);
 }
+
+/**
+ * **Buckets with no trades are omitted, not zero-filled.**
+ *
+ * Measured: ALGO/USD at 1m granularity comes back with a 120-second step where
+ * one minute had no trades. The chart plots candles by index, so equal pixel
+ * spacing is not equal time spacing across such a gap — which is how every
+ * trading chart behaves, and the axis labels read their timestamp from the
+ * candle they sit under, so each label is true for its own bar.
+ *
+ * The alternative is inserting synthetic candles to make the spacing uniform.
+ * That would draw bars for minutes in which nothing traded, which is worse than
+ * a non-linear axis: it invents data.
+ */
 
 /** Percentage change across the series, for the header. Null when undefined. */
 export function changePct(candles: Candle[]): number | null {
