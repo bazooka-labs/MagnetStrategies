@@ -28,10 +28,10 @@ const PositionsPanel = dynamic(
   { ssr: false },
 );
 
-const PerpsChart = dynamic(
-  () => import("@/components/strategy/perps/PerpsChart").then((m) => m.PerpsChart),
+const PerpsChartPanel = dynamic(
+  () => import("@/components/strategy/perps/PerpsChartPanel").then((m) => m.PerpsChartPanel),
   { ssr: false, loading: () => (
-    <div className="h-[286px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
+    <div className="h-[620px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
   ) },
 );
 
@@ -85,7 +85,7 @@ export function PerpsView() {
           every number in the card is read against. The card sits beneath it
           rather than beside it: at 420px in a column the chart was too small to
           be worth having. */}
-      <PerpsChart marketId={marketId} label={market?.label ?? ""} />
+      <PerpsChartPanel marketId={marketId} label={market?.label ?? ""} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
