@@ -12,10 +12,11 @@ import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import Image from "next/image";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
+import { Panel } from "@/components/magnetfi/v2/shared";
 
-const pulse = () => (
-  <div className="h-[620px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
-);
+// Sized and shaped like the section it replaces — no border or background of
+// its own, because the Panel around it already draws those.
+const pulse = () => <div className="m-5 h-[560px] rounded-xl bg-white/5 animate-pulse sm:m-6" />;
 
 // Pulls in @pdex/sdk and algosdk — keep it off the server and out of the
 // initial bundle.
@@ -127,18 +128,21 @@ export function PerpsView() {
       <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
         onMarketChange={setMarketId} lines={lines} />
 
-      {/* Full width, laid out across. The card used to sit in a 420px column
-          beside empty space once the explainers moved into the modal. */}
-      <div className="mt-6">
+      {/* ONE card: the order form and what you already hold, separated by a
+          seam rather than by a gap. They were two panels with 24px between
+          them, which read as two unrelated products — opening a position and
+          watching it are the same activity, and a position you just opened
+          appearing in a different box was the clearest case of that.
+
+          The Panel carries no padding: each section supplies its own, so the
+          seam can run edge to edge. `PositionsPanel` draws that seam itself and
+          renders nothing at all without a wallet, so with none connected this
+          is just the order form in a card, with no rule under it. */}
+      <Panel className="mt-6">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
           onOverlayChange={setOverlay} />
-      </div>
-
-      {/* Below the card, where a position naturally follows the act of opening
-          one. Renders nothing at all when no wallet is connected. */}
-      <div className="mt-6">
         <PositionsPanel />
-      </div>
+      </Panel>
       <PerpsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
     </>
   );

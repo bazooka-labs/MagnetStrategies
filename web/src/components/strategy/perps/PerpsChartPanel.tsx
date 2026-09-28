@@ -1,20 +1,24 @@
 "use client";
 
-// The chart panel: TradingView's advanced chart, with indicators and drawing
-// tools, and PEX's live oracle price kept beside it.
+// The chart frame: market, view and interval controls over whichever chart is
+// showing.
 //
-// ── Why the PEX price is still here ─────────────────────────────────────────
-// Our own chart drew PEX's oracle price as a dashed line ON the candles, so the
-// reference price and the price you trade against were visibly two things. The
-// widget renders its own feed in its own iframe and cannot carry that overlay,
-// so the guard moves outside the chart instead of disappearing.
+// ── Where PEX's oracle price lives now ──────────────────────────────────────
+// This panel used to carry its own copy of it in the header. It no longer does,
+// by request, and the removal is worth understanding rather than just noting:
+// the card quotes an EXECUTION price — the oracle index plus PEX's impact,
+// which on ALGO is a flat 55 bps step that routinely puts a long's entry BELOW
+// the index. A chart quietly disagreeing with the entry beside it is the defect
+// class six audits have been chasing, and a third-party chart widens that gap
+// rather than narrowing it: TradingView shows Coinbase's last trade, PEX prices
+// from its own oracle median.
 //
-// It is not decoration. The card quotes an EXECUTION price — the oracle index
-// plus PEX's impact, which on ALGO is a flat 55 bps step that routinely puts a
-// long's entry BELOW the index. A chart quietly disagreeing with the entry
-// beside it is the defect class six audits have been chasing, and swapping in a
-// third-party chart makes the gap wider, not narrower: TradingView shows
-// Coinbase's last trade, PEX prices from its own oracle median.
+// So the disclosure has not gone, only the duplicate. The basic chart draws the
+// oracle as a dashed violet line ON the candles (PerpsChart fetches it from the
+// same signed payload the card quotes from), the caption below says plainly
+// that neither chart is the price you trade at, and the order card carries the
+// live index and the quoted entry. What is gone is a second figure in a second
+// place, which is the one copy nothing depended on.
 //
 // ── Why our chart is still in the tree ──────────────────────────────────────
 // Not as a toggle — as a fallback. Ad blockers routinely block TradingView's
@@ -22,9 +26,7 @@
 // of the page. If the widget fails to load, the SVG chart renders instead.
 
 import { useEffect, useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
-import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
-import { ENABLED_MARKET_IDS, PEX_APPS, PEX_MARKETS } from "@/lib/perps";
+import { ENABLED_MARKET_IDS, PEX_MARKETS } from "@/lib/perps";
 import { PerpsChart } from "./PerpsChart";
 import { CHART_RANGES, rangeLabel, type ChartRange } from "@/lib/perpsChart";
 
@@ -107,10 +109,6 @@ const SCRIPT_SRC =
  */
 const HEIGHT = 560;
 
-const fmtPrice = (p: number) =>
-  p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-  : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
-
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
 /**
@@ -166,21 +164,6 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
   const [range, setRange] = useState<ChartRange>("1d");
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
-
-  /** PEX's live index, from the SAME signed payload the card quotes from. */
-  const [indexUsd, setIndexUsd] = useState<number | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setIndexUsd(null);
-    const read = () => {
-      getOraclePayload(PEX_APPS.trading, marketId)
-        .then((o) => { if (alive) setIndexUsd(price12ToUsd(o.indexPrice12)); })
-        .catch(() => { /* the panel still renders; only the figure is missing */ });
-    };
-    read();
-    const id = setInterval(read, 10_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [marketId]);
 
   useEffect(() => {
     // `advanced` is a dependency, and that is the whole fix for a real bug:
@@ -241,33 +224,19 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
-      {/* ONE header, both views. Market and price on top, then the view and
-          interval controls — so switching charts changes the chart and nothing
-          else. Each view used to draw its own chrome, which put the view toggle
-          on screen twice, inside the panel and outside it. */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <MarketToggle marketId={marketId} onChange={onMarketChange} />
-          <span className="font-display text-base font-semibold text-white">{label}</span>
+      {/* ONE header, both views — switching charts changes the chart and
+          nothing else. Each view used to draw its own chrome, which put the
+          view toggle on screen twice, inside the panel and outside it.
+          Market left, view toggle centred, intervals right: `flex-1` on the
+          middle group centres it against the panel rather than against the
+          gap, so it stays put when the market labels change width. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <MarketToggle marketId={marketId} onChange={onMarketChange} />
+
+        <div className="flex flex-1 justify-center">
+          {canSwitch && <ViewToggle advanced={advanced} onChange={setAdvanced} />}
         </div>
 
-        {/* The number the card actually prices against. Outside the chart
-            because the widget cannot carry the overlay — but never absent, and
-            in the same place in both views. */}
-        <div className="flex items-center gap-2 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-violet-200/70">
-            PEX oracle
-          </span>
-          <span className="text-sm font-bold tabular-nums text-violet-100">
-            {indexUsd === null ? "…" : fmtPrice(indexUsd)}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        {canSwitch
-          ? <ViewToggle advanced={advanced} onChange={setAdvanced} />
-          : <span className="text-xs text-white/35">Basic Chart</span>}
         <IntervalToggle range={range} onChange={setRange} />
       </div>
 
@@ -287,14 +256,19 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
         )}
       </div>
 
-      {/* Same caption slot in both views, because they have the same problem:
-          the chart is not the price you trade at. */}
+      {/* Same caption in both views, because both have the same problem: this
+          is not the price you trade at. It matters more now that the oracle
+          figure has left the header — in the basic view the dashed violet line
+          still carries it, in the advanced view the card is the only place it
+          appears. */}
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
         {showAdvanced ? "Chart by TradingView, showing Coinbase" : "Candles from Coinbase"} as a
-        market reference.{" "}
-        <span className="text-violet-300/60">PEX oracle</span> above is the price your trade is
-        quoted against — a different feed, which will not match the chart exactly. Your entry also
-        includes PEX&apos;s price impact, so it will differ from both.
+        market reference — not the feed PEX prices from.{" "}
+        {!showAdvanced && (
+          <><span className="text-violet-300/60">Dashed violet</span> is PEX&apos;s live oracle price. </>
+        )}
+        Your entry is quoted against PEX&apos;s oracle and includes its price impact, so the figure
+        on the order card is the one your position actually opens at.
       </p>
     </div>
   );

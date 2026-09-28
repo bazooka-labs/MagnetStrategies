@@ -12,7 +12,6 @@
 // were on screen when the position was opened.
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
-import { Panel } from "@/components/magnetfi/v2/shared";
 import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { useWallet } from "@/hooks/useWallet";
@@ -47,8 +46,19 @@ export function PositionsPanel() {
 
   if (!wallet.isConnected) return null;
 
+  // The seam lives HERE rather than in PerpsView, so it disappears with the
+  // section it separates: this component returns null with no wallet connected,
+  // and a divider under nothing is a card that looks broken.
   return (
-    <Panel className="p-5 sm:p-6">
+    <div>
+      {/* Full-bleed, because the wrapping Panel holds no padding of its own —
+          each section carries it. Tinted like the Panel's own top hairline so
+          the seam reads as part of one card rather than a join between two. */}
+      <div className="h-px bg-gradient-to-r from-transparent via-magnet-500/30 to-transparent" />
+
+      {/* A hair lighter than the card above it: enough to separate holdings
+          from the order form at a glance, not enough to look like a new panel. */}
+      <div className="bg-white/[0.015] p-5 sm:p-6">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-lg font-semibold text-white">Your positions</h2>
         <button onClick={refresh} disabled={loading}
@@ -165,6 +175,7 @@ export function PositionsPanel() {
           not the numbers from when you opened.
         </p>
       )}
-    </Panel>
+      </div>
+    </div>
   );
 }

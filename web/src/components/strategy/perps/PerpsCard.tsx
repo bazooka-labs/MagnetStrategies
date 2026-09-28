@@ -14,7 +14,6 @@
 import { useEffect, useMemo, useState } from "react";
 import algosdk from "algosdk";
 import { ArrowDownRight, ArrowUpRight, Info, TriangleAlert } from "lucide-react";
-import { Panel } from "@/components/magnetfi/v2/shared";
 import {
   ACTIVE_MARKET_ID,
   BUILDER_ADDRESS,
@@ -543,8 +542,11 @@ export function PerpsCard({
     confirming: "Waiting for confirmation…",
   };
 
+  // A section, not a panel. PerpsView wraps this and the positions list in
+  // ONE card so opening a position and watching it are visibly the same
+  // surface; the border, background and top hairline live on that wrapper.
   return (
-    <Panel className="p-5 sm:p-6">
+    <div className="p-5 sm:p-6">
       {/* The market toggle lives above the chart now, not here. */}
       <div className="flex items-baseline justify-between">
         <span className="font-display text-base font-semibold text-white">{market.label}</span>
@@ -899,6 +901,6 @@ export function PerpsCard({
       </p>
       </div>
       </div>
-    </Panel>
+    </div>
   );
 }
