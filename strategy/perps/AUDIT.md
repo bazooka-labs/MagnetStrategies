@@ -633,6 +633,11 @@ simulation     : ok=true
 
 **B6 is resolved and the trade button is no longer blocked.**
 
+> **CORRECTION, 2026-09-27 (audit 5).** This run used a sender that is one of
+> only **nineteen** accounts on MainNet holding a `t2:` trader box. It is
+> evidence the path works **for an existing trader**; it is not evidence the
+> button works for a new user — it did not. See F1 below.
+
 ### What 0.6.4 actually contains
 
 Validation and documentation only — `assertV2OrderTimeInForce` plus the
@@ -760,6 +765,87 @@ Other things the live button required:
   amber, not red, with the txid and an explicit warning that opening again would
   add to the position. That false-failure-then-retry is what B5 was.
 - The hero badge now reads "Live on MainNet" rather than "trading soon".
+
+---
+
+## Audit 5 (2026-09-27) — the wired submit path
+
+The first audit run after the trade button existed. It found that the path had
+only ever been verified using an account that could not represent a user.
+
+### F1 — critical: every first-time trader was blocked
+
+Trading asserts the caller's `t2:` box exists (`box_len; bury 1; assert`), and
+our group never created it. **Nineteen accounts on all of PEX MainNet hold that
+box.** Everyone else hit `pc=2907` and saw a raw TEAL assert — which reads as a
+security incident and offered no remedy. No funds were at risk, because
+`simulateGroup` catches it before the wallet prompt; the button simply did not
+work for its actual audience.
+
+Measured ladder:
+
+| `storagePaymentMicroAlgo` | result |
+|---|---|
+| omitted | `pc=2907` — no `t2:` box |
+| 29,300 | `pc=3180` — escrow below 70,900 |
+| **100,200** | **`ok=true`** |
+
+`t2:` decodes as `[storage_available, storage_locked, open_positions,
+open_orders]`; a live trader reads `[300200, 100200, 1, 0]` — a persistent,
+reusable escrow, locked on open and returned on close. So the payment is made
+only when it is short, which keeps the audited nine-transaction group for anyone
+already funded rather than accumulating idle ALGO every trade.
+
+Teaching the assertion the eleven-transaction shape exposed two more checks that
+had silently assumed the nine-transaction layout: `main_call_count` treated "the
+only Trading call" as the open, and `entryGroupOffset` measured from whichever
+Trading call came first, which is off by two once `fund_storage` leads.
+
+### F2, F3, F4 — the submit path told the user things that were not true
+
+- **F3.** `waitForConfirmation` throws for *two* different outcomes:
+  `Transaction Rejected: <poolError>` and `not confirmed after N rounds`. Both
+  collapsed into `confirmed: false`, so a user whose group had been **rejected**
+  was told "this is not a failure, it will most likely confirm, do not open
+  again" — every clause false, and it steers them away from the correct action.
+  B5 inverted, and worse: B5 understated a success, this overstated a failure.
+  Three outcomes now, rendered red / amber / green.
+- **F4.** A dropped socket after the node accepted the group rejected out of
+  `sendRawTransaction`, discarding the txid. The id is a property of the signed
+  bytes, so it is computed before submission and carried into the error.
+- **F2.** The take-profit auto-default had no `submitting` guard, so it fired on
+  every ten-second refresh: the number on screen drifted while the wallet prompt
+  was open and the group carried the click-time value. And because `tpPrice` was
+  a dependency of the result-clearing effect, **the success banner and its txid
+  deleted themselves within about ten seconds**, taking the "do not open again"
+  warning with them and re-arming the button.
+
+### F5, F6, F8, F9
+
+`netCollateralUsd` — the "Backing the position" row — is now in the drift guard
+with its own 50 bps tolerance, because PEX's fee rates are admin-mutable and a
+change costing 5% of a small stake moves the liquidation price by less than its
+own 150 bps tolerance · a **zero liquidation price is a sentinel, not a value**,
+and feeding it to `drift` hit the zero-denominator branch and disabled the check
+on 27% of slider positions; a screen that said "None" now requires the fresh
+probe to agree · the "what leaves your wallet" line no longer omits the ALGO ·
+the `doi:` cross-check returns a problem instead of throwing at module scope, so
+a layout disagreement stops trading through the preflight rather than
+white-screening the page.
+
+Verified live after the fixes: honest values reach the signer; a 1%
+`netCollateral` drift and a zero-sentinel liquidation price are both refused.
+A box-less sender now passes assert and simulation through production
+`openPosition`; an existing trader computes `pay=0` and does too.
+
+### Still open from audit 5
+
+**F7** — `quoteClose`'s `fundingFeeUsd` and `borrowingFeeUsd` do not scale with
+the close fraction, while `payoutUsd` and `pnlUsd` halve exactly. Observed
+across all 11 live positions, full and half. Whether that is correct PEX
+semantics (position-level accrual settled in full) or an unscaled SDK field is
+**unresolved, and must be answered before the management UI renders a cost
+breakdown for a partial close.** A question for Ultrade.
 
 ---
 

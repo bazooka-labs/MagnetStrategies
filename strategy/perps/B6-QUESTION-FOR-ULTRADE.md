@@ -28,6 +28,10 @@ What I've eliminated — all give the identical pc=8175:
   - storagePaymentMicroAlgo 99,700 / 129,000 / 29,300
     (tested the V2_TRADER_BOX_MBR theory — the account has a t2: box on
      Trading but none on OrderOps; funding it changes nothing)
+     [CORRECTION 2026-09-27: that account has NO t2: box on Trading today, so
+      this elimination rested on a box that is not there, and every amount
+      tested was below the 100,200 the escrow actually requires. The
+      trader-box hypothesis was right for a different reason — see F1.]
   - market 2 where the account holds no position, and market 1 where it
     already holds one, both sides
 
