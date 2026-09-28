@@ -13,7 +13,7 @@
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
 import { Panel } from "@/components/magnetfi/v2/shared";
-import { PEX_MARKETS } from "@/lib/perps";
+import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -25,6 +25,16 @@ const price12ToUsd = (p: bigint) => Number(p) / 1e12;
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
+
+/**
+ * Asset names for the payout breakdown.
+ *
+ * Only the ones a pair market actually pays out in. An unknown id is shown as
+ * its number rather than guessed at — the same reason `payoutUsd` goes null
+ * when it cannot value every leg.
+ */
+const assetName = (id: number) =>
+  id === COLLATERAL_ASSET_ID ? "USDC" : id === 0 ? "ALGO" : `asset ${id}`;
 
 const marketLabel = (id: number) =>
   Object.values(PEX_MARKETS).find((m) => m.id === id)?.label ?? `Market ${id}`;
@@ -99,7 +109,9 @@ export function PositionsPanel() {
                   ["Size", fmtUsd(sizeUsd)],
                   ["Collateral", fmtUsd(collateralUsd)],
                   ["Entry", fmtPrice(entry)],
-                  ["If closed now", p.close ? fmtUsd(p.close.payoutUsd) : "—"],
+                  ["If closed now", p.close
+                    ? (p.close.payoutUsd !== null ? fmtUsd(p.close.payoutUsd) : "see below")
+                    : "—"],
                 ] as const).map(([k, v]) => (
                   <div key={k}>
                     <dt className="text-white/35">{k}</dt>
@@ -107,6 +119,24 @@ export function PositionsPanel() {
                   </div>
                 ))}
               </dl>
+
+              {/* A close is not a single-asset payout: on ALGO/USD a long gets
+                  its collateral back in USDC and its profit in ALGO. One dollar
+                  figure hid the second leg entirely, so the assets are listed. */}
+              {p.close && p.close.outputs.length > 0 && (
+                <p className="mt-2 text-[11px] text-white/45">
+                  You receive{" "}
+                  {p.close.outputs.map((o, i) => (
+                    <span key={o.assetId}>
+                      {i > 0 && <span className="text-white/25"> + </span>}
+                      <span className="tabular-nums text-white/75">
+                        {(Number(o.amount) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 })}
+                      </span>{" "}
+                      <span className="text-white/55">{assetName(o.assetId)}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
 
               {/* A position that cannot be priced is still a position. Never hide it. */}
               {p.quoteError && (

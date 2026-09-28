@@ -10,7 +10,7 @@
 // passes, because it checks against the same poisoned source. Pin, then assert.
 
 /** SDK version this file is pinned against. Never float this. */
-export const PEX_SDK_VERSION = "0.6.4" as const;
+export const PEX_SDK_VERSION = "0.6.6" as const;
 
 // ── PEX MainNet deployment ────────────────────────────────────────────────────
 // Recovered from GET /v2/networks/mainnet/deployments. Fetch the manifest at

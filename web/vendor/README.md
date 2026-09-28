@@ -1,6 +1,6 @@
 # Vendored dependencies
 
-## `pdex-sdk-0.6.4.tgz`
+## `pdex-sdk-0.6.6.tgz`
 
 The PEX TypeScript SDK, packed from a reviewed commit and committed here rather
 than resolved from a registry.
@@ -8,9 +8,9 @@ than resolved from a registry.
 | | |
 |---|---|
 | Source | https://github.com/ultrade-org/pex-ts-pubsdk |
-| Commit | `f54ebe3` ("Release 0.6.4: validate order time-in-force and document TP/SL") |
-| Version | `@pdex/sdk` 0.6.4 |
-| SHA-256 | `6f27a590feef2264fc11c9686797c7f54a220da4ade76510eac10fdc4660decc` |
+| Commit | `6575dee` ("Release 0.6.6: correct deficit close payouts and document settlement") |
+| Version | `@pdex/sdk` 0.6.6 |
+| SHA-256 | `853bb11f99829353e168efdf40b7a3b554618b2c855631c61995c3eb3f3b7282` |
 | Built with | `npm pack --ignore-scripts` on a clean tree |
 
 **Why a committed tarball and not a registry or git dependency.** The SDK is not
@@ -34,6 +34,23 @@ purposes; section 4 requires that the licence travel with any distribution,
 including inside a browser bundle, with copyright and licence notices preserved.
 `LICENSE` is inside the tarball and is preserved by every consumer of it. Nothing
 here is relicensed.
+
+**0.6.4 -> 0.6.6.** Two releases taken together. 0.6.5 added verified protocol
+loading from R2 — a path we do not use, since the manifest is vendored — and
+0.6.6 fixes a **payout overstatement**.
+
+The 0.6.6 quote change is one line in `quoteV2CloseLike`: `forcedAccruedCostUsd`
+is now always charged to `costUsd`, where before it was only charged on
+liquidation and ADL. So on a deficit close — accrued costs exceeding position
+collateral — older quotes overstated what the user would receive. It is on the
+**exit** path, which is why this was taken promptly rather than batched.
+
+It does not touch the open path, and the solver verification confirms that: 240
+randomised cases, both markets, both sides, $5-$2,000, **2 overstatements**,
+both at the $5 floor ($5.06 and $5.02) and both corrected by `confirmCeiling`,
+which is what the card renders. Same documented floor imprecision as 0.6.4's run.
+
+Their own suite: 255 tests pass, up from 216.
 
 **0.6.3 -> 0.6.4. This is the release that resolved B6.** Two source changes,
 both additive: `assertV2OrderTimeInForce` on `buildV2SubmitOrderCall` and

@@ -64,6 +64,9 @@ export type OpenQuote = {
   raw: Record<string, unknown>;
 };
 
+/** One asset leaving the position on a close, aggregated by asset. */
+export type CloseOutput = { assetId: number; amount: bigint };
+
 export type CloseQuote = {
   ok: boolean;
   reasons: string[];
@@ -72,7 +75,22 @@ export type CloseQuote = {
   side: Side;
   executionPrice12: bigint;
   acceptablePrice12: bigint;
-  payoutUsd: number;
+  /**
+   * What the user actually receives, by asset.
+   *
+   * **A close is not a single-asset payout.** On ALGO/USD a long returns its
+   * collateral in USDC and its profit in ALGO — measured live: 5.567172 USDC
+   * plus 15.72 ALGO on one position. Reporting one dollar figure hid the second
+   * leg entirely.
+   */
+  outputs: CloseOutput[];
+  /**
+   * Those outputs valued in USD, for a headline.
+   *
+   * Null when an output is in an asset we cannot price — better to show the
+   * per-asset amounts than to invent a total.
+   */
+  payoutUsd: number | null;
   pnlUsd: number;
   closeFeeUsd: number;
   builderFeeUsd: number;
@@ -425,6 +443,40 @@ export function quoteClose(input: {
     { ...base, acceptablePrice: acceptablePrice12 } as never,
   ) as unknown as Record<string, unknown>;
 
+  // ── What the user receives ────────────────────────────────────────────
+  //
+  // Ultrade, 2026-09-28: do NOT use `collateral_delta`. Aggregate
+  // `primary_output_amount` (net collateral), `pnl_output_amount` (realized
+  // profit) and the claimable token outputs BY ASSET, and do not subtract the
+  // funding/borrowing breakdown again — those costs are already settled into
+  // collateral before the proportional withdrawal is computed.
+  const byAsset = new Map<number, bigint>();
+  const add = (amount: unknown, assetId: unknown) => {
+    const a = big(amount);
+    if (a <= BigInt(0)) return;
+    const id = Number(assetId ?? 0);
+    byAsset.set(id, (byAsset.get(id) ?? BigInt(0)) + a);
+  };
+  add(raw.primary_output_amount, raw.primary_output_asset_id);
+  add(raw.pnl_output_amount, raw.pnl_output_asset_id);
+  add(raw.claimable_long_token_output, input.state.core.long_asset_id);
+  add(raw.claimable_short_token_output, input.state.core.short_asset_id);
+  const outputs: CloseOutput[] = [...byAsset.entries()]
+    .map(([assetId, amount]) => ({ assetId, amount }))
+    .sort((a, b) => (b.amount > a.amount ? 1 : -1));
+
+  // Value them only where we can. USDC is the collateral asset at 1:1; the
+  // market's index asset is priced by the signed oracle. Anything else and the
+  // total is withheld rather than guessed — see `payoutUsd`.
+  const indexAssetId = Number(input.state.core.index_asset_id);
+  let payoutUsd: number | null = 0;
+  for (const o of outputs) {
+    if (o.assetId === input.collateralAssetId) payoutUsd! += Number(o.amount) / 1e6;
+    else if (o.assetId === indexAssetId) {
+      payoutUsd! += (Number(o.amount) / 1e6) * (Number(input.oracle.indexPrice12) / 1e12);
+    } else { payoutUsd = null; break; }
+  }
+
   return {
     ok: Boolean(raw.ok),
     reasons: ((raw.failure_reasons as string[]) ?? []).slice(),
@@ -432,8 +484,8 @@ export function quoteClose(input: {
     side: input.side,
     executionPrice12: big(raw.execution_price),
     acceptablePrice12,
-    /** What lands in the wallet, after PEX's fee and ours. 1e6-scaled USD. */
-    payoutUsd: toUsd(raw.collateral_delta),
+    outputs,
+    payoutUsd,
     /** Signed: PEX reports profit and loss separately. */
     pnlUsd: toUsd(raw.effective_profit_usd) - toUsd(raw.loss_usd),
     closeFeeUsd: toUsd(raw.close_fee_usd ?? raw.platform_fee_amount),
