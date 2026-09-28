@@ -102,15 +102,16 @@ export function PerpsView() {
           be worth having. */}
       <PerpsChartPanel marketId={marketId} label={market?.label ?? ""} onMarketChange={setMarketId} />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+      {/* Full width, laid out across. The card used to sit in a 420px column
+          beside empty space once the explainers moved into the modal. */}
+      <div className="mt-6">
         <PerpsCard marketId={marketId} onMarketChange={setMarketId} />
+      </div>
 
-        {/* What the user holds, beside the card. Renders nothing at all when
-            no wallet is connected — the explainers that used to fill this
-            column are in the info modal now. */}
-        <div className="space-y-4">
-          <PositionsPanel />
-        </div>
+      {/* Below the card, where a position naturally follows the act of opening
+          one. Renders nothing at all when no wallet is connected. */}
+      <div className="mt-6">
+        <PositionsPanel />
       </div>
       <PerpsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
     </>

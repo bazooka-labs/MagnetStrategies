@@ -102,7 +102,15 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
     onMarketChange?.(id);
   };
   const [side, setSide] = useState<Side>("long");
-  const [amount, setAmount] = useState<string>("100");
+  /**
+   * Empty, not pre-filled.
+   *
+   * A default stake is a number the product chose, sitting in the field that
+   * decides how much of the user's money is at risk — and one they can sign
+   * without ever having typed. Every figure below is derived from it, so an
+   * untouched card was quoting a real $100 position at a real liquidation price.
+   */
+  const [amount, setAmount] = useState<string>("");
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
   const [tpTouched, setTpTouched] = useState(false);
@@ -510,6 +518,13 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
         </div>
       )}
 
+      {/* Laid out across rather than down. In a 420px column this was a long
+          scroll; with the chart leading the page there is width to use, and the
+          three groups below are the three decisions in order: what and how
+          much, where to exit, what it costs. */}
+      <div className="mt-4 grid gap-x-6 gap-y-1 lg:grid-cols-3">
+
+      <div>
       {/* Direction */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         {(["long", "short"] as Side[]).map((s) => {
@@ -550,7 +565,8 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
               // is unaffected.
             }}
             disabled={submitting}
-            className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
+            placeholder="0.00"
+            className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none placeholder:text-white/25 disabled:opacity-50" />
           <span className="text-xs text-white/40">USDC</span>
         </div>
         {amountHint && <p className="mt-1 text-xs text-amber-300/90">{amountHint}</p>}
@@ -572,6 +588,11 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
           <span>{tradable ? `${bar!.minLeverage.toFixed(2)}×` : ""}</span>
           <span>{tradable && collateralUsd > 0 ? `${(ceilingUsd / view.collateralUsd).toFixed(2)}×` : ""}</span>
         </div>
+        {collateralUsd <= 0 && (
+          <p className="mt-1 text-xs text-white/40">
+            Enter an amount above to see your size, leverage and liquidation price.
+          </p>
+        )}
         {bar && !bar.open && (
           <p className="mt-1 text-xs text-amber-300/90">
             {bar.closedReason}
@@ -600,6 +621,9 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
         )}
       </div>
 
+      </div>
+
+      <div>
       {/* Liquidation — permanent, not a disclosure the user can dismiss */}
       <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3.5 py-3">
         <div className="flex items-center justify-between">
@@ -683,6 +707,9 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
         </div>
       )}
 
+      </div>
+
+      <div>
       {/* Costs */}
       {view.quote?.ok && (
         <dl className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">
@@ -783,6 +810,8 @@ export function PerpsCard({ marketId: controlledMarketId, onMarketChange }: Perp
         Magnet Strategies holds no funds and operates no exchange. PEX has had no external audit.
         {age !== null && <> · Price signed {age}s ago</>}
       </p>
+      </div>
+      </div>
     </Panel>
   );
 }
