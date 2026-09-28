@@ -114,6 +114,8 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
   const [span, setSpan] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
   const pan = useRef<{ x: number; y: number; end: number; offset: number } | null>(null);
+  /** Time-axis drag: the horizontal counterpart of the price-axis drag. */
+  const timeDrag = useRef<{ x: number; span: number; end: number } | null>(null);
 
   /** The candles actually drawn, and where the slice starts in the full array. */
   const visible = useMemo(() => {
@@ -243,6 +245,19 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
 
   const onMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     // A drag on the price axis owns the pointer until it is released.
+    if (timeDrag.current && candles && geom) {
+      const total = candles.length;
+      // Drag right to pull the bars apart — fewer visible, each wider. 420px is
+      // one doubling, matching the price axis so both handles feel the same.
+      const dx = e.clientX - timeDrag.current.x;
+      const next = Math.round(timeDrag.current.span / Math.pow(2, dx / 420));
+      const clamped = Math.min(total, Math.max(10, next));
+      // Anchored on the right edge: the latest candle stays put, which is what
+      // you are usually reading against.
+      setSpan(clamped === total ? null : clamped);
+      setEnd(clamped === total ? null : timeDrag.current.end);
+      return;
+    }
     if (pan.current && geom && candles) {
       // Vertical: drag down and the content follows, which means the visible
       // price window moves up. Converted through the current scale so a pixel
@@ -278,9 +293,10 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
 
   const endDrag = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     setDragging(false);
-    if (!drag.current && !pan.current) return;
+    if (!drag.current && !pan.current && !timeDrag.current) return;
     drag.current = null;
     pan.current = null;
+    timeDrag.current = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
   }, []);
 
@@ -521,6 +537,29 @@ export function PerpsChart({ marketId, label, lines = [] }: Props) {
                 </text>
               </g>
             ))}
+
+            {/* The time axis, as a grab handle. Dragging it right pulls the
+                bars apart and left pushes them together — the horizontal
+                counterpart of the price axis, so a user who finds one finds the
+                other. Double-click restores the full range. */}
+            <rect x={PAD.left} y={H - PAD.bottom}
+              width={Math.max(0, width - PAD.left - PAD.right)} height={PAD.bottom}
+              fill="transparent"
+              style={{ cursor: "ew-resize", touchAction: "none" }}
+              onPointerDown={(e) => {
+                // Same reason as the price axis: without this the svg's handler
+                // also fires and starts a 2D pan on the same gesture.
+                e.stopPropagation();
+                if (!candles || !visible) return;
+                timeDrag.current = {
+                  x: e.clientX,
+                  span: span ?? candles.length,
+                  end: visible.from + visible.rows.length - 1,
+                };
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                setHover(null);
+              }}
+              onDoubleClick={() => { setSpan(null); setEnd(null); }} />
 
             {/* The price axis, as a grab handle. Dragging it up zooms in and
                 down zooms out, which is the gesture this control has everywhere
