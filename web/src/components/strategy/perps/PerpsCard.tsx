@@ -12,12 +12,14 @@
 // can be sent.
 
 import { useEffect, useMemo, useState } from "react";
+import algosdk from "algosdk";
 import { ArrowDownRight, ArrowUpRight, Info, TriangleAlert } from "lucide-react";
 import { Panel } from "@/components/magnetfi/v2/shared";
 import {
   ACTIVE_MARKET_ID,
   BUILDER_ADDRESS,
   COLLATERAL_ASSET_ID,
+  CHILD_KEEPER_FEE_USDC,
   DEFAULT_SLIPPAGE_BPS,
   ENABLED_MARKET_IDS,
   MAX_TAKE_PROFIT_MULTIPLE,
@@ -39,6 +41,14 @@ import {
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
+import { useWallet } from "@/hooks/useWallet";
+import { ALGOD_URLS } from "@/lib/constants";
+import {
+  openPosition,
+  PositionAlreadyOpenError,
+  type OpenStage,
+  type OpenPositionResult,
+} from "@/lib/perpsClient";
 import { parseMoney, readNumericInput } from "@/lib/perpsInput";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
@@ -86,6 +96,12 @@ export function PerpsCard() {
 
   const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
   const preflight = usePerpsPreflight();
+  const wallet = useWallet();
+
+  /** Submission state. `null` means idle. */
+  const [stage, setStage] = useState<OpenStage | null>(null);
+  const [result, setResult] = useState<OpenPositionResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const market = MARKETS.find((m) => m.id === marketId)!;
   /**
    * The amount the solver sees, settled.
@@ -261,6 +277,100 @@ export function PerpsCard() {
   void attemptAt;
   const age = oracleAgeSeconds(data);
 
+  const submitting = stage !== null;
+  /**
+   * Everything required to sign, all of it already true for `tradable`, plus a
+   * connected wallet and a valid target.
+   */
+  const canSubmit = !!(
+    tradable && tpValid && quote?.ok && !submitting
+    && wallet.isConnected && wallet.address && notional > 0
+  );
+
+  /**
+   * A result belongs to the trade that produced it.
+   *
+   * Without this, a success banner and its txid sit under a card the user has
+   * since changed — which is how someone reads "Position opened" while looking
+   * at different numbers, and worse, how an unconfirmed submission gets
+   * mistaken for a confirmed one on the NEXT attempt.
+   */
+  useEffect(() => {
+    setResult(null);
+    setSubmitError(null);
+    // `submitting` is deliberately NOT a dependency. It flips false at the end
+    // of `submit()`, immediately after `setResult` — so including it made this
+    // effect fire and wipe the result the user is waiting to see. The inputs
+    // are locked while a signature is in flight, so they cannot change
+    // mid-submission and this cannot clear a live attempt.
+  }, [marketId, side, amount, tpPrice, barPos]);
+
+  async function submit() {
+    if (!canSubmit || !quote?.ok || !wallet.address || !data) return;
+    setSubmitError(null);
+    setResult(null);
+    try {
+      const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
+      const r = await openPosition({
+        algod,
+        signTransactions: (txns) => wallet.signTransactions(txns),
+        sender: wallet.address,
+        marketId,
+        side,
+        collateralUsd,
+        notionalUsd: notional,
+        takeProfitPrice12: tp12,
+        slippageBps: DEFAULT_SLIPPAGE_BPS,
+        /**
+         * **The exact values this render put on screen.**
+         *
+         * `openPosition` re-reads everything and refuses if the market has
+         * drifted past tolerance — but that check is only meaningful if these
+         * are what the user actually saw. Audit 4 could not verify the guard
+         * was non-circular because there was no caller; this is the caller, and
+         * these three come from the same `quote` memo that renders the entry
+         * price, the liquidation box and the payoff line. Do not "freshen"
+         * them: a re-read here would turn the guard back into a tautology.
+         */
+        displayed: {
+          // `data.oracle.indexPrice12`, NOT `quote.indexPrice12`. The market
+          // tile renders the former (via `indexUsd`); the latter is the SDK's
+          // own `index_price` echoed back through the quote. They are usually
+          // equal, but "usually" is not what `asRendered` promises — and
+          // passing the quote's copy would compare the fresh oracle against a
+          // number the user never saw, which is the circularity this field
+          // exists to prevent.
+          asRenderedIndexPrice12: data.oracle.indexPrice12,
+          asRenderedEntryPrice12: quote.entryPrice12,
+          asRenderedLiquidationPrice12: quote.liquidationPrice12,
+        },
+        onStage: setStage,
+      });
+      setResult(r);
+    } catch (e) {
+      if (e instanceof PositionAlreadyOpenError) {
+        setSubmitError(
+          `You already have a position on this market and side (${fmtUsd(Number(e.sizeUsdMicro) / 1e6)}). Close it before opening another.`,
+        );
+      } else {
+        setSubmitError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setStage(null);
+    }
+  }
+
+  const STAGE_LABEL: Record<OpenStage, string> = {
+    preparing: "Preparing…",
+    allocating: "Reserving an order id…",
+    building: "Building the transaction group…",
+    checking: "Running the safety check…",
+    simulating: "Simulating against the exchange…",
+    signing: "Waiting for your wallet…",
+    submitting: "Submitting…",
+    confirming: "Waiting for confirmation…",
+  };
+
   return (
     <Panel className="p-5 sm:p-6">
       {/* Market */}
@@ -268,7 +378,7 @@ export function PerpsCard() {
         {MARKETS.map((m) => {
           const on = m.id === marketId;
           return (
-            <button key={m.id} onClick={() => {
+            <button key={m.id} disabled={submitting} onClick={() => {
                 if (m.id === marketId) return;
                 setMarketId(m.id);
                 // A price means nothing across markets. $0.30 is a plausible ALGO
@@ -317,7 +427,7 @@ export function PerpsCard() {
           const on = s === side;
           const up = s === "long";
           return (
-            <button key={s} onClick={() => { setSide(s); setTpTouched(false); }}
+            <button key={s} disabled={submitting} onClick={() => { setSide(s); setTpTouched(false); }}
               className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition-colors ${
                 on && up ? "border-green-400/50 bg-green-500/15 text-green-300"
                 : on ? "border-red-400/50 bg-red-500/15 text-red-300"
@@ -350,7 +460,8 @@ export function PerpsCard() {
               // default effect still tracks the amount, so the untouched case
               // is unaffected.
             }}
-            className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none" />
+            disabled={submitting}
+            className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
           <span className="text-xs text-white/40">USDC</span>
         </div>
         {amountHint && <p className="mt-1 text-xs text-amber-300/90">{amountHint}</p>}
@@ -365,7 +476,7 @@ export function PerpsCard() {
           </span>
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
-          disabled={!tradable}
+          disabled={!tradable || submitting}
           onChange={(e) => setBarPos(Number(e.target.value))}
           className="mt-2 w-full accent-magnet-400 disabled:opacity-30" />
         <div className="flex justify-between text-[11px] tabular-nums text-white/40">
@@ -431,7 +542,8 @@ export function PerpsCard() {
               setTpPrice(v.value);
               setTpTouched(true);
             }}
-            className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none" />
+            disabled={submitting}
+            className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
         </div>
         {tpHint && <p className="mt-1 text-xs text-amber-300/90">{tpHint}</p>}
         {quote?.ok && (
@@ -494,10 +606,63 @@ export function PerpsCard() {
         </dl>
       )}
 
-      <button disabled
-        className="mt-5 w-full rounded-xl bg-magnet-500/20 py-3.5 text-sm font-semibold text-white/40 cursor-not-allowed">
-        Connect wallet to trade — coming next
-      </button>
+      {/* Submit */}
+      {!wallet.isConnected ? (
+        <>
+          <button disabled
+            className="mt-5 w-full rounded-xl bg-magnet-500/20 py-3.5 text-sm font-semibold text-white/40 cursor-not-allowed">
+            Connect your wallet to trade
+          </button>
+          <p className="mt-2 text-center text-[11px] text-white/35">
+            Use the Connect button at the top of the page.
+          </p>
+        </>
+      ) : (
+        <button onClick={submit} disabled={!canSubmit}
+          className={`mt-5 w-full rounded-xl py-3.5 text-sm font-semibold transition-colors ${
+            canSubmit
+              ? "bg-magnet-500 text-white hover:bg-magnet-400"
+              : "bg-magnet-500/20 text-white/40 cursor-not-allowed"}`}>
+          {submitting ? STAGE_LABEL[stage] : `Open ${side} · ${fmtUsd(notional)}`}
+        </button>
+      )}
+
+      {/* One signature, and what it commits to — shown before the prompt, not after. */}
+      {wallet.isConnected && !submitting && canSubmit && (
+        <p className="mt-2 text-center text-[11px] text-white/35">
+          One signature. {fmtUsd(collateralUsd)} collateral plus {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper fee leaves your wallet.
+        </p>
+      )}
+
+      {submitError && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{submitError}</span>
+        </div>
+      )}
+
+      {result && (
+        <div className={`mt-3 rounded-lg border px-3 py-2.5 text-xs ${
+          result.confirmed
+            ? "border-green-400/30 bg-green-500/10 text-green-200"
+            : "border-amber-400/30 bg-amber-500/10 text-amber-200"}`}>
+          {/* An unobserved confirmation is NOT a failure — the group stays valid
+              for the rest of its window and will most likely commit. Saying
+              "failed" here is what produced a retry that doubled a position. */}
+          <p className="font-medium">
+            {result.confirmed ? "Position opened." : "Submitted — confirmation not seen yet."}
+          </p>
+          <p className="mt-1 text-[11px] opacity-80">
+            {result.confirmed
+              ? "Your take-profit is live and will close the position automatically."
+              : "This is not a failure. The transaction is still valid and will most likely confirm. Check the link before trying again — opening a second time would add to the position."}
+          </p>
+          <a href={`https://allo.info/tx/${result.txId}`} target="_blank" rel="noopener noreferrer"
+            className="mt-1.5 inline-block break-all underline underline-offset-2 opacity-90 hover:opacity-100">
+            {result.txId}
+          </a>
+        </div>
+      )}
 
       <p className="mt-2.5 text-center text-[10px] leading-relaxed text-white/30">
         Trades execute on <span className="text-white/45">PEX</span>, a third-party protocol by Ultrade.

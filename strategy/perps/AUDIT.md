@@ -728,6 +728,41 @@ asserts 29 checks with zero findings and simulates `ok=true`.
 
 ---
 
+## The trade button is wired (2026-09-27)
+
+`PerpsCard` now calls `openPosition` through `@txnlab/use-wallet`, the same
+wallet stack the rest of the app uses.
+
+**`displayed` is passed from the rendered memo, which is the point.** Audit 4
+flagged that `MAX_DISPLAY_DRIFT_BPS` could not be verified as non-circular
+because no caller existed. It exists now, and wiring it caught a real mismatch:
+the card renders the index from `data.oracle.indexPrice12` (the mid of the
+signed band) while the first draft passed `quote.indexPrice12` (the SDK's
+`index_price` echoed back). Usually equal — but "usually" is not what
+`asRendered` promises, and passing the quote's copy would have compared the
+fresh oracle against a number the user never saw. Exactly the circularity the
+field name exists to prevent.
+
+**Verified live**: with a signer that throws if reached, a displayed index 5%
+stale is refused before the wallet prompt; honest values pass through to the
+signer.
+
+Other things the live button required:
+
+- **Every input locks while a signature is in flight** — market, side, amount,
+  slider and take-profit. Without it the card underneath a wallet prompt is
+  still editable.
+- **A result belongs to the trade that produced it.** Changing any input clears
+  it. `submitting` is deliberately *not* a dependency of that effect: it flips
+  false immediately after `setResult`, so including it made the effect fire and
+  wipe the result the user was waiting to see. Caught before shipping.
+- **An unobserved confirmation is reported as unknown, never as failure** —
+  amber, not red, with the txid and an explicit warning that opening again would
+  add to the position. That false-failure-then-retry is what B5 was.
+- The hero badge now reads "Live on MainNet" rather than "trading soon".
+
+---
+
 ## Root causes
 
 Grouped, because fixing symptoms here would leave the causes in place.
