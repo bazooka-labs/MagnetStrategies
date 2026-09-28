@@ -48,14 +48,19 @@ const SYMBOL: Record<number, string> = {
  */
 function ViewToggle({ advanced, onChange }: { advanced: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-0.5">
-      {([["Position lines", false], ["Drawing tools", true]] as const).map(([text, v]) => (
-        <button key={text} onClick={() => onChange(v)}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-            advanced === v ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
-          {text}
-        </button>
-      ))}
+    <div className="mb-3 flex justify-center">
+      <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        {([
+          ["Position lines", false, "Entry, liquidation and take-profit drawn on the candles"],
+          ["Drawing tools", true, "TradingView: indicators and drawing tools, without the position lines"],
+        ] as const).map(([text, v, title]) => (
+          <button key={text} onClick={() => onChange(v)} title={title}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+              advanced === v ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
+            {text}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -127,11 +132,11 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
    * Our chart can draw them, because we own every pixel: entry, liquidation,
    * take-profit and the PEX oracle, all on the candles.
    *
-   * The advanced chart is the default: indicators and drawing tools are the
-   * reason it is here, and the position lines it cannot draw are all still
-   * readable on the card itself.
+   * Position lines are the default. They are what a user checks most often —
+   * where the liquidation sits relative to price — and the advanced chart is a
+   * deliberate step up rather than the thing you land on.
    */
-  const [advanced, setAdvanced] = useState(true);
+  const [advanced, setAdvanced] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
 
@@ -151,6 +156,12 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
   }, [marketId]);
 
   useEffect(() => {
+    // `advanced` is a dependency, and that is the whole fix for a real bug:
+    // while the simple chart is showing this component returns early, the
+    // container div does not exist, `holder.current` is null and this effect
+    // bails. Without `advanced` in the deps it never ran again, so switching to
+    // the advanced view produced an empty panel every time.
+    if (!advanced) return;
     const el = holder.current;
     const symbol = SYMBOL[marketId];
     if (!el || !symbol) return;
@@ -194,24 +205,26 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
     el.appendChild(script);
 
     return () => { el.innerHTML = ""; };
-  }, [marketId]);
+  }, [marketId, advanced]);
+
+  const canSwitch = !blocked && !!SYMBOL[marketId];
 
   // Our chart when chosen, and whenever TradingView is unavailable.
-  if (!advanced || blocked || !SYMBOL[marketId]) {
+  if (!advanced || !canSwitch) {
     return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        {canSwitch && <ViewToggle advanced={false} onChange={setAdvanced} />}
+        <div className="space-y-3">
           <MarketToggle marketId={marketId} onChange={onMarketChange} />
-          {!blocked && SYMBOL[marketId] && (
-            <ViewToggle advanced={false} onChange={setAdvanced} />
-          )}
+          <PerpsChart marketId={marketId} label={label} lines={lines} />
         </div>
-        <PerpsChart marketId={marketId} label={label} lines={lines} />
       </div>
     );
   }
 
   return (
+    <>
+    <ViewToggle advanced onChange={setAdvanced} />
     <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-sm sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* Market toggle. It lives here rather than in the card because the
@@ -246,5 +259,6 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
         also includes PEX&apos;s price impact, so it will differ from both.
       </p>
     </div>
+    </>
   );
 }
