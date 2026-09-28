@@ -127,9 +127,11 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
    * Our chart can draw them, because we own every pixel: entry, liquidation,
    * take-profit and the PEX oracle, all on the candles.
    *
-   * Position lines are what a user checks most often, so they are the default.
+   * The advanced chart is the default: indicators and drawing tools are the
+   * reason it is here, and the position lines it cannot draw are all still
+   * readable on the card itself.
    */
-  const [advanced, setAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useState(true);
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
 

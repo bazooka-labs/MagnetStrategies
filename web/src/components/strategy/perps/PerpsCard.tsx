@@ -59,6 +59,15 @@ import { parseMoney, readNumericInput } from "@/lib/perpsInput";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 
+/**
+ * Profit targets offered as quick picks, as a fraction of the stake.
+ *
+ * Of the STAKE, not of the position: "+25%" on $100 of collateral means $25 of
+ * profit, whatever leverage is set. That is the number a user actually has in
+ * mind, and it is why the exit price moves when the slider does.
+ */
+const TP_TARGETS = [0.1, 0.25, 0.5] as const;
+
 /** Prices span $0.10 and $83,000, so precision has to follow the magnitude. */
 // Formatting comes from perpsQuote, which is also where the take-profit bounds
 // are rounded for display. One rule, one place: the card having its own copy is
@@ -133,7 +142,11 @@ export function PerpsCard({
   const [amount, setAmount] = useState<string>("");
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
-  const [tpTouched, setTpTouched] = useState(false);
+  /**
+   * The chosen profit target as a fraction of stake, or null for a hand-typed
+   * price. Null is also the starting state: the field begins empty.
+   */
+  const [tpPct, setTpPct] = useState<number | null>(null);
   /**
    * Why the last keystroke was refused, per field.
    *
@@ -151,6 +164,8 @@ export function PerpsCard({
 
   /** Submission state. `null` means idle. */
   const [stage, setStage] = useState<OpenStage | null>(null);
+  /** Declared with `stage` so effects above the render can read it too. */
+  const submitting = stage !== null;
   const [result, setResult] = useState<OpenPositionResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const market = MARKETS.find((m) => m.id === marketId)!;
@@ -180,7 +195,7 @@ export function PerpsCard({
    */
   useEffect(() => {
     setTpPrice("");
-    setTpTouched(false);
+    setTpPct(null);
   }, [marketId]);
 
   const settledAmount = useDebounced(amount, 120);
@@ -280,41 +295,44 @@ export function PerpsCard({
     } catch { return null; }
   }, [data, bar, notional, side, collateralUsd]);
 
-  // Default the target to a round +50% on the stake, but never fight the user.
+  /**
+   * The take-profit follows a chosen profit target, or nothing at all.
+   *
+   * It used to default to +50% of stake on mount. That put a number the product
+   * chose into the field that decides where the position exits — and because it
+   * was recomputed from `quote`, it also moved on its own as the slider and the
+   * market changed, which looked like the card editing itself.
+   *
+   * Now the field starts empty and fills only when a target is picked. Once
+   * picked it DOES track the slider, because that is the point: "+25% on my
+   * stake" is a different price at 3x than at 12x, and the user asked for the
+   * profit, not the price.
+   *
+   * Typing a price clears the target (see the input's onChange) — a hand-typed
+   * exit must not be overwritten by a slider nudge.
+   */
   useEffect(() => {
-    // **Frozen while signing.** `disabled={submitting}` stops the USER editing
-    // this field; it does nothing about this effect, which fires on every
-    // 10-second market refresh because `quote` is a memo over `data` and
-    // `tpTouched` is false for anyone who did not hand-edit — i.e. the default
-    // path. Measured live: the default string changed on essentially every
-    // tick. So the number on screen drifted while the wallet prompt was open
-    // and the group carried the value from the click. That is the one
-    // "screen says X, group carries Y" gap the assertion layer cannot see.
+    // Frozen while signing: `disabled` stops the user editing this field, not
+    // this effect, and the group carries the value from the click.
     if (submitting) return;
-    if (tpTouched || !quote?.ok) return;
-    // `priceForPayoff` returns null when the requested profit exceeds what the
-    // position can pay — for a short that ceiling is its notional, and because
-    // both markets are OI-capped well below typical collateral, +50% of stake
-    // is unreachable across a wide band of ordinary inputs. Measured: on a
-    // $1,000 ALGO short it was null at EVERY slider position.
-    //
-    // The old code did `if (!p) return`, which wrote nothing — leaving the one
-    // mandatory field on the card empty on mount, or silently holding a target
-    // solved for a different size after a slider move. Falling back to a fixed
-    // move from entry keeps it populated and honest.
-    const wanted = priceForPayoff(quote, collateralUsd * 0.5)
-      ?? (side === "long"
-        ? (quote.entryPrice12 * BigInt(110)) / BigInt(100)
-        : (quote.entryPrice12 * BigInt(90)) / BigInt(100));
-    // Clamp into the band the card enforces. At high leverage a +50%-of-stake
-    // target is a small percentage move, which can land inside the crossing
-    // guard — and a card that opens showing its own invalid default is worse
-    // than one that opens showing a conservative one.
+    if (tpPct === null || !quote?.ok) return;
+
+    // `priceForPayoff` returns null when the profit exceeds what the position
+    // can pay — a short's ceiling is its notional, and both markets are
+    // OI-capped well below typical collateral. Nothing is written in that case;
+    // the button reports it rather than the field showing a wrong number.
+    const wanted = priceForPayoff(quote, collateralUsd * tpPct);
+    if (!wanted) { setTpPrice(""); return; }
+
+    // Clamp into the band the card enforces. At high leverage a small
+    // percentage of stake is a small price move, which can land inside the
+    // crossing guard — and a card showing its own invalid target is worse than
+    // one showing a conservative one.
     const b = displayTakeProfitBounds(quote);
     const clamped = wanted < b.minPrice12 ? b.minPrice12
       : wanted > b.maxPrice12 ? b.maxPrice12 : wanted;
     setTpPrice(price12ToUsd(clamped).toFixed(priceDisplayDecimals(price12ToUsd(clamped))));
-  }, [quote, collateralUsd, side, tpTouched]);
+  }, [quote, collateralUsd, tpPct, submitting]);
 
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
   const tp12 = usdToPrice12(tpPrice) ?? BigInt(0);
@@ -389,7 +407,6 @@ export function PerpsCard({
     // fraction, neither of which differs by side.
   }, [data]);
 
-  const submitting = stage !== null;
   /**
    * The money figures as they were when the user clicked.
    *
@@ -571,7 +588,7 @@ export function PerpsCard({
           const on = s === side;
           const up = s === "long";
           return (
-            <button key={s} disabled={submitting} onClick={() => { setSide(s); setTpTouched(false); }}
+            <button key={s} disabled={submitting} onClick={() => { setSide(s); setTpPct(null); setTpPrice(""); }}
               className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition-colors ${
                 on && up ? "border-green-400/50 bg-green-500/15 text-green-300"
                 : on ? "border-red-400/50 bg-red-500/15 text-red-300"
@@ -688,9 +705,32 @@ export function PerpsCard({
 
       {/* Take profit — mandatory */}
       <label className="mt-4 block">
-        <span className="text-xs font-medium uppercase tracking-wide text-white/50">
-          Take profit at {market.label.split("/")[0]} price
-        </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+            Take profit at {market.label.split("/")[0]} price
+          </span>
+          {/* Profit targets, as a fraction of the stake. Picking one makes the
+              exit price follow the risk slider — "+25% on my stake" is a
+              different price at 3x than at 12x, and the profit is what was
+              asked for. Clicking the active one clears it. */}
+          <div className="flex gap-1">
+            {TP_TARGETS.map((pct) => {
+              const on = tpPct === pct;
+              const reachable = !quote?.ok || priceForPayoff(quote, collateralUsd * pct) !== null;
+              return (
+                <button key={pct} type="button" disabled={submitting || !reachable}
+                  onClick={() => setTpPct(on ? null : pct)}
+                  title={reachable ? undefined : "This position cannot make that much"}
+                  className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                    on ? "bg-green-500/20 text-green-200"
+                      : reachable ? "bg-white/[0.04] text-white/45 hover:text-white/75"
+                      : "bg-white/[0.02] text-white/20 cursor-not-allowed"}`}>
+                  +{Math.round(pct * 100)}%
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
           <input id="perps-tp" inputMode="decimal" value={view.tpPrice}
@@ -699,7 +739,9 @@ export function PerpsCard({
               if (!v.ok) { setTpHint(v.hint); return; }
               setTpHint(null);
               setTpPrice(v.value);
-              setTpTouched(true);
+              // A hand-typed exit is a deliberate choice; drop the percentage so
+              // a slider nudge cannot overwrite it.
+              setTpPct(null);
             }}
             disabled={submitting}
             className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
@@ -712,7 +754,12 @@ export function PerpsCard({
             </p>
           ) : (
             <p className="mt-1 text-xs text-amber-300/90">
-              {!bounds
+              {/* Empty is now the starting state, so it gets its own line —
+                  "choose a target above $X" reads as a correction for a number
+                  the user has not entered yet. */}
+              {view.tpPrice.trim() === ""
+                ? "Pick a profit target above, or type an exit price. Every position needs one."
+                : !bounds
                 ? "Enter a take-profit price."
                 : tpTooNear
                   // The crossing guard. Named for what it does to the user's
