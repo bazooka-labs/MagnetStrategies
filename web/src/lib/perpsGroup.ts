@@ -126,6 +126,8 @@ const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
  */
 function checkMathCarriers(
   txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
+  /** The close path's enumerated recall resources — see `checkEveryTransaction`. */
+  allow?: { accounts?: Set<string>; assets?: Set<number> },
 ): void {
   /**
    * What an asserted call in this group already makes available.
@@ -176,6 +178,8 @@ function checkMathCarriers(
   for (const id of Object.values(PEX_APPS)) {
     allowedAccounts.add(algosdk.getApplicationAddress(id).toString());
   }
+  for (const a of allow?.accounts ?? []) allowedAccounts.add(a);
+  for (const a of allow?.assets ?? []) allowedAssets.add(a);
 
   txns.forEach((t, i) => {
     const call = t.applicationCall;
@@ -211,6 +215,24 @@ function checkMathCarriers(
  * keeps ~2x headroom for extra resource carriers without leaving that room.
  */
 export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
+
+/**
+ * The same ceiling for a CLOSE, which legitimately costs more.
+ *
+ * A close carries a yield recall: settlement maintenance calls, the xALGO
+ * consensus hop and its resource carriers. Measured on a live ALGO/USD long,
+ * a correct close group comes to **120,000 µALGO exactly** — sitting on the lip
+ * of the open path's cap, which was measured for a nine-transaction open.
+ *
+ * **Raised deliberately, not until it passed.** 120,000 is a real observation
+ * and a cap set at the observed value refuses the next correct group that
+ * happens to carry one extra carrier — the SDK derives carrier counts from pool
+ * and yield state, so that count is not ours and moves without us. 200,000
+ * keeps roughly 1.7x headroom over the measurement while still being a bound:
+ * it is ~0.2 ALGO, well under anything a user would consider material, and far
+ * below what an unbounded group could skim.
+ */
+export const MAX_CLOSE_GROUP_FEE_MICRO_ALGO = 200_000;
 
 /**
  * The only two storage-escrow payments a legitimate group makes.
@@ -259,6 +281,16 @@ export type GroupShape = {
    * ceiling of one would fail-closed on a correct group.
    */
   orderOps?: number;
+  /**
+   * Ceiling on Math carriers, when this flow needs more than the default.
+   *
+   * The budget's own note already says the count is not the control — the SDK
+   * derives it from pool and yield state, and `checkMathCarriers` asserts each
+   * one is a bare noop that introduces no resource. A close carries a yield
+   * recall and legitimately builds more of them: measured at nine against the
+   * open path's eight.
+   */
+  mathMax?: number;
 };
 
 /** Collateral transfer + app calls. No order box, so no MBR payment. */
@@ -276,7 +308,19 @@ export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax
  */
 export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3, applMax: 11, trading: 2 };
 /** Closing moves no value in the group itself. */
-export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10, trading: 1 };
+/**
+ * Closing. Measured on a live ALGO/USD long: seven transactions, all app calls,
+ * no transfer and no payment — every output of a close arrives as an inner
+ * transaction.
+ *
+ * `applMax` and `mathMax` carry headroom over the measurement rather than
+ * sitting on it: the recall's carrier count comes from pool and yield state,
+ * which moves without us, and a ceiling set at the observed value refuses the
+ * next correct group that happens to need one more.
+ */
+export const SHAPE_CLOSE: GroupShape = {
+  axfer: 0, pay: 0, applMin: 1, applMax: 16, trading: 1, mathMax: 14,
+};
 
 /**
  * Cancelling one standalone order. **Nothing leaves the wallet.**
@@ -367,7 +411,9 @@ function checkCallBudget(
       // A limit bracket legitimately makes two OrderOps calls.
       : c.app === PEX_APPS.orderOps && shape.orderOps !== undefined
         ? [shape.orderOps, shape.orderOps]
-        : [c.min, c.max];
+        : c.app === PEX_APPS.math && shape.mathMax !== undefined
+          ? [c.min, shape.mathMax]
+          : [c.min, c.max];
     if (seen < min || seen > max) {
       fail("call_budget", `${c.name} called ${seen} times, expected ${min}..${max}`);
     }
@@ -515,7 +561,21 @@ function abiBytes(arg: Uint8Array): Uint8Array | null {
  */
 function checkEveryTransaction(
   txns: AnyTxn[],
-  ctx: { sender: string; collateralAssetId: number },
+  /**
+   * `allowAccounts` / `allowAssets` are the CLOSE path's yield-recall
+   * resources: the xALGO vault and consensus addresses, the Folks pool and its
+   * manager, the proposer set, and the receipt assets.
+   *
+   * They are an explicit enumeration, not a relaxation. We build the yield
+   * registry ourselves from chain (`readYieldRegistry`), so we know exactly
+   * which accounts and assets a legitimate recall may reference — and anything
+   * outside that set still fails. That makes this check TIGHTER on the close
+   * path than a generic "PEX apps are fine" rule would be, not looser.
+   */
+  ctx: {
+    sender: string; collateralAssetId: number;
+    allowAccounts?: Set<string>; allowAssets?: Set<number>; allowApps?: Set<number>;
+  },
   fail: (code: string, detail: string) => void,
   did: (name: string) => void,
 ): bigint {
@@ -560,17 +620,20 @@ function checkEveryTransaction(
     if (call) {
       for (const a of (call.accounts ?? [])) {
         const addr = String(a);
-        if (addr !== ctx.sender && addr !== BUILDER_ADDRESS && !PEX_APP_ADDRESSES.has(addr)) {
+        if (addr !== ctx.sender && addr !== BUILDER_ADDRESS && !PEX_APP_ADDRESSES.has(addr)
+          && !(ctx.allowAccounts?.has(addr) ?? false)) {
           fail("foreign_account", `txn ${i} names account ${addr.slice(0, 10)}…`);
         }
       }
       for (const x of (call.foreignAssets ?? [])) {
-        if (Number(x) !== ctx.collateralAssetId) {
+        if (Number(x) !== ctx.collateralAssetId && !(ctx.allowAssets?.has(Number(x)) ?? false)) {
           fail("foreign_asset", `txn ${i} references asset ${x}`);
         }
       }
       for (const x of (call.foreignApps ?? [])) {
-        if (!PINNED_APP_IDS.has(Number(x))) fail("foreign_app", `txn ${i} references app ${x}`);
+        if (!PINNED_APP_IDS.has(Number(x)) && !(ctx.allowApps?.has(Number(x)) ?? false)) {
+          fail("foreign_app", `txn ${i} references app ${x}`);
+        }
       }
     }
     // One network. algod would refuse a foreign genesis hash, but the assertion
@@ -870,6 +933,20 @@ export type DisplayedClose = {
   yieldRecallMode: bigint;
   maxLongReceiptAmount: bigint;
   maxShortReceiptAmount: bigint;
+  /**
+   * Every account, asset and app a yield recall may legitimately reference.
+   *
+   * Enumerated from the registry WE derived from chain, so this is a closed
+   * set rather than a widened rule: the xALGO vault and consensus addresses,
+   * the Folks pool and its manager, the proposer set, the receipt assets and
+   * the external app ids. Anything outside it still fails.
+   *
+   * Without this a correct close is refused — the recall names the Folks
+   * f-asset and the vault accounts, neither of which the open path ever sees.
+   * Passing them is what lets the check stay strict instead of being loosened
+   * for everyone.
+   */
+  recall: { accounts: string[]; assets: number[]; apps: number[] };
 };
 
 /**
@@ -902,15 +979,21 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
   }
   did("distinct transaction IDs");
 
+  const allowAccounts = new Set(shown.recall.accounts);
+  const allowAssets = new Set(shown.recall.assets);
+  const allowApps = new Set(shown.recall.apps);
   const totalFee = checkEveryTransaction(
-    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+    txns,
+    { sender: shown.sender, collateralAssetId: shown.collateralAssetId, allowAccounts, allowAssets, allowApps },
+    fail, did,
   );
   checkCallBudget(txns, fail, SHAPE_CLOSE);
-  checkMathCarriers(txns, fail, did);
+  checkMathCarriers(txns, fail, did, { accounts: allowAccounts, assets: allowAssets });
+  did("yield-recall resources limited to the set derived from chain");
   did("app calls within the flow's budget, by app and by count");
 
-  if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
-    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO}`);
+  if (totalFee > BigInt(MAX_CLOSE_GROUP_FEE_MICRO_ALGO)) {
+    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_CLOSE_GROUP_FEE_MICRO_ALGO}`);
   }
   did("total fee under cap");
 

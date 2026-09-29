@@ -28,7 +28,8 @@ type Captured = {
   acceptablePrice12: string; executionPrice12: string; indexPrice12: string;
   slippageBps: number; expectedPositionId: string;
   oracleMessage: string; oracleSignature: string;
-  yieldRecallMode: string; maxLongReceiptAmount: string; maxShortReceiptAmount: string;
+  yieldRecallMode: string; maxLongReceiptAmount: string;
+    maxShortReceiptAmount: string;
   txns: string[];
 };
 
@@ -55,7 +56,8 @@ const shown = (c: Captured): DisplayedClose => ({
   oracleMessage: bytes(c.oracleMessage), oracleSignature: bytes(c.oracleSignature),
   yieldRecallMode: BigInt(c.yieldRecallMode),
   maxLongReceiptAmount: BigInt(c.maxLongReceiptAmount),
-  maxShortReceiptAmount: BigInt(c.maxShortReceiptAmount),
+  recall: { accounts: [], assets: [], apps: [] },
+    maxShortReceiptAmount: BigInt(c.maxShortReceiptAmount),
 });
 
 describe("assertCloseGroup — against real SDK bytes", () => {
@@ -200,8 +202,13 @@ describe("assertCloseGroup — against real SDK bytes", () => {
       (trading(txns).applicationCall!.accounts as unknown[]).push(algosdk.decodeAddress(ATTACKER));
     }, "foreign_account");
 
+  // 45,000 each used to clear the old 120,000 ceiling. The close cap is now
+  // MAX_CLOSE_GROUP_FEE_MICRO_ALGO (200,000), raised because a real recall
+  // group measures 120,000 — so the tamper has to clear the NEW bound or it is
+  // testing nothing. This is the failure mode where a cap is loosened and a
+  // test quietly stops covering it.
   tamper("fees inflated across the group",
-    (txns) => { txns.forEach((t) => { (t as unknown as { fee: bigint }).fee = BigInt(45_000); }); },
+    (txns) => { txns.forEach((t) => { (t as unknown as { fee: bigint }).fee = BigInt(80_000); }); },
     "fee_cap");
 
   tamper("duplicate transaction ids",

@@ -26,6 +26,7 @@ import algosdk from "algosdk";
 import {
   buildV2MarketOpenWithAttachedOrdersTransactions,
   buildV2CancelOrderTransactions,
+  buildV2DecreaseOrCloseTransactions,
   buildV2OpenLimitWithAttachedOrdersTransactions,
 } from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
@@ -49,13 +50,16 @@ import {
   readMarketState,
   readPosition,
   readTraderState,
+  readYieldRegistry,
   storagePaymentNeeded,
+  type PositionState,
 } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { preflight } from "./perpsPreflight";
 import {
   assertCancelGroup,
+  assertCloseGroup,
   assertOpenLimitGroup,
   assertOpenWithTakeProfit,
   simulateGroup,
@@ -68,6 +72,7 @@ import {
   quoteOpen,
   quoteTakeProfitCrossed,
   takeProfitBounds,
+  type CloseQuote,
 } from "./perpsQuote";
 import type { Side } from "./perpsSolver";
 
@@ -1096,6 +1101,259 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
   }
   return {
     txId, baseOrderId: ownerOrderId, checks: assertion.checked,
+    outcome, reason, confirmed: outcome === "confirmed",
+  };
+}
+
+// ── Closing ─────────────────────────────────────────────────────────────────
+
+export type ClosePositionInput = {
+  algod: algosdk.Algodv2;
+  signTransactions: SignFn;
+  sender: string;
+  marketId: number;
+  side: Side;
+  /** How much to close, 1e6 USD. Must equal the position size for a full close. */
+  sizeUsdMicro: bigint;
+  /** The live position, read immediately before this call. */
+  position: PositionState;
+  /** The close quote the user was shown — its execution price anchors slippage. */
+  quote: CloseQuote;
+  slippageBps?: number;
+  onStage?: (s: OpenStage) => void;
+};
+
+/**
+ * Close a position, or part of one.
+ *
+ * ── Why this needs a yield recall, always ───────────────────────────────────
+ * Ultrade, 2026-09-29: *"generally speaking, I would suggest always using
+ * recall because most of the time the yield deployment doesn't leave much idle
+ * assets."* Simulation agrees more bluntly — `yieldRecallMode: 0` builds fine
+ * and then fails at `inner tx 0` on a live position. The no-recall path is not
+ * an option even when it looks like one.
+ *
+ * ── Why the registry is read rather than fetched ────────────────────────────
+ * The SDK's supported route calls Ultrade's API for the recall inputs. We build
+ * the same thing from chain instead — see `readYieldRegistry`, which documents
+ * where each value comes from and why the proposer list is the hard part.
+ *
+ * ── The acceptable price is anchored to EXECUTION ───────────────────────────
+ * Same discipline as the open path, and the same reason B2 taught: an
+ * index-anchored bound fails once impact is charged. The quote's
+ * `executionPrice12` is the anchor, and `assertCloseGroup` re-checks it.
+ */
+export async function closePosition(input: ClosePositionInput): Promise<OpenPositionResult> {
+  if (openInFlight) throw new Error("Another action is already in progress. Wait for it to finish.");
+  openInFlight = true;
+  try {
+    return await closePositionInner(input);
+  } finally {
+    openInFlight = false;
+  }
+}
+
+async function closePositionInner(input: ClosePositionInput): Promise<OpenPositionResult> {
+  const { algod, signTransactions, sender, marketId, side, position, quote } = input;
+  const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  const stage = (s: OpenStage) => input.onStage?.(s);
+  const sideCode: 1 | 2 = side === "long" ? 1 : 2;
+
+  if (!BUILDER_ADDRESS) throw new Error("Builder address is not configured.");
+  if (input.sizeUsdMicro <= BigInt(0)) throw new Error("Nothing to close.");
+  if (input.sizeUsdMicro > position.size_usd) {
+    throw new Error("That is larger than the position.");
+  }
+  if (!quote.ok) {
+    throw new Error(`PEX would not accept this close right now: ${quote.blockedReason || "unknown"}`);
+  }
+
+  stage("preparing");
+  await installProtocolManifest();
+
+  const [state, pre] = await Promise.all([readMarketState(algod, marketId), preflight(algod)]);
+  if (!pre.canOpen) {
+    // The same gate as opening: a drifted manifest or an upgraded app means we
+    // do not know what we are building against, and that is not safer just
+    // because the user is trying to get OUT.
+    if (pre.detail) console.warn(`perps: preflight refused the close — ${pre.detail}`);
+    throw new Error(pre.reason ?? "Trading is unavailable right now.");
+  }
+
+  // Re-read rather than trusting the panel's copy: a position that moved, was
+  // liquidated, or had its take-profit fire between render and click must not
+  // be closed against stale numbers.
+  const live = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, sideCode);
+  if (!live || live.size_usd === BigInt(0)) {
+    throw new Error("That position is no longer open — it may have just closed or been liquidated.");
+  }
+  if (live.position_id !== position.position_id) {
+    throw new Error("That position has been replaced since the page loaded. Refresh and try again.");
+  }
+  // Narrowed into a const because the build/check helpers below close over it,
+  // and TypeScript cannot carry a null-check across a function boundary.
+  const livePos = live;
+  const sizeToClose = input.sizeUsdMicro > livePos.size_usd ? livePos.size_usd : input.sizeUsdMicro;
+
+  stage("building");
+  const oracleFetchedAt = Date.now();
+  const oracle = await getOraclePayload(PEX_APPS.trading, marketId);
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
+  const indexAssetId = Number(state.core.index_asset_id);
+  const longAssetId = Number(state.core.long_asset_id);
+  const shortAssetId = Number(state.core.short_asset_id);
+  const registry = await readYieldRegistry(algod, marketId, COLLATERAL_ASSET_ID, indexAssetId);
+
+  /**
+   * Recall caps, from our own close quote.
+   *
+   * `quoteClose` already aggregates what this close pays out per asset, which is
+   * exactly what a recall must make available. The cap is a MAXIMUM, so sizing
+   * it at the quoted output is the tight, honest choice — not a round number
+   * chosen to be safe.
+   */
+  const capFor = (assetId: number) =>
+    quote.outputs.find((o) => o.assetId === assetId)?.amount ?? BigInt(0);
+
+  /**
+   * Two recall shapes, tightest first.
+   *
+   * Recalling BOTH legs pulls the Folks pool, its manager and their addresses
+   * into the group's reference budget, and on larger positions that is enough
+   * to squeeze the xALGO vault out — simulation then fails with
+   * `unavailable App 3690309169` inside Trading. Recalling only the index leg
+   * fits, and it matches what PEX's own keeper did when it executed our
+   * take-profit: that group touched the consensus app and never Folks, because
+   * the collateral leg had idle balance to pay from.
+   *
+   * So: try the tighter shape, fall back to the fuller one. Both are asserted
+   * and simulated before anything reaches a wallet, so the fallback costs a
+   * round trip and risks nothing — and attempting the collateral recall only
+   * when the tight shape fails means we ask the pool for no more than needed.
+   */
+  const recallShapes: { label: string; long: bigint; short: bigint }[] = [
+    { label: "index leg only", long: capFor(longAssetId), short: BigInt(0) },
+    { label: "both legs", long: capFor(longAssetId), short: capFor(shortAssetId) },
+  ];
+
+  const acceptablePrice = acceptableForClose(quote.executionPrice12, side, slippageBps);
+  const sp = await algod.getTransactionParams().do();
+  sp.flatFee = true;
+
+  let built: algosdk.Transaction[] | null = null;
+  let assertion: ReturnType<typeof assertCloseGroup> | null = null;
+  let lastProblem = "";
+  for (const shape of recallShapes) {
+    const candidate = buildCloseGroup(shape.long, shape.short);
+    const check = checkCloseGroup(candidate, shape.long, shape.short);
+    if (!check.ok) {
+      lastProblem = `safety check: ${check.findings[0]?.detail ?? "unknown"}`;
+      console.warn(`perps: close (${shape.label}) failed the assertion`, check.findings);
+      continue;
+    }
+    stage("simulating");
+    const trial = await simulateGroup(algod, candidate);
+    if (trial.ok) { built = candidate; assertion = check; break; }
+    lastProblem = trial.message ?? "unknown";
+  }
+  if (!built || !assertion) {
+    throw new Error(`The pre-flight check did not pass, so nothing was sent: ${lastProblem}`);
+  }
+
+  function buildCloseGroup(longCap: bigint, shortCap: bigint) {
+    return buildV2DecreaseOrCloseTransactions({
+    sender, marketId,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    side: BigInt(sideCode),
+    sizeUsdDelta: sizeToClose,
+    acceptablePrice,
+    outputSwapMode: 0,
+    minPrimaryOutputAmount: 0,
+    minSecondaryOutputAmount: 0,
+    builderFee: { builderAddress: BUILDER_ADDRESS, builderFeeBps: BigInt(POSITION_BUILDER_FEE_BPS) },
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+    yieldRecallMode: 1,
+    maxLongReceiptAmount: longCap,
+    maxShortReceiptAmount: shortCap,
+    marketYieldRegistry: registry,
+    // The real id, never a wildcard: a wildcard closes whatever occupies the key.
+    expectedPositionId: livePos.position_id,
+    indexAssetId, longAssetId, shortAssetId,
+    v2MathAppId: PEX_APPS.math,
+    v2MarketsAppId: PEX_APPS.markets,
+    v2TradingAppId: PEX_APPS.trading,
+    v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,
+    v2OrderOpsAppId: PEX_APPS.orderOps,
+      v2MarketXalgoYieldVaultAppId: PEX_APPS.marketXAlgoYieldVault,
+      v2AdminControlAppId: PEX_APPS.adminControl,
+    } as never, sp) as algosdk.Transaction[];
+  }
+
+  // No `as never` here, deliberately. An earlier draft cast this and the cast
+  // silently swallowed five missing fields — including the recall mode and caps,
+  // which are exactly what this assertion exists to check on a close. A cast
+  // that hides a missing argument to a safety check is worse than no check.
+  function checkCloseGroup(group: algosdk.Transaction[], longCap: bigint, shortCap: bigint) {
+    stage("checking");
+    return assertCloseGroup(group, {
+    sender, marketId, side: sideCode,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    sizeUsdDeltaMicro: sizeToClose,
+    positionSizeUsdMicro: livePos.size_usd,
+    fullClose: sizeToClose === livePos.size_usd,
+    acceptablePrice12: acceptablePrice,
+    executionPrice12: quote.executionPrice12,
+    indexPrice12: oracle.indexPrice12,
+    slippageBps,
+    expectedPositionId: livePos.position_id,
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+    yieldRecallMode: BigInt(1),
+    maxLongReceiptAmount: longCap,
+    maxShortReceiptAmount: shortCap,
+    recall: registry.recall,
+    });
+  }
+
+  const budgetLeft = ORACLE_MAX_AGE_SEC - oracle.ageSeconds - (Date.now() - oracleFetchedAt) / 1000;
+  if (budgetLeft < MIN_SIGNING_BUDGET_SEC) {
+    throw new Error("Preparing this took longer than the price is valid for. Nothing was sent — try again.");
+  }
+
+  stage("signing");
+  const signed = await signTransactions(built.map((t) => algosdk.encodeUnsignedTransaction(t)));
+  const blobs = signed.filter((s): s is Uint8Array => !!s);
+  if (blobs.length !== built.length) throw new Error("Signing cancelled.");
+
+  stage("submitting");
+  const txId = built[0].txID();
+  try {
+    await algod.sendRawTransaction(blobs).do();
+  } catch (e) {
+    throw new SubmissionUnknownError(txId, e instanceof Error ? e.message : String(e));
+  }
+
+  stage("confirming");
+  let outcome: OpenOutcome = "unknown";
+  let reason: string | undefined;
+  try {
+    await algosdk.waitForConfirmation(algod, txId, CONFIRM_ROUNDS);
+    outcome = "confirmed";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/^Transaction Rejected:/i.test(msg)) {
+      outcome = "rejected";
+      reason = msg.replace(/^Transaction Rejected:\s*/i, "");
+    } else {
+      outcome = "unknown";
+      reason = msg;
+    }
+  }
+  return {
+    txId, baseOrderId: livePos.position_id, checks: assertion.checked,
     outcome, reason, confirmed: outcome === "confirmed",
   };
 }

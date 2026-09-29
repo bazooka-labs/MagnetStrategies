@@ -212,7 +212,8 @@ const shownClose = (): DisplayedClose => ({
   executionPrice12: EXEC, indexPrice12: INDEX, slippageBps: 50,
   expectedPositionId: POS_ID,
   oracleMessage: ORACLE_MSG, oracleSignature: ORACLE_SIG,
-  yieldRecallMode: BigInt(0), maxLongReceiptAmount: BigInt(0), maxShortReceiptAmount: BigInt(0),
+  yieldRecallMode: BigInt(0), maxLongReceiptAmount: BigInt(0), recall: { accounts: [], assets: [], apps: [] },
+    maxShortReceiptAmount: BigInt(0),
 });
 
 describe("assertCloseGroup", () => {

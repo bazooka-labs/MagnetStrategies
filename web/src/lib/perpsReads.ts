@@ -178,8 +178,16 @@ export const usd = (raw: bigint): number => Number(raw) / Number(USD_SCALE);
 // TextEncoder rather than Buffer: this runs in the browser, and the prefixes are
 // ASCII so the two are byte-identical. Avoids depending on a Node global reaching
 // the client bundle at all.
-const boxKey = (prefix: string, marketId: number): Uint8Array =>
-  new Uint8Array([...new TextEncoder().encode(prefix), ...algosdk.encodeUint64(BigInt(marketId))]);
+const boxKey = (prefix: string, parts: number | number[]): Uint8Array => {
+  // Most PEX boxes are keyed by market alone; a few — `yc2:`, `my2:` — carry an
+  // asset id after it. One helper rather than two so the key layout lives in a
+  // single place.
+  const ids = Array.isArray(parts) ? parts : [parts];
+  return new Uint8Array([
+    ...new TextEncoder().encode(prefix),
+    ...ids.flatMap((id) => [...algosdk.encodeUint64(BigInt(id))]),
+  ]);
+};
 
 function decodeWords<T extends readonly string[]>(raw: Uint8Array, fields: T): Record<T[number], bigint> {
   const words = Math.floor(raw.length / 8);
@@ -197,9 +205,9 @@ function decodeWords<T extends readonly string[]>(raw: Uint8Array, fields: T): R
 }
 
 async function readBox<T extends readonly string[]>(
-  algod: algosdk.Algodv2, appId: number, prefix: string, marketId: number, fields: T,
+  algod: algosdk.Algodv2, appId: number, prefix: string, parts: number | number[], fields: T,
 ): Promise<Record<T[number], bigint>> {
-  const res = await algod.getApplicationBoxByName(appId, boxKey(prefix, marketId)).do();
+  const res = await algod.getApplicationBoxByName(appId, boxKey(prefix, parts)).do();
   return decodeWords(res.value, fields);
 }
 
@@ -816,4 +824,173 @@ export async function readOrders(
     a.created_at === b.created_at
       ? (a.owner_order_id < b.owner_order_id ? -1 : 1)
       : (a.created_at > b.created_at ? -1 : 1));
+}
+
+// ── The market-yield registry ───────────────────────────────────────────────
+
+/**
+ * `mxac:` — the xALGO strategy config, on the xALGO yield vault.
+ *
+ * Declared in the manifest as `market_xalgo_strategy_config`, 96 bytes.
+ * Only the first four fields are read; the rest are allocation and slippage
+ * policy the recall path does not consult.
+ */
+const XALGO_STRATEGY_FIELDS = [
+  "schema_version", "market_id", "consensus_app_id", "xalgo_asset_id",
+  "max_strategy_allocation_bps", "target_strategy_allocation_bps",
+  "max_allocate_amount_per_call", "max_recall_amount_per_call",
+  "min_action_amount", "max_receipt_burn_per_action",
+  "routine_recall_slippage_bps", "emergency_recall_slippage_bps",
+] as const;
+
+/** `yc2:` — the Folks strategy config, keyed by market AND asset. */
+const YIELD_STRATEGY_FIELDS = [
+  "schema_version", "market_id", "asset_id", "folks_pool_app_id", "f_asset_id",
+  "max_strategy_allocation_bps", "max_lending_market_utilization_bps",
+  "max_pdex_share_of_lending_pool_bps", "max_observation_age_seconds",
+  "target_strategy_allocation_bps", "max_allocate_amount_per_call",
+  "max_recall_amount_per_call", "min_action_amount", "max_receipt_burn_per_action",
+  "routine_recall_slippage_bps", "emergency_recall_slippage_bps",
+] as const;
+
+/**
+ * What the SDK calls a `marketYieldRegistry`, built from chain.
+ *
+ * ── Why this exists rather than a call to Ultrade ───────────────────────────
+ * Closing a position requires a yield recall — confirmed by Ultrade, and
+ * confirmed by simulation, where `yieldRecallMode: 0` fails at `inner tx 0` on a
+ * live position. The SDK's supported way to get the recall inputs is
+ * `prepareV2DecreaseOrCloseInput`, which POSTs to
+ * `/v2/market-yield/action-recall-plan` on Ultrade's API.
+ *
+ * We do not take that dependency, and the reason is specific rather than
+ * ideological. The one external read this product already makes — the oracle —
+ * is a **static published file**: no server, and no request that can return a
+ * different answer to different callers. A live endpoint whose response feeds
+ * into a group the user then signs is a different trust shape.
+ *
+ * It turns out not to be necessary. Everything the SDK reads out of that
+ * registry is configuration — app ids, asset ids and addresses — and all of it
+ * is on chain:
+ *
+ * - app ids: already pinned in `PEX_APPS`
+ * - `mxac:` on the xALGO vault: the consensus app and the xALGO asset
+ * - `yc2:` on the yield vault: the Folks pool and its f-asset
+ * - the Folks pool's own `pm` global state: the pool manager
+ * - the `pr` box on the consensus app: the proposer addresses
+ *
+ * **The proposers are mandatory and were the hard part.** Without them a close
+ * fails in simulation with `unavailable Account …` inside the consensus app at
+ * a `balance` opcode, naming the first address in that box. A subset is not
+ * enough — all of them are needed.
+ *
+ * One value has no on-chain source: `xalgoProviderFeeCreditPerCallMicroAlgos`.
+ * It only raises `flatFeeMicroAlgo`, so overpaying is safe and underpaying
+ * merely fails, and simulation confirms sufficiency before anything is signed.
+ */
+export type YieldRegistry = {
+  markets_app_id: number;
+  market_yield_vault_app_id: number;
+  market_xalgo_yield_vault_app_id: number;
+  market_folks_yield_vault_app_id: number;
+  markets: { market_id: number; index_asset_id: number }[];
+  strategies: Record<string, unknown>[];
+  /**
+   * Everything a recall built from this registry may reference.
+   *
+   * Collected here rather than re-derived by the assertion, so the set that is
+   * ALLOWED and the set that is USED come from one place and cannot drift.
+   */
+  recall: { accounts: string[]; assets: number[]; apps: number[] };
+};
+
+/**
+ * Over-provisioned, because the failure modes are asymmetric.
+ *
+ * Too low and the group underpays its fee and fails; too high and the user pays
+ * a few thousand microALGO more than necessary. Simulation catches the first
+ * before a wallet ever opens, and `MAX_CLOSE_GROUP_FEE_MICRO_ALGO` bounds the
+ * second. Confirmed sufficient at this value against a live position.
+ */
+export const XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO = 20_000;
+
+/** The proposer set the xALGO consensus app checks balances against. */
+async function readXalgoProposers(algod: algosdk.Algodv2, consensusAppId: number): Promise<string[]> {
+  const res = await algod.getApplicationBoxByName(consensusAppId, new TextEncoder().encode("pr")).do();
+  const out: string[] = [];
+  for (let i = 0; i + 32 <= res.value.length; i += 32) {
+    const pk = res.value.slice(i, i + 32);
+    // The box is a fixed-width array; unused slots are zeroed.
+    if (pk.every((b) => b === 0)) continue;
+    out.push(algosdk.encodeAddress(pk));
+  }
+  if (out.length === 0) throw new Error("perps: xALGO consensus app lists no proposers");
+  return out;
+}
+
+/** The Folks pool manager, from the pool application's own `pm` global state. */
+async function readFolksPoolManager(algod: algosdk.Algodv2, poolAppId: number): Promise<number> {
+  const app = await algod.getApplicationByID(poolAppId).do();
+  const entries = (app.params.globalState ?? []) as { key: Uint8Array; value: { bytes?: Uint8Array } }[];
+  for (const e of entries) {
+    if (new TextDecoder().decode(e.key) !== "pm") continue;
+    const b = e.value.bytes;
+    if (!b || b.length < 8) break;
+    return Number(new DataView(b.buffer, b.byteOffset, 8).getBigUint64(0, false));
+  }
+  throw new Error("perps: Folks pool does not publish a pool manager");
+}
+
+/** Assemble the registry for one market. See `YieldRegistry`. */
+export async function readYieldRegistry(
+  algod: algosdk.Algodv2, marketId: number, collateralAssetId: number, indexAssetId: number,
+): Promise<YieldRegistry> {
+  const [xalgo, folks] = await Promise.all([
+    readBox(algod, PEX_APPS.marketXAlgoYieldVault, "mxac:", marketId, XALGO_STRATEGY_FIELDS),
+    readBox(algod, PEX_APPS.marketYieldVault, "yc2:", [marketId, collateralAssetId], YIELD_STRATEGY_FIELDS),
+  ]);
+  const consensusAppId = Number(xalgo.consensus_app_id);
+  const folksPoolAppId = Number(folks.folks_pool_app_id);
+  const [proposers, poolManager] = await Promise.all([
+    readXalgoProposers(algod, consensusAppId),
+    readFolksPoolManager(algod, folksPoolAppId),
+  ]);
+  const fAssetId = Number(folks.f_asset_id);
+  const xalgoAssetId = Number(xalgo.xalgo_asset_id);
+  return {
+    markets_app_id: PEX_APPS.markets,
+    market_yield_vault_app_id: PEX_APPS.marketYieldVault,
+    market_xalgo_yield_vault_app_id: PEX_APPS.marketXAlgoYieldVault,
+    market_folks_yield_vault_app_id: PEX_APPS.marketYieldVault,
+    markets: [{ market_id: marketId, index_asset_id: indexAssetId }],
+    strategies: [
+      {
+        market_id: marketId, asset_id: 0, strategy_kind: 2,
+        xalgo_consensus_app_id: consensusAppId,
+        xalgo_asset_id: Number(xalgo.xalgo_asset_id),
+        xalgo_proposer_addresses: proposers,
+        xalgo_provider_fee_credit_per_call_microalgos: XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO,
+      },
+      {
+        market_id: marketId, asset_id: collateralAssetId, strategy_kind: 1,
+        folks_pool_app_id: folksPoolAppId,
+        folks_pool_manager_app_id: poolManager,
+        underlying_asset_id: collateralAssetId,
+        receipt_asset_id: Number(folks.f_asset_id),
+        f_asset_id: fAssetId,
+      },
+    ],
+    // The closed set the assertion holds a recall to. Derived here, beside the
+    // values that produce it, so the allowed set and the used set are one thing.
+    recall: {
+      accounts: [
+        ...proposers,
+        algosdk.getApplicationAddress(consensusAppId).toString(),
+        algosdk.getApplicationAddress(folksPoolAppId).toString(),
+        algosdk.getApplicationAddress(poolManager).toString(),
+      ],
+      assets: [xalgoAssetId, fAssetId],
+      apps: [consensusAppId, folksPoolAppId, poolManager],
+    },
+  };
 }
