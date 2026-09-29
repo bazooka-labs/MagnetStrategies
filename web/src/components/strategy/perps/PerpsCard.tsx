@@ -1037,6 +1037,12 @@ export function PerpsCard({
             <p className="mt-1 text-xs text-green-300/90">
               Closes for {fmtUsd(view.tpPayoff)} profit before costs
               {view.quickPick?.ok && ` · a ${(view.quickPick.moveBps / 100).toFixed(1)}% price move`}
+              {/* The chip reads "+10%" but the written price is not +10%: the
+                  crossing guard moved it. The profit above is computed from the
+                  price actually written, so it is right — the LABEL is what
+                  would otherwise mislead. */}
+              {view.quickPick?.ok && view.quickPick.clamped
+                && ", nudged out of the no-fill zone next to the current price"}
             </p>
           ) : (
             <p className="mt-1 text-xs text-amber-300/90">

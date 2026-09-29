@@ -76,7 +76,12 @@ export function readNumericInput(raw: string): InputVerdict {
 /**
  * Parse a money string to a finite, non-negative number.
  *
- * Returns null for anything else — empty, partial ("1."), NaN, Infinity.
+ * Returns null for empty, bare ".", any notation outside the whitelist, NaN,
+ * Infinity and negatives. A trailing dot is NOT rejected — `parseMoney("1.")`
+ * returns 1, which is deliberate: it is what someone mid-keystroke has typed,
+ * and refusing it would blank the figures under their cursor. The docstring
+ * used to claim otherwise.
+ *
  * Callers must not substitute 0: "not a number yet" and "zero" lead to
  * different screens.
  */

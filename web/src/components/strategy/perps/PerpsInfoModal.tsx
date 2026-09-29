@@ -12,9 +12,14 @@
 // use, so it reads as a caution rather than as a help link, and the risk
 // section leads inside the modal rather than following the explainer.
 //
-// The permanent disclosures on the card itself are untouched: the liquidation
-// box, "you can lose everything", and the PEX attribution under the button are
-// all still on screen without any interaction.
+// The liquidation box and the PEX attribution stay on the card itself, but
+// this comment used to claim more than that: it said "you can lose everything"
+// was still on screen without any interaction, and since the default stake was
+// removed that is false. A freshly loaded card has an empty amount, so there is
+// no quote, and both explanatory lines inside the liquidation box are
+// suppressed — the box reads "Liquidation —" and nothing else. That sentence
+// now lives only in here, which is a reason to keep this modal easy to reach,
+// not a reason to pretend otherwise.
 
 import { useEffect } from "react";
 import { AlertTriangle, X } from "lucide-react";

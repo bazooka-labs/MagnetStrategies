@@ -283,6 +283,14 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
       <p className="mt-2 text-[10px] leading-relaxed text-white/30">
         {showAdvanced ? "Chart by TradingView, showing Coinbase" : "Candles from Coinbase"} as a
         market reference — not the feed PEX prices from.{" "}
+        {showAdvanced && (
+          // Only in the `title` of the toggle before this, which is hover-only
+          // and absent on touch. A user who read the basic chart's lines and
+          // switched saw a chart with no lines and no explanation.
+          <>Your entry, liquidation and take-profit are <strong className="font-semibold text-white/45">not
+          drawn</strong> in this view — the widget is a third-party iframe and cannot take
+          them. Switch to Basic Chart to see them.{" "}</>
+        )}
         {!showAdvanced && (
           <><span className="text-violet-300/60">Dashed violet</span>, when shown, is PEX&apos;s
             live oracle price — it is absent rather than stale if that price cannot be read or

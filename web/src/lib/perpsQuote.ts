@@ -674,7 +674,19 @@ export function priceForPayoff(quote: OpenQuote, targetUsd: number): bigint | nu
 
 /** A profit chip resolved against a quote, or the reason it was not. */
 export type QuickPick =
-  | { ok: true; price12: bigint; moveBps: number }
+  | {
+      ok: true; price12: bigint; moveBps: number;
+      /**
+       * True when the crossing guard moved the target off the chip's number.
+       *
+       * The chip still reads "+10%" but the price written is not +10%, so the
+       * profit shown will not match the label. Measured across 3,060 swept
+       * resolutions it fires on 16 (0.52%) — every one the +10% chip on a $6
+       * ALGO long at 9.5x-11x, which is the regime of the only real trade this
+       * product has made. Reported rather than silent.
+       */
+      clamped: boolean;
+    }
   | { ok: false; reason: "unpayable" | "unreachable"; moveBps: number | null };
 
 /**
@@ -722,12 +734,13 @@ export function quickPickPrice(quote: OpenQuote, targetUsd: number): QuickPick {
   const b = displayTakeProfitBounds(quote);
   const price12 = wanted < b.minPrice12 ? b.minPrice12
     : wanted > b.maxPrice12 ? b.maxPrice12 : wanted;
+  const clamped = price12 !== wanted;
   // Reported on the price actually WRITTEN, not on `wanted`. Measured on the
   // pre-fix version: the clamp fired on 16 of 3,060 swept resolutions, every
   // one the +10% chip on a $6 ALGO long at 9.5x-11x — the exact regime of the
   // only real trade — where the card read "a 0.98% price move" over a price
   // that moves 1.05%.
-  return { ok: true, price12, moveBps: moveOf(price12) };
+  return { ok: true, price12, moveBps: moveOf(price12), clamped };
 }
 
 /**
@@ -763,9 +776,17 @@ export function aggregateCloseOutputs(
   add(raw.pnl_output_amount, raw.pnl_output_asset_id);
   add(raw.claimable_long_token_output, core.long_asset_id);
   add(raw.claimable_short_token_output, core.short_asset_id);
+  // Sorted by asset id, deterministically. NOT by raw amount: micro-units of
+  // different assets are not comparable, and doing so put "16.251005 ALGO"
+  // ($2.14) ahead of "5.568338 USDC" ($5.57) — the leading, largest-LOOKING
+  // figure being the smaller one. Display order by value belongs where the
+  // prices are; see `valueCloseOutputs` and the panel.
+  //
+  // The old comparator also returned -1 for equal amounts, which is not a valid
+  // ordering. Harmless at two or three elements, wrong in principle.
   return [...byAsset.entries()]
     .map(([assetId, amount]) => ({ assetId, amount }))
-    .sort((a, b) => (b.amount > a.amount ? 1 : -1));
+    .sort((a, b) => a.assetId - b.assetId);
 }
 
 /**

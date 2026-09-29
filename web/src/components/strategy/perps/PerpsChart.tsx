@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
+import { formatPriceUsd } from "@/lib/perpsQuote";
 import { PEX_APPS } from "@/lib/perps";
 import {
   CHART_RANGES, ChartUnavailableError, candleInterval, changePct, defaultVisible,
@@ -42,10 +43,17 @@ const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
 
-/** Axis labels want fewer digits than a quote does. */
-const fmtAxis = (p: number) =>
-  p >= 1000 ? p.toLocaleString("en-US", { maximumFractionDigits: 0 })
-  : p >= 1 ? p.toFixed(2) : p.toFixed(5);
+/**
+ * Axis and marker labels, at the card's precision.
+ *
+ * This was a second, coarser copy of the rule — five decimals below $1 where
+ * `priceDisplayDecimals` says six — so the chart rendered a card value of
+ * $0.131072 as 0.13107 on its own liquidation badge. `perpsQuote` calls itself
+ * "the single source of truth for price precision… it lives here rather than
+ * in the card", and a second copy is what let display precision drift away from
+ * the bound it was printing once before (H2).
+ */
+const fmtAxis = (p: number) => formatPriceUsd(p).replace("$", "");
 
 /**
  * Axis labels: enough to place a candle in the span, not enough to clutter.
@@ -176,11 +184,18 @@ export function PerpsChart({ marketId, label, range, lines = [] }: Props) {
   }, []);
 
   /**
-   * PEX's live index, from the SAME signed payload the card quotes from.
+   * PEX's live index, from the same signed SOURCE the card quotes from — but
+   * its own fetch, not the same call.
+   *
+   * The distinction matters and the comment used to get it wrong by saying
+   * "the SAME signed payload". `getOraclePayload` is uncached (`no-store`), so
+   * this runs on its own ten-second interval alongside `usePerpsMarket`'s. Same
+   * publisher, same verification, two reads — so the line and the card can
+   * differ by up to one refresh of price movement.
    *
    * Deliberately not the unsigned `latest-prices` bundle: this line's whole job
    * is to be the number the trade is priced against, and sourcing it elsewhere
-   * would let it drift from the card by exactly the amount nobody would notice.
+   * would let it drift by much more than that.
    */
   const [indexUsd, setIndexUsd] = useState<number | null>(null);
   useEffect(() => {

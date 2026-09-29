@@ -283,7 +283,19 @@ export function PositionsPanel() {
               {p.close && p.close.outputs.length > 0 && (
                 <p className="mt-2 text-[11px] text-white/45">
                   You receive{" "}
-                  {p.close.outputs.map((o, i) => (
+                  {/* Collateral leg first, then the rest by asset id.
+                      NOT by raw amount: micro-units of different assets are not
+                      comparable, and sorting that way put "16.251005 ALGO"
+                      ($2.14) ahead of "5.568338 USDC" ($5.57) — the leading,
+                      largest-LOOKING figure being the smaller one.
+                      Ranking by true value would need per-asset prices, which
+                      this component does not have. Leading with the asset the
+                      user deposited fixes the misreading without inventing an
+                      ordering we cannot justify. */}
+                  {[...p.close.outputs].sort((a, b) =>
+                    (a.assetId === COLLATERAL_ASSET_ID ? -1 : b.assetId === COLLATERAL_ASSET_ID ? 1
+                      : a.assetId - b.assetId),
+                  ).map((o, i) => (
                     <span key={o.assetId}>
                       {i > 0 && <span className="text-white/25"> + </span>}
                       <span className="tabular-nums text-white/75">

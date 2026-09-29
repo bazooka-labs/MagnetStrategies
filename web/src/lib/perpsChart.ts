@@ -99,8 +99,9 @@ export const rangeGranularity = (r: ChartRange): number =>
 /**
  * How long one candle covers, for display.
  *
- * Worth stating on screen: a 1W chart is built from hourly candles, and a
- * reader who assumes the bars are daily is misreading every one of them.
+ * Worth stating on screen: the 4H bars are aggregated from hourly candles and
+ * the 1W bars from daily ones, so a reader who assumes each bar is a native
+ * exchange candle is misreading the granularity.
  */
 export function candleInterval(r: ChartRange): string {
   const g = rangeGranularity(r);

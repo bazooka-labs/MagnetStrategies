@@ -241,9 +241,18 @@ two together rather than separately.
   [AUDIT.md](./AUDIT.md#open): a tamper test against a transfer must use an
   **opted-in** receiver, or "rejected" only means the receiver could not hold
   the asset.
-- **LOW 8–12 from audit 7**, deferred and listed in
-  [AUDIT-7-REMEDIATION.md](./AUDIT-7-REMEDIATION.md).
-- **`quoteClose`'s own assembly has no test** — the "funding not subtracted
-  twice" rule cannot be reached through the extracted functions.
+- ~~LOW 8–12 from audit 7.~~ **Closed 2026-09-29.** The chart now uses the
+  card's `formatPriceUsd` instead of a second, coarser copy; the quick-pick
+  clamp says so instead of leaving the chip lit against a target it did not
+  deliver; payout legs lead with the collateral asset rather than being ordered
+  by raw micro-amounts across different assets; the advanced chart states that
+  position lines are not drawn there; and the four false comments are corrected
+  — including `parseMoney("1.")`, which returns 1 and not null.
+- ~~`quoteClose`'s own assembly has no test.~~ **Closed 2026-09-29** —
+  `perpsCloseAssembly.test.ts` mocks the SDK and covers the mapping layer: that
+  funding and borrowing are NOT subtracted from the payout, that funding is
+  reported signed from `collateral_funding_net_amount` rather than the gross
+  field, that `collateral_delta` is ignored entirely, the `platform_fee_amount`
+  fallback, signed impact, and withholding `payoutUsd` on an unpriceable leg.
 - **Everything after audit 7's remediation is unaudited**, including the orders
   read path shipped in `159e6e4`.
