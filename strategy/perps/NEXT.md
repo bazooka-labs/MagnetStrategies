@@ -104,12 +104,37 @@ plus `mxac:` and `yc2:`, over-provision the fee credit, and keep the API out of
 the signing path entirely. Ultrade's answer then confirms a constant rather than
 unblocking the build.
 
-**Not finished.** The build currently stops at `Input is not a 64-bit unsigned
-integer`, somewhere in the field plumbing that has not been isolated, and it is
-not yet established whether `xalgo_proposer_addresses` — which the xALGO branch
-appends to `accounts` and which is in neither box — is needed in practice or
-only when proposers must be named. Both are ordinary debugging against
-simulation, not open questions.
+### It works — a close simulated `ok` with a chain-derived registry (2026-09-29)
+
+**Seven transactions, `simulate ok: true`, on a live ALGO/USD long, with no call
+to Ultrade's API.** Every registry value came from chain:
+
+| Value | Where it came from | Live |
+|---|---|---|
+| markets / yield vault / xALGO vault app ids | pinned `PEX_APPS` | — |
+| `xalgo_consensus_app_id`, `xalgo_asset_id` | `mxac:` on the xALGO vault | `1134695678`, `1134696561` |
+| `folks_pool_app_id`, `f_asset_id` | `yc2:` on the yield vault | `971372237`, `971384592` |
+| `folks_pool_manager_app_id` | the Folks pool app's own `pm` global state | `971350278` |
+| `xalgo_proposer_addresses` | **the `pr` box on the consensus app** | 6 addresses |
+| `xalgo_provider_fee_credit_per_call_microalgos` | invented, over-provisioned at 20,000 | — |
+
+**The proposers were the last missing piece and they are mandatory.** Without
+them the simulation fails with `unavailable Account VVU2LEKH…` inside the
+consensus app at a `balance` opcode — and that address is the first entry in the
+`pr` box. Passing a subset is not enough; it needed all six. With none: fails.
+With all: passes.
+
+**Two things to handle when building this:**
+
+1. **The group fee is 120,000 µALGO, which is exactly
+   `MAX_GROUP_FEE_MICRO_ALGO`.** Our own assertion would sit right on the edge
+   of refusing a correct close. That cap was set for the open path and needs a
+   close-specific bound, chosen with headroom and justified — not merely raised
+   until it passes.
+2. **The short-side recall cap was 0** in the passing run, matching what the
+   real take-profit execution did on chain: it touched the xALGO consensus app
+   and never Folks, because the USDC leg had enough idle balance. Whether a
+   non-zero short cap is ever required is not established.
 
 **The other things to settle, all read-only:**
 
