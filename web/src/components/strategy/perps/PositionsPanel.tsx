@@ -95,6 +95,29 @@ export function PositionsPanel() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  /**
+   * A take-profit bound to a position the user holds is NOT a separate order.
+   *
+   * It was listed under "Resting orders" alongside the position it protects,
+   * which reads as the same trade appearing twice — reported exactly that way
+   * after a market open, where the attached take-profit is created by the same
+   * signature as the position.
+   *
+   * So orders split in two. Protection on a live position belongs ON that
+   * position. What is left in "Resting orders" is what the name implies:
+   * something waiting that is not a position yet — a limit entry — or a reduce
+   * order bound to nothing, which still holds escrow and therefore still has to
+   * be visible.
+   */
+  const livePositionIds = new Set(positions.map((p) => String(p.position.position_id)));
+  const protectionFor = (positionId: bigint) =>
+    orders.filter((o) => Number(o.order.order_kind) !== ORDER_KIND.openLimit
+      && o.order.position_id === positionId && positionId > BigInt(0));
+  const restingOrders = orders.filter((o) =>
+    Number(o.order.order_kind) === ORDER_KIND.openLimit
+    || o.order.position_id === BigInt(0)
+    || !livePositionIds.has(String(o.order.position_id)));
+
   const [closing, setClosing] = useState<string | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
 
@@ -174,7 +197,7 @@ export function PositionsPanel() {
         <p className="mt-3 text-sm text-white/45">
           {/* A resting limit entry is not a position, and saying "nothing here"
               over one would read as though it had vanished. */}
-          {orders.length > 0
+          {restingOrders.length > 0
             ? "You have no open positions yet — your resting orders are below."
             : "You have no open positions. Anything you open will appear here."}
         </p>
@@ -348,6 +371,35 @@ export function PositionsPanel() {
                 </p>
               )}
 
+              {/* The orders protecting THIS position, shown on it rather than
+                  listed separately as though they were trades of their own. */}
+              {protectionFor(p.position.position_id).map(({ order, blockers }) => {
+                const armed = !blockers.some((b) => b !== "not_crossed");
+                const kind = Number(order.order_kind) === ORDER_KIND.takeProfit
+                  ? "Take profit" : "Stop loss";
+                const busy = cancelling === String(order.owner_order_id);
+                return (
+                  <div key={String(order.owner_order_id)}
+                    className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      armed ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-200"}`}>
+                      {armed ? "Armed" : "Check"}
+                    </span>
+                    <span className="text-[11px] text-white/60">
+                      {kind} at{" "}
+                      <span className="tabular-nums text-white/85">
+                        {fmtPrice(price12ToUsd(order.trigger_price))}
+                      </span>
+                    </span>
+                    <button onClick={() => doCancel(order.owner_order_id, [])}
+                      disabled={!!cancelling || !!closing}
+                      className="ml-auto text-[10px] text-white/35 underline underline-offset-2 transition-colors hover:text-white/70 disabled:opacity-40">
+                      {busy ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                );
+              })}
+
               {/* ── Closing ──────────────────────────────────────────────────
                   Enabled only on a quote PEX has said it would accept. A button
                   that offers to close a position PEX is currently refusing is a
@@ -376,13 +428,13 @@ export function PositionsPanel() {
           happened. Rendered whenever there are any, including when there are no
           positions at all — a limit entry with no position yet is exactly the
           case where the user most needs to see something. */}
-      {orders.length > 0 && (
+      {restingOrders.length > 0 && (
         <div className="mt-5">
           <h3 className="text-xs font-medium uppercase tracking-wide text-white/45">
             Resting orders
           </h3>
           <div className="mt-2 space-y-2">
-            {orders.map(({ order, blockers, cleanupReason, indexUsd }) => {
+            {restingOrders.map(({ order, blockers, cleanupReason, indexUsd }) => {
               // First match wins; the list is ordered so "your money is stuck"
               // outranks "waiting". No match at all means nothing is blocking
               // it, which is the moment before a keeper takes it.
