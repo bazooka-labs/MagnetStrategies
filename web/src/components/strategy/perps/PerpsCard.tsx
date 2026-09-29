@@ -46,7 +46,6 @@ import {
   type OpenQuote,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
-import { oiHeadroomUsd, sideOiUsd } from "@/lib/perpsReads";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
 import { ALGOD_URLS } from "@/lib/constants";
@@ -145,8 +144,8 @@ type CardSnapshot = {
   /** Market or limit, and the trigger — the labels below depend on both. */
   isLimit: boolean;
   trigger12: bigint;
-  /** This side's open interest against its cap. Explains the leverage ceiling. */
-  sideOi: { usedUsd: number; capUsd: number; roomUsd: number; fullPct: number } | null;
+  /** Which way funding flows, and the paying side's annualised rate. */
+  funding: { annualPct: number; youPay: boolean } | null;
 };
 
 export type PerpsCardProps = {
@@ -336,31 +335,41 @@ export function PerpsCard({
   }, [bar, ceilingUsd, tradable, barPos]);
 
   /**
-   * How full this side of the market is.
+   * Which side funding is flowing FROM, and how fast.
    *
-   * Not new data — `sideOiUsd` and `oiHeadroomUsd` already back the risk bar's
-   * ceiling. The card said "limited by oi headroom" without ever showing the
-   * number behind it, which is the difference between naming a constraint and
-   * explaining one.
+   * An earlier version of this showed "this side is 80% full", which measures
+   * capacity and not benefit — it told a user how crowded the side was without
+   * telling them what it costs or pays to be there.
    *
-   * It also answers a question the UI otherwise cannot: why the same stake
-   * reaches a lower leverage on one side than the other. Measured today,
-   * ALGO/USD was 59.9% full long and 80.4% short, which is exactly why a short
-   * refused at a multiple the long accepted.
+   * ── What is read, and what is derived ─────────────────────────────────────
+   * `saved_factor_side` is PEX's own statement of which side pays: 1 long,
+   * 2 short, 0 neither. That is read, not inferred from the imbalance.
+   *
+   * The rate is `saved_factor_milli_bps` annualised over
+   * `funding_interval_seconds`. **Verified against actual accrual** rather than
+   * trusted: on 2026-09-29 the factor implied 74.9%/yr and the two live short
+   * positions had accrued 75.6% and 72.9%, measured as the drift in their
+   * `funding_fee_per_size` index over their holding period. Two independent
+   * confirmations on the paying side.
+   *
+   * ── Why the RECEIVING side gets no number ────────────────────────────────
+   * What the other side receives is not this rate. It depends on
+   * `opposing_trader_share_bps` (2500 — a quarter) and on the size ratio
+   * between the sides, and the same measurement showed longs accruing 36.6%,
+   * 20.3%, 11.6% and several zeroes, the zeroes being staleness rather than a
+   * real zero (the index only advances when `update_funding` runs). So the
+   * direction is stated and the receiving figure is not invented.
    */
-  const sideOi = useMemo(() => {
+  const funding = useMemo(() => {
     if (!data) return null;
-    const used = sideOiUsd(data.state.oi, side);
-    const cap = side === "long"
-      ? data.state.risk.max_open_interest_long
-      : data.state.risk.max_open_interest_short;
-    if (cap <= BigInt(0)) return null;
-    return {
-      usedUsd: Number(used) / 1e6,
-      capUsd: Number(cap) / 1e6,
-      roomUsd: Number(oiHeadroomUsd(data.state.risk, data.state.oi, side)) / 1e6,
-      fullPct: (Number(used) / Number(cap)) * 100,
-    };
+    const factor = Number(data.state.adaptive.saved_factor_milli_bps);
+    const payingSide = Number(data.state.adaptive.saved_factor_side);
+    const interval = Number(data.state.risk.funding_interval_seconds);
+    if (factor <= 0 || interval <= 0 || (payingSide !== 1 && payingSide !== 2)) return null;
+    // milli-bps is 1e-7 as a fraction; annualise over the interval.
+    const annualPct = (factor / 1e7) * (31_536_000 / interval) * 100;
+    const youPay = payingSide === (side === "long" ? 1 : 2);
+    return { annualPct, youPay };
   }, [data, side]);
 
   const trigger12 = usdToPrice12(triggerPrice) ?? BigInt(0);
@@ -579,7 +588,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
-    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, sideOi,
+    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -950,17 +959,24 @@ export function PerpsCard({
             Position size {fmtUsd(view.notional)} · limited by {view.binding.replace(/_/g, " ")}
           </p>
         )}
-        {/* The constraint, in numbers. Shown whenever the side is meaningfully
-            used rather than always: at 12% full it is noise, and at 80% it is
-            the reason the slider stops where it does. */}
-        {view.sideOi && view.sideOi.fullPct >= 25 && (
-          <p className="mt-1 text-[11px] text-white/35">
-            {side === "long" ? "Longs" : "Shorts"} on this market are{" "}
-            <span className={view.sideOi.fullPct >= 80 ? "text-amber-300/80" : "text-white/55"}>
-              {view.sideOi.fullPct.toFixed(0)}% full
-            </span>{" "}
-            ({fmtUsd(view.sideOi.roomUsd)} of room left). A fuller side means less
-            leverage available here.
+        {/* Funding, as a direction and a rate — the thing that actually
+            changes whether this side is worth being on. */}
+        {view.funding && (
+          <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+            {view.funding.youPay ? (
+              <>
+                <span className="text-amber-300/80">
+                  Holding this side costs about {view.funding.annualPct.toFixed(0)}% a year
+                </span>{" "}
+                in funding, paid continuously to the other side while the position is open.
+              </>
+            ) : (
+              <>
+                <span className="text-green-300/80">Funding is in your favour here</span> — the
+                other side is paying about {view.funding.annualPct.toFixed(0)}% a year, and you
+                receive a share of it. Both the rate and the direction move with the market.
+              </>
+            )}
           </p>
         )}
       </div>
