@@ -11,11 +11,10 @@ no user funds, and holds no protocol role.
 risk-bar solver, oracle verification, the quote layer, group construction and the
 signing flow, including an attached take-profit. The **full lifecycle has now run on
 MainNet** — opened, and closed by its own take-profit, unattended, 2026-09-29.
-**Limit orders are complete** — place, read and cancel, each with its own group
-assertion (2026-09-29). Positions themselves are still **read-only in this UI**:
-the close write path is unblocked (Ultrade answered the yield-recall question —
-always recall) but not yet built, so a position still exits only by its
-take-profit firing or by liquidation.
+**The write paths are complete** (2026-09-29) — open at market or as a resting
+limit order, read, cancel and **close**, each with its own group assertion.
+Closing verified across every live MainNet position. A take-profit is now
+optional rather than mandatory, which it could not be until closing existed.
 No contract is deployed because none exists. **The product name is provisional** —
 "Perps" describes the instrument, not the product.
 

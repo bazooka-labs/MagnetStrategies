@@ -893,6 +893,8 @@ export type YieldRegistry = {
   market_yield_vault_app_id: number;
   market_xalgo_yield_vault_app_id: number;
   market_folks_yield_vault_app_id: number;
+  /** See the value's own note — this one decided two of ten closes. */
+  action_recall_uses_router: boolean;
   markets: { market_id: number; index_asset_id: number }[];
   strategies: Record<string, unknown>[];
   /**
@@ -962,6 +964,25 @@ export async function readYieldRegistry(
     market_yield_vault_app_id: PEX_APPS.marketYieldVault,
     market_xalgo_yield_vault_app_id: PEX_APPS.marketXAlgoYieldVault,
     market_folks_yield_vault_app_id: PEX_APPS.marketYieldVault,
+    /**
+     * **True, and this was the last close bug.**
+     *
+     * When set, a Folks recall routes through the xALGO vault, and the closure
+     * puts that vault in the call's foreign apps. Left false — the SDK's
+     * default — a close whose only recall is the collateral leg fails in
+     * simulation with `unavailable App 3690309169` inside Trading, because
+     * Trading calls the vault that nothing referenced.
+     *
+     * It only showed up on positions whose payout is USDC alone: those have no
+     * ALGO leg, so the xALGO strategy never enters the reference set by the
+     * other route. Positions paying out in both assets passed either way, which
+     * is why two of ten failed and the rest looked fine.
+     *
+     * Verified both directions on a live position: false fails, true simulates
+     * ok in six transactions. Adding a reference cannot widen what the group can
+     * do — the vault is a pinned app, and `recall` below still bounds the set.
+     */
+    action_recall_uses_router: true,
     markets: [{ market_id: marketId, index_asset_id: indexAssetId }],
     strategies: [
       {

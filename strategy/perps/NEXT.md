@@ -32,123 +32,39 @@ Three things that settles:
 
 ---
 
-## 1. Close write path — UNBLOCKED, and now the only large gap
+## 1. Close write path — **BUILT 2026-09-29**
 
-**Ultrade, 2026-09-29:** *"generally speaking, I would suggest always using
-recall because most of the time the yield deployment doesn't leave much idle
-assets… that's the safest way to ship without complicating the code or
-waiting."*
+Place, read, cancel and now **close**. Every live MainNet position closes:
+**20 of 20** attempts — ten positions, full and half, both markets, both sides —
+clear every guard, the assertion and simulation and reach the wallet.
 
-That retires the question in
-[YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md),
-and the answer is *less* code than the alternative. `yieldRecallMode` is binary,
-and the SDK already derives it (`capsByAsset.some(cap => cap > 0n) ? 1 : 0`).
-Always passing `1` skips the derivation; the SDK then attaches the recall
-resource carriers itself — router → Folks vault → provider return path — and
-adds the provider fee credit.
+**No call to Ultrade's API.** `readYieldRegistry` builds the SDK's
+`marketYieldRegistry` from chain; see its own docstring for where each value
+comes from. Only `xalgo_provider_fee_credit_per_call_microalgos` is invented,
+and it only raises `flatFeeMicroAlgo`, so overpaying is safe and simulation
+confirms sufficiency before a wallet opens.
 
-**Why this goes first.** A position still has exactly two exits: the take-profit
-fires, or it liquidates. Everything else on this list is now built, so this is
-the last large capability missing — and the one that every open position today
-is waiting on. It is also what makes the "cancel your only exit" warning in the
-orders panel stop being necessary.
+Three things decided this, each found by simulation rather than reasoning:
 
-### Blocked on one value (2026-09-29)
+1. **The proposer set is mandatory.** Without it, `unavailable Account …` inside
+   the consensus app at a `balance` opcode. They are in the `pr` box on that
+   app, and a subset is not enough.
+2. **`action_recall_uses_router` must be true.** Left at the SDK's default of
+   false, a close whose only recall is the collateral leg fails with
+   `unavailable App 3690309169` — Trading calls the xALGO vault and nothing has
+   referenced it. It only showed on positions paying out in USDC alone, because
+   those have no ALGO leg to bring the vault in by the other route. That is why
+   two of ten failed and the rest looked fine.
+3. **Two recall shapes, tightest first.** Recalling both legs can squeeze the
+   vault out of the reference budget on larger positions; the index leg alone
+   fits. Both are asserted and simulated before signing, so the fallback costs a
+   round trip and risks nothing.
 
-Investigated to the point of a precise question, which is drafted in
-[CLOSE-RECALL-QUESTION-FOR-ULTRADE.md](./CLOSE-RECALL-QUESTION-FOR-ULTRADE.md)
-and **not yet sent**.
+The assertion is **tighter** here than elsewhere: because we build the registry,
+`DisplayedClose` carries the closed set of accounts, assets and apps a recall may
+touch, and anything outside it fails.
 
-**Recall really is required**, as Ultrade said: `decrease_or_close` with
-`yieldRecallMode: 0` builds and then fails in simulation at `inner tx 0` on a
-live ALGO/USD long. The no-recall path is not an option even when it looks like
-one.
-
-With `yieldRecallMode: 1` the build throws `marketYieldRegistry is required for
-xALGO action recall`. That fires whenever a recall cap lands on native ALGO —
-always, for an ALGO/USD long, because the PnL leg pays in ALGO. The path then
-reads **exactly one field**, `xalgo_provider_fee_credit_per_call_microalgos`,
-and uses it only to raise `flatFeeMicroAlgo`.
-
-Everything else is already local: the recall caps come from our own close
-quote's per-asset outputs, and `mxac:` carries the rest of the xALGO strategy
-config on chain. That one fee constant is in no box we can find.
-
-The SDK's supported route is a POST to `/v2/market-yield/action-recall-plan`.
-That is a **different trust shape from the oracle** — the oracle is a static
-published file with no server in the path, while this is a live service whose
-response would feed a group the user signs.
-
-### The registry is constructible from chain — build it, do not fetch it
-
-Traced further on 2026-09-29, and the API turns out to be avoidable. Everything
-`marketYieldResourceClosureFromRegistry` reads is app ids, asset ids and box
-keys — configuration, not live state — and every piece is either already pinned
-or sitting in a box:
-
-| Registry field | Source |
-|---|---|
-| `markets_app_id`, `market_yield_vault_app_id`, `market_xalgo_yield_vault_app_id` | already pinned in `PEX_APPS` |
-| `xalgo_consensus_app_id`, `xalgo_asset_id` | **`mxac:`** on the xALGO vault — read live: `1134695678` and `1134696561` |
-| `folks_pool_app_id`, `f_asset_id` | **`yc2:`** on the yield vault — read live: `971372237` and `971384592` |
-| `market_yield_recall_flat_fee_micro_algos`, `action_recall_uses_router` | have SDK defaults |
-| `xalgo_provider_fee_credit_per_call_microalgos` | **the only one with no on-chain source** |
-
-And that last one only raises `flatFeeMicroAlgo`. **Overpaying a fee is safe;
-underpaying just fails**, and our own `MAX_GROUP_FEE_MICRO_ALGO` already bounds
-how far it can go. So it can be over-provisioned and the number confirmed by
-simulation rather than by asking — the chain says whether it is enough.
-
-So the recommended shape is: derive the registry locally from the pinned ids
-plus `mxac:` and `yc2:`, over-provision the fee credit, and keep the API out of
-the signing path entirely. Ultrade's answer then confirms a constant rather than
-unblocking the build.
-
-### It works — a close simulated `ok` with a chain-derived registry (2026-09-29)
-
-**Seven transactions, `simulate ok: true`, on a live ALGO/USD long, with no call
-to Ultrade's API.** Every registry value came from chain:
-
-| Value | Where it came from | Live |
-|---|---|---|
-| markets / yield vault / xALGO vault app ids | pinned `PEX_APPS` | — |
-| `xalgo_consensus_app_id`, `xalgo_asset_id` | `mxac:` on the xALGO vault | `1134695678`, `1134696561` |
-| `folks_pool_app_id`, `f_asset_id` | `yc2:` on the yield vault | `971372237`, `971384592` |
-| `folks_pool_manager_app_id` | the Folks pool app's own `pm` global state | `971350278` |
-| `xalgo_proposer_addresses` | **the `pr` box on the consensus app** | 6 addresses |
-| `xalgo_provider_fee_credit_per_call_microalgos` | invented, over-provisioned at 20,000 | — |
-
-**The proposers were the last missing piece and they are mandatory.** Without
-them the simulation fails with `unavailable Account VVU2LEKH…` inside the
-consensus app at a `balance` opcode — and that address is the first entry in the
-`pr` box. Passing a subset is not enough; it needed all six. With none: fails.
-With all: passes.
-
-**Two things to handle when building this:**
-
-1. **The group fee is 120,000 µALGO, which is exactly
-   `MAX_GROUP_FEE_MICRO_ALGO`.** Our own assertion would sit right on the edge
-   of refusing a correct close. That cap was set for the open path and needs a
-   close-specific bound, chosen with headroom and justified — not merely raised
-   until it passes.
-2. **The short-side recall cap was 0** in the passing run, matching what the
-   real take-profit execution did on chain: it touched the xALGO consensus app
-   and never Folks, because the USDC leg had enough idle balance. Whether a
-   non-zero short cap is ever required is not established.
-
-**The other things to settle, all read-only:**
-
-1. **Group size.** Recall adds carriers — the SDK budgets
-   `3 * strategyAssets.length` for the round trip — on top of a close group that
-   already carries math and budget calls. SPEC puts the ceiling at 16
-   transactions. If close-with-recall does not fit, that is a design constraint,
-   not a detail.
-2. **Cost.** The provider fee credit has to appear in the quote the user sees
-   before signing, not as a surprise in the settlement.
-3. **That it simulates clean** on a real position, both markets, both sides —
-   including the ALGO-profit case that raised the recall question at all.
-
----
+**Still true:** no group on this path has been signed by a real wallet.
 
 ## 2. Limit orders — **BUILT 2026-09-29**
 
