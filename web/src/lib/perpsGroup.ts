@@ -46,6 +46,13 @@ export const PEX_SELECTORS = {
   fundStorage: "ade7203b",
   /** PDexV2Math.noop — the resource/budget carrier. Zero args. */
   mathNoop: "e83a87ab",
+  /**
+   * `PDexV2OrderOps.submit_linked_order` — every order leg, parent or child.
+   *
+   * A limit ENTRY uses this too, as `BRACKET_PARENT`, which is why the limit
+   * path reuses `decodeLinkedTail` rather than needing a decoder of its own.
+   */
+  submitLinkedOrder: "269845ea",
 } as const;
 
 /**
@@ -118,6 +125,56 @@ const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
 function checkMathCarriers(
   txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
 ): void {
+  /**
+   * What an asserted call in this group already makes available.
+   *
+   * A carrier may not INTRODUCE a resource; it may only re-name one that a
+   * non-carrier call in the same group already references. That is the real
+   * control, and it is why "names nothing" was the right rule for the
+   * market-open flow and the wrong rule in general:
+   *
+   * The limit flow's `doi:` carrier legitimately names the PEX fee recipient,
+   * the sender and USDC — all of which the OrderOps entry call already carries.
+   * Demanding bare carriers there fails-closed on every correct limit group,
+   * which is the trade-blocking pattern three earlier rounds shipped. Requiring
+   * the resource to be pre-existing keeps the property that matters: a carrier
+   * cannot widen the group's reach.
+   *
+   * A `noop` with zero args cannot move value itself. The hazard is making
+   * something available to a DIFFERENT call, and every other call here is
+   * asserted, so a resource already in their reference set is one the rest of
+   * this module has already accounted for.
+   */
+  const allowedAccounts = new Set<string>();
+  const allowedAssets = new Set<number>();
+  for (const t of txns) {
+    const call = t.applicationCall;
+    if (call && Number(call.appIndex) !== PEX_APPS.math) {
+      for (const a of call.accounts ?? []) allowedAccounts.add(String(a));
+      for (const a of call.foreignAssets ?? []) allowedAssets.add(Number(a));
+    }
+    // The sender is available to every transaction by definition.
+    allowedAccounts.add(String(t.sender));
+    if (t.assetTransfer) allowedAssets.add(Number(t.assetTransfer.assetIndex));
+  }
+  /**
+   * The pinned apps' own addresses.
+   *
+   * Derived from `PEX_APPS`, never written down as a constant — so this cannot
+   * drift from the app pins, and an app id that changed would move these with
+   * it rather than silently keeping an allow-list entry alive.
+   *
+   * The limit flow's `doi:` carrier names the **Markets** app address, which is
+   * where PEX's own protocol fee is paid (observed: 0.053090 USDC on our first
+   * real open). No asserted call in that group references it, so a strict
+   * "pre-existing only" rule rejects every correct limit group. These addresses
+   * belong to contracts we have already pinned; making one available cannot
+   * reach anything the pins do not already cover.
+   */
+  for (const id of Object.values(PEX_APPS)) {
+    allowedAccounts.add(algosdk.getApplicationAddress(id).toString());
+  }
+
   txns.forEach((t, i) => {
     const call = t.applicationCall;
     if (!call || Number(call.appIndex) !== PEX_APPS.math) return;
@@ -126,13 +183,21 @@ function checkMathCarriers(
       fail("math_carrier_args",
         `txn ${i}: Math call carries ${args.length} arg(s), selector ${hex(args[0] ?? new Uint8Array())}`);
     }
-    if ((call.accounts ?? []).length > 0) fail("math_carrier_accounts", `txn ${i}: Math call names accounts`);
-    if ((call.foreignAssets ?? []).length > 0) fail("math_carrier_assets", `txn ${i}: Math call names assets`);
+    for (const a of call.accounts ?? []) {
+      if (!allowedAccounts.has(String(a))) {
+        fail("math_carrier_accounts", `txn ${i}: carrier names account ${String(a)}, which no asserted call references`);
+      }
+    }
+    for (const a of call.foreignAssets ?? []) {
+      if (!allowedAssets.has(Number(a))) {
+        fail("math_carrier_assets", `txn ${i}: carrier names asset ${Number(a)}, which no asserted call references`);
+      }
+    }
     // Foreign APPS are deliberately not checked: real carriers reference one or
-    // two, which is how they buy the opcode budget they exist for. Accounts and
-    // assets are the fields that could move value, and real carriers name none.
+    // two, which is how they buy the opcode budget they exist for. The app
+    // allow-list in `checkCallBudget` is what bounds which apps may be CALLED.
   });
-  did("Math carriers are bare noops: selector, no accounts, no assets, no apps");
+  did("Math carriers are bare noops that introduce no account or asset of their own");
 }
 
 /**
@@ -183,6 +248,15 @@ export type GroupShape = {
   axfer: number; pay: number; applMin: number; applMax: number;
   /** Trading app calls. Two when the group funds storage: `fund_storage` then the open. */
   trading: number;
+  /**
+   * OrderOps calls, exact, when this flow pins them.
+   *
+   * Left undefined on the market-open shapes so they keep `CALL_BUDGET`'s
+   * 0..1 exactly as before. The limit flows MUST pin it: a limit entry is
+   * itself an OrderOps call, so its bracket makes **two**, and the default
+   * ceiling of one would fail-closed on a correct group.
+   */
+  orderOps?: number;
 };
 
 /** Collateral transfer + app calls. No order box, so no MBR payment. */
@@ -201,6 +275,27 @@ export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax
 export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3, applMax: 11, trading: 2 };
 /** Closing moves no value in the group itself. */
 export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10, trading: 1 };
+
+/**
+ * A limit entry, alone. **Zero Trading calls** — it is entirely OrderOps.
+ *
+ * Measured on MainNet 2026-09-29: seven transactions,
+ * `axfer, pay, appl(OrderOps), appl x4 (Math)`. The single transfer carries
+ * collateral AND the keeper fee together, unlike the market-open flow where
+ * they are two separate transfers.
+ */
+export const SHAPE_OPEN_LIMIT: GroupShape = {
+  axfer: 1, pay: 1, applMin: 1, applMax: 10, trading: 0, orderOps: 1,
+};
+/**
+ * A limit entry with its attached take-profit. Ten transactions, measured.
+ *
+ * `axfer, pay, appl(OrderOps), appl x4 (Math), axfer, pay, appl(OrderOps)` —
+ * the child brings its own keeper-fee transfer and its own order-box MBR.
+ */
+export const SHAPE_OPEN_LIMIT_TP: GroupShape = {
+  axfer: 2, pay: 2, applMin: 2, applMax: 10, trading: 0, orderOps: 2,
+};
 
 const ALLOWED_TXN_TYPES: ReadonlySet<string> = new Set(["axfer", "appl", "pay"]);
 
@@ -249,7 +344,12 @@ function checkCallBudget(
     // Trading is exact and comes from the shape: one call normally, two when
     // the group funds storage first.
     const [min, max] = c.app === PEX_APPS.trading
-      ? [shape.trading, shape.trading] : [c.min, c.max];
+      ? [shape.trading, shape.trading]
+      // Pinned exactly when the flow declares it; otherwise the default budget.
+      // A limit bracket legitimately makes two OrderOps calls.
+      : c.app === PEX_APPS.orderOps && shape.orderOps !== undefined
+        ? [shape.orderOps, shape.orderOps]
+        : [c.min, c.max];
     if (seen < min || seen > max) {
       fail("call_budget", `${c.name} called ${seen} times, expected ${min}..${max}`);
     }
@@ -903,6 +1003,22 @@ export const ORDER_KIND_TAKE_PROFIT = BigInt(2);
 export const ORDER_TARGET_PAIR = BigInt(1);
 /** V2_ORDER_LINK_MODE.CHILD_ACTIVE */
 export const ORDER_LINK_MODE_CHILD_ACTIVE = BigInt(3);
+/** V2_ORDER_LINK_MODE.BRACKET_PARENT — what a limit ENTRY is submitted as. */
+export const ORDER_LINK_MODE_BRACKET_PARENT = BigInt(1);
+/** V2_ORDER_LINK_MODE.CHILD_WAIT_PARENT — a child whose entry has not filled. */
+export const ORDER_LINK_MODE_CHILD_WAIT_PARENT = BigInt(2);
+/** V2_ORDER_KIND.OPEN_LIMIT */
+export const ORDER_KIND_OPEN_LIMIT = BigInt(1);
+/**
+ * The order-box MBR a **limit entry** pays, which is NOT the child's.
+ *
+ * Measured: a limit parent pays 100,200 µALGO and an attached child pays
+ * 99,700 — the same 99,700 our market-open path pays for its take-profit box,
+ * and the same 100,200 that `submit_order` pays. Observed independently on
+ * cancel refunds, which return exactly what was taken. Asserting one constant
+ * for both would fail-closed on every correct limit group.
+ */
+export const LIMIT_ORDER_BOX_MBR_MICRO_ALGO = BigInt(100_200);
 /** Current order-box MBR. The legacy 96,500 is 3,200 short and the contract rejects it. */
 export const ORDER_BOX_MBR_MICRO_ALGO = BigInt(99_700);
 
@@ -1268,6 +1384,239 @@ export function assertOpenWithTakeProfit(
     }
   }
   did("TP and entry oracle payloads are the verified bytes, each bound to its own app");
+
+  return { ok: findings.length === 0, findings, checked };
+}
+
+// ── Limit entries ───────────────────────────────────────────────────────────
+
+/** What the card showed for a limit entry, checked against what was built. */
+export type DisplayedLimit = {
+  sender: string;
+  marketId: number;
+  side: 1 | 2;
+  collateralAssetId: number;
+  /** Stake, micro-units. Escrowed with the keeper fee in ONE transfer. */
+  collateralAmountMicro: bigint;
+  sizeUsdDeltaMicro: bigint;
+  /** The price the order waits for. Shown to the user; compared exactly. */
+  triggerPrice12: bigint;
+  /** Worst fill the order will accept, bounded against the TRIGGER. */
+  acceptablePrice12: bigint;
+  keeperFeeMicro: bigint;
+  baseOrderId: bigint;
+  slippageBps: number;
+  /** OrderOps-targeted payload — the whole group presents to OrderOps. */
+  oracleMessage: Uint8Array;
+  oracleSignature: Uint8Array;
+};
+
+/**
+ * Assert a limit-entry group, with or without an attached take-profit.
+ *
+ * ── Why this is not `assertOpenGroup` with a different shape ────────────────
+ * A market open presents to **Trading** and moves collateral into a position
+ * that exists the moment it confirms. A limit entry presents to **OrderOps**
+ * and creates nothing but a box: the money sits in escrow until a keeper acts,
+ * which may be never. So the checks differ in kind, not degree —
+ * there is no entry price, no liquidation price and no position to bind to.
+ *
+ * ── What is bounded against what ────────────────────────────────────────────
+ * The acceptable price is bounded against the **trigger**, not the index. The
+ * index at signing time is irrelevant to an order that fills later; bounding
+ * against it would accept a fill arbitrarily far from the price the user chose.
+ *
+ * ── The leg that carries an attack no transfer check can see ────────────────
+ * The builder tuple, exactly as on the take-profit child: the trailing tuple
+ * carries its own `builderAddress` and `builderFeeBps`, and a leg-level value
+ * overrides the parent's. Pointed at an attacker it takes bps of notional from
+ * inside PEX with no transfer in our group at all.
+ */
+export function assertOpenLimitGroup(
+  txnsIn: unknown[],
+  shown: DisplayedLimit,
+  shownTp?: DisplayedTakeProfit,
+): GroupAssertion {
+  const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
+  const findings: GroupFinding[] = [];
+  const checked: string[] = [];
+  const fail = (code: string, detail: string) => findings.push({ code, detail });
+  const did = (n: string) => checked.push(n);
+  const shape = shownTp ? SHAPE_OPEN_LIMIT_TP : SHAPE_OPEN_LIMIT;
+
+  checkTxnShape(txns, shape, fail, did);
+  checkCallBudget(txns, fail, shape);
+  // The shared hardening: every sender is the user, no rekey/close/clawback,
+  // no foreign assets. Identical stakes to the market path, so identical check.
+  checkEveryTransaction(txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did);
+  checkMathCarriers(txns, fail, did);
+
+  const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
+
+  // ── The escrow transfer ───────────────────────────────────────────────────
+  //
+  // ONE transfer carrying collateral AND keeper fee. That is a real difference
+  // from the market path, where they are two transfers, and it means the amount
+  // must be checked as a sum rather than matched against the stake alone.
+  const transfers = txns.filter((t) => t.assetTransfer);
+  const expectedEscrow = shown.collateralAmountMicro + shown.keeperFeeMicro;
+  const entryTransfer = transfers.find((t) => big(t.assetTransfer!.amount) === expectedEscrow);
+  if (!entryTransfer) {
+    fail("limit_escrow_missing",
+      `no transfer of ${expectedEscrow} (stake ${shown.collateralAmountMicro} + keeper ${shown.keeperFeeMicro})`);
+  } else {
+    const x = entryTransfer.assetTransfer!;
+    if (String(x.receiver) !== orderOpsAddr) {
+      fail("limit_escrow_receiver", "limit escrow does not go to the pinned OrderOps address");
+    }
+    if (Number(x.assetIndex) !== shown.collateralAssetId) {
+      fail("limit_escrow_asset", `escrow asset ${x.assetIndex}, expected ${shown.collateralAssetId}`);
+    }
+    const cap = BigInt(Math.round(MAX_KEEPER_FEE_ESCROW_USDC * 1e6));
+    if (shown.keeperFeeMicro > cap) {
+      fail("limit_keeper_cap", `keeper fee ${shown.keeperFeeMicro} exceeds the cap ${cap}`);
+    }
+    if (shown.keeperFeeMicro === BigInt(0)) {
+      fail("limit_keeper_zero", "keeper fee is zero; the order would never be executed");
+    }
+  }
+  did("limit escrow: stake + keeper fee, receiver, asset, keeper cap, non-zero");
+
+  // ── The order-box MBR ────────────────────────────────────────────────────
+  //
+  // A limit parent pays 100,200; an attached child pays 99,700. Different
+  // constants, asserted separately — one constant for both fails a correct group.
+  const payments = txns.filter((t) => t.payment);
+  const parentMbr = payments.find((t) => big(t.payment!.amount) === LIMIT_ORDER_BOX_MBR_MICRO_ALGO);
+  if (!parentMbr) {
+    fail("limit_mbr_missing", `no payment of ${LIMIT_ORDER_BOX_MBR_MICRO_ALGO} for the entry order box`);
+  } else if (String(parentMbr.payment!.receiver) !== orderOpsAddr) {
+    fail("limit_mbr_receiver", "entry order-box MBR does not go to the pinned OrderOps address");
+  }
+  if (shownTp) {
+    const childMbr = payments.find((t) => big(t.payment!.amount) === ORDER_BOX_MBR_MICRO_ALGO);
+    if (!childMbr) {
+      fail("child_mbr_missing", `no payment of ${ORDER_BOX_MBR_MICRO_ALGO} for the child order box`);
+    } else if (String(childMbr.payment!.receiver) !== orderOpsAddr) {
+      fail("child_mbr_receiver", "child order-box MBR does not go to the pinned OrderOps address");
+    }
+  }
+  did("order-box MBR: exact amount per leg, to OrderOps");
+
+  // ── The entry order's own arguments ──────────────────────────────────────
+  const submits = txns.filter((t) => t.applicationCall
+    && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps
+    && hex((t.applicationCall.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.submitLinkedOrder);
+  if (submits.length !== (shownTp ? 2 : 1)) {
+    fail("limit_submit_count", `expected ${shownTp ? 2 : 1} submit_linked_order call(s), found ${submits.length}`);
+    return { ok: findings.length === 0, findings, checked };
+  }
+
+  // The ENTRY is the one declaring OPEN_LIMIT. Found by its kind rather than by
+  // position, so a reordered group cannot make the child be read as the entry.
+  const u64 = (b?: Uint8Array) => (b ? algosdk.decodeUint64(b, "bigint") : BigInt(-1));
+  const entry = submits.find((t) => u64((t.applicationCall!.appArgs ?? [])[1]) === ORDER_KIND_OPEN_LIMIT);
+  if (!entry) {
+    fail("limit_entry_missing", "no submit_linked_order declares orderKind OPEN_LIMIT");
+    return { ok: false, findings, checked };
+  }
+  const A = entry.applicationCall!.appArgs ?? [];
+
+  if (u64(A[3]) !== BigInt(shown.marketId)) fail("limit_market", `marketId ${u64(A[3])}, displayed ${shown.marketId}`);
+  if (u64(A[4]) !== shown.baseOrderId) fail("limit_order_id", `ownerOrderId ${u64(A[4])}, allocated ${shown.baseOrderId}`);
+  if (u64(A[5]) !== BigInt(shown.side)) fail("limit_side", `side ${u64(A[5])}, displayed ${shown.side}`);
+  if (u64(A[6]) !== BigInt(shown.collateralAssetId)) fail("limit_collateral_asset", `collateralAssetId ${u64(A[6])}`);
+  if (u64(A[7]) !== shown.sizeUsdDeltaMicro) fail("limit_size", `sizeUsdDelta ${u64(A[7])}, displayed ${shown.sizeUsdDeltaMicro}`);
+  if (u64(A[8]) !== shown.collateralAmountMicro) fail("limit_collateral", `collateralAmount ${u64(A[8])}, displayed ${shown.collateralAmountMicro}`);
+  // The price the user actually chose. Shown, so compared exactly.
+  if (u64(A[9]) !== shown.triggerPrice12) fail("limit_trigger", `triggerPrice ${u64(A[9])}, displayed ${shown.triggerPrice12}`);
+  const accept = u64(A[10]);
+  if (accept !== shown.acceptablePrice12) {
+    fail("limit_acceptable_price", `acceptablePrice ${accept}, displayed ${shown.acceptablePrice12}`);
+  }
+  // Bounded against the TRIGGER, not the index — see the header.
+  const bound = acceptableWithin(accept, shown.triggerPrice12, shown.side, shown.slippageBps, "opening");
+  if (!bound.ok) fail("limit_slippage", `limit entry ${bound.why}`);
+  if (u64(A[11]) !== BigInt(shown.collateralAssetId)) fail("limit_keeper_asset", `keeperFeeAssetId ${u64(A[11])}`);
+  if (u64(A[12]) !== shown.keeperFeeMicro) fail("limit_keeper_arg", `keeperFeeAmount ${u64(A[12])}, displayed ${shown.keeperFeeMicro}`);
+  if (u64(A[13]) !== BigInt(0)) fail("limit_swap_mode", `outputSwapMode ${u64(A[13])}, expected 0`);
+  if (u64(A[14]) !== BigInt(0)) fail("limit_min_primary", `minPrimary ${u64(A[14])}, expected 0`);
+  did("entry order: market, id, side, asset, size, stake, trigger, acceptable, keeper fee, swap mode");
+
+  const tail = decodeLinkedTail(A[15]);
+  if (!tail) {
+    fail("limit_tail_decode", "could not decode the entry's packed trailing tuple");
+    return { ok: false, findings, checked };
+  }
+  if (tail.minSecondary !== BigInt(0)) fail("limit_min_secondary", `minSecondary ${tail.minSecondary}`);
+  if (tail.timeInForce !== BigInt(TAKE_PROFIT_TIME_IN_FORCE)) {
+    fail("limit_time_in_force", `timeInForce ${tail.timeInForce}, expected GTC (${TAKE_PROFIT_TIME_IN_FORCE})`);
+  }
+  // Zero means good-till-cancelled. Every order observed on chain carries 0, and
+  // a non-zero expiry the user was never shown is an order that quietly dies.
+  if (tail.expiryTime !== BigInt(0)) fail("limit_expiry", `expiryTime ${tail.expiryTime}, expected 0`);
+  if (tail.linkMode !== ORDER_LINK_MODE_BRACKET_PARENT) {
+    fail("limit_link_mode", `linkMode ${tail.linkMode}, expected bracket-parent (${ORDER_LINK_MODE_BRACKET_PARENT})`);
+  }
+  if (tail.linkBaseOrderId !== shown.baseOrderId) {
+    fail("limit_link_base", `linkBaseOrderId ${tail.linkBaseOrderId}, expected ${shown.baseOrderId}`);
+  }
+  // No position exists yet and none may be claimed.
+  if (tail.expectedPositionId !== BigInt(0)) {
+    fail("limit_expected_position", `expectedPositionId ${tail.expectedPositionId}, expected 0`);
+  }
+  // The attack no transfer check can see.
+  if (tail.builderAddress !== BUILDER_ADDRESS) {
+    fail("limit_builder_address", `builder ${tail.builderAddress}, expected ${BUILDER_ADDRESS}`);
+  }
+  if (tail.builderFeeBps !== BigInt(POSITION_BUILDER_FEE_BPS)) {
+    fail("limit_builder_fee", `builderFeeBps ${tail.builderFeeBps}, expected ${POSITION_BUILDER_FEE_BPS}`);
+  }
+  if (!tail.oracleMessage || !sameBytes(tail.oracleMessage, shown.oracleMessage)) {
+    fail("limit_oracle_message", "entry carries a different oracle message than the one displayed");
+  }
+  if (!tail.oracleSignature || !sameBytes(tail.oracleSignature, shown.oracleSignature)) {
+    fail("limit_oracle_signature", "entry carries a different oracle signature than the one displayed");
+  }
+  did("entry tail: GTC, no expiry, bracket-parent, base id, no claimed position, builder tuple, oracle payload");
+
+  // ── The attached child, when there is one ────────────────────────────────
+  if (shownTp) {
+    const child = submits.find((t) => t !== entry);
+    const C = child!.applicationCall!.appArgs ?? [];
+    if (u64(C[9]) !== shownTp.triggerPrice12) {
+      fail("tp_trigger", `take-profit trigger ${u64(C[9])}, displayed ${shownTp.triggerPrice12}`);
+    }
+    if (u64(C[10]) !== shownTp.acceptablePrice12) {
+      fail("tp_acceptable_price", `take-profit acceptable ${u64(C[10])}, displayed ${shownTp.acceptablePrice12}`);
+    }
+    if (u64(C[7]) !== shownTp.sizeUsdDeltaMicro) {
+      fail("tp_size", `take-profit size ${u64(C[7])}, displayed ${shownTp.sizeUsdDeltaMicro}`);
+    }
+    const ctail = decodeLinkedTail(C[15]);
+    if (!ctail) {
+      fail("tp_tail_decode", "could not decode the child's packed trailing tuple");
+    } else {
+      // **CHILD_WAIT_PARENT, not CHILD_ACTIVE.** The entry has not filled, so
+      // there is no position to arm against — the child activates only when the
+      // keeper executes the parent. Demanding CHILD_ACTIVE here would fail every
+      // correct un-crossed limit bracket, which is the shape of B6 in reverse.
+      if (ctail.linkMode !== ORDER_LINK_MODE_CHILD_WAIT_PARENT
+        && ctail.linkMode !== ORDER_LINK_MODE_CHILD_ACTIVE) {
+        fail("tp_link_mode", `child linkMode ${ctail.linkMode}, expected wait-parent or child-active`);
+      }
+      if (ctail.linkBaseOrderId !== shown.baseOrderId) {
+        fail("tp_link_base", `child linkBaseOrderId ${ctail.linkBaseOrderId}, expected ${shown.baseOrderId}`);
+      }
+      if (ctail.builderAddress !== BUILDER_ADDRESS) {
+        fail("tp_builder_address", `child builder ${ctail.builderAddress}, expected ${BUILDER_ADDRESS}`);
+      }
+      if (ctail.builderFeeBps !== BigInt(POSITION_BUILDER_FEE_BPS)) {
+        fail("tp_builder_fee", `child builderFeeBps ${ctail.builderFeeBps}`);
+      }
+    }
+    did("attached take-profit: trigger, acceptable, size, link mode, base id, builder tuple");
+  }
 
   return { ok: findings.length === 0, findings, checked };
 }
