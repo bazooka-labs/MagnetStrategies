@@ -417,34 +417,10 @@ export type BaseOrderIdAllocation = {
 export async function allocateBaseOrderId(
   algod: algosdk.Algodv2, owner: string,
 ): Promise<BaseOrderIdAllocation> {
-  const prefix = new Uint8Array([
-    ...new TextEncoder().encode("o2:"),
-    ...algosdk.decodeAddress(owner).publicKey,
-  ]);
-  const b64 = typeof btoa === "function"
-    ? btoa(String.fromCharCode(...Array.from(prefix)))
-    : Buffer.from(prefix).toString("base64");
-
-  const existing: bigint[] = [];
-  let next: string | undefined;
-  // Paginate defensively: a long-lived account can accumulate order boxes.
-  for (let page = 0; page < 50; page++) {
-    const q = algod.getApplicationBoxes(PEX_APPS.orderOps);
-    // The SDK exposes only `max`; algod itself accepts prefix/next, so they are
-    // set on the query object directly.
-    (q as unknown as { query: Record<string, unknown> }).query.prefix = `b64:${b64}`;
-    if (next) (q as unknown as { query: Record<string, unknown> }).query.next = next;
-    const res = (await q.do()) as unknown as {
-      boxes?: { name: Uint8Array }[]; nextToken?: string; ["next-token"]?: string;
-    };
-    for (const box of res.boxes ?? []) {
-      // name = "o2:"(3) | owner(32) | orderId(8)
-      if (box.name.length !== 43) continue;
-      existing.push(algosdk.decodeUint64(box.name.slice(35, 43), "bigint"));
-    }
-    next = res.nextToken ?? res["next-token"];
-    if (!next) break;
-  }
+  // `listOrderIds` rather than a second copy of the pagination: the allocator
+  // and the order reader MUST agree about which ids exist, or the allocator can
+  // hand out one that is already resting on chain.
+  const existing = await listOrderIds(algod, owner);
 
   const highest = existing.reduce((a, b) => (b > a ? b : a), BigInt(0));
   // base must be > 0; the whole stride sits above every id already in use.
@@ -622,12 +598,30 @@ export type PositionState =
     collateral_asset_id: bigint;
     position_id: bigint;
     side: bigint;
+    /**
+     * The owner, carried from the box KEY.
+     *
+     * Not in the box value — the key holds it — but it is attached here because
+     * the SDK requires it and fails SILENTLY without it.
+     * `analyzeV2OrderLifecycle` matches an order to its position through
+     * `v2PositionKeyFromPosition`, which builds
+     * `owner:marketId:collateralAssetId:side` and reads `owner` off this
+     * object. A position without it keys as `"undefined:1:31566704:1"`, matches
+     * nothing, and every healthy take-profit comes back
+     * `position_missing` — which SPEC.md requires be shown as **"Orphaned —
+     * funds still locked"**, never as resolved.
+     *
+     * So the failure mode is not a blank field: it is telling a user their only
+     * exit is dead when it is armed and fine. Observed exactly that way while
+     * building the order reader, against a live healthy position.
+     */
+    owner: string;
   };
 
 /** Size of a position box value, asserted rather than assumed. */
 export const POSITION_BOX_BYTES = 112;
 
-export function decodePosition(raw: Uint8Array): PositionState {
+export function decodePosition(raw: Uint8Array, owner: string): PositionState {
   if (raw.length !== POSITION_BOX_BYTES) {
     throw new Error(`perps: position box is ${raw.length} bytes, expected ${POSITION_BOX_BYTES}`);
   }
@@ -636,6 +630,7 @@ export function decodePosition(raw: Uint8Array): PositionState {
   let positionId = BigInt(0);
   for (let i = 16; i < 22; i++) positionId = (positionId << BigInt(8)) | BigInt(raw[i]);
   const out = {
+    owner,
     market_id: view.getBigUint64(0, false),
     collateral_asset_id: view.getBigUint64(8, false),
     position_id: positionId,
@@ -663,7 +658,7 @@ export async function readPosition(
   ]);
   try {
     const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
-    return decodePosition(res.value);
+    return decodePosition(res.value, owner);
   } catch (e) {
     // **Only a 404 means "no position".**
     //
@@ -686,4 +681,139 @@ export async function readPosition(
     }
     return null; // 404 = no box = no position
   }
+}
+
+// ── Orders ──────────────────────────────────────────────────────────────────
+
+/**
+ * `o2:` field order, after `schema_version`.
+ *
+ * Declared in the protocol manifest as `order_state` / `OrderStateV4`, 200
+ * bytes, and verified field-by-field against all four boxes live on MainNet on
+ * 2026-09-28 — including our own, whose `position_id` (75), `trigger_price`
+ * ($0.14), `size_usd_delta` ($88.479362) and `builder_fee_bps` (10) reconcile
+ * exactly with the `p2:` box and the submitted group.
+ *
+ * `builder_address` sits between `flags` and `builder_fee_bps` and is 32 bytes,
+ * not 8, so it is decoded separately rather than living in this list.
+ */
+const ORDER_U64_HEAD = [
+  "schema_version", "order_kind", "target_kind", "market_id", "owner_order_id",
+  "side", "collateral_asset_id", "size_usd_delta", "collateral_amount",
+  "trigger_price", "acceptable_price", "keeper_fee_asset_id", "keeper_fee_amount",
+  "output_swap_mode", "min_primary_output_amount", "min_secondary_output_amount",
+  "expiry_time", "created_at", "flags",
+] as const;
+
+export type OrderState =
+  Record<(typeof ORDER_U64_HEAD)[number], bigint> & {
+    builder_address: string;
+    builder_fee_bps: bigint;
+    position_id: bigint;
+    /** From the box KEY, not the value — they agree, and both are kept. */
+    owner: string;
+  };
+
+/** Size of an order box value, asserted rather than assumed. */
+export const ORDER_BOX_BYTES = 200;
+/** `"o2:"(3) | owner(32) | ownerOrderId(8)`. */
+export const ORDER_BOX_KEY_BYTES = 43;
+
+/**
+ * PEX's order kinds, from the SDK's own `V2_ORDER_KIND`.
+ *
+ * Pinned here as well because the display has to name them, and a silent
+ * renumbering upstream would otherwise relabel a stop-loss as a take-profit.
+ */
+export const ORDER_KIND = { openLimit: 1, takeProfit: 2, stopLoss: 3 } as const;
+
+export function decodeOrder(raw: Uint8Array, owner: string): OrderState {
+  if (raw.length !== ORDER_BOX_BYTES) {
+    throw new Error(`perps: order box is ${raw.length} bytes, expected ${ORDER_BOX_BYTES}`);
+  }
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const out = { owner } as OrderState;
+  ORDER_U64_HEAD.forEach((name, i) => {
+    (out as unknown as Record<string, bigint>)[name] = view.getBigUint64(i * 8, false);
+  });
+  // 19 uint64s, then the address, then two more uint64s.
+  out.builder_address = algosdk.encodeAddress(raw.slice(152, 184));
+  out.builder_fee_bps = view.getBigUint64(184, false);
+  out.position_id = view.getBigUint64(192, false);
+  return out;
+}
+
+/**
+ * Every `o2:` box id belonging to one account.
+ *
+ * Shared with `allocateBaseOrderId`, which had this pagination inline. One
+ * implementation because the two must agree about what ids exist: the allocator
+ * picks the next free id from this set, and if the reader saw a different set
+ * the allocator could hand out an id that is already resting on chain.
+ *
+ * algod supports `prefix` and `next` and the SDK's typed client exposes only
+ * `max`, so they are set on the query object directly — the same trick the
+ * allocator used before this was extracted.
+ */
+export async function listOrderIds(
+  algod: algosdk.Algodv2, owner: string,
+): Promise<bigint[]> {
+  const prefix = new Uint8Array([
+    ...new TextEncoder().encode("o2:"),
+    ...algosdk.decodeAddress(owner).publicKey,
+  ]);
+  const b64 = typeof btoa === "function"
+    ? btoa(String.fromCharCode(...Array.from(prefix)))
+    : Buffer.from(prefix).toString("base64");
+
+  const ids: bigint[] = [];
+  let next: string | undefined;
+  // Paginate defensively: a long-lived account can accumulate order boxes.
+  for (let page = 0; page < 50; page++) {
+    const q = algod.getApplicationBoxes(PEX_APPS.orderOps);
+    (q as unknown as { query: Record<string, unknown> }).query.prefix = `b64:${b64}`;
+    if (next) (q as unknown as { query: Record<string, unknown> }).query.next = next;
+    const res = (await q.do()) as unknown as {
+      boxes?: { name: Uint8Array }[]; nextToken?: string; ["next-token"]?: string;
+    };
+    for (const box of res.boxes ?? []) {
+      if (box.name.length !== ORDER_BOX_KEY_BYTES) continue;
+      ids.push(algosdk.decodeUint64(box.name.slice(35, 43), "bigint"));
+    }
+    next = res.nextToken ?? res["next-token"];
+    if (!next) break;
+  }
+  return ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * Every order resting on chain for one account, decoded.
+ *
+ * A box that vanishes between the listing and the read is skipped rather than
+ * thrown: an order executing or being cancelled mid-read is normal, and it is
+ * the one case where a 404 genuinely means "no longer there". Any other error
+ * propagates, for the reason `assertBaseOrderIdFree` documents — a 5xx read as
+ * absence is the one answer this must never invent.
+ */
+export async function readOrders(
+  algod: algosdk.Algodv2, owner: string,
+): Promise<OrderState[]> {
+  const ids = await listOrderIds(algod, owner);
+  const pk = algosdk.decodeAddress(owner).publicKey;
+  const out: OrderState[] = [];
+  await Promise.all(ids.map(async (id) => {
+    const name = new Uint8Array([
+      ...new TextEncoder().encode("o2:"), ...pk, ...algosdk.encodeUint64(id),
+    ]);
+    try {
+      const res = await algod.getApplicationBoxByName(PEX_APPS.orderOps, name).do();
+      out.push(decodeOrder(res.value, owner));
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+    }
+  }));
+  return out.sort((a, b) =>
+    a.created_at === b.created_at
+      ? (a.owner_order_id < b.owner_order_id ? -1 : 1)
+      : (a.created_at > b.created_at ? -1 : 1));
 }

@@ -13,7 +13,9 @@
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
 import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
+import { ORDER_KIND } from "@/lib/perpsReads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
+import { usePerpsOrders } from "@/hooks/usePerpsOrders";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -39,11 +41,52 @@ const assetName = (id: number) =>
 const marketLabel = (id: number) =>
   Object.values(PEX_MARKETS).find((m) => m.id === id)?.label ?? `Market ${id}`;
 
+/**
+ * PEX's blockers, in words. **The mapping is pinned by SPEC.md, not chosen here.**
+ *
+ * `executable` must never be shown raw. `analyzeV2OrderLifecycle` pushes
+ * `not_crossed` and sets `executable = false` for every correctly-placed order
+ * that is simply waiting for its price — which is all of them, all of the time
+ * — so rendering the flag literally would read "unexecutable" on every healthy
+ * order on the exchange. All four live orders today report exactly that.
+ *
+ * Order matters: the first match wins, so the states that mean "your money is
+ * stuck" outrank the ones that mean "waiting".
+ */
+const ORDER_STATE: { blocker: string; label: string; tone: string; note: string }[] = [
+  { blocker: "position_missing", label: "Orphaned", tone: "text-red-300 bg-red-500/15",
+    note: "The position this order pointed at is gone, so it can never execute — but its escrow is still locked. Clearing it is a paid, permissionless call nobody is obliged to make." },
+  { blocker: "position_replaced", label: "Orphaned", tone: "text-red-300 bg-red-500/15",
+    note: "Bound to a position that has since been replaced. It will not execute, and its escrow stays locked until someone clears it." },
+  { blocker: "unknown_position_state", label: "State unknown", tone: "text-amber-300 bg-amber-500/15",
+    note: "We could not establish what this order is bound to. Treat its protection as unconfirmed." },
+  { blocker: "unknown_order_state", label: "State unknown", tone: "text-amber-300 bg-amber-500/15",
+    note: "We could not read this order's lifecycle. It is shown because it still holds your escrow." },
+  { blocker: "order_expired", label: "Expired", tone: "text-white/50 bg-white/10",
+    note: "Past its expiry. It will not execute; its escrow is released when it is cleared." },
+  { blocker: "bad_order_price", label: "Dead", tone: "text-red-300 bg-red-500/15",
+    note: "PEX rejects this order's price, so it cannot execute." },
+  { blocker: "reduce_size_exceeds_position", label: "Stale", tone: "text-amber-300 bg-amber-500/15",
+    note: "Larger than the position it closes. It re-arms at the same trigger if the position grows back." },
+  { blocker: "position_too_small", label: "Stale", tone: "text-amber-300 bg-amber-500/15",
+    note: "The position is now too small for this order to act on." },
+  { blocker: "parent_pending", label: "Waiting on entry", tone: "text-white/60 bg-white/10",
+    note: "Attached to an entry order that has not executed yet. It arms once the entry fills." },
+  // Last, because it is the HEALTHY state and any of the above outranks it.
+  { blocker: "not_crossed", label: "Armed", tone: "text-green-300 bg-green-500/15",
+    note: "Placed and waiting for the price to reach its trigger." },
+];
+
+const ORDER_KIND_LABEL: Record<number, string> = {
+  1: "Limit entry", 2: "Take profit", 3: "Stop loss",
+};
+
 export function PositionsPanel() {
   const wallet = useWallet();
-  const { positions, loading, error, refresh } = usePerpsPositions(
-    wallet.isConnected ? wallet.address : null,
-  );
+  const who = wallet.isConnected ? wallet.address : null;
+  const { positions, loading, error, refresh } = usePerpsPositions(who);
+  const { orders, loading: ordersLoading, error: ordersError, refresh: refreshOrders } =
+    usePerpsOrders(who);
 
   if (!wallet.isConnected) return null;
 
@@ -59,9 +102,9 @@ export function PositionsPanel() {
       <div className="bg-white/[0.015] p-5 sm:p-6">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-lg font-semibold text-white">Your positions</h2>
-        <button onClick={refresh} disabled={loading}
+        <button onClick={() => { refresh(); refreshOrders(); }} disabled={loading || ordersLoading}
           className="text-xs text-white/40 underline underline-offset-2 hover:text-white/70 disabled:opacity-40">
-          {loading ? "Refreshing…" : "Refresh"}
+          {loading || ordersLoading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
@@ -74,7 +117,11 @@ export function PositionsPanel() {
 
       {!error && !loading && positions.length === 0 && (
         <p className="mt-3 text-sm text-white/45">
-          You have no open positions. Anything you open will appear here.
+          {/* A resting limit entry is not a position, and saying "nothing here"
+              over one would read as though it had vanished. */}
+          {orders.length > 0
+            ? "You have no open positions yet — your resting orders are below."
+            : "You have no open positions. Anything you open will appear here."}
         </p>
       )}
 
@@ -241,6 +288,97 @@ export function PositionsPanel() {
           );
         })}
       </div>
+
+      {/* ── Resting orders ─────────────────────────────────────────────────
+          A separate section because an order is not a position: it holds
+          escrow, it has not traded, and until a keeper executes it nothing has
+          happened. Rendered whenever there are any, including when there are no
+          positions at all — a limit entry with no position yet is exactly the
+          case where the user most needs to see something. */}
+      {orders.length > 0 && (
+        <div className="mt-5">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-white/45">
+            Resting orders
+          </h3>
+          <div className="mt-2 space-y-2">
+            {orders.map(({ order, blockers, cleanupReason, indexUsd }) => {
+              // First match wins; the list is ordered so "your money is stuck"
+              // outranks "waiting". No match at all means nothing is blocking
+              // it, which is the moment before a keeper takes it.
+              const state = ORDER_STATE.find((s) => blockers.includes(s.blocker))
+                ?? { label: "Ready", tone: "text-green-300 bg-green-500/15",
+                     note: "Its trigger has been reached. A keeper executes it; that is a paid, permissionless call, so it is not instant.", blocker: "" };
+              const kind = ORDER_KIND_LABEL[Number(order.order_kind)] ?? `Kind ${order.order_kind}`;
+              const isEntry = Number(order.order_kind) === ORDER_KIND.openLimit;
+              const trigger = price12ToUsd(order.trigger_price);
+              return (
+                <div key={String(order.owner_order_id)}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${state.tone}`}>
+                        {state.label}
+                      </span>
+                      <span className="text-sm font-semibold text-white">{kind}</span>
+                      <span className="text-[11px] text-white/45">
+                        {marketLabel(Number(order.market_id))} ·{" "}
+                        {order.side === BigInt(1) ? "long" : "short"}
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold tabular-nums text-white/80">
+                      {fmtPrice(trigger)}
+                    </span>
+                  </div>
+
+                  <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4">
+                    {([
+                      [isEntry ? "Opens" : "Closes", fmtUsd(Number(order.size_usd_delta) / 1e6)],
+                      // Only an entry escrows collateral; a reduce order draws
+                      // from the position it closes, and reports zero here.
+                      ...(isEntry
+                        ? [["Your stake", fmtUsd(Number(order.collateral_amount) / 1e6)] as const]
+                        : [["On position", order.position_id > BigInt(0) ? `#${order.position_id}` : "not bound yet"] as const]),
+                      ["Keeper fee", fmtUsd(Number(order.keeper_fee_amount) / 1e6)],
+                      ["Price now", indexUsd === null ? "unavailable" : fmtPrice(indexUsd)],
+                    ] as const).map(([k, v]) => (
+                      <div key={k}>
+                        <dt className="text-white/35">{k}</dt>
+                        <dd className="tabular-nums text-white/80">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <p className="mt-2 text-[11px] leading-relaxed text-white/40">{state.note}</p>
+
+                  {/* PEX considering an order collectable is a money fact, not a
+                      status nuance: the escrow is recoverable and nobody has to
+                      recover it. Never rendered as resolved. */}
+                  {cleanupReason && (
+                    <p className="mt-1 text-[11px] text-amber-300/80">
+                      PEX marks this order collectable ({cleanupReason.replace(/_/g, " ")}) — its
+                      escrow is still locked until it is cleared.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Say what we cannot do about them yet, in the same place they are
+              shown, rather than leaving the absence to be discovered. */}
+          <p className="mt-2 text-[10px] leading-relaxed text-white/30">
+            Read-only for now: placing and cancelling orders from this page is not built yet.
+            An order resting here holds its keeper fee, and an entry order also holds its stake,
+            until it executes or is cancelled.
+          </p>
+        </div>
+      )}
+
+      {ordersError && (
+        <p className="mt-2 text-[11px] text-amber-300/80">
+          Couldn&apos;t load your resting orders. ({ordersError})
+        </p>
+      )}
 
       {positions.length > 0 && (
         <>

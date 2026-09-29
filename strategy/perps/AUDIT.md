@@ -1142,6 +1142,64 @@ than showing a button it cannot honour.
 
 ---
 
+## The keeper runs — and orders execute on MainNet (2026-09-28)
+
+**This falsifies a claim repeated through six audits.** The B6 write-up said
+*"we've never observed `v2_order_executed` on MainNet"*, and the SPEC treated
+keeper execution as unproven. It was true when written and is not true now.
+
+Measured on MainNet, 2026-09-28:
+
+- `execute_order` on `PDexV2OrderOps` (3690309166) has been called **376 times
+  this month** by a single keeper, `PVAOUWLBP5…`, most recently at 12:00 UTC —
+  eight hours before our own first trade.
+- Those are **real executions, not orphan cleanups**, which was the specific
+  alternative the B6 note left open. The inner transactions of two sampled
+  calls show collateral moving into the PEX escrow (12.22 and 25.04 USDC, to
+  the same address our own collateral went to), a **100,200 µALGO storage
+  payment creating a fresh position box**, and the keeper taking ~0.051 USDC.
+  Collateral in plus a new position box is an OPEN, not a close.
+- Two other traders have used `submit_order` — the standalone limit-entry path
+  — 16 times.
+
+**Why it matters beyond limit orders.** Our product attaches a take-profit and
+tells the user it closes their position automatically. That claim rested on
+keeper infrastructure nobody had observed working. It works.
+
+**Four orders rest on chain today**, and all four decode against the manifest's
+`order_state` layout exactly: two standalone limit entries (short, $90 and
+$200, triggers $0.14 and $0.13369), one bracket child, and our own take-profit
+— whose `position_id` (75), `size_usd_delta` ($88.479362), `trigger_price`
+($0.14) and `builder_fee_bps` (10) reconcile with the `p2:` box and the
+submitted group.
+
+Two incidental observations:
+
+- **Our keeper fee is roughly double everyone else's.** We escrow $0.10; the
+  other builder escrows $0.051, and the keeper actually collected ~0.051 on the
+  executions sampled. Worth revisiting — it is the user's money, held.
+- The other builder's address (`74V3IRMV…`) takes **3 bps** where we take 10.
+
+## `PositionState` needed the owner, and the failure was silent (2026-09-28)
+
+Found while building the order reader, and it is a display-a-false-alarm bug
+rather than a blank field.
+
+`analyzeV2OrderLifecycle` matches an order to its position through
+`v2PositionKeyFromPosition`, which builds `owner:marketId:collateralAssetId:side`
+and reads `owner` **off the position object**. The owner is in the `p2:` box
+KEY, not its value, so `decodePosition` never set it. A position without it keys
+as `"undefined:1:31566704:1"`, matches nothing, and the order comes back
+`position_missing` with `cleanupReason: "position_missing"`.
+
+SPEC.md requires `position_missing` be shown as **"Orphaned — funds still
+locked"** and never as resolved. So the consequence of a missing field was
+telling a user their only exit was dead while it was armed and fine — observed
+exactly that way against our own live healthy position before the cause was
+found. `decodePosition` now takes the owner and `PositionState` carries it.
+
+---
+
 ## Open
 
 1. **Does PEX itself reject a tampered transfer (H1)?** *Partly answered,

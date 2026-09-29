@@ -1193,6 +1193,58 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 
 ---
 
+## Orders — Read Path Built, Write Path Not (2026-09-28)
+
+**Keeper execution is no longer an assumption.** See
+[AUDIT.md](./AUDIT.md#the-keeper-runs--and-orders-execute-on-mainnet-2026-09-28):
+376 `execute_order` calls this month, verified to be real limit-entry
+executions rather than orphan cleanups. This retires the doubt that made
+[Outcomes](#outcomes-notifications-and-perps-history) hedge about whether
+orders work, and it is what makes an `OPEN_LIMIT` product viable at all.
+
+**`o2:` layout is pinned and verified.** Manifest `order_state` / `OrderStateV4`,
+200 bytes, key `"o2:" | owner(32) | ownerOrderId(8)` = 43 bytes. Decoded
+field-by-field against all four orders live on MainNet. Note two shapes:
+
+| | `OPEN_LIMIT` (1) | `DECREASE_TAKE_PROFIT` (2) / `STOP_LOSS` (3) |
+|---|---|---|
+| `collateral_amount` | the escrowed stake | 0 — it draws from the position |
+| `position_id` | 0 — no position exists yet | the bound position, or 0 while its parent is pending |
+
+**Two traps in `analyzeV2OrderLifecycle`, both live, both now guarded:**
+
+1. `{ ...marketSnapshot, ...order }` — **order fields win**. An order field named
+   like a snapshot field shadows the live price and evaluates crossing against
+   prices frozen at placement. Checked: no `OrderState` field collides with
+   `index_price_min` / `index_price_max` / `index_price`. Re-check on any layout
+   change.
+2. It reads `owner` off the **position** object, which is not in the position box
+   value. Omitting it reports every healthy take-profit as `position_missing` —
+   which this spec requires be shown as "Orphaned — funds still locked". See
+   [AUDIT.md](./AUDIT.md).
+
+Crossing is evaluated against the **signed** `indexMinPrice` / `indexMaxPrice`,
+not our derived mid, and not at all when the signature does not verify — an
+unverified price must not decide "ready to execute" any more than it may decide
+a trade.
+
+**Not built: submit and cancel.** Both are write paths and neither is blocked on
+the yield-recall question, which gates closing *positions*. `cancel_order` would
+be the product's first cancellable action. Before building the submit path, two
+things need settling: whether `OPEN_LIMIT` with attached orders simulates clean
+(the same shape as B6, which cost a week), and whether `cancel_order` refunds
+both the 99,700 µALGO box MBR and the escrowed keeper fee — listed as
+simulation-determinable below, and now measurable against 480+ historical
+cancels.
+
+**A limit order's quote is conditional, and the UI does not yet say so.** Every
+figure the card shows — entry, liquidation, impact, net collateral — comes from
+a market quote at the current index. For a limit order those are estimates at a
+hypothetical future execution. Framing that honestly is a prerequisite for the
+write path, not a polish item.
+
+---
+
 ## Build Status — 2026-09-28
 
 Tracked against [Build Order](#build-order) above, because that list describes the plan and this describes the tree.
