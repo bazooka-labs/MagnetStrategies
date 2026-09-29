@@ -104,11 +104,53 @@ Stage 1, reading resting orders, is built and shipped. Stage 2 is submit.
 `V2_ORDER_KIND.OPEN_LIMIT = 1`, with `buildV2OpenLimitWithAttachedOrdersTransactions`
 for a limit entry carrying its own take-profit.
 
-**Do the B6 check first.** Simulate `OPEN_LIMIT` with attached orders before
-committing to a group shape. This is B6's exact shape and B6 cost a week. One
-advantage we did not have then: `L7RF6SLJVI…` has a working bracket resting on
-chain — a limit entry and its child take-profit, consecutive ids — so there is a
-reference group to diff against instead of guessing.
+### The B6 check is DONE, and it found the same class of defect (2026-09-29)
+
+`OPEN_LIMIT` with an attached take-profit **builds and simulates clean** — but
+only after a fix, and the unfixed failure is exactly the kind that would have
+cost another week.
+
+**Shape**, confirmed against MainNet: 7 transactions bare, 10 with a take-profit.
+
+| | |
+|---|---|
+| `[0]` axfer | collateral **+ keeper fee** in one transfer (6.10 USDC for a $6 stake) |
+| `[1]` pay | **100,200** µALGO — the parent order box MBR. Note this is the `submit_order` figure, not the 99,700 our market-open path pays |
+| `[2]` appl | OrderOps — the `OPEN_LIMIT` parent, as `BRACKET_PARENT` |
+| `[3]`–`[6]` appl | math carriers (`m2:`, `mr2:`, `mp2:`, `mo2:`, `mf2:`, `vi2:`, `ma2:`, `my2:`, `doi:`) |
+| `[7]` axfer | the child's own keeper fee |
+| `[8]` pay | **99,700** µALGO — the child order box MBR |
+| `[9]` appl | OrderOps — `submit_linked_order` for the child |
+
+**The defect: the SDK's builder under-declares its own box references.** Raw, it
+fails at transaction `[2]` with `logic eval error: invalid Box reference
+0x6f323a…` — `o2:` plus the owner. Simulating with `allowUnnamedResources: true`
+passes and reports what was actually touched:
+
+    app=3690309166 name="o2:" orderId=2
+    app=3690309166 name="o2:" orderId=3
+
+The builder declares only the **base** order's box. The contract touches the two
+**sibling slots** the stride reserves — which is precisely why
+`ORDER_ID_STRIDE = 3` and `allocateBaseOrderId` reserves
+`[base, base+1, base+2]`. It happens **with no take-profit attached at all**, so
+an `OPEN_LIMIT` as `BRACKET_PARENT` always claims its child slots.
+
+**Fix, verified:** declare `o2:` boxes for `baseOrderId + 1` and `baseOrderId + 2`
+on a carrier with spare box slots (the submit call's four are full), then
+**re-assign the group id** — mutating after `grouped()` invalidates it and algod
+rejects the group as incomplete. With that, both shapes simulate `ok: true`
+honestly, with no `allowUnnamedResources`.
+
+> **Do NOT set `allowUnnamedResources` in `simulateGroup` to make this pass.**
+> Simulation auto-fills the missing reference; a real submission has no such
+> auto-fill and would fail on chain. It would manufacture a false green on the
+> one check that stands between a group and a wallet. The flag is a *diagnostic*
+> — use it to learn what is missing, then declare it.
+
+`L7RF6SLJVI…` had a working bracket on chain as a reference; note their limit
+order has since executed, so that example is gone — ALGO crossed $0.14 overnight
+and took several resting orders with it.
 
 **The design problem, which is the real work.** Every risk figure the card
 displays — entry, liquidation, price impact, "% away" — comes from `quoteOpen`
