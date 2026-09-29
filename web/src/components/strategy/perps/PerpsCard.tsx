@@ -50,6 +50,7 @@ import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
 import { ALGOD_URLS } from "@/lib/constants";
 import {
+  openLimitOrder,
   openPosition,
   PositionAlreadyOpenError,
   SubmissionUnknownError,
@@ -140,6 +141,9 @@ type CardSnapshot = {
   quickPick: QuickPick | null;
   /** Every chip's resolution, keyed by target. Frozen for the same reason. */
   chipPicks: Record<number, QuickPick>;
+  /** Market or limit, and the trigger — the labels below depend on both. */
+  isLimit: boolean;
+  trigger12: bigint;
 };
 
 export type PerpsCardProps = {
@@ -166,6 +170,17 @@ export function PerpsCard({
     onMarketChange?.(id);
   };
   const [side, setSide] = useState<Side>("long");
+  /**
+   * Market or limit.
+   *
+   * A limit entry is a different economic object, not a setting on this one: it
+   * escrows money and creates nothing until a keeper acts. It goes through
+   * `openLimitOrder`, which has its own group shape and its own assertion.
+   */
+  const [mode, setMode] = useState<"market" | "limit">("market");
+  /** The price a limit entry waits for, as typed. */
+  const [triggerPrice, setTriggerPrice] = useState<string>("");
+  const [triggerHint, setTriggerHint] = useState<string | null>(null);
   /**
    * Empty, not pre-filled.
    *
@@ -317,18 +332,60 @@ export function PerpsCard({
     return notionalAtBarPosition({ ...bar, maxNotionalUsd: ceilingUsd }, barPos);
   }, [bar, ceilingUsd, tradable, barPos]);
 
+  const trigger12 = usdToPrice12(triggerPrice) ?? BigInt(0);
+  const isLimit = mode === "limit";
+
+  /**
+   * The oracle payload the CARD quotes against.
+   *
+   * For a market order this is the live payload. For a limit order it is the
+   * same payload with its prices moved to the user's trigger, because that is
+   * where the order fills — quoting a resting order at today's index describes
+   * a trade that will never happen.
+   *
+   * **Display only.** `openLimitOrder` builds the group from the real payload
+   * it fetches itself; this object never reaches a transaction. A synthetic
+   * payload in a group would be a signature over a price nobody published, so
+   * the two paths are kept deliberately separate rather than sharing one value.
+   *
+   * Measured on MainNet: moving the payload to the trigger changes exactly two
+   * displayed figures — entry price and liquidation price, both by the trigger
+   * offset. Impact, both fees and "backing the position" are identical because
+   * they scale with notional, not price; and liquidation DISTANCE is identical
+   * because liquidation scales with entry. So the conditional part of a limit
+   * quote is two numbers, not the whole table.
+   */
+  const quoteOracle = useMemo(() => {
+    if (!data) return null;
+    if (!isLimit || trigger12 <= BigInt(0)) return data.oracle;
+    const live = data.oracle.indexPrice12;
+    if (live <= BigInt(0)) return data.oracle;
+    const scale = (v: bigint) => (v * trigger12) / live;
+    return {
+      ...data.oracle,
+      indexPrice12: trigger12,
+      decoded: {
+        ...data.oracle.decoded,
+        indexMinPrice: scale(data.oracle.decoded.indexMinPrice),
+        indexMaxPrice: scale(data.oracle.decoded.indexMaxPrice),
+      },
+    };
+  }, [data, isLimit, trigger12]);
+
   const quote: OpenQuote | null = useMemo(() => {
-    if (!data || !bar?.open || notional <= 0) return null;
+    if (!data || !quoteOracle || !bar?.open || notional <= 0) return null;
+    // A limit order with no trigger yet has nothing to quote against.
+    if (isLimit && trigger12 <= BigInt(0)) return null;
     try {
       return quoteOpen({
-        state: data.state, oracle: data.oracle, side,
+        state: data.state, oracle: quoteOracle, side,
         collateralUsd, notionalUsd: notional,
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
         collateralAssetId: COLLATERAL_ASSET_ID,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       });
     } catch { return null; }
-  }, [data, bar, notional, side, collateralUsd]);
+  }, [data, quoteOracle, bar, notional, side, collateralUsd, isLimit, trigger12]);
 
   /**
    * The take-profit follows a chosen profit target, or nothing at all.
@@ -491,7 +548,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
-    ceilingUsd, indexUsd, quickPick, chipPicks,
+    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -501,8 +558,21 @@ export function PerpsCard({
    * Everything required to sign, all of it already true for `tradable`, plus a
    * connected wallet and a valid target.
    */
+  /**
+   * A limit trigger that is already crossed would fill immediately, which is a
+   * worse market order — the user pays a keeper fee and a box MBR for an
+   * execution the market button does in one group at the same price.
+   * `openLimitOrder` refuses it; the button refuses it first, so the user is
+   * told before they click rather than after.
+   */
+  const triggerCrossed = !!(isLimit && trigger12 > BigInt(0) && indexUsd !== null
+    && (side === "long"
+      ? trigger12 >= usdToPrice12(String(indexUsd))! 
+      : trigger12 <= usdToPrice12(String(indexUsd))!));
+  const triggerReady = !isLimit || (trigger12 > BigInt(0) && !triggerCrossed);
+
   const canSubmit = !!(
-    tradable && tpValid && quote?.ok && !submitting
+    tradable && tpValid && quote?.ok && !submitting && triggerReady
     && wallet.isConnected && wallet.address && notional > 0
   );
 
@@ -542,6 +612,30 @@ export function PerpsCard({
     setFrozen(live);
     try {
       const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
+      if (isLimit) {
+        // A separate call, not a flag on this one. The two build different
+        // groups, assert against different shapes and have different failure
+        // modes; sharing an entry point would mean one function whose meaning
+        // depends on a boolean, on the money path.
+        //
+        // No `displayed` block: a limit entry has no quoted entry or
+        // liquidation price to drift against — the trigger and its bound are
+        // both the user's own input. See `openLimitOrder`.
+        const rl = await openLimitOrder({
+          algod,
+          signTransactions: (txns) => wallet.signTransactions(txns),
+          sender: wallet.address,
+          marketId, side,
+          collateralUsd,
+          notionalUsd: notional,
+          triggerPrice12: trigger12,
+          ...(tp12 > BigInt(0) ? { takeProfitPrice12: tp12 } : {}),
+          slippageBps: DEFAULT_SLIPPAGE_BPS,
+          onStage: setStage,
+        });
+        setResult(rl);
+        return;
+      }
       const r = await openPosition({
         algod,
         signTransactions: (txns) => wallet.signTransactions(txns),
@@ -664,6 +758,20 @@ export function PerpsCard({
       <div className="mt-4 grid gap-x-6 gap-y-1 lg:grid-cols-3">
 
       <div>
+      {/* Market or limit. Above direction because it decides what the rest of
+          this column means: a limit entry fills later, or never. */}
+      <div className="mt-4 flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+        {([["market", "Market", "Fills now, at the current price"],
+           ["limit", "Limit", "Rests until the price reaches your trigger"]] as const).map(([m, text, title]) => (
+          <button key={m} type="button" disabled={submitting} title={title}
+            onClick={() => { setMode(m); setTriggerPrice(""); setTpPct(null); setTpPrice(""); }}
+            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
+              mode === m ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
+            {text}
+          </button>
+        ))}
+      </div>
+
       {/* Direction */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         {(["long", "short"] as Side[]).map((s) => {
@@ -710,6 +818,43 @@ export function PerpsCard({
         </div>
         {amountHint && <p className="mt-1 text-xs text-amber-300/90">{amountHint}</p>}
       </label>
+
+      {view.isLimit && (
+        <div className="mt-4">
+          <label htmlFor="perps-trigger" className="text-xs font-medium uppercase tracking-wide text-white/50">
+            Fill at
+          </label>
+          <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
+            <span className="text-white/40">$</span>
+            <input id="perps-trigger" inputMode="decimal" value={triggerPrice}
+              placeholder={indexUsd !== null ? fmtPrice(indexUsd).replace("$", "") : ""}
+              disabled={submitting}
+              onChange={(e) => {
+                // Same whitelist the amount and take-profit inputs use: a
+                // rejected keystroke reports why rather than being swallowed.
+                const v = readNumericInput(e.target.value);
+                if (!v.ok) { setTriggerHint(v.hint); return; }
+                setTriggerHint(null);
+                setTriggerPrice(v.value);
+              }}
+              className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
+          </div>
+          {triggerHint && <p className="mt-1 text-xs text-amber-300/90">{triggerHint}</p>}
+          {/* The one thing that makes a limit order wrong before it is placed. */}
+          {triggerCrossed ? (
+            <p className="mt-1 text-xs text-amber-300/90">
+              {side === "long"
+                ? "That is at or above the current price, so it would fill straight away — use Market, or set a lower price."
+                : "That is at or below the current price, so it would fill straight away — use Market, or set a higher price."}
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] text-white/35">
+              Your order rests until {market.label.split("/")[0]} reaches this price. Nothing is
+              traded until then, and you can cancel before it fills.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Risk */}
       <div className="mt-4">
@@ -777,7 +922,9 @@ export function PerpsCard({
       {/* Liquidation — permanent, not a disclosure the user can dismiss */}
       <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3.5 py-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">Liquidation</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">
+            Liquidation{view.isLimit && view.trigger12 > BigInt(0) ? " if filled" : ""}
+          </span>
           <span className="text-base font-bold tabular-nums text-red-300">
             {!view.quote?.ok ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
           </span>
@@ -785,7 +932,22 @@ export function PerpsCard({
         {view.quote?.ok && view.liquidatable && view.indexUsd !== null && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
-            {" · "}{(Math.abs(price12ToUsd(view.quote.liquidationPrice12) - view.indexUsd) / view.indexUsd * 100).toFixed(1)}% away
+            {/* Measured from the price this order is relative to: the LIVE
+                index for a market order, which is where the user is now, and
+                the ENTRY for a limit order, which is where they would be.
+                Mixing them — a trigger-based liquidation against a live index —
+                would be a number describing neither.
+
+                Either way the distance is exact, including for a limit order:
+                liquidation scales with entry, so the ratio between them does
+                not depend on where the order fills. Measured identical at spot
+                and at trigger on both sides. The conditional part of a limit
+                quote is the two PRICES, not this. */}
+            {" · "}{(() => {
+              const liq = price12ToUsd(view.quote!.liquidationPrice12);
+              const ref = view.isLimit ? price12ToUsd(view.quote!.entryPrice12) : view.indexUsd!;
+              return (Math.abs(liq - ref) / ref * 100).toFixed(1);
+            })()}% away
           </p>
         )}
         {view.quote?.ok && !view.liquidatable && (
@@ -925,7 +1087,8 @@ export function PerpsCard({
       {view.quote?.ok && (
         <dl className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">
           {[
-            ["Entry price", fmtPrice(price12ToUsd(view.quote.entryPrice12))],
+            [view.isLimit ? "Entry price if filled" : "Entry price",
+              fmtPrice(price12ToUsd(view.quote.entryPrice12))],
             ["PEX fee", fmtUsd(view.quote.openFeeUsd)],
             [`Magnet fee (${POSITION_BUILDER_FEE_BPS} bps, charged again on close)`, fmtUsd(view.quote.builderFeeUsd)],
             ["Price impact", `${view.quote.impactUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(view.quote.impactUsd))}`],
@@ -956,7 +1119,12 @@ export function PerpsCard({
             canSubmit
               ? "bg-magnet-500 text-white hover:bg-magnet-400"
               : "bg-magnet-500/20 text-white/40 cursor-not-allowed"}`}>
-          {submitting ? STAGE_LABEL[stage] : `Open ${side} · ${fmtUsd(view.notional)}`}
+          {submitting ? STAGE_LABEL[stage]
+            : view.isLimit
+              // Says what actually happens. "Open long" over a resting order
+              // would promise a position the click does not create.
+              ? `Place ${side} limit · ${fmtUsd(view.notional)}`
+              : `Open ${side} · ${fmtUsd(view.notional)}`}
         </button>
       )}
 
@@ -975,6 +1143,13 @@ export function PerpsCard({
           One signature. {fmtUsd(view.collateralUsd)} collateral and {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper
           fee leave your wallet, plus about 0.15 ALGO for the on-chain order record
           — or 0.25 on your first PEX trade, which also sets up a storage record PEX keeps.
+          {view.isLimit && (
+            // The part that is genuinely different: nothing is traded on this
+            // signature, and the money is escrowed until it fills or is
+            // cancelled. Said before the prompt, not discovered after.
+            <> {" "}Nothing is traded yet — this places a resting order, and the
+            money stays escrowed with PEX until it fills or you cancel it.</>
+          )}
         </p>
       )}
 
