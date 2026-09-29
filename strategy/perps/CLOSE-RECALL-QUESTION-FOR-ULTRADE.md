@@ -36,7 +36,21 @@ asset, per your last answer — so we do not need the plan to size the recall. A
 
 It is that single fee-credit value that is not in any box we can find.
 
-## Why we are asking rather than calling the endpoint
+## Since drafting: we think we can avoid the endpoint
+
+We traced what the registry is actually used for, and it is app ids, asset ids
+and box keys — configuration rather than live state. `mxac:` gives us the
+consensus app and xALGO asset, `yc2:` gives the Folks pool and f-asset, and the
+rest we already pin. The only field with no on-chain source is the fee credit
+above, and since it only raises `flatFeeMicroAlgo` we can over-provision it and
+let simulation confirm sufficiency.
+
+So this is no longer a blocker — it is a request to confirm a constant, plus one
+extra question: **do `xalgo_proposer_addresses` need to be supplied for a
+recall, and if so where should a frontend read them from?** They are in neither
+box we found.
+
+## Why we would rather not call the endpoint
 
 Our frontend has no backend and takes no live dependency that shapes a signed
 transaction. The oracle is the one external read, and it is a **static published

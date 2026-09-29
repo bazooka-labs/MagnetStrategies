@@ -77,8 +77,39 @@ config on chain. That one fee constant is in no box we can find.
 The SDK's supported route is a POST to `/v2/market-yield/action-recall-plan`.
 That is a **different trust shape from the oracle** — the oracle is a static
 published file with no server in the path, while this is a live service whose
-response would feed a group the user signs. Worth one question before adopting
-it for a single constant.
+response would feed a group the user signs.
+
+### The registry is constructible from chain — build it, do not fetch it
+
+Traced further on 2026-09-29, and the API turns out to be avoidable. Everything
+`marketYieldResourceClosureFromRegistry` reads is app ids, asset ids and box
+keys — configuration, not live state — and every piece is either already pinned
+or sitting in a box:
+
+| Registry field | Source |
+|---|---|
+| `markets_app_id`, `market_yield_vault_app_id`, `market_xalgo_yield_vault_app_id` | already pinned in `PEX_APPS` |
+| `xalgo_consensus_app_id`, `xalgo_asset_id` | **`mxac:`** on the xALGO vault — read live: `1134695678` and `1134696561` |
+| `folks_pool_app_id`, `f_asset_id` | **`yc2:`** on the yield vault — read live: `971372237` and `971384592` |
+| `market_yield_recall_flat_fee_micro_algos`, `action_recall_uses_router` | have SDK defaults |
+| `xalgo_provider_fee_credit_per_call_microalgos` | **the only one with no on-chain source** |
+
+And that last one only raises `flatFeeMicroAlgo`. **Overpaying a fee is safe;
+underpaying just fails**, and our own `MAX_GROUP_FEE_MICRO_ALGO` already bounds
+how far it can go. So it can be over-provisioned and the number confirmed by
+simulation rather than by asking — the chain says whether it is enough.
+
+So the recommended shape is: derive the registry locally from the pinned ids
+plus `mxac:` and `yc2:`, over-provision the fee credit, and keep the API out of
+the signing path entirely. Ultrade's answer then confirms a constant rather than
+unblocking the build.
+
+**Not finished.** The build currently stops at `Input is not a 64-bit unsigned
+integer`, somewhere in the field plumbing that has not been isolated, and it is
+not yet established whether `xalgo_proposer_addresses` — which the xALGO branch
+appends to `accounts` and which is in neither box — is needed in practice or
+only when proposers must be named. Both are ordinary debugging against
+simulation, not open questions.
 
 **The other things to settle, all read-only:**
 
