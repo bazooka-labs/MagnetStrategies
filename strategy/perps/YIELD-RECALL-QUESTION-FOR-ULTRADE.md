@@ -5,7 +5,7 @@
 >
 > So: always pass `yieldRecallMode: 1` rather than deriving whether a recall is
 > needed. The SDK attaches the recall resource carriers itself. This **unblocks
-> the close write path**; what to do about it is in [NEXT.md](./NEXT.md#1-close-write-path--unblocked-build-first).
+> the close write path**; what to do about it is in [NEXT.md](./NEXT.md#1-close-write-path--unblocked-and-now-the-only-large-gap).
 > Kept below as the question and the evidence that produced it.
 
 ---

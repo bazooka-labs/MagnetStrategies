@@ -157,7 +157,7 @@ Both against fixtures, so they run without a network.
 
 ---
 
-## Deferred — LOW 8–12, not in this change
+## Deferred — LOW 8–12 — **all closed 2026-09-29** (`7601b12`)
 
 Recorded so they are not lost: the chart's duplicate price formatter (one digit
 coarser than the card's single source of truth); the silent quick-pick clamp,
@@ -191,8 +191,13 @@ inverted the largest term's sign and printed it under a heading saying "costs".
 `impactUsd` is also signed-favourable, so `+$0.04` under "Costs to exit" read as
 $0.04 of cost.
 
-It is not sign-corrected, because the mechanism is not established — see
-[FUNDING-FIELD-QUESTION-FOR-ULTRADE.md](./FUNDING-FIELD-QUESTION-FOR-ULTRADE.md).
+It was not sign-corrected at the time, because the mechanism was not
+established. **It has since been resolved** — by reading Ultrade's SDK rather
+than asking them, on 2026-09-29: `funding_fee_collateral_amount` is a GROSS
+accrued cost, forced non-negative in `settledPosition`, and the signed
+settlement is `collateral_funding_net_amount`. The itemisation is restored and
+the draft question was deleted rather than sent. See
+[NEXT.md](./NEXT.md#closed-recently).
 Publishing a decomposition we cannot derive is the same mistake as
 `collateral_delta`: internally plausible, wrong at the boundary. The panel now
 shows one figure — the difference between the payout and the collateral — which

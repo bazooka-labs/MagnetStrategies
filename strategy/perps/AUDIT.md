@@ -1223,6 +1223,93 @@ settles three things that were previously inference:
 
 ---
 
+## Unaudited surface (2026-09-29) — scope for audit 8
+
+Everything below landed **after** audit 7's remediation (`9c19778`) and has had
+no adversarial review. It is a larger and more dangerous surface than audit 7's
+was: audit 7 reviewed UI over an existing money path, and this adds **three new
+write paths** plus a change to a control the market path already depended on.
+
+### Audit these first — they weaken or extend existing controls
+
+1. **`checkMathCarriers` was RELAXED, and it guards the market path too.**
+   It required carriers to name no accounts and no assets. It now permits a
+   carrier to name anything an asserted call in the same group already
+   references, plus the pinned apps' own addresses derived from `PEX_APPS`.
+   The reason is real — the limit flow's `doi:` carrier names the Markets app
+   address, where PEX's protocol fee is paid, and a strict rule fails-closed on
+   every correct limit group. But this is a **weakening of a control that the
+   open and take-profit paths rely on**, made to admit a different flow.
+   Question for audit 8: can a carrier now make something available that
+   materially widens the group's reach? Specifically, an asserted call's
+   `accounts` array is attacker-influenced only if that call is itself
+   compromised — verify that, rather than taking it as given.
+
+2. **`GroupShape` gained an optional exact `orderOps` count**, and
+   `checkCallBudget` branches on it. The market shapes leave it undefined and
+   should behave exactly as before — confirm that is true rather than intended.
+
+3. **A synthetic oracle payload now exists in `PerpsCard`.** For a limit order
+   the card quotes against `data.oracle` with its prices scaled to the user's
+   trigger. It is display-only and `openLimitOrder` fetches the real payload
+   itself, but a fabricated price object now exists in the same component that
+   builds a trade. **Verify it cannot reach a group by any path.** A synthetic
+   payload in a group is a signature over a price nobody published.
+
+### New write paths — never signed by a real wallet
+
+4. **`openLimitOrder`** (`perpsClient.ts`). Builds, patches, regroups, asserts,
+   simulates, signs. Includes the **box-reference patch**: two `o2:` references
+   the SDK omits are added to a carrier and the group id re-assigned. That is
+   mutation of a group the SDK built, after it built it — audit whether the
+   re-group can ever leave the asserted bytes different from the signed bytes.
+5. **`assertOpenLimitGroup`** (`perpsGroup.ts`). The only thing between a limit
+   group and a wallet. Verified: three correct shapes pass and simulate, four
+   tampers fail. Not verified: anything not on that list.
+6. **`cancelOrder` / `assertCancelGroup`.** **Never simulated against a live
+   order** — there were none resting when it was written. The assertion and four
+   tampers are verified; the contract round trip is not.
+7. **`acceptableForOpen`** — new, and the sibling of a function whose misuse
+   once made every group in this codebase unbuildable. Check the direction on
+   both sides.
+
+### Read and display paths added since audit 7
+
+8. **The `o2:` decoder and `usePerpsOrders`** — layout verified field-by-field
+   against four live orders, since executed. The lifecycle mapping is the SDK's,
+   with two traps documented in SPEC; verify both guards still hold.
+9. **`PositionState.owner`** — `decodePosition` changed signature. Omitting the
+   owner makes every healthy take-profit read `position_missing`, which this
+   document requires be displayed as "Orphaned — funds still locked".
+10. **`fundingNetUsd` and the itemised exit-cost line.** The itemisation was
+    pulled once for not reconciling and restored after the cause was found.
+    Verify the five terms now sum to the headline on live positions.
+11. **The liquidation "% away" reference changed** — live index for a market
+    order, entry for a limit order. Market behaviour should be unchanged;
+    confirm it.
+12. **`aggregateCloseOutputs` ordering changed** to asset id, with display
+    ordering moved to the panel.
+13. **The market/limit toggle, trigger input and conditional labels** in
+    `PerpsCard` — on the money path, since the trigger is signed.
+
+### Method notes for whoever runs audit 8
+
+- **A tamper test against a transfer must use an opted-in receiver.** See the
+  H1 entry under Open: a redirect to a non-opted-in address is refused with
+  `receiver error: must optin`, which looks like a protocol control and is not.
+  This nearly wrote a false reassurance into this file.
+- **`allowUnnamedResources` is a diagnostic, never a remedy.** Simulation with
+  it set auto-fills missing resource references; a real submission does not.
+  Using it to make a group "pass" manufactures a green pre-flight on the one
+  check standing between a group and a wallet. It is how the limit group's
+  missing box references were *found*, and it must not be how they are fixed.
+- **Live-data sample sizes matter here.** Audit 5 was wrong by generalising
+  from one account. There are currently ~10 live positions and, at the time of
+  writing, **zero resting orders** — so any order-path claim made against live
+  data has a sample size of zero and should say so.
+
+---
+
 ## Open
 
 1. ~~**Does PEX itself reject a tampered transfer (H1)?**~~ **CLOSED 2026-09-29.

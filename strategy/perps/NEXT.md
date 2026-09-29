@@ -4,9 +4,9 @@ Written 2026-09-29, at the end of a working session, so the next one starts with
 the reasoning rather than re-deriving it. Order is deliberate and argued below.
 
 **None of this is built.** Everything here is a plan plus the measurements that
-justify it. What IS built is in [SPEC.md](./SPEC.md#build-status--2026-09-28)
+justify it. What IS built is in [SPEC.md](./SPEC.md#build-status--2026-09-29)
 and the orders read path in
-[SPEC.md](./SPEC.md#orders--read-path-built-write-path-not-2026-09-28).
+[SPEC.md](./SPEC.md#orders--read-and-write-paths-built-2026-09-28-extended-2026-09-29).
 
 ---
 
@@ -32,7 +32,7 @@ Three things that settles:
 
 ---
 
-## 1. Close write path — UNBLOCKED, build first
+## 1. Close write path — UNBLOCKED, and now the only large gap
 
 **Ultrade, 2026-09-29:** *"generally speaking, I would suggest always using
 recall because most of the time the yield deployment doesn't leave much idle
@@ -47,11 +47,11 @@ Always passing `1` skips the derivation; the SDK then attaches the recall
 resource carriers itself — router → Folks vault → provider return path — and
 adds the provider fee credit.
 
-**Why this goes first.** A position currently has exactly two exits: the
-take-profit fires, or it liquidates. That single constraint has been shaping
-every other decision in the product, including the ordering of everything below
-it. Closing helps everyone holding a position today; the order features help
-people who do not have one yet.
+**Why this goes first.** A position still has exactly two exits: the take-profit
+fires, or it liquidates. Everything else on this list is now built, so this is
+the last large capability missing — and the one that every open position today
+is waiting on. It is also what makes the "cancel your only exit" warning in the
+orders panel stop being necessary.
 
 **Three things to settle before building, all read-only:**
 
@@ -67,122 +67,32 @@ people who do not have one yet.
 
 ---
 
-## 2. Order cancel — second
+## 2. Limit orders — **BUILT 2026-09-29**
 
-`cancel_order` refunds everything. **Measured, not assumed**: paired one submit
-against its own cancel and the amounts match to the microunit —
-`submit_order` paid out 10.124513 USDC and 100,200 µALGO; `cancel_order`
-refunded 10.124513 USDC (stake 10.073513 + keeper fee 0.051) and 100,200 µALGO.
-The only cost was 34,000 µALGO of network fees across both groups. Surveyed 127
-cancels overall: every one refunded, with ALGO amounts in tiers (96,500 /
-99,700 / 100,200 and multiples) that track box size and how many orders were
-cancelled in one call, not partial refunds.
+Place, read and cancel, each with its own assertion. Shapes, the SDK's missing
+box references, the two deliberate refusals, the cancel refund measurements and
+the conditional-quote decision are all in
+[SPEC.md](./SPEC.md#orders--read-and-write-paths-built-2026-09-28-extended-2026-09-29).
 
-The rule to code against is **"refunds what it took"**, not a fixed constant:
-our attached-TP path paid 99,700 for its order box while `submit_order` pays
-100,200, and each is refunded its own amount.
+**What is NOT done, and matters:**
 
-**Why before submit.** All four orders observed on chain carry
-`expiry_time = 0` — good-till-cancelled. So for an order with no cancel path the
-complete list of exits is (a) it executes, or (b) somebody calls the paid
-cleanup, which nobody is obliged to do. Shipping submit first would create
-orders nobody can retract. Cancel is also the smaller group — one app call, no
-oracle payload, no price to get wrong — and the only write path here that
-*reduces* locked user money.
-
-**Guard it needs:** cancelling a take-profit on a live position removes that
-position's only exit. That has to be said at the confirm step, not discovered
-afterwards. Once the close path exists this is less severe, but it is still a
-deliberate removal of protection.
+- **No group on this path has been signed by a real wallet.** Same standing gap
+  as the market path, now across three more write paths.
+- **Cancel has never been simulated against a live order** — there were none
+  resting when it was written. The assertion and four tampers are verified; the
+  contract round trip is not. One placed order closes this.
+- **The limit assertion has no fixture test.** Verification was a live network
+  probe, which does not run in CI. `perpsGroupReal.test.ts` works from captured
+  fixtures and the limit shape needs capturing the same way — the difference
+  between "verified once" and "stays verified".
+- **The storage-funding variant is refused, not supported.** A first-time trader
+  cannot place a limit order until they have opened once at market. The shape
+  has never been simulated, so the refusal is honest rather than lazy — but it
+  is a real first-user limitation.
 
 ---
 
-## 3. Limit orders (`OPEN_LIMIT`) — third
-
-Stage 1, reading resting orders, is built and shipped. Stage 2 is submit.
-
-`V2_ORDER_KIND.OPEN_LIMIT = 1`, with `buildV2OpenLimitWithAttachedOrdersTransactions`
-for a limit entry carrying its own take-profit.
-
-### The B6 check is DONE, and it found the same class of defect (2026-09-29)
-
-`OPEN_LIMIT` with an attached take-profit **builds and simulates clean** — but
-only after a fix, and the unfixed failure is exactly the kind that would have
-cost another week.
-
-**Shape**, confirmed against MainNet: 7 transactions bare, 10 with a take-profit.
-
-| | |
-|---|---|
-| `[0]` axfer | collateral **+ keeper fee** in one transfer (6.10 USDC for a $6 stake) |
-| `[1]` pay | **100,200** µALGO — the parent order box MBR. Note this is the `submit_order` figure, not the 99,700 our market-open path pays |
-| `[2]` appl | OrderOps — the `OPEN_LIMIT` parent, as `BRACKET_PARENT` |
-| `[3]`–`[6]` appl | math carriers (`m2:`, `mr2:`, `mp2:`, `mo2:`, `mf2:`, `vi2:`, `ma2:`, `my2:`, `doi:`) |
-| `[7]` axfer | the child's own keeper fee |
-| `[8]` pay | **99,700** µALGO — the child order box MBR |
-| `[9]` appl | OrderOps — `submit_linked_order` for the child |
-
-**The defect: the SDK's builder under-declares its own box references.** Raw, it
-fails at transaction `[2]` with `logic eval error: invalid Box reference
-0x6f323a…` — `o2:` plus the owner. Simulating with `allowUnnamedResources: true`
-passes and reports what was actually touched:
-
-    app=3690309166 name="o2:" orderId=2
-    app=3690309166 name="o2:" orderId=3
-
-The builder declares only the **base** order's box. The contract touches the two
-**sibling slots** the stride reserves — which is precisely why
-`ORDER_ID_STRIDE = 3` and `allocateBaseOrderId` reserves
-`[base, base+1, base+2]`. It happens **with no take-profit attached at all**, so
-an `OPEN_LIMIT` as `BRACKET_PARENT` always claims its child slots.
-
-**Fix, verified:** declare `o2:` boxes for `baseOrderId + 1` and `baseOrderId + 2`
-on a carrier with spare box slots (the submit call's four are full), then
-**re-assign the group id** — mutating after `grouped()` invalidates it and algod
-rejects the group as incomplete. With that, both shapes simulate `ok: true`
-honestly, with no `allowUnnamedResources`.
-
-> **Do NOT set `allowUnnamedResources` in `simulateGroup` to make this pass.**
-> Simulation auto-fills the missing reference; a real submission has no such
-> auto-fill and would fail on chain. It would manufacture a false green on the
-> one check that stands between a group and a wallet. The flag is a *diagnostic*
-> — use it to learn what is missing, then declare it.
-
-`L7RF6SLJVI…` had a working bracket on chain as a reference; note their limit
-order has since executed, so that example is gone — ALGO crossed $0.14 overnight
-and took several resting orders with it.
-
-**The design problem, which is the real work.** Every risk figure the card
-displays — entry, liquidation, price impact, "% away" — comes from `quoteOpen`
-at the **current** index. For a limit order those are estimates at a
-*hypothetical* future execution. Concretely, the resting order measured on
-2026-09-28 was a short, $90 notional on a $10.08 stake, trigger $0.14 against a
-$0.1316 spot: every index-derived number would have been computed at a price
-6.4% away from where it fills, and the liquidation price is roughly proportional
-to entry.
-
-Worse, **the error does not reliably point the safe way** — its direction
-depends on the side *and* on whether the trigger sits above or below spot, so a
-long buying a dip and a short selling a rally get errors in opposite directions.
-No conservative fudge covers both. Notional, stake, our fee and the keeper fee
-are all fixed at submission and display correctly; it is specifically the
-price-derived quantities that become hypotheticals. A naive build shows one box
-where four numbers are facts and three are guesses, undistinguished.
-
-Three honest options, none chosen yet: label them as estimates at the trigger
-price; show only the figures that are facts and omit the rest; or quote them
-*at* the trigger price and say so plainly.
-
-**One risk to simulate rather than assert:** leverage is fixed at submission
-(`size_usd_delta` and `collateral_amount` are both stored), but whether PEX will
-*accept* that size when the keeper fires depends on open-interest headroom at
-that moment. Both markets are OI-capped well below typical demand. If an order
-can sit at the right price and still fail to fill because the side is full,
-users have to be told — it is not intuitive.
-
----
-
-## 4. Pay profit out in USDC — fourth, and opt-in
+## 3. Pay profit out in USDC — next, and opt-in
 
 **PEX already does this; we would not build a swap.** `output_swap_mode` is a
 field on the order, and `V2_OUTPUT_SWAP.PNL_TO_COLLATERAL = 1` converts the PnL
@@ -219,7 +129,24 @@ two together rather than separately.
 
 ---
 
-## Still open, unchanged
+## Still open
+
+- **Everything after audit 7's remediation is unaudited**, including the orders
+  read path shipped in `159e6e4`.
+- **No group in this codebase has ever been signed by a real wallet.** The
+  market open path has had one real signature — our own trade on 2026-09-28,
+  which opened and closed successfully — but `openLimitOrder`, `cancelOrder`
+  and the close path have had none.
+- **Audit 8 has not run.** Its scope is written up in
+  [AUDIT.md](./AUDIT.md#unaudited-surface-2026-09-29--scope-for-audit-8) and is
+  larger than audit 7's: three new write paths, plus a deliberate **relaxation**
+  of `checkMathCarriers`, which the market path also depends on.
+
+---
+
+## Closed recently
+
+Kept because each records HOW it was settled, which is usually the reusable part.
 
 - ~~`doi:` is pinned against nothing.~~ **Closed** — the manifest declares it as
   `dynamic_oi_margin_config`, and `dynamicOiLayoutProblem()` checks the SDK, the
@@ -254,5 +181,3 @@ two together rather than separately.
   reported signed from `collateral_funding_net_amount` rather than the gross
   field, that `collateral_delta` is ignored entirely, the `platform_fee_amount`
   fallback, signed impact, and withholding `payoutUsd` on an unpriceable leg.
-- **Everything after audit 7's remediation is unaudited**, including the orders
-  read path shipped in `159e6e4`.

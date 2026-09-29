@@ -7,18 +7,19 @@ Perps does not operate an exchange. It integrates **PEX**, a third-party perpetu
 protocol built by Ultrade. Magnet Strategies writes no exchange contracts, custodies
 no user funds, and holds no protocol role.
 
-**Status (2026-09-28):** The **open path is complete** — config, on-chain reads, the
+**Status (2026-09-29):** The **open path is complete** — config, on-chain reads, the
 risk-bar solver, oracle verification, the quote layer, group construction and the
 signing flow, including an attached take-profit. The **full lifecycle has now run on
 MainNet** — opened, and closed by its own take-profit, unattended, 2026-09-29.
-Positions are still **read-only in this UI**: the close write path is unblocked
-(Ultrade answered the yield-recall question — always recall) but not yet built,
-so today a position exits only by its take-profit firing or by liquidation.
-Resting orders are readable; placing and cancelling them is not built.
+**Limit orders are complete** — place, read and cancel, each with its own group
+assertion (2026-09-29). Positions themselves are still **read-only in this UI**:
+the close write path is unblocked (Ultrade answered the yield-recall question —
+always recall) but not yet built, so a position still exits only by its
+take-profit firing or by liquidation.
 No contract is deployed because none exists. **The product name is provisional** —
 "Perps" describes the instrument, not the product.
 
-Detail: [SPEC.md](./SPEC.md#build-status--2026-09-28) for what is built,
+Detail: [SPEC.md](./SPEC.md#build-status--2026-09-29) for what is built,
 [NEXT.md](./NEXT.md) for what to build next and why in that order,
 [AUDIT.md](./AUDIT.md#open) for what is open.
 

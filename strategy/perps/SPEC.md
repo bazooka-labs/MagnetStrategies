@@ -1193,7 +1193,7 @@ Steps 1 and 2 are prerequisites, not preliminaries. Every number in this spec ma
 
 ---
 
-## Orders — Read Path Built, Write Path Not (2026-09-28)
+## Orders — Read and Write Paths Built (2026-09-28, extended 2026-09-29)
 
 **Keeper execution is no longer an assumption.** See
 [AUDIT.md](./AUDIT.md#the-keeper-runs--and-orders-execute-on-mainnet-2026-09-28):
@@ -1228,20 +1228,76 @@ not our derived mid, and not at all when the signature does not verify — an
 unverified price must not decide "ready to execute" any more than it may decide
 a trade.
 
-**Not built: submit and cancel.** Both are write paths and neither is blocked on
-the yield-recall question, which gates closing *positions*. `cancel_order` would
-be the product's first cancellable action. Before building the submit path, two
-things need settling: whether `OPEN_LIMIT` with attached orders simulates clean
-(the same shape as B6, which cost a week), and whether `cancel_order` refunds
-both the 99,700 µALGO box MBR and the escrowed keeper fee — listed as
-simulation-determinable below, and now measurable against 480+ historical
-cancels.
+### Submit — built 2026-09-29
 
-**A limit order's quote is conditional, and the UI does not yet say so.** Every
-figure the card shows — entry, liquidation, impact, net collateral — comes from
-a market quote at the current index. For a limit order those are estimates at a
-hypothetical future execution. Framing that honestly is a prerequisite for the
-write path, not a polish item.
+`OPEN_LIMIT` with an attached take-profit: **7 transactions bare, 10 with a
+take-profit**, all presenting to OrderOps with **zero Trading calls**.
+
+| | |
+|---|---|
+| `[0]` axfer | collateral **and** keeper fee in ONE transfer — unlike the market path, which uses two |
+| `[1]` pay | **100,200** µALGO, the parent order box MBR. Not the 99,700 the market path pays for its take-profit box |
+| `[2]` appl | OrderOps, the `OPEN_LIMIT` parent as `BRACKET_PARENT` |
+| `[3]`–`[6]` appl | math carriers |
+| `[7]`–`[9]` | the child's keeper fee, its 99,700 MBR and its linked submit |
+
+**The SDK under-declares its own box references.** The built group declares
+`o2:` for the base order only; the contract touches `base + 1` and `base + 2`,
+the slots `ORDER_ID_STRIDE` reserves. Unpatched it dies at the OrderOps call
+with `invalid Box reference`, **with or without a take-profit attached** — an
+`OPEN_LIMIT` parent always claims its child slots. `openLimitOrder` adds the two
+references to a carrier and re-assigns the group id, because mutating after
+`grouped()` invalidates it.
+
+> **Never set `allowUnnamedResources` to make this pass.** Simulation auto-fills
+> the missing reference; a real submission does not. It is the diagnostic that
+> *found* this and must not be the remedy.
+
+Two refusals are deliberate, and both are product decisions rather than
+limitations of the group: a **crossed trigger** is refused and the user routed
+to the market button, because a limit that fills immediately costs a keeper fee
+and a box MBR for an execution the market path does in one group at the same
+price; and a trader **without a funded storage escrow** is refused, because that
+group shape has never been simulated and `assertOpenLimitGroup` does not know
+it. The second is a real first-user limitation — opening once at market funds
+the escrow permanently.
+
+### Cancel — built 2026-09-29
+
+One OrderOps call standalone, two transactions for a bracket. **Nothing leaves
+the wallet**: stake, keeper fee and order-box MBR all return as inner
+transactions, so the shape forbids every `axfer` and every `pay`, which is the
+strongest single check on this path.
+
+`cancel_order` takes one uint64 and the contract derives the box from the
+**sender**, so a group naming a different id cancels a different order *of the
+user's own* — plausibly the take-profit protecting a live position rather than
+the resting entry they clicked. Nothing on chain distinguishes those; only
+`assertCancelGroup` does.
+
+**Refunds what it took, not a constant.** Measured by pairing one submit against
+its own cancel: 10.124513 USDC and 100,200 µALGO out, the identical amounts
+back, the only cost ~34,000 µALGO of network fees. Across 127 historical cancels
+every one refunded, with the ALGO figure always matching what that order had
+paid — 96,500 / 99,700 / 100,200 and multiples, tracking box size and how many
+orders were cancelled together.
+
+### The conditional quote — settled by measurement
+
+Only **two** displayed figures depend on where a limit order fills. Measured at
+10x with the trigger 5% away, both sides:
+
+| | Moves with the trigger? |
+|---|---|
+| Entry price, liquidation price | **yes** — by the trigger offset |
+| Price impact, PEX fee, Magnet fee, backing the position | no — they scale with notional |
+| **Liquidation distance** | **no** — liquidation scales with entry |
+
+So the card quotes a limit order against a **synthetic payload with its prices
+scaled to the trigger**, labels exactly those two figures "if filled", and
+leaves the distance line uncaveated because it is exact. The synthetic payload
+is **display only**; `openLimitOrder` fetches the real one. The two are
+deliberately not shared.
 
 ---
 
@@ -1302,13 +1358,15 @@ measured together.
 
 ---
 
-## Build Status — 2026-09-28
+## Build Status — 2026-09-29
 
 Tracked against [Build Order](#build-order) above, because that list describes the plan and this describes the tree.
 
 **Built and verified against MainNet simulation:** steps 1, 2 (with the gaps noted in that step), 5, 6, 7. The open path is complete, including the attached take-profit — `openPosition` in `perpsClient.ts` is the only place a group reaches a wallet, and `perpsGroup.ts` asserts every transaction in it before it does.
 
-**Built, read-only:** step 9's *reading* half. `PositionsPanel` shows live per-position quotes with the per-asset payout breakdown above. **There is no close, partial-close, add, add-collateral or reclaim write path**, and that is deliberate rather than unfinished — see the yield-recall question below.
+**Built, read-only:** step 9's *reading* half. `PositionsPanel` shows live per-position quotes with the per-asset payout breakdown above. **There is no close, partial-close, add, add-collateral or reclaim write path.** That was blocked on the yield-recall question and is no longer — Ultrade answered on 2026-09-29 — so it is now simply unbuilt, and it is the top item in [NEXT.md](./NEXT.md).
+
+**Built 2026-09-29 — limit orders, end to end.** Place (`openLimitOrder`), read (`usePerpsOrders`, the `o2:` decoder) and cancel (`cancelOrder`), each with its own assertion. See the orders section above. Three new write paths, none of which has been signed by a real wallet.
 
 **Built and not in the Build Order at all**, because they were added after it was written:
 
