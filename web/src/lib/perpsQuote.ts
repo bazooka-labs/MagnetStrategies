@@ -208,6 +208,30 @@ export function acceptableForClose(triggerPrice12: bigint, side: Side, slippageB
     : (triggerPrice12 * (ten_k + bps)) / ten_k;  // buying:  accept up to trigger + slip
 }
 
+/**
+ * The worst price a limit ENTRY will accept, from its trigger.
+ *
+ * The exact mirror of `acceptableForClose`, and a separate named function for
+ * the same reason that one is: the open/close distinction has already made
+ * every group in this codebase unbuildable once, when a close-side helper was
+ * used on an open leg. Naming it at the call site is the control.
+ *
+ * Opening a long BUYS, so it accepts paying up to `trigger + slip`; opening a
+ * short SELLS, so it accepts receiving down to `trigger - slip`. That is the
+ * opposite of the close case on both sides.
+ *
+ * **Anchored to the trigger, never the index.** A limit order fills at some
+ * future moment, so the index at submission says nothing about the fill; using
+ * it would let the bound sit arbitrarily far from the price the user chose.
+ */
+export function acceptableForOpen(triggerPrice12: bigint, side: Side, slippageBps: number): bigint {
+  const bps = BigInt(Math.round(slippageBps));
+  const ten_k = BigInt(10_000);
+  return side === "long"
+    ? (triggerPrice12 * (ten_k + bps)) / ten_k   // buying:  accept up to trigger + slip
+    : (triggerPrice12 * (ten_k - bps)) / ten_k;  // selling: accept down to trigger - slip
+}
+
 export type QuoteInput = {
   state: MarketState;
   oracle: OraclePayload;

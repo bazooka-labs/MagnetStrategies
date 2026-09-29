@@ -23,7 +23,10 @@
 // file too.
 
 import algosdk from "algosdk";
-import { buildV2MarketOpenWithAttachedOrdersTransactions } from "@pdex/sdk/transactions";
+import {
+  buildV2MarketOpenWithAttachedOrdersTransactions,
+  buildV2OpenLimitWithAttachedOrdersTransactions,
+} from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
 import {
   BUILDER_ADDRESS,
@@ -50,9 +53,16 @@ import {
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { preflight } from "./perpsPreflight";
-import { assertOpenWithTakeProfit, simulateGroup, ORDER_BOX_MBR_MICRO_ALGO } from "./perpsGroup";
+import {
+  assertOpenLimitGroup,
+  assertOpenWithTakeProfit,
+  simulateGroup,
+  ORDER_BOX_MBR_MICRO_ALGO,
+  type DisplayedLimit,
+} from "./perpsGroup";
 import {
   acceptableForClose,
+  acceptableForOpen,
   quoteOpen,
   quoteTakeProfitCrossed,
   takeProfitBounds,
@@ -639,6 +649,333 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     }
   }
 
+  return {
+    txId, baseOrderId: alloc.baseOrderId, checks: assertion.checked,
+    outcome, reason, confirmed: outcome === "confirmed",
+  };
+}
+
+// ── Limit entries ───────────────────────────────────────────────────────────
+
+export type OpenLimitInput = {
+  algod: algosdk.Algodv2;
+  signTransactions: SignFn;
+  sender: string;
+  marketId: number;
+  side: Side;
+  collateralUsd: number;
+  notionalUsd: number;
+  /** The price the order waits for, Price12, exactly as displayed. */
+  triggerPrice12: bigint;
+  /** Attached take-profit trigger, Price12. Optional — unlike a market open. */
+  takeProfitPrice12?: bigint;
+  slippageBps?: number;
+  onStage?: (s: OpenStage) => void;
+};
+
+/**
+ * Place a resting limit entry, optionally with a take-profit attached.
+ *
+ * ── How this differs from `openPosition`, and why there is no drift guard ───
+ * A market open is checked against what the card rendered — entry price,
+ * liquidation price, net collateral — because those are quoted numbers that
+ * move between render and signature. A limit entry has none of them. Nothing is
+ * quoted: the user picks a trigger, and the only prices in the group are that
+ * trigger and the slippage bound derived from it. Both are the user's own
+ * input, so there is nothing to drift AGAINST. Adding a guard here would be the
+ * tautology audit 5 removed from the open path — comparing our numbers to our
+ * own numbers and calling it verification.
+ *
+ * What replaces it is the assertion, which binds the built group to the trigger
+ * the user chose, and the crossing refusal below.
+ */
+export async function openLimitOrder(input: OpenLimitInput): Promise<OpenPositionResult> {
+  if (openInFlight) {
+    throw new Error("An order is already in progress. Wait for it to finish.");
+  }
+  openInFlight = true;
+  try {
+    return await openLimitOrderInner(input);
+  } finally {
+    openInFlight = false;
+  }
+}
+
+async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionResult> {
+  const { algod, signTransactions, sender, marketId, side, collateralUsd, notionalUsd } = input;
+  const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  const stage = (s: OpenStage) => input.onStage?.(s);
+  const sideCode: 1 | 2 = side === "long" ? 1 : 2;
+
+  if (!BUILDER_ADDRESS) throw new Error("Builder address is not configured.");
+  if (!Number.isFinite(collateralUsd) || !Number.isFinite(notionalUsd)
+    || collateralUsd <= 0 || notionalUsd <= 0) {
+    throw new Error("Enter an amount first.");
+  }
+  if (input.triggerPrice12 <= BigInt(0)) throw new Error("Set a trigger price first.");
+  if (input.takeProfitPrice12 !== undefined && input.takeProfitPrice12 <= BigInt(0)) {
+    throw new Error("The take-profit price is not valid.");
+  }
+  if (!Number.isFinite(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
+    throw new Error("Slippage tolerance is out of range.");
+  }
+
+  stage("preparing");
+  await installProtocolManifest();
+
+  const [state, account, pre] = await Promise.all([
+    readMarketState(algod, marketId),
+    algod.accountInformation(sender).do(),
+    preflight(algod),
+  ]);
+  if (!pre.canOpen) {
+    if (pre.detail) console.warn(`perps: preflight refused the limit order — ${pre.detail}`);
+    throw new Error(pre.reason ?? "Trading is unavailable right now.");
+  }
+
+  const usdcHeld = (account.assets ?? []).find(
+    (a: { assetId?: bigint | number }) => Number(a.assetId) === COLLATERAL_ASSET_ID,
+  );
+  if (!usdcHeld) throw new Error("This wallet does not hold USDC.");
+  // A limit entry escrows BOTH in one transfer, and a take-profit adds a second
+  // keeper fee of its own.
+  const keeper = micro(CHILD_KEEPER_FEE_USDC);
+  const usdcNeeded = micro(collateralUsd) + keeper
+    + (input.takeProfitPrice12 !== undefined ? keeper : BigInt(0));
+  if (BigInt(usdcHeld.amount) < usdcNeeded) {
+    throw new Error("Not enough USDC for the order plus its keeper fee.");
+  }
+
+  const [existing, trader] = await Promise.all([
+    readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, sideCode),
+    readTraderState(algod, sender),
+  ]);
+  // Same rule as a market open: a fill on an existing position INCREASES it,
+  // and increases are a separate economic path we do not support. Refusing at
+  // placement is better than letting an order rest that would merge on fill.
+  if (existing && existing.size_usd > BigInt(0)) {
+    throw new PositionAlreadyOpenError(existing.size_usd);
+  }
+
+  /**
+   * **Refused, not built.** The storage-funding shape is unverified here.
+   *
+   * A trader without a `t2:` box needs one funded before Trading will accept
+   * anything, and the limit group's storage variant has never been simulated —
+   * it would add a payment and very likely a Trading call, which is a shape
+   * `assertOpenLimitGroup` does not know. Building it would either fail the
+   * assertion on a correct group or, worse, pass an unchecked one.
+   *
+   * A market open funds the escrow, so the path out is real and cheap to state.
+   */
+  if (storagePaymentNeeded(trader) > BigInt(0)) {
+    throw new Error(
+      "Limit orders need a funded storage escrow on PEX. Open a position at market first — that funds it once, and limit orders work from then on.",
+    );
+  }
+
+  stage("allocating");
+  const alloc = await allocateBaseOrderId(algod, sender);
+  if (!(await assertBaseOrderIdFree(algod, sender, alloc))) {
+    throw new Error("Could not allocate an order id. Try again.");
+  }
+
+  // OrderOps-targeted, because EVERY leg of this group presents to OrderOps —
+  // there is no Trading call at all. Reusing a Trading payload here is the same
+  // defect as B6's second half, one flow over.
+  const oracleFetchedAt = Date.now();
+  const oracle = await getOraclePayload(PEX_APPS.orderOps, marketId);
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
+
+  /**
+   * A limit that is already crossed is a worse market order. Refuse it.
+   *
+   * PEX accepts it — the child link mode becomes CHILD_ACTIVE and a keeper
+   * fills it almost immediately — but the user pays a keeper fee and an order
+   * box MBR for an execution the market button would have done in one group at
+   * the same price. Routing to the better path is not blocking a valid trade.
+   */
+  const index = oracle.indexPrice12;
+  const crossed = sideCode === 1 ? input.triggerPrice12 >= index : input.triggerPrice12 <= index;
+  if (crossed) {
+    throw new Error(
+      side === "long"
+        ? "That trigger is at or above the current price, so it would fill immediately. Use a market order, or set a lower trigger."
+        : "That trigger is at or below the current price, so it would fill immediately. Use a market order, or set a higher trigger.",
+    );
+  }
+
+  // Bounded against the TRIGGER, not the index — the order fills later, so the
+  // index now says nothing about the fill. Matches the assertion exactly.
+  const acceptablePrice = acceptableForOpen(input.triggerPrice12, side, slippageBps);
+  const tpAcceptable = input.takeProfitPrice12 !== undefined
+    ? acceptableForClose(input.takeProfitPrice12, side, slippageBps) : BigInt(0);
+
+  stage("building");
+  const sp = await algod.getTransactionParams().do();
+  sp.flatFee = true;
+  const stakeMicro = micro(collateralUsd);
+  const sizeMicro = micro(notionalUsd);
+
+  const built = buildV2OpenLimitWithAttachedOrdersTransactions({
+    sender, marketId,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    side: BigInt(sideCode),
+    collateralAmount: stakeMicro,
+    sizeUsdDelta: sizeMicro,
+    triggerPrice: input.triggerPrice12,
+    acceptablePrice,
+    keeperFeeAssetId: COLLATERAL_ASSET_ID,
+    keeperFeeAmount: keeper,
+    timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE),
+    expiryTime: BigInt(0),
+    outputSwapMode: BigInt(0),
+    minPrimaryOutputAmount: BigInt(0),
+    minSecondaryOutputAmount: BigInt(0),
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+    builderFee: { builderAddress: BUILDER_ADDRESS, builderFeeBps: BigInt(POSITION_BUILDER_FEE_BPS) },
+    baseOrderId: alloc.baseOrderId,
+    targetKind: V2_ORDER_TARGET.PAIR,
+    indexAssetId: Number(state.core.index_asset_id),
+    longAssetId: Number(state.core.long_asset_id),
+    shortAssetId: Number(state.core.short_asset_id),
+    ...(input.takeProfitPrice12 !== undefined ? {
+      takeProfit: {
+        triggerPrice: input.takeProfitPrice12,
+        acceptablePrice: tpAcceptable,
+        sizeUsdDelta: sizeMicro,
+        collateralAmount: BigInt(0),
+        keeperFeeAssetId: COLLATERAL_ASSET_ID,
+        keeperFeeAmount: keeper,
+        outputSwapMode: BigInt(0),
+        minPrimaryOutputAmount: BigInt(0),
+        minSecondaryOutputAmount: BigInt(0),
+        timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE),
+        expiryTime: BigInt(0),
+        oracleMessage: oracle.message,
+        oracleSignature: oracle.signature,
+      },
+    } : {}),
+    v2MathAppId: PEX_APPS.math,
+    v2MarketsAppId: PEX_APPS.markets,
+    v2TradingAppId: PEX_APPS.trading,
+    v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,
+    v2OrderOpsAppId: PEX_APPS.orderOps,
+    v2MarketXalgoYieldVaultAppId: PEX_APPS.marketXAlgoYieldVault,
+    v2AdminControlAppId: PEX_APPS.adminControl,
+  } as never, sp) as algosdk.Transaction[];
+
+  /**
+   * Declare the two sibling order boxes the SDK leaves out.
+   *
+   * Measured on MainNet: the built group declares `o2:` for the BASE order
+   * only, while the contract touches `base + 1` and `base + 2` — the slots
+   * `ORDER_ID_STRIDE` reserves. Un-patched, the group dies at the OrderOps call
+   * with `invalid Box reference`, with or without a take-profit attached.
+   *
+   * **This is not fixable by simulating with `allowUnnamedResources`.**
+   * Simulation would auto-fill the reference and report ok; a real submission
+   * has no such auto-fill and would fail on chain. That flag is a diagnostic,
+   * never a remedy — using it here would manufacture a green pre-flight on the
+   * one check standing between a group and a wallet.
+   */
+  const carrier = built.find((t) => t.type === "appl"
+    && (t.applicationCall?.boxes ?? []).some((b) => Number(b.appIndex) === PEX_APPS.orderOps));
+  if (!carrier) throw new Error("Could not prepare the order group. Nothing was sent.");
+  const call = carrier.applicationCall!;
+  const boxes = [...(call.boxes ?? [])].filter((b) => b.name.length > 0);
+  for (const extra of [alloc.baseOrderId + BigInt(1), alloc.baseOrderId + BigInt(2)]) {
+    boxes.push({
+      appIndex: BigInt(PEX_APPS.orderOps),
+      name: new Uint8Array([
+        ...new TextEncoder().encode("o2:"),
+        ...algosdk.decodeAddress(sender).publicKey,
+        ...algosdk.encodeUint64(extra),
+      ]),
+    });
+  }
+  (call as unknown as { boxes: unknown[] }).boxes = boxes;
+  // Mutating after the SDK grouped these invalidates the group id, and algod
+  // rejects the whole group as incomplete. Re-assign over the final bytes.
+  for (const t of built) (t as unknown as { group?: Uint8Array }).group = undefined;
+  algosdk.assignGroupID(built);
+
+  stage("checking");
+  const shown: DisplayedLimit = {
+    sender, marketId, side: sideCode,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    collateralAmountMicro: stakeMicro,
+    sizeUsdDeltaMicro: sizeMicro,
+    triggerPrice12: input.triggerPrice12,
+    acceptablePrice12: acceptablePrice,
+    keeperFeeMicro: keeper,
+    baseOrderId: alloc.baseOrderId,
+    slippageBps,
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+  };
+  const assertion = assertOpenLimitGroup(built, shown,
+    input.takeProfitPrice12 !== undefined ? {
+      triggerPrice12: input.takeProfitPrice12,
+      acceptablePrice12: tpAcceptable,
+      sizeUsdDeltaMicro: sizeMicro,
+      keeperFeeMicro: keeper,
+      baseOrderId: alloc.baseOrderId,
+      slippageBps,
+      oracleMessage: oracle.message,
+      oracleSignature: oracle.signature,
+    } : undefined);
+  if (!assertion.ok) {
+    console.error("perps: limit group assertion failed", assertion.findings);
+    throw new Error(
+      `Safety check failed, so nothing was sent: ${assertion.findings[0]?.detail ?? "unknown"}`,
+    );
+  }
+
+  stage("simulating");
+  const sim = await simulateGroup(algod, built);
+  if (!sim.ok) {
+    throw new Error(`The pre-flight check did not pass, so nothing was sent: ${sim.message ?? "unknown"}`);
+  }
+
+  const budgetLeft = ORACLE_MAX_AGE_SEC - oracle.ageSeconds
+    - (Date.now() - oracleFetchedAt) / 1000;
+  if (budgetLeft < MIN_SIGNING_BUDGET_SEC) {
+    throw new Error("Preparing this took longer than the price is valid for. Nothing was sent — try again.");
+  }
+
+  stage("signing");
+  const signed = await signTransactions(built.map((t) => algosdk.encodeUnsignedTransaction(t)));
+  const blobs = signed.filter((s): s is Uint8Array => !!s);
+  if (blobs.length !== built.length) throw new Error("Signing cancelled.");
+
+  stage("submitting");
+  const txId = built[0].txID();
+  try {
+    await algod.sendRawTransaction(blobs).do();
+  } catch (e) {
+    throw new SubmissionUnknownError(txId, e instanceof Error ? e.message : String(e));
+  }
+
+  stage("confirming");
+  let outcome: OpenOutcome = "unknown";
+  let reason: string | undefined;
+  try {
+    await algosdk.waitForConfirmation(algod, txId, CONFIRM_ROUNDS);
+    outcome = "confirmed";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/^Transaction Rejected:/i.test(msg)) {
+      outcome = "rejected";
+      reason = msg.replace(/^Transaction Rejected:\s*/i, "");
+    } else {
+      outcome = "unknown";
+      reason = msg;
+    }
+  }
   return {
     txId, baseOrderId: alloc.baseOrderId, checks: assertion.checked,
     outcome, reason, confirmed: outcome === "confirmed",
