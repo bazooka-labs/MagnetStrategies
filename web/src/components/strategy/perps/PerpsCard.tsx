@@ -46,6 +46,7 @@ import {
   type OpenQuote,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
+import { oiHeadroomUsd, sideOiUsd } from "@/lib/perpsReads";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
 import { ALGOD_URLS } from "@/lib/constants";
@@ -144,6 +145,8 @@ type CardSnapshot = {
   /** Market or limit, and the trigger — the labels below depend on both. */
   isLimit: boolean;
   trigger12: bigint;
+  /** This side's open interest against its cap. Explains the leverage ceiling. */
+  sideOi: { usedUsd: number; capUsd: number; roomUsd: number; fullPct: number } | null;
 };
 
 export type PerpsCardProps = {
@@ -331,6 +334,34 @@ export function PerpsCard({
     // display precision drift away from the bound it was printing.
     return notionalAtBarPosition({ ...bar, maxNotionalUsd: ceilingUsd }, barPos);
   }, [bar, ceilingUsd, tradable, barPos]);
+
+  /**
+   * How full this side of the market is.
+   *
+   * Not new data — `sideOiUsd` and `oiHeadroomUsd` already back the risk bar's
+   * ceiling. The card said "limited by oi headroom" without ever showing the
+   * number behind it, which is the difference between naming a constraint and
+   * explaining one.
+   *
+   * It also answers a question the UI otherwise cannot: why the same stake
+   * reaches a lower leverage on one side than the other. Measured today,
+   * ALGO/USD was 59.9% full long and 80.4% short, which is exactly why a short
+   * refused at a multiple the long accepted.
+   */
+  const sideOi = useMemo(() => {
+    if (!data) return null;
+    const used = sideOiUsd(data.state.oi, side);
+    const cap = side === "long"
+      ? data.state.risk.max_open_interest_long
+      : data.state.risk.max_open_interest_short;
+    if (cap <= BigInt(0)) return null;
+    return {
+      usedUsd: Number(used) / 1e6,
+      capUsd: Number(cap) / 1e6,
+      roomUsd: Number(oiHeadroomUsd(data.state.risk, data.state.oi, side)) / 1e6,
+      fullPct: (Number(used) / Number(cap)) * 100,
+    };
+  }, [data, side]);
 
   const trigger12 = usdToPrice12(triggerPrice) ?? BigInt(0);
   const isLimit = mode === "limit";
@@ -548,7 +579,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
-    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12,
+    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, sideOi,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -914,6 +945,19 @@ export function PerpsCard({
             Position size {fmtUsd(view.notional)} · limited by {view.binding.replace(/_/g, " ")}
           </p>
         )}
+        {/* The constraint, in numbers. Shown whenever the side is meaningfully
+            used rather than always: at 12% full it is noise, and at 80% it is
+            the reason the slider stops where it does. */}
+        {view.sideOi && view.sideOi.fullPct >= 25 && (
+          <p className="mt-1 text-[11px] text-white/35">
+            {side === "long" ? "Longs" : "Shorts"} on this market are{" "}
+            <span className={view.sideOi.fullPct >= 80 ? "text-amber-300/80" : "text-white/55"}>
+              {view.sideOi.fullPct.toFixed(0)}% full
+            </span>{" "}
+            ({fmtUsd(view.sideOi.roomUsd)} of room left). A fuller side means less
+            leverage available here.
+          </p>
+        )}
       </div>
 
       </div>
@@ -1095,8 +1139,21 @@ export function PerpsCard({
           {[
             [view.isLimit ? "Entry price if filled" : "Entry price",
               fmtPrice(price12ToUsd(view.quote.entryPrice12))],
-            ["PEX fee", fmtUsd(view.quote.openFeeUsd)],
-            [`Magnet fee (${POSITION_BUILDER_FEE_BPS} bps, charged again on close)`, fmtUsd(view.quote.builderFeeUsd)],
+            /**
+             * One line, one number.
+             *
+             * Two rows asked the reader to add them up to learn what opening
+             * costs, which is the only figure that changes a trade decision.
+             * The split between the venue's fee and ours is not a fact about
+             * their trade, so it is not on the trade screen; it stays in
+             * `PerpsInfoModal`, which states our 10 bps explicitly, and in the
+             * PEX attribution under the button.
+             *
+             * "Charged again on close" stays, because that IS about their cost:
+             * a round trip is roughly double what this line shows.
+             */
+            ["Fees (charged again on close)",
+              fmtUsd(view.quote.openFeeUsd + view.quote.builderFeeUsd)],
             ["Price impact", `${view.quote.impactUsd >= 0 ? "+" : "−"}${fmtUsd(Math.abs(view.quote.impactUsd))}`],
             ["Backing the position", fmtUsd(view.quote.netCollateralUsd)],
           ].map(([k, v]) => (
