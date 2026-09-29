@@ -295,6 +295,17 @@ export type GroupShape = {
 
 /** Collateral transfer + app calls. No order box, so no MBR payment. */
 export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 10, trading: 1 };
+/**
+ * A bare open for a trader whose storage escrow needs funding first.
+ *
+ * The storage prefix is a payment plus a second Trading call
+ * (`fund_storage`, then the open) — the same prefix `SHAPE_OPEN_TP_STORAGE`
+ * carries, without the order leg. Reachable since the take-profit became
+ * optional; a first-time trader opening with no target builds exactly this.
+ */
+export const SHAPE_OPEN_STORAGE: GroupShape = {
+  axfer: 1, pay: 1, applMin: 2, applMax: 11, trading: 2,
+};
 /** Adds the keeper-fee escrow transfer and the order-box MBR payment. */
 export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10, trading: 1 };
 /**

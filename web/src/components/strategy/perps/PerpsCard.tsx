@@ -146,6 +146,8 @@ type CardSnapshot = {
   trigger12: bigint;
   /** Which way funding flows, and the paying side's annualised rate. */
   funding: { annualPct: number; youPay: boolean } | null;
+  /** No target set — a choice now, and the button and warnings reflect it. */
+  tpEmpty: boolean;
 };
 
 export type PerpsCardProps = {
@@ -473,6 +475,8 @@ export function PerpsCard({
 
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
   const tp12 = usdToPrice12(tpPrice) ?? BigInt(0);
+  /** No target typed at all. See `canSubmit` for why that is now allowed. */
+  const tpEmpty = tpPrice.trim() === "";
   // Display bounds, not the true ones: each edge is rounded outward to the
   // precision it is printed at, so the number the card tells the user to use is
   // a number the card accepts. The write path re-checks against the true bounds,
@@ -588,7 +592,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
-    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding,
+    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -611,8 +615,21 @@ export function PerpsCard({
       : trigger12 <= usdToPrice12(String(indexUsd))!));
   const triggerReady = !isLimit || (trigger12 > BigInt(0) && !triggerCrossed);
 
+  /**
+   * No take-profit is now a choice, not an incomplete form.
+   *
+   * It was mandatory because, with no close path, it was the only exit a
+   * position had — omitting it meant liquidation was the sole outcome. Closing
+   * is built, so a target is optional again, which is what letting a leveraged
+   * position run on momentum requires.
+   *
+   * A target that is TYPED but invalid still blocks: that is a half-finished
+   * input, not a decision.
+   */
+  const tpOk = tpEmpty || tpValid;
+
   const canSubmit = !!(
-    tradable && tpValid && quote?.ok && !submitting && triggerReady
+    tradable && tpOk && quote?.ok && !submitting && triggerReady
     && wallet.isConnected && wallet.address && notional > 0
   );
 
@@ -1097,7 +1114,13 @@ export function PerpsCard({
               : `That target needs a ${(view.quickPick.moveBps! / 100).toFixed(0)}% price move at this risk level. Raise the risk level, or pick a smaller target.`}
           </p>
         )}
-        {view.quote?.ok && (
+        {view.quote?.ok && view.tpEmpty ? (
+          /* Not an error. The consequence, stated once, without nagging. */
+          <p className="mt-1 text-xs text-white/40">
+            No target set — this position runs until you close it, or until it
+            liquidates. You can add a target later by closing and reopening.
+          </p>
+        ) : view.quote?.ok && (
           view.tpValid && view.tpPayoff !== null ? (
             <p className="mt-1 text-xs text-green-300/90">
               Closes for {fmtUsd(view.tpPayoff)} profit before costs

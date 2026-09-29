@@ -27,6 +27,7 @@ import {
   buildV2MarketOpenWithAttachedOrdersTransactions,
   buildV2CancelOrderTransactions,
   buildV2DecreaseOrCloseTransactions,
+  buildV2OpenOrIncreaseWithStorageTransactions,
   buildV2OpenLimitWithAttachedOrdersTransactions,
 } from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
@@ -60,10 +61,13 @@ import { preflight } from "./perpsPreflight";
 import {
   assertCancelGroup,
   assertCloseGroup,
+  assertOpenGroup,
   assertOpenLimitGroup,
   assertOpenWithTakeProfit,
   simulateGroup,
   ORDER_BOX_MBR_MICRO_ALGO,
+  SHAPE_OPEN,
+  SHAPE_OPEN_STORAGE,
   type DisplayedLimit,
 } from "./perpsGroup";
 import {
@@ -243,8 +247,19 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     || collateralUsd <= 0 || notionalUsd <= 0) {
     throw new Error("Enter an amount first.");
   }
-  if (takeProfitPrice12 <= BigInt(0)) {
-    throw new Error("Set a take-profit price first.");
+  /**
+   * A take-profit is OPTIONAL now, and zero is how "none" is expressed.
+   *
+   * It used to be mandatory, because with no close path it was the only exit a
+   * position had — leaving it off meant liquidation was the sole outcome. The
+   * close path exists now, so a target is a choice again, which is what a
+   * leveraged position being allowed to run requires.
+   *
+   * A NEGATIVE value is still refused: that is a broken caller, not a choice.
+   */
+  const wantsTakeProfit = takeProfitPrice12 > BigInt(0);
+  if (takeProfitPrice12 < BigInt(0)) {
+    throw new Error("That take-profit price is not valid.");
   }
   if (!Number.isFinite(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
     throw new Error("Slippage tolerance is out of range.");
@@ -445,20 +460,29 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // in one group: the user pays open fee, close fee, two builder fees, the
   // keeper fee and exit impact, and holds nothing. On $50 at 9.27x that is
   // about $1.58 — and the card had just promised a profit.
+  // Only when there IS one. A position opened with no target has no band to
+  // sit inside, and this check would otherwise read "no target" as "bad target".
   const bounds = takeProfitBounds(probe);
-  if (takeProfitPrice12 < bounds.minPrice12 || takeProfitPrice12 > bounds.maxPrice12) {
+  if (wantsTakeProfit
+    && (takeProfitPrice12 < bounds.minPrice12 || takeProfitPrice12 > bounds.maxPrice12)) {
     throw new Error(
       "That take-profit price is no longer valid at the current market price. Check it and try again.",
     );
   }
-  const crossCheck = quoteTakeProfitCrossed({
-    state, oracle, side, owner: sender, notionalUsd,
-    triggerPrice12: takeProfitPrice12,
-    acceptablePrice12: tpAcceptable,
-    keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
-    collateralAssetId: COLLATERAL_ASSET_ID,
-    builderAddress: BUILDER_ADDRESS,
-  });
+  // Skipped entirely without a target, not merely ignored: the SDK's own
+  // `quoteV2DecreaseOrder` validates the trigger and throws on zero, so calling
+  // it and discarding the answer surfaces as "raw Price12 must be positive"
+  // with no wallet prompt and no explanation.
+  const crossCheck = wantsTakeProfit
+    ? quoteTakeProfitCrossed({
+      state, oracle, side, owner: sender, notionalUsd,
+      triggerPrice12: takeProfitPrice12,
+      acceptablePrice12: tpAcceptable,
+      keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
+      collateralAssetId: COLLATERAL_ASSET_ID,
+      builderAddress: BUILDER_ADDRESS,
+    })
+    : { blocking: false, crossed: false, reasons: [] as string[] };
   if (crossCheck.blocking) {
     throw new Error(
       crossCheck.crossed
@@ -486,7 +510,15 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const sideCode = side === "long" ? BigInt(1) : BigInt(2);
   const keeperFee = micro(CHILD_KEEPER_FEE_USDC);
 
-  const group = buildV2MarketOpenWithAttachedOrdersTransactions({
+  /**
+   * Two builders, one input.
+   *
+   * `buildV2OpenOrIncreaseWithStorageTransactions` is the bare open — no order
+   * leg, so no keeper-fee transfer and no order-box MBR. It has always existed
+   * and `SHAPE_OPEN` / `assertOpenGroup` were written for it; it simply had no
+   * caller while a take-profit was mandatory.
+   */
+  const openInput = {
     sender, marketId,
     collateralAssetId: COLLATERAL_ASSET_ID,
     side: sideCode,
@@ -504,7 +536,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     indexAssetId: Number(state.core.index_asset_id),
     longAssetId: Number(state.core.long_asset_id),
     shortAssetId: Number(state.core.short_asset_id),
-    takeProfit: {
+    ...(wantsTakeProfit ? { takeProfit: {
       triggerPrice: takeProfitPrice12,
       acceptablePrice: tpAcceptable,
       sizeUsdDelta: micro(notionalUsd),
@@ -519,7 +551,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       // The child's OWN payload, bound to OrderOps. See the fetch above.
       oracleMessage: childOracle.message,
       oracleSignature: childOracle.signature,
-    },
+    } } : {}),
     v2MathAppId: PEX_APPS.math,
     v2MarketsAppId: PEX_APPS.markets,
     v2TradingAppId: PEX_APPS.trading,
@@ -527,10 +559,14 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     v2OrderOpsAppId: PEX_APPS.orderOps,
     v2MarketXalgoYieldVaultAppId: PEX_APPS.marketXAlgoYieldVault,
     v2AdminControlAppId: PEX_APPS.adminControl,
-  }, sp) as unknown[];
+  };
+  const group = (wantsTakeProfit
+    ? buildV2MarketOpenWithAttachedOrdersTransactions(openInput as never, sp)
+    : buildV2OpenOrIncreaseWithStorageTransactions(openInput as never, sp)) as unknown[];
 
   stage("checking");
-  const assertion = assertOpenWithTakeProfit(
+  const assertion = wantsTakeProfit
+    ? assertOpenWithTakeProfit(
     group,
     {
       storagePaymentMicro: storagePayment,
@@ -555,7 +591,22 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       oracleMessage: childOracle.message,
       oracleSignature: childOracle.signature,
     },
-  );
+  )
+    // The bare open. SHAPE_OPEN was measured for exactly this group and has
+    // been sitting unreachable since take-profit became mandatory.
+    : assertOpenGroup(group, {
+      storagePaymentMicro: storagePayment,
+      sender, marketId, side: side === "long" ? 1 : 2,
+      collateralAssetId: COLLATERAL_ASSET_ID,
+      collateralAmountMicro: micro(collateralUsd),
+      sizeUsdDeltaMicro: micro(notionalUsd),
+      acceptablePrice12: acceptablePrice,
+      executionPrice12: probe.executionPrice12,
+      indexPrice12: oracle.indexPrice12,
+      slippageBps,
+      oracleMessage: oracle.message,
+      oracleSignature: oracle.signature,
+    }, storagePayment > BigInt(0) ? SHAPE_OPEN_STORAGE : SHAPE_OPEN);
   if (!assertion.ok) {
     // Nothing is presented for signature. The detail is deliberately verbose —
     // this should never fire, and if it does someone needs the specifics.

@@ -19,7 +19,7 @@ import { usePerpsOrders } from "@/hooks/usePerpsOrders";
 import { useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { cancelOrder } from "@/lib/perpsClient";
+import { cancelOrder, closePosition } from "@/lib/perpsClient";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -94,6 +94,33 @@ export function PositionsPanel() {
   /** Which order is mid-cancel, and anything that went wrong doing it. */
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const [closing, setClosing] = useState<string | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
+
+  async function doClose(p: (typeof positions)[number]) {
+    if (!wallet.address || closing || !p.close?.ok) return;
+    setCloseError(null);
+    setClosing(`${p.marketId}-${p.side}`);
+    try {
+      await closePosition({
+        algod: new algosdk.Algodv2("", ALGOD_URLS.mainnet, ""),
+        signTransactions: (txns) => wallet.signTransactions(txns),
+        sender: wallet.address,
+        marketId: p.marketId,
+        side: p.side,
+        sizeUsdMicro: p.position.size_usd,
+        position: p.position,
+        quote: p.close,
+      });
+      refresh();
+      refreshOrders();
+    } catch (e) {
+      setCloseError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClosing(null);
+    }
+  }
 
   async function doCancel(orderId: bigint, attached: bigint[]) {
     if (!wallet.address || cancelling) return;
@@ -320,6 +347,24 @@ export function PositionsPanel() {
                   PEX would not accept a close at this size right now: {p.close.blockedReason}
                 </p>
               )}
+
+              {/* ── Closing ──────────────────────────────────────────────────
+                  Enabled only on a quote PEX has said it would accept. A button
+                  that offers to close a position PEX is currently refusing is a
+                  button that spends a wallet prompt to deliver a contract
+                  error. The blocked reason is already stated above it. */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button onClick={() => doClose(p)}
+                  disabled={!p.close?.ok || !!closing || !!cancelling}
+                  className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
+                  {closing === `${p.marketId}-${p.side}` ? "Closing…" : "Close position"}
+                </button>
+                <span className="text-[10px] text-white/30">
+                  {netUsd !== null
+                    ? `Pays out ${p.close!.outputs.length > 1 ? "in two assets" : "in one asset"}, ${fmtSigned(netUsd)} against your collateral.`
+                    : "Pays out in the assets listed above."}
+                </span>
+              </div>
             </div>
           );
         })}
@@ -451,6 +496,10 @@ export function PositionsPanel() {
         </div>
       )}
 
+      {closeError && (
+        <p className="mt-2 text-[11px] text-red-300/90">{closeError}</p>
+      )}
+
       {cancelError && (
         <p className="mt-2 text-[11px] text-red-300/90">{cancelError}</p>
       )}
@@ -474,9 +523,10 @@ export function PositionsPanel() {
         <p className="mt-2 text-[10px] leading-relaxed text-white/30">
           {/* Say plainly why there is no button, rather than leaving a gap the
               user has to interpret. */}
-          Closing from this page is not available yet. Your take-profit still closes the position
-          automatically at the price you set. Figures update every 30 seconds and are live quotes,
-          not the numbers from when you opened.
+          Closing pays out in the assets shown above — on this market that is usually both USDC
+          and {PEX_MARKETS.algoUsd.label.split("/")[0]}. Your take-profit still closes the position
+          automatically if it fires first. Figures update every 30 seconds and are live quotes, not
+          the numbers from when you opened.
         </p>
         </>
       )}
