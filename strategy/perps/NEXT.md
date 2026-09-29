@@ -234,8 +234,13 @@ two together rather than separately.
   credit more often than shorts because the funding claimable TO a position can
   exceed its accrued cost, which is exactly why the gross field disagreed on
   longs and looked fine on shorts. The exit-cost itemisation is restored.
-- **H1's keeper-fee leg** was never re-tested after B6 cleared. It is now
-  testable and simply has not been run.
+- ~~H1's keeper-fee leg was never re-tested after B6 cleared.~~ **Closed
+  2026-09-29** — run, and PEX rejects a redirected keeper-fee escrow, a
+  redirected collateral transfer and an inflated escrow, all with
+  `assert failed`. Note the method trap recorded in
+  [AUDIT.md](./AUDIT.md#open): a tamper test against a transfer must use an
+  **opted-in** receiver, or "rejected" only means the receiver could not hold
+  the asset.
 - **LOW 8–12 from audit 7**, deferred and listed in
   [AUDIT-7-REMEDIATION.md](./AUDIT-7-REMEDIATION.md).
 - **`quoteClose`'s own assembly has no test** — the "funding not subtracted

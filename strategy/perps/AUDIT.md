@@ -1225,23 +1225,36 @@ settles three things that were previously inference:
 
 ## Open
 
-1. **Does PEX itself reject a tampered transfer (H1)?** *Partly answered,
-   2026-09-26; the blocking dependency has since cleared.* With a funded trader
-   as sender, an open-only group simulates `ok=true`, and redirecting the
-   **collateral** transfer to an attacker is **rejected by the chain**. So for
-   that leg there is a real second line of defence behind the assertion.
+1. ~~**Does PEX itself reject a tampered transfer (H1)?**~~ **CLOSED 2026-09-29.
+   Yes, on both legs.** The test needed a buildable open+take-profit group,
+   which B6 blocked; B6 cleared and this simply had not been run.
 
-   **The actual H1 leg is still unresolved.** The unbound keeper-fee escrow
-   exists only in the open+take-profit group. That group could not be simulated
-   at all while B6 stood — **B6 is now resolved** (see above: it was our
-   `timeInForce=0`, and a child leg needing its own OrderOps payload), so this
-   test is now *possible* and simply has not been run. Run it.
+   Built a real 9-transaction open+take-profit for a funded account with no
+   position (simulates `ok: true` untampered), then redirected each transfer in
+   turn. Both are refused on chain with `logic eval error: assert failed`:
 
-   A caution on method: a second mutation in the same run — inflating fees to the
-   group cap — also showed as rejected, but that mutation rewrote every
-   transaction's fee and so probably broke fee pooling rather than tripping a fee
-   ceiling. It is not evidence that an overpaid fee is refused, and is not
-   recorded as such.
+   | Tamper | Result |
+   |---|---|
+   | keeper-fee escrow → attacker | **rejected** by the contract |
+   | collateral transfer → attacker | **rejected** by the contract |
+   | keeper-fee escrow inflated $0.10 → $5 | **rejected** by the contract |
+
+   So there is a genuine second line of defence behind `assertOpenWithTakeProfit`
+   on the leg H1 was about. Our assertion is not the only thing standing there.
+
+   **A method trap that nearly produced the wrong answer, and would have
+   produced a FALSE one in the reassuring direction.** The first run used
+   `777…4MSJUVU` as the attacker and both redirects came back "rejected" — with
+   the reason `receiver error: must optin`. That is not a protocol control at
+   all; that address is simply not opted in to USDC, and a real attacker would
+   be. Re-running with an opted-in receiver is what produced the `assert failed`
+   above and the actual finding.
+
+   This is the same shape as the fee-pooling caution recorded below: a rejection
+   is only evidence when its REASON is the control you are testing. Any future
+   tamper test against a transfer must use an opted-in receiver, or it proves
+   nothing.
+
 2. ~~**`doi:` is pinned against nothing.**~~ **CLOSED.** The protocol manifest
    declares it as `dynamic_oi_margin_config` — prefix `646f693a` (`doi:`),
    owner `PDexV2TradingRiskOps`, 32 bytes, four uint64s, `DynamicOiMarginConfigV1`.
