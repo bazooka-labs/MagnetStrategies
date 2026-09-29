@@ -1245,6 +1245,63 @@ write path, not a polish item.
 
 ---
 
+## Yield Recall — Settled by Ultrade, 2026-09-29
+
+**Always recall.** Ultrade, verbatim: *"generally speaking, I would suggest
+always using recall because most of the time the yield deployment doesn't leave
+much idle assets… that's the safest way to ship without complicating the code or
+waiting."*
+
+`yieldRecallMode` is binary, and the SDK already derives it
+(`capsByAsset.some(cap => cap > 0n) ? 1 : 0`). Always passing `1` skips the
+derivation; the SDK attaches the recall resource carriers itself — router →
+Folks vault → provider return path — and adds the provider fee credit.
+
+This **unblocks the close write path**, which had been the largest gap in the
+product: a position's only exits were its take-profit firing or liquidation.
+
+Three things to settle before building, all read-only and none of them blocked
+on Ultrade: whether close-with-recall fits the **16-transaction ceiling** (the
+SDK budgets `3 * strategyAssets.length` of carriers for the round trip, on top
+of a group already carrying math and budget calls); whether the **provider fee
+credit** reaches the quote the user sees before signing; and that it **simulates
+clean** on a real position, both markets, both sides, including the ALGO-profit
+case that raised the question. See [NEXT.md](./NEXT.md).
+
+---
+
+## Paying Profit Out in One Asset — Native, and Not Free
+
+A close is two legs: collateral in the collateral asset, profit in the PnL
+asset. Confirmed by settlement on 2026-09-29 — a $6 ALGO/USD long returned
+5.744601 USDC and 40.393029 ALGO. Two assets back is a real comprehension
+problem: the user deposited USDC.
+
+**PEX solves this natively; do not build a swap.** `output_swap_mode` is a field
+on the order. `V2_OUTPUT_SWAP.PNL_TO_COLLATERAL = 1` converts the PnL leg into
+the collateral asset so the user receives USDC only. Every order observed on
+MainNet has it set to `0` (NONE).
+
+`min_primary_output_amount` is the slippage floor on that swap and is currently
+`0` — "accept any price". **It is not optional if the swap is enabled.**
+
+**It introduces a new failure mode on the exit path.** The swap runs through
+PEX's own pool (`quoteV2SwapExactIn` against `input.pool`), not an external DEX,
+and the quote runs `checkOutputSwapReservesNotWorsened`. If the swap would push
+reserves past that guard, or the output falls below the minimum, **the whole
+decrease fails**. That converts a take-profit from "fires at the trigger" into
+"fires at the trigger *and* the pool can absorb the swap" — on the one path the
+product can least afford to make conditional while no manual close exists.
+
+Therefore: **opt-in, defaulting off**, and chosen at **open** time, because it
+is a field on the take-profit attached then. Measure before coding — quote both
+modes against live pool state across the supported size range and count the
+failures. Note that always-recall pulls idle assets back into the pool, which is
+exactly what the reserve guard evaluates, so the two interact and should be
+measured together.
+
+---
+
 ## Build Status — 2026-09-28
 
 Tracked against [Build Order](#build-order) above, because that list describes the plan and this describes the tree.

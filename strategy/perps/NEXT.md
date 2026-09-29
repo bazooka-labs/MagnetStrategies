@@ -1,0 +1,194 @@
+# Perps — what to build next
+
+Written 2026-09-29, at the end of a working session, so the next one starts with
+the reasoning rather than re-deriving it. Order is deliberate and argued below.
+
+**None of this is built.** Everything here is a plan plus the measurements that
+justify it. What IS built is in [SPEC.md](./SPEC.md#build-status--2026-09-28)
+and the orders read path in
+[SPEC.md](./SPEC.md#orders--read-path-built-write-path-not-2026-09-28).
+
+---
+
+## 0. First, what stopped being a question
+
+**The full position lifecycle has now run end to end on MainNet.** Opened
+2026-09-28 19:59 UTC, take-profit executed by a keeper 2026-09-29 05:02 UTC at
+round 65496626. Both boxes — `p2:` and `o2:` — are gone. On a $6 stake the
+account received **40.393029 ALGO + 5.744601 USDC**, about **$11.38** at the
+trigger, plus 0.0997 ALGO of order-box MBR refunded on execution.
+
+Three things that settles:
+
+1. **Keepers execute.** Not just in aggregate (376 calls this month) but on our
+   own order, at our own trigger, unattended.
+2. **The two-leg payout is real, not a quirk of the quote.** Collateral returned
+   in USDC, profit paid in ALGO — exactly the shape `collateral_delta` was
+   hiding, now confirmed by settlement rather than by a quote.
+3. **The keeper fee is a cost, not float.** It is refunded on *cancel*; on
+   *execution* the keeper keeps it. We escrow $0.10 where the other builder
+   escrows $0.051. Raised and consciously declined — it is five cents — but the
+   earlier note calling it refundable float was wrong.
+
+---
+
+## 1. Close write path — UNBLOCKED, build first
+
+**Ultrade, 2026-09-29:** *"generally speaking, I would suggest always using
+recall because most of the time the yield deployment doesn't leave much idle
+assets… that's the safest way to ship without complicating the code or
+waiting."*
+
+That retires the question in
+[YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md),
+and the answer is *less* code than the alternative. `yieldRecallMode` is binary,
+and the SDK already derives it (`capsByAsset.some(cap => cap > 0n) ? 1 : 0`).
+Always passing `1` skips the derivation; the SDK then attaches the recall
+resource carriers itself — router → Folks vault → provider return path — and
+adds the provider fee credit.
+
+**Why this goes first.** A position currently has exactly two exits: the
+take-profit fires, or it liquidates. That single constraint has been shaping
+every other decision in the product, including the ordering of everything below
+it. Closing helps everyone holding a position today; the order features help
+people who do not have one yet.
+
+**Three things to settle before building, all read-only:**
+
+1. **Group size.** Recall adds carriers — the SDK budgets
+   `3 * strategyAssets.length` for the round trip — on top of a close group that
+   already carries math and budget calls. SPEC puts the ceiling at 16
+   transactions. If close-with-recall does not fit, that is a design constraint,
+   not a detail.
+2. **Cost.** The provider fee credit has to appear in the quote the user sees
+   before signing, not as a surprise in the settlement.
+3. **That it simulates clean** on a real position, both markets, both sides —
+   including the ALGO-profit case that raised the recall question at all.
+
+---
+
+## 2. Order cancel — second
+
+`cancel_order` refunds everything. **Measured, not assumed**: paired one submit
+against its own cancel and the amounts match to the microunit —
+`submit_order` paid out 10.124513 USDC and 100,200 µALGO; `cancel_order`
+refunded 10.124513 USDC (stake 10.073513 + keeper fee 0.051) and 100,200 µALGO.
+The only cost was 34,000 µALGO of network fees across both groups. Surveyed 127
+cancels overall: every one refunded, with ALGO amounts in tiers (96,500 /
+99,700 / 100,200 and multiples) that track box size and how many orders were
+cancelled in one call, not partial refunds.
+
+The rule to code against is **"refunds what it took"**, not a fixed constant:
+our attached-TP path paid 99,700 for its order box while `submit_order` pays
+100,200, and each is refunded its own amount.
+
+**Why before submit.** All four orders observed on chain carry
+`expiry_time = 0` — good-till-cancelled. So for an order with no cancel path the
+complete list of exits is (a) it executes, or (b) somebody calls the paid
+cleanup, which nobody is obliged to do. Shipping submit first would create
+orders nobody can retract. Cancel is also the smaller group — one app call, no
+oracle payload, no price to get wrong — and the only write path here that
+*reduces* locked user money.
+
+**Guard it needs:** cancelling a take-profit on a live position removes that
+position's only exit. That has to be said at the confirm step, not discovered
+afterwards. Once the close path exists this is less severe, but it is still a
+deliberate removal of protection.
+
+---
+
+## 3. Limit orders (`OPEN_LIMIT`) — third
+
+Stage 1, reading resting orders, is built and shipped. Stage 2 is submit.
+
+`V2_ORDER_KIND.OPEN_LIMIT = 1`, with `buildV2OpenLimitWithAttachedOrdersTransactions`
+for a limit entry carrying its own take-profit.
+
+**Do the B6 check first.** Simulate `OPEN_LIMIT` with attached orders before
+committing to a group shape. This is B6's exact shape and B6 cost a week. One
+advantage we did not have then: `L7RF6SLJVI…` has a working bracket resting on
+chain — a limit entry and its child take-profit, consecutive ids — so there is a
+reference group to diff against instead of guessing.
+
+**The design problem, which is the real work.** Every risk figure the card
+displays — entry, liquidation, price impact, "% away" — comes from `quoteOpen`
+at the **current** index. For a limit order those are estimates at a
+*hypothetical* future execution. Concretely, the resting order measured on
+2026-09-28 was a short, $90 notional on a $10.08 stake, trigger $0.14 against a
+$0.1316 spot: every index-derived number would have been computed at a price
+6.4% away from where it fills, and the liquidation price is roughly proportional
+to entry.
+
+Worse, **the error does not reliably point the safe way** — its direction
+depends on the side *and* on whether the trigger sits above or below spot, so a
+long buying a dip and a short selling a rally get errors in opposite directions.
+No conservative fudge covers both. Notional, stake, our fee and the keeper fee
+are all fixed at submission and display correctly; it is specifically the
+price-derived quantities that become hypotheticals. A naive build shows one box
+where four numbers are facts and three are guesses, undistinguished.
+
+Three honest options, none chosen yet: label them as estimates at the trigger
+price; show only the figures that are facts and omit the rest; or quote them
+*at* the trigger price and say so plainly.
+
+**One risk to simulate rather than assert:** leverage is fixed at submission
+(`size_usd_delta` and `collateral_amount` are both stored), but whether PEX will
+*accept* that size when the keeper fires depends on open-interest headroom at
+that moment. Both markets are OI-capped well below typical demand. If an order
+can sit at the right price and still fail to fill because the side is full,
+users have to be told — it is not intuitive.
+
+---
+
+## 4. Pay profit out in USDC — fourth, and opt-in
+
+**PEX already does this; we would not build a swap.** `output_swap_mode` is a
+field on the order, and `V2_OUTPUT_SWAP.PNL_TO_COLLATERAL = 1` converts the PnL
+leg into the collateral asset so the user receives USDC only. All four orders
+observed on chain have it set to `0` (NONE), ours included — nobody is using it.
+
+So the change is one field on the take-profit we already submit, plus
+`min_primary_output_amount`, which is the slippage floor and is currently `0`,
+meaning "accept any price". **That field is not optional if the swap is on.**
+
+**The catch, and it lands on the worst path.** The swap goes through PEX's own
+pool, not an external DEX (`quoteV2SwapExactIn` against `input.pool`), and the
+quote runs `checkOutputSwapReservesNotWorsened`. If the swap would push pool
+reserves past that guard — or the output falls below the minimum — **the whole
+decrease fails**. Enabling this turns the exit from "fires when price hits the
+trigger" into "fires when price hits the trigger *and* the pool can absorb the
+swap". The take-profit that executed cleanly this morning would have become
+conditional on pool state at 05:02.
+
+**Therefore: opt-in, defaulting OFF**, until measured. And note it is chosen at
+**open** time, because it is a field on the take-profit attached then — so it is
+a checkbox on the order form, not a decision at close.
+
+**Measure before coding.** Quote both modes against live pool state across the
+size range we actually support and count how often `PNL_TO_COLLATERAL` fails.
+If it never fails at our sizes, this is easy. If it fails at $90 notional, it is
+a trap and the honest answer is to keep paying out in two assets and explain it
+better in the UI.
+
+**Useful interaction:** always-recall (item 1) pulls idle assets back into the
+pool, which is exactly what `checkOutputSwapReservesNotWorsened` evaluates. So
+the recall decision likely makes this swap *more* likely to succeed. Measure the
+two together rather than separately.
+
+---
+
+## Still open, unchanged
+
+- **`doi:` is pinned against nothing.** Raised with Ultrade, unanswered.
+- **The funding field does not reconcile.** See
+  [FUNDING-FIELD-QUESTION-FOR-ULTRADE.md](./FUNDING-FIELD-QUESTION-FOR-ULTRADE.md)
+  — drafted, not yet sent. Blocks itemising the exit-cost breakdown; the single
+  net figure shipped in its place is exact and needs no change.
+- **H1's keeper-fee leg** was never re-tested after B6 cleared. It is now
+  testable and simply has not been run.
+- **LOW 8–12 from audit 7**, deferred and listed in
+  [AUDIT-7-REMEDIATION.md](./AUDIT-7-REMEDIATION.md).
+- **`quoteClose`'s own assembly has no test** — the "funding not subtracted
+  twice" rule cannot be reached through the extracted functions.
+- **Everything after audit 7's remediation is unaudited**, including the orders
+  read path shipped in `159e6e4`.

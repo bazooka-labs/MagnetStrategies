@@ -1,3 +1,15 @@
+> **ANSWERED 2026-09-29.** Ultrade: *"generally speaking, I would suggest always
+> using recall because most of the time the yield deployment doesn't leave much
+> idle assets… that's the safest way to ship without complicating the code or
+> waiting."*
+>
+> So: always pass `yieldRecallMode: 1` rather than deriving whether a recall is
+> needed. The SDK attaches the recall resource carriers itself. This **unblocks
+> the close write path**; what to do about it is in [NEXT.md](./NEXT.md#1-close-write-path--unblocked-build-first).
+> Kept below as the question and the evidence that produced it.
+
+---
+
 <!--
 Drafted 2026-09-28, NOT yet sent. Kept in the repo rather than a scratch
 directory, same as the other Ultrade questions.

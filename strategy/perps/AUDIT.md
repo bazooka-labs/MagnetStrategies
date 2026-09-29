@@ -1200,6 +1200,29 @@ found. `decodePosition` now takes the owner and `PositionState` carries it.
 
 ---
 
+## The full lifecycle has run on MainNet (2026-09-29)
+
+Opened 2026-09-28 19:59 UTC, take-profit executed by a keeper 2026-09-29 05:02
+UTC at round 65496626, unattended, at our own trigger. Both boxes — `p2:` and
+`o2:` — are gone.
+
+On a $6 stake the account received **40.393029 ALGO + 5.744601 USDC** (about
+$11.38 at the trigger), plus 0.0997 ALGO of order-box MBR refunded on execution.
+The keeper took the full $0.10 escrowed.
+
+**This is the first end-to-end confirmation in the project's history**, and it
+settles three things that were previously inference:
+
+1. Keepers execute *our* orders, not merely orders in aggregate.
+2. **The two-leg payout is real** — collateral back in USDC, profit paid in
+   ALGO. Exactly the shape `collateral_delta` hid, now confirmed by settlement
+   rather than by a quote. The 2026-09-28 fix was correct.
+3. **The keeper fee is a cost, not float.** Refunded on cancel; kept by the
+   keeper on execution. An earlier note in this session called it refundable
+   float, which was wrong.
+
+---
+
 ## Open
 
 1. **Does PEX itself reject a tampered transfer (H1)?** *Partly answered,
