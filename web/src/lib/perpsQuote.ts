@@ -20,6 +20,7 @@ import { V2_ORDER_KIND } from "@pdex/sdk";
 import {
   CROSS_MARGIN_BPS,
   DEFAULT_SLIPPAGE_BPS,
+  MAX_QUICK_PICK_MOVE_BPS,
   MAX_TAKE_PROFIT_MULTIPLE,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
@@ -443,39 +444,12 @@ export function quoteClose(input: {
     { ...base, acceptablePrice: acceptablePrice12 } as never,
   ) as unknown as Record<string, unknown>;
 
-  // ── What the user receives ────────────────────────────────────────────
-  //
-  // Ultrade, 2026-09-28: do NOT use `collateral_delta`. Aggregate
-  // `primary_output_amount` (net collateral), `pnl_output_amount` (realized
-  // profit) and the claimable token outputs BY ASSET, and do not subtract the
-  // funding/borrowing breakdown again — those costs are already settled into
-  // collateral before the proportional withdrawal is computed.
-  const byAsset = new Map<number, bigint>();
-  const add = (amount: unknown, assetId: unknown) => {
-    const a = big(amount);
-    if (a <= BigInt(0)) return;
-    const id = Number(assetId ?? 0);
-    byAsset.set(id, (byAsset.get(id) ?? BigInt(0)) + a);
-  };
-  add(raw.primary_output_amount, raw.primary_output_asset_id);
-  add(raw.pnl_output_amount, raw.pnl_output_asset_id);
-  add(raw.claimable_long_token_output, input.state.core.long_asset_id);
-  add(raw.claimable_short_token_output, input.state.core.short_asset_id);
-  const outputs: CloseOutput[] = [...byAsset.entries()]
-    .map(([assetId, amount]) => ({ assetId, amount }))
-    .sort((a, b) => (b.amount > a.amount ? 1 : -1));
-
-  // Value them only where we can. USDC is the collateral asset at 1:1; the
-  // market's index asset is priced by the signed oracle. Anything else and the
-  // total is withheld rather than guessed — see `payoutUsd`.
-  const indexAssetId = Number(input.state.core.index_asset_id);
-  let payoutUsd: number | null = 0;
-  for (const o of outputs) {
-    if (o.assetId === input.collateralAssetId) payoutUsd! += Number(o.amount) / 1e6;
-    else if (o.assetId === indexAssetId) {
-      payoutUsd! += (Number(o.amount) / 1e6) * (Number(input.oracle.indexPrice12) / 1e12);
-    } else { payoutUsd = null; break; }
-  }
+  const outputs = aggregateCloseOutputs(raw, input.state.core);
+  const payoutUsd = valueCloseOutputs(outputs, {
+    collateralAssetId: input.collateralAssetId,
+    indexAssetId: Number(input.state.core.index_asset_id),
+    indexPrice12: input.oracle.indexPrice12,
+  });
 
   return {
     ok: Boolean(raw.ok),
@@ -647,6 +621,124 @@ export function priceForPayoff(quote: OpenQuote, targetUsd: number): bigint | nu
   const signed = quote.side === "long" ? move : -move;
   const price = BigInt(Math.round(Number(quote.entryPrice12) * (1 + signed)));
   return price > BigInt(0) ? price : null;
+}
+
+/** A profit chip resolved against a quote, or the reason it was not. */
+export type QuickPick =
+  | { ok: true; price12: bigint; moveBps: number }
+  | { ok: false; reason: "unpayable" | "unreachable"; moveBps: number | null };
+
+/**
+ * Resolve a "+N% of stake" chip into an exit price the card will stand behind.
+ *
+ * Lives here rather than in the card, and is one function rather than two, for
+ * the reason audit 7 gave: the chip's enabled state and the price it writes were
+ * separate expressions of the same rule, and only one of them knew about the
+ * bound. A chip that is clickable must write a price, and a price written must
+ * be one the chip could offer.
+ *
+ * Two ways a target is refused:
+ *
+ * - **`unpayable`** — more profit than the position can produce at any price. A
+ *   short's ceiling is its notional; `priceForPayoff` solves these to a negative
+ *   price and returns null rather than rendering it.
+ * - **`unreachable`** — payable, but only after a price move larger than
+ *   `MAX_QUICK_PICK_MOVE_BPS`. This is the audit-7 case: the chips solve
+ *   `pct / leverage`, so at the bar's left end (0.10x) "+50% of stake" is a
+ *   +500% price move, valid by every other check, and with no close path it
+ *   leaves a position whose only exit cannot be reached.
+ *
+ * `moveBps` is returned on success too, so the card can show what a chip
+ * actually implies instead of leaving the relationship invisible.
+ */
+export function quickPickPrice(quote: OpenQuote, targetUsd: number): QuickPick {
+  const wanted = priceForPayoff(quote, targetUsd);
+  if (wanted === null) return { ok: false, reason: "unpayable", moveBps: null };
+
+  const entry = quote.entryPrice12;
+  if (entry <= BigInt(0)) return { ok: false, reason: "unpayable", moveBps: null };
+  const moveOf = (p: bigint) =>
+    Number(((p > entry ? p - entry : entry - p) * BigInt(10_000)) / entry);
+
+  // The bound is judged on what was ASKED for, before any clamp: a target
+  // needing a 500% move is refused whether or not a bound would pull it back,
+  // because the chip is offering something the position cannot deliver.
+  if (moveOf(wanted) > MAX_QUICK_PICK_MOVE_BPS) {
+    return { ok: false, reason: "unreachable", moveBps: moveOf(wanted) };
+  }
+
+  // Clamp into the band the card enforces. At high leverage a small percentage
+  // of stake is a small price move, which can land inside the crossing guard —
+  // and a card showing its own invalid target is worse than a conservative one.
+  const b = displayTakeProfitBounds(quote);
+  const price12 = wanted < b.minPrice12 ? b.minPrice12
+    : wanted > b.maxPrice12 ? b.maxPrice12 : wanted;
+  // Reported on the price actually WRITTEN, not on `wanted`. Measured on the
+  // pre-fix version: the clamp fired on 16 of 3,060 swept resolutions, every
+  // one the +10% chip on a $6 ALGO long at 9.5x-11x — the exact regime of the
+  // only real trade — where the card read "a 0.98% price move" over a price
+  // that moves 1.05%.
+  return { ok: true, price12, moveBps: moveOf(price12) };
+}
+
+/**
+ * What a close actually pays out, aggregated by asset.
+ *
+ * Extracted from `quoteClose` so it can be tested without a network, which is
+ * the point: this arithmetic shipped **wrong in both directions** through six
+ * audits and had no test when audit 7 found it still had none.
+ *
+ * Ultrade, 2026-09-28: do NOT use `collateral_delta`. Aggregate
+ * `primary_output_amount` (net collateral), `pnl_output_amount` (realized
+ * profit) and the claimable token outputs BY ASSET, and do **not** subtract the
+ * funding/borrowing breakdown again — those costs are already settled into
+ * collateral before the proportional withdrawal is computed, which is also why
+ * they do not scale with the close fraction.
+ *
+ * Legs at or below zero are dropped rather than summed: a zero leg is an asset
+ * the user does not receive, and listing "0.000000 ALGO" as something you get
+ * back is noise on the one line that has to be read.
+ */
+export function aggregateCloseOutputs(
+  raw: Record<string, unknown>,
+  core: { long_asset_id: bigint | number; short_asset_id: bigint | number },
+): CloseOutput[] {
+  const byAsset = new Map<number, bigint>();
+  const add = (amount: unknown, assetId: unknown) => {
+    const a = big(amount);
+    if (a <= BigInt(0)) return;
+    const id = Number(assetId ?? 0);
+    byAsset.set(id, (byAsset.get(id) ?? BigInt(0)) + a);
+  };
+  add(raw.primary_output_amount, raw.primary_output_asset_id);
+  add(raw.pnl_output_amount, raw.pnl_output_asset_id);
+  add(raw.claimable_long_token_output, core.long_asset_id);
+  add(raw.claimable_short_token_output, core.short_asset_id);
+  return [...byAsset.entries()]
+    .map(([assetId, amount]) => ({ assetId, amount }))
+    .sort((a, b) => (b.amount > a.amount ? 1 : -1));
+}
+
+/**
+ * Those outputs in dollars, or null if any leg cannot be priced.
+ *
+ * USDC is the collateral asset at 1:1; the market's index asset is priced by the
+ * signed oracle. Anything else and the TOTAL is withheld — never guessed, never
+ * partially summed. A partial total is indistinguishable from a complete one on
+ * screen, which is exactly how a payout gets understated by a hidden leg.
+ */
+export function valueCloseOutputs(
+  outputs: CloseOutput[],
+  ctx: { collateralAssetId: number; indexAssetId: number; indexPrice12: bigint },
+): number | null {
+  let total = 0;
+  for (const o of outputs) {
+    if (o.assetId === ctx.collateralAssetId) total += Number(o.amount) / 1e6;
+    else if (o.assetId === ctx.indexAssetId) {
+      total += (Number(o.amount) / 1e6) * (Number(ctx.indexPrice12) / 1e12);
+    } else return null;
+  }
+  return total;
 }
 
 /** Convenience: the Trading app's oracle target for a market. */

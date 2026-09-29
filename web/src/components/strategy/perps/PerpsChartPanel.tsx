@@ -122,14 +122,18 @@ const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.incl
  * selector, so a blocked TradingView script would otherwise leave the user with
  * no way to switch markets at all.
  */
-function MarketToggle({ marketId, onChange }: { marketId: number; onChange: (id: number) => void }) {
+function MarketToggle(
+  { marketId, onChange, disabled = false }:
+  { marketId: number; onChange: (id: number) => void; disabled?: boolean },
+) {
   return (
     <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
       {MARKETS.map((m) => {
         const on = m.id === marketId;
         return (
-          <button key={m.id} onClick={() => onChange(m.id)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+          <button key={m.id} onClick={() => onChange(m.id)} disabled={disabled}
+            title={disabled ? "Finish signing before switching markets" : undefined}
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               on ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
             {m.label}
           </button>
@@ -145,9 +149,20 @@ type Props = {
   onMarketChange: (id: number) => void;
   /** Entry, liquidation and take-profit, as the card quotes them. */
   lines?: { price: number; label: string; colour: string; dash: string }[];
+  /**
+   * True while the card has a signature in flight.
+   *
+   * The market toggle lives here but belongs to the card's flow. The card
+   * disables its own direction, amount, slider, chips and take-profit input
+   * while signing; this control moved out in `6f83f0f` and did not inherit it,
+   * so a market switch mid-prompt repainted every label around a frozen quote —
+   * including an ALGO liquidation price measured against a BTC index, printed
+   * as "100.0% away". The signed group is unaffected; the screen was not.
+   */
+  busy?: boolean;
 };
 
-export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }: Props) {
+export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], busy = false }: Props) {
   /**
    * Which chart is showing.
    *
@@ -235,7 +250,7 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
           middle group centres it against the panel rather than against the
           gap, so it stays put when the market labels change width. */}
       <div className="flex flex-wrap items-center gap-3">
-        <MarketToggle marketId={marketId} onChange={onMarketChange} />
+        <MarketToggle marketId={marketId} onChange={onMarketChange} disabled={busy} />
 
         <div className="flex flex-1 justify-center">
           {canSwitch && <ViewToggle advanced={advanced} onChange={setAdvanced} />}
@@ -269,7 +284,9 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [] }:
         {showAdvanced ? "Chart by TradingView, showing Coinbase" : "Candles from Coinbase"} as a
         market reference — not the feed PEX prices from.{" "}
         {!showAdvanced && (
-          <><span className="text-violet-300/60">Dashed violet</span> is PEX&apos;s live oracle price. </>
+          <><span className="text-violet-300/60">Dashed violet</span>, when shown, is PEX&apos;s
+            live oracle price — it is absent rather than stale if that price cannot be read or
+            its signature cannot be verified. </>
         )}
         Your entry is quoted against PEX&apos;s oracle and includes its price impact, so the figure
         on the order card is the one your position actually opens at.

@@ -100,12 +100,16 @@ export function PerpsInfoModal({ open, onClose }: Props) {
             <h3 className="font-display text-base font-semibold text-white">The price you trade at</h3>
             <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-300">
               <li>
-                <span className="text-white/90">The chart is a market reference.</span> It is
-                TradingView showing Coinbase, which is not the feed PEX prices from.
+                <span className="text-white/90">The chart is a market reference.</span> Both views
+                show Coinbase — the basic chart directly, the advanced one through TradingView —
+                and Coinbase is not the feed PEX prices from.
               </li>
               <li>
-                <span className="text-white/90">PEX quotes from its own oracle.</span> That figure is
-                shown above the chart, and it is what your order is measured against.
+                <span className="text-white/90">PEX quotes from its own oracle.</span> On the basic
+                chart that price is the dashed violet line across the candles, drawn only while it
+                can be read and its signature verified. The advanced chart cannot draw it at all.
+                The order card below always carries it, and the card is what your order is
+                measured against either way.
               </li>
               <li>
                 <span className="text-white/90">Your entry differs from both.</span> PEX charges price

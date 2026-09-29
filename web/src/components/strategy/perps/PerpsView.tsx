@@ -59,6 +59,12 @@ export function PerpsView() {
    * a cosmetic failure.
    */
   const [overlay, setOverlay] = useState<CardOverlay | null>(null);
+  /**
+   * Lifted for the same reason `marketId` is: the market toggle sits in the
+   * chart panel, and while a signature is in flight it must not move. See
+   * `PerpsChartPanel`'s `busy` prop.
+   */
+  const [busy, setBusy] = useState(false);
 
   const lines = useMemo(() => {
     if (!overlay) return [];
@@ -134,9 +140,9 @@ export function PerpsView() {
           wallet is connected. */}
       <Panel>
         <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
-          onMarketChange={setMarketId} lines={lines} />
+          onMarketChange={setMarketId} lines={lines} busy={busy} />
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
-          onOverlayChange={setOverlay} />
+          onOverlayChange={setOverlay} onBusyChange={setBusy} />
         <PositionsPanel />
       </Panel>
       <PerpsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />

@@ -188,8 +188,19 @@ export function PerpsChart({ marketId, label, range, lines = [] }: Props) {
     setIndexUsd(null);
     const read = () => {
       getOraclePayload(PEX_APPS.trading, marketId)
-        .then((o) => { if (alive) setIndexUsd(price12ToUsd(o.indexPrice12)); })
-        .catch(() => { /* the chart still renders; only the marker is missing */ });
+        .then((o) => {
+          if (!alive) return;
+          // The card refuses to trade on a payload whose signature did not
+          // verify; drawing that price as "PEX's live oracle price" beside it
+          // contradicts the refusal.
+          setIndexUsd(o.signatureVerified ? price12ToUsd(o.indexPrice12) : null);
+        })
+        // **Clear it.** This used to set nothing, so the last good price
+        // persisted indefinitely under a caption calling it live —
+        // and `getOraclePayload` THROWS on an over-age payload, so an oracle
+        // stall is precisely the case that lands here. A missing line is
+        // honest; a stale one labelled live is not.
+        .catch(() => { if (alive) setIndexUsd(null); });
     };
     read();
     const id = setInterval(read, 10_000);

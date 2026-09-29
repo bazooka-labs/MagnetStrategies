@@ -219,6 +219,30 @@ export const MAX_PLAUSIBLE_NOTIONAL_USD = 25_000;
  * price cannot get there. Shorts need no equivalent: they are bounded at zero,
  * which `maxPayoffUsd` already enforces.
  */
+/**
+ * How far a QUICK-PICK take-profit may move the price, in basis points.
+ *
+ * `priceForPayoff` solves `move = pct / leverage`, so a profit target stated as
+ * a percentage of stake becomes an arbitrarily large price move as leverage
+ * falls. The risk bar's left end is the $5 notional floor, which on a $50 stake
+ * is 0.10x — where "+50% of stake" is a **+500% price move**, a take-profit at
+ * 6x spot, reported as valid. On BTC that read $502,105.
+ *
+ * `MAX_TAKE_PROFIT_MULTIPLE` does not catch it: 10x entry is a typo guard, four
+ * times looser than the worst case above. And with no close path, an unreachable
+ * take-profit is not a bad suggestion — it is a position with no exit.
+ *
+ * 50% is chosen to bite only in the regime that produces the defect: at 14.75x
+ * every target is a sub-4% move, at 3x "+50%" is 16.7%, and the bound first
+ * refuses something below 1x leverage — which is already the regime where
+ * notional is under collateral and the position cannot be liquidated at all.
+ *
+ * **Quick picks only.** A hand-typed price is visible by construction and stays
+ * governed by `takeProfitBounds`; the defect is specific to hiding a price
+ * behind a percentage.
+ */
+export const MAX_QUICK_PICK_MOVE_BPS = 5000;
+
 export const MAX_TAKE_PROFIT_MULTIPLE = 10;
 
 /**

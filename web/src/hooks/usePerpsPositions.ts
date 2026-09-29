@@ -15,7 +15,7 @@
 // rather than hidden, because hiding it would tell someone with money at risk
 // that they have nothing.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import {
@@ -68,16 +68,32 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
   const [tick, setTick] = useState(0);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+  /** Whose positions are currently on screen. See the effect. */
+  const shownFor = useRef<string | null>(null);
 
   useEffect(() => {
     // Per-effect, not a ref — see the note in usePerpsMarket. A wallet switch
     // must not let the previous account's positions land under the new one.
     let alive = true;
 
-    if (!owner) {
+    // Clear on an OWNER change, exactly as usePerpsMarket does and for the
+    // reason it documents: on A → B, if B's load threw, account A's positions
+    // stayed on screen under account B's wallet behind a banner that reads as a
+    // load failure rather than as a wrong-account display.
+    //
+    // Keyed on the owner rather than on every effect run, because `tick` is also
+    // a dependency — the Refresh button bumps it, and clearing unconditionally
+    // made that button drop the rows and show the skeleton until the reload
+    // returned. The 30-second interval calls `load()` directly and never had
+    // this problem, which is why the two paths now behave the same.
+    if (shownFor.current !== owner) {
+      shownFor.current = owner;
       setPositions([]);
-      setLoading(false);
       setError(null);
+    }
+
+    if (!owner) {
+      setLoading(false);
       return;
     }
 

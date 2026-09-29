@@ -37,7 +37,8 @@ import { price12ToUsd, usdToPrice12 } from "@/lib/perpsOracle";
 import {
   confirmCeiling,
   payoffAtPrice,
-  priceForPayoff,
+  quickPickPrice,
+  type QuickPick,
   quoteOpen,
   displayTakeProfitBounds,
   formatPriceUsd,
@@ -115,14 +116,48 @@ export type CardOverlay = {
   side: Side;
 };
 
+/**
+ * Every figure the card displays, captured together.
+ *
+ * The type exists so the freeze cannot be partial again: adding a displayed
+ * value means adding it here, and the compiler then requires it at the one
+ * place `live` is built. See the comment on `live` for what audit 7 found.
+ */
+type CardSnapshot = {
+  quote: OpenQuote | null;
+  notional: number;
+  collateralUsd: number;
+  tpPrice: string;
+  tradable: boolean;
+  liquidatable: boolean;
+  tpValid: boolean;
+  tpPayoff: number | null;
+  ceilingUsd: number;
+  indexUsd: number | null;
+  minLeverage: number | null;
+  binding: string | null;
+  /** The selected chip's resolution, so its message cannot repaint mid-prompt. */
+  quickPick: QuickPick | null;
+  /** Every chip's resolution, keyed by target. Frozen for the same reason. */
+  chipPicks: Record<number, QuickPick>;
+};
+
 export type PerpsCardProps = {
   marketId?: number;
   onMarketChange?: (id: number) => void;
   onOverlayChange?: (o: CardOverlay) => void;
+  /**
+   * True while a signature is in flight.
+   *
+   * Reported up because the market toggle lives in the chart panel now, and a
+   * market switch mid-prompt repaints the labels around a frozen quote — see
+   * audit 7 finding 4. One-directional, like `onOverlayChange`.
+   */
+  onBusyChange?: (busy: boolean) => void;
 };
 
 export function PerpsCard({
-  marketId: controlledMarketId, onMarketChange, onOverlayChange,
+  marketId: controlledMarketId, onMarketChange, onOverlayChange, onBusyChange,
 }: PerpsCardProps = {}) {
   const [ownMarketId, setOwnMarketId] = useState<number>(ACTIVE_MARKET_ID);
   const marketId = controlledMarketId ?? ownMarketId;
@@ -311,28 +346,33 @@ export function PerpsCard({
    * Typing a price clears the target (see the input's onChange) — a hand-typed
    * exit must not be overwritten by a slider nudge.
    */
+  /**
+   * Every chip resolved once, rather than three times per render.
+   *
+   * Also the source for the chips' own enabled state, so the buttons and the
+   * message beneath them cannot disagree — review found the chips resolving
+   * live while the message was frozen, which let them grey out against a payoff
+   * line still quoting the old target mid-prompt.
+   */
+  const chipPicks = useMemo(() => {
+    const out: Record<number, QuickPick> = {};
+    if (quote?.ok) for (const pct of TP_TARGETS) out[pct] = quickPickPrice(quote, collateralUsd * pct);
+    return out;
+  }, [quote, collateralUsd]);
+  const quickPick = tpPct === null ? null : chipPicks[tpPct] ?? null;
+
   useEffect(() => {
     // Frozen while signing: `disabled` stops the user editing this field, not
     // this effect, and the group carries the value from the click.
     if (submitting) return;
-    if (tpPct === null || !quote?.ok) return;
-
-    // `priceForPayoff` returns null when the profit exceeds what the position
-    // can pay — a short's ceiling is its notional, and both markets are
-    // OI-capped well below typical collateral. Nothing is written in that case;
-    // the button reports it rather than the field showing a wrong number.
-    const wanted = priceForPayoff(quote, collateralUsd * tpPct);
-    if (!wanted) { setTpPrice(""); return; }
-
-    // Clamp into the band the card enforces. At high leverage a small
-    // percentage of stake is a small price move, which can land inside the
-    // crossing guard — and a card showing its own invalid target is worse than
-    // one showing a conservative one.
-    const b = displayTakeProfitBounds(quote);
-    const clamped = wanted < b.minPrice12 ? b.minPrice12
-      : wanted > b.maxPrice12 ? b.maxPrice12 : wanted;
-    setTpPrice(price12ToUsd(clamped).toFixed(priceDisplayDecimals(price12ToUsd(clamped))));
-  }, [quote, collateralUsd, tpPct, submitting]);
+    if (quickPick === null) return;
+    // Nothing is written for a target the card will not stand behind; the
+    // message below the chips reports it rather than the field showing a price
+    // that is not what the chip says.
+    if (!quickPick.ok) { setTpPrice(""); return; }
+    const usd = price12ToUsd(quickPick.price12);
+    setTpPrice(usd.toFixed(priceDisplayDecimals(usd)));
+  }, [quickPick, submitting]);
 
   // String -> Price12 exactly; a BTC price times 1e12 overflows Number precision.
   const tp12 = usdToPrice12(tpPrice) ?? BigInt(0);
@@ -422,11 +462,41 @@ export function PerpsCard({
    * against the click-time `displayed` values, not against what the screen is
    * showing now. Freezing the view is the fix.
    */
-  const [frozen, setFrozen] = useState<{
-    quote: OpenQuote | null; notional: number; collateralUsd: number; tpPrice: string;
-  } | null>(null);
-  /** What the card renders. The live memos keep updating underneath. */
-  const view = frozen ?? { quote, notional, collateralUsd, tpPrice };
+  // The cleanup matters: without it a card that unmounts mid-signature leaves
+  // the parent's `busy` true, and the market toggle stays disabled for good.
+  useEffect(() => {
+    onBusyChange?.(submitting);
+    return () => onBusyChange?.(false);
+  }, [submitting, onBusyChange]);
+
+  const [frozen, setFrozen] = useState<CardSnapshot | null>(null);
+
+  /**
+   * Everything the card displays, in one object.
+   *
+   * Audit 7 found the freeze was **partial**: four values were captured and six
+   * more derived flags — `liquidatable`, `tradable`, `tpValid`, `tpPayoff`,
+   * `ceilingUsd`, `indexUsd` — were still read live at the render sites. One
+   * failed ten-second refresh during a prompt collapses
+   * `dataTrusted → tradable → notional → quote → liquidatable`, and the card,
+   * still rendering the FROZEN quote, printed "Liquidation: None — it cannot be
+   * liquidated" over a leveraged position being approved at that moment. The
+   * mirror case rendered `$0.000000` as a liquidation price, which is the H2
+   * defect the comment block above `liquidatable` says was fixed.
+   *
+   * Assembling it rather than patching six call sites is the point. The
+   * invariant is now mechanical: **the JSX reads `view.*` and never a live
+   * derived value**, so a field added later is frozen by default instead of
+   * being the next thing an audit finds.
+   */
+  const live: CardSnapshot = {
+    quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
+    ceilingUsd, indexUsd, quickPick, chipPicks,
+    minLeverage: bar?.open ? bar.minLeverage : null,
+    binding: bar?.open ? bar.binding : null,
+  };
+  /** What the card renders. The live values keep updating underneath. */
+  const view = frozen ?? live;
   /**
    * Everything required to sign, all of it already true for `tradable`, plus a
    * connected wallet and a valid target.
@@ -469,7 +539,7 @@ export function PerpsCard({
     // rather than by whichever input happened to change.
     setSubmitError(null);
     setResult(null);
-    setFrozen({ quote, notional, collateralUsd, tpPrice });
+    setFrozen(live);
     try {
       const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
       const r = await openPosition({
@@ -555,7 +625,13 @@ export function PerpsCard({
       <div className="flex items-baseline justify-between">
         <span className="font-display text-base font-semibold text-white">{market.label}</span>
         <span className="text-xs tabular-nums text-white/45">
-          {indexUsd !== null ? fmtPrice(indexUsd) : loading ? "…" : ""}
+          {/* `view.indexUsd`, not `indexUsd`. Review caught this as the one
+              field already IN the snapshot that was still read live at a second
+              site — precisely the "seventh site" the structural fix was meant
+              to make impossible. It is also the value passed as
+              `asRenderedIndexPrice12`, so a live read here meant the header
+              stopped showing the number the drift guard guards. */}
+          {view.indexUsd !== null ? fmtPrice(view.indexUsd) : loading ? "…" : ""}
         </span>
       </div>
 
@@ -640,7 +716,7 @@ export function PerpsCard({
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-white/50">Risk</span>
           <span className="text-sm font-semibold tabular-nums text-white">
-            {tradable && view.quote?.ok ? `${view.quote.leverage.toFixed(2)}×` : "—"}
+            {view.tradable && view.quote?.ok ? `${view.quote.leverage.toFixed(2)}×` : "—"}
           </span>
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
@@ -648,15 +724,26 @@ export function PerpsCard({
           onChange={(e) => setBarPos(Number(e.target.value))}
           className="mt-2 w-full accent-magnet-400 disabled:opacity-30" />
         <div className="flex justify-between text-[11px] tabular-nums text-white/40">
-          <span>{tradable ? `${bar!.minLeverage.toFixed(2)}×` : ""}</span>
-          <span>{tradable && collateralUsd > 0 ? `${(ceilingUsd / view.collateralUsd).toFixed(2)}×` : ""}</span>
+          <span>{view.tradable && view.minLeverage !== null ? `${view.minLeverage.toFixed(2)}×` : ""}</span>
+          <span>{view.tradable && view.collateralUsd > 0 ? `${(view.ceilingUsd / view.collateralUsd).toFixed(2)}×` : ""}</span>
         </div>
         {collateralUsd <= 0 && (
           <p className="mt-1 text-xs text-white/40">
             Enter an amount above to see your size, leverage and liquidation price.
           </p>
         )}
-        {bar && !bar.open && (
+        {/* ── Why these three are gated on `!frozen` ──────────────────────
+            All three are advice derived from live `bar` / `tradable`, and all
+            three could turn on mid-prompt underneath a frozen quote. Review's
+            case: a refresh lands in which OI headroom has shrunk, `tradable`
+            goes false with `bar.open` still true, and the card prints "No size
+            on this side currently clears the exchange's checks. Try a different
+            amount." directly beneath "Position size $174.78" while the user is
+            approving that position. Frozen numbers with live prose is the same
+            contradiction the `liquidatable` ship-blocker was.
+            Suppressed rather than snapshotted: advice is only actionable when
+            the user can act, and while the wallet is open they cannot. */}
+        {!frozen && bar && !bar.open && (
           <p className="mt-1 text-xs text-amber-300/90">
             {bar.closedReason}
             {/* `minimumCollateralUsd` existed to answer exactly this and had no
@@ -669,17 +756,17 @@ export function PerpsCard({
             line used to render for every cause of `!tradable`, so during the
             contract check — and whenever that check failed — it told the user to
             try a different amount for something no amount would fix. */}
-        {bar?.open && !tradable && preflight.canOpen === null && (
+        {!frozen && bar?.open && !tradable && preflight.canOpen === null && (
           <p className="mt-1 text-xs text-white/45">Verifying the exchange contracts…</p>
         )}
-        {bar?.open && !tradable && preflight.canOpen === true && dataTrusted && (
+        {!frozen && bar?.open && !tradable && preflight.canOpen === true && dataTrusted && (
           <p className="mt-1 text-xs text-amber-300/90">
             No size on this side currently clears the exchange&apos;s checks. Try a different amount.
           </p>
         )}
-        {tradable && (
+        {view.tradable && view.binding && (
           <p className="mt-1 text-[11px] text-white/35">
-            Position size {fmtUsd(view.notional)} · limited by {bar.binding.replace(/_/g, " ")}
+            Position size {fmtUsd(view.notional)} · limited by {view.binding.replace(/_/g, " ")}
           </p>
         )}
       </div>
@@ -692,16 +779,16 @@ export function PerpsCard({
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">Liquidation</span>
           <span className="text-base font-bold tabular-nums text-red-300">
-            {!view.quote?.ok ? "—" : liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
+            {!view.quote?.ok ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
           </span>
         </div>
-        {view.quote?.ok && liquidatable && indexUsd !== null && (
+        {view.quote?.ok && view.liquidatable && view.indexUsd !== null && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
-            {" · "}{(Math.abs(price12ToUsd(view.quote.liquidationPrice12) - indexUsd) / indexUsd * 100).toFixed(1)}% away
+            {" · "}{(Math.abs(price12ToUsd(view.quote.liquidationPrice12) - view.indexUsd) / view.indexUsd * 100).toFixed(1)}% away
           </p>
         )}
-        {view.quote?.ok && !liquidatable && (
+        {view.quote?.ok && !view.liquidatable && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             At this size your position is smaller than your collateral, so it cannot be liquidated.
             You can still lose money if the price moves against you.
@@ -722,13 +809,34 @@ export function PerpsCard({
           <div className="flex gap-1">
             {TP_TARGETS.map((pct) => {
               const on = tpPct === pct;
-              const reachable = !quote?.ok || priceForPayoff(quote, collateralUsd * pct) !== null;
+              // The SAME function that writes the price decides whether the
+              // chip is offered. Audit 7: these were two expressions of one
+              // rule, and only the writing half knew about the move bound, so a
+              // chip stayed lit over a target it would not stand behind.
+              //
+              // Resolved off `chipPicks`, which is memoised and frozen with the
+              // rest while signing — so the chips cannot grey out and contradict
+              // the payoff line above them mid-prompt, and the rule is not
+              // recomputed three times per render.
+              const pick = view.chipPicks[pct] ?? null;
+              const reachable = !pick || pick.ok;
+              // `!reachable` does not disable a SELECTED chip. It used to, and
+              // since the `on` styling won over the `!reachable` styling the
+              // chip sat green-as-selected while unclickable — so the one
+              // gesture that clears it did nothing. Clearing a bad selection
+              // must always stay reachable; it shows amber instead.
               return (
-                <button key={pct} type="button" disabled={submitting || !reachable}
+                <button key={pct} type="button" disabled={submitting || (!reachable && !on)}
                   onClick={() => setTpPct(on ? null : pct)}
-                  title={reachable ? undefined : "This position cannot make that much"}
+                  title={
+                    !pick || pick.ok ? undefined
+                    : pick.reason === "unpayable"
+                      ? "This position cannot make that much"
+                      : `Needs a ${(pick.moveBps! / 100).toFixed(0)}% price move at this risk level`
+                  }
                   className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                    on ? "bg-green-500/20 text-green-200"
+                    on && !reachable ? "bg-amber-500/20 text-amber-200"
+                      : on ? "bg-green-500/20 text-green-200"
                       : reachable ? "bg-white/[0.04] text-white/45 hover:text-white/75"
                       : "bg-white/[0.02] text-white/20 cursor-not-allowed"}`}>
                   +{Math.round(pct * 100)}%
@@ -753,10 +861,20 @@ export function PerpsCard({
             className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
         </div>
         {tpHint && <p className="mt-1 text-xs text-amber-300/90">{tpHint}</p>}
+        {/* A refused chip says what it refused and what fixes it. Silence here
+            is what let "+50%" sit lit over a target needing a 500% move. */}
+        {view.quickPick && !view.quickPick.ok && (
+          <p className="mt-1 text-xs text-amber-300/90">
+            {view.quickPick.reason === "unpayable"
+              ? "This position cannot make that much profit at any price."
+              : `That target needs a ${(view.quickPick.moveBps! / 100).toFixed(0)}% price move at this risk level. Raise the risk level, or pick a smaller target.`}
+          </p>
+        )}
         {view.quote?.ok && (
-          tpValid && tpPayoff !== null ? (
+          view.tpValid && view.tpPayoff !== null ? (
             <p className="mt-1 text-xs text-green-300/90">
-              Closes for {fmtUsd(tpPayoff)} profit before costs
+              Closes for {fmtUsd(view.tpPayoff)} profit before costs
+              {view.quickPick?.ok && ` · a ${(view.quickPick.moveBps / 100).toFixed(1)}% price move`}
             </p>
           ) : (
             <p className="mt-1 text-xs text-amber-300/90">
