@@ -25,6 +25,7 @@
 import algosdk from "algosdk";
 import {
   buildV2MarketOpenWithAttachedOrdersTransactions,
+  buildV2CancelOrderTransactions,
   buildV2OpenLimitWithAttachedOrdersTransactions,
 } from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
@@ -54,6 +55,7 @@ import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
 import { preflight } from "./perpsPreflight";
 import {
+  assertCancelGroup,
   assertOpenLimitGroup,
   assertOpenWithTakeProfit,
   simulateGroup,
@@ -978,6 +980,122 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
   }
   return {
     txId, baseOrderId: alloc.baseOrderId, checks: assertion.checked,
+    outcome, reason, confirmed: outcome === "confirmed",
+  };
+}
+
+// ── Cancelling ──────────────────────────────────────────────────────────────
+
+export type CancelOrderInput = {
+  algod: algosdk.Algodv2;
+  signTransactions: SignFn;
+  sender: string;
+  /** The order the user clicked on. */
+  ownerOrderId: bigint;
+  /** Its attached children, so their boxes are released in the same call. */
+  attachedOrderIds?: bigint[];
+  onStage?: (s: OpenStage) => void;
+};
+
+/**
+ * Cancel a resting order and release everything it holds.
+ *
+ * ── Why this is the smallest write path, and still asserted ─────────────────
+ * It moves nothing out of the wallet: the stake, the keeper fee and the
+ * order-box MBR all come BACK, as inner transactions. Measured on chain by
+ * pairing one submit against its own cancel — 10.124513 USDC and 100,200
+ * µALGO out, the identical amounts back, the only cost being ~34,000 µALGO of
+ * network fees across both groups. Across 127 historical cancels every one
+ * refunded, and the ALGO figure always matched what that order had paid.
+ *
+ * So the rule to rely on is **"refunds what it took"**, not a constant: our
+ * attached take-profit pays 99,700 for its box while a limit entry pays
+ * 100,200, and each is refunded its own amount.
+ *
+ * It is still asserted, because a cancel prompt is the most harmless-looking
+ * signature this product asks for and therefore the best place to hide
+ * something. See `assertCancelGroup`.
+ */
+export async function cancelOrder(input: CancelOrderInput): Promise<OpenPositionResult> {
+  const { algod, signTransactions, sender, ownerOrderId } = input;
+  const attachedOrderIds = input.attachedOrderIds ?? [];
+  const stage = (s: OpenStage) => input.onStage?.(s);
+  if (ownerOrderId <= BigInt(0)) throw new Error("That order id is not valid.");
+
+  stage("preparing");
+  await installProtocolManifest();
+
+  stage("building");
+  const sp = await algod.getTransactionParams().do();
+  sp.flatFee = true;
+  const built = buildV2CancelOrderTransactions({
+    sender,
+    ownerOrderId,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    keeperFeeAssetId: COLLATERAL_ASSET_ID,
+    // Named so their boxes are in the call's reference set; without this a
+    // bracket parent cannot release its children and their escrow stays locked.
+    ...(attachedOrderIds[0] !== undefined ? { attachedTakeProfitOrderId: attachedOrderIds[0] } : {}),
+    ...(attachedOrderIds[1] !== undefined ? { attachedStopLossOrderId: attachedOrderIds[1] } : {}),
+    v2OrderOpsAppId: PEX_APPS.orderOps,
+    v2MathAppId: PEX_APPS.math,
+    v2MarketsAppId: PEX_APPS.markets,
+    v2TradingAppId: PEX_APPS.trading,
+    v2TradingRiskOpsAppId: PEX_APPS.tradingRiskOps,
+    v2AdminControlAppId: PEX_APPS.adminControl,
+  } as never, sp) as algosdk.Transaction[];
+
+  stage("checking");
+  const assertion = assertCancelGroup(built, {
+    sender, ownerOrderId, attachedOrderIds, collateralAssetId: COLLATERAL_ASSET_ID,
+  });
+  if (!assertion.ok) {
+    console.error("perps: cancel assertion failed", assertion.findings);
+    throw new Error(`Safety check failed, so nothing was sent: ${assertion.findings[0]?.detail ?? "unknown"}`);
+  }
+
+  stage("simulating");
+  const sim = await simulateGroup(algod, built);
+  if (!sim.ok) {
+    // The common case is a genuinely benign race: the keeper executed the order
+    // between the panel rendering it and the click. Say that rather than
+    // presenting a contract assert to someone who cancelled a button.
+    throw new Error(
+      `This order could not be cancelled — it may have just executed or already been cancelled. Nothing was sent. (${sim.message ?? "unknown"})`,
+    );
+  }
+
+  stage("signing");
+  const signed = await signTransactions(built.map((t) => algosdk.encodeUnsignedTransaction(t)));
+  const blobs = signed.filter((s): s is Uint8Array => !!s);
+  if (blobs.length !== built.length) throw new Error("Signing cancelled.");
+
+  stage("submitting");
+  const txId = built[0].txID();
+  try {
+    await algod.sendRawTransaction(blobs).do();
+  } catch (e) {
+    throw new SubmissionUnknownError(txId, e instanceof Error ? e.message : String(e));
+  }
+
+  stage("confirming");
+  let outcome: OpenOutcome = "unknown";
+  let reason: string | undefined;
+  try {
+    await algosdk.waitForConfirmation(algod, txId, CONFIRM_ROUNDS);
+    outcome = "confirmed";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/^Transaction Rejected:/i.test(msg)) {
+      outcome = "rejected";
+      reason = msg.replace(/^Transaction Rejected:\s*/i, "");
+    } else {
+      outcome = "unknown";
+      reason = msg;
+    }
+  }
+  return {
+    txId, baseOrderId: ownerOrderId, checks: assertion.checked,
     outcome, reason, confirmed: outcome === "confirmed",
   };
 }

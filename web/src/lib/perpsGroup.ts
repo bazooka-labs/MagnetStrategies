@@ -53,6 +53,8 @@ export const PEX_SELECTORS = {
    * path reuses `decodeLinkedTail` rather than needing a decoder of its own.
    */
   submitLinkedOrder: "269845ea",
+  /** `PDexV2OrderOps.cancel_order` — one uint64 arg, the owner order id. */
+  cancelOrder: "847ccf3d",
 } as const;
 
 /**
@@ -275,6 +277,22 @@ export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax
 export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3, applMax: 11, trading: 2 };
 /** Closing moves no value in the group itself. */
 export const SHAPE_CLOSE: GroupShape = { axfer: 0, pay: 0, applMin: 1, applMax: 10, trading: 1 };
+
+/**
+ * Cancelling one standalone order. **Nothing leaves the wallet.**
+ *
+ * Measured: a single OrderOps call. The refunds — stake, keeper fee and the
+ * order-box MBR — all arrive as INNER transactions, so a correct cancel group
+ * contains no transfer and no payment at all. That is the property worth
+ * asserting: anything outbound here is not part of cancelling.
+ */
+export const SHAPE_CANCEL: GroupShape = {
+  axfer: 0, pay: 0, applMin: 1, applMax: 1, trading: 0, orderOps: 1,
+};
+/** Cancelling a bracket: the same call with a second box ref, plus a carrier. */
+export const SHAPE_CANCEL_BRACKET: GroupShape = {
+  axfer: 0, pay: 0, applMin: 2, applMax: 3, trading: 0, orderOps: 1,
+};
 
 /**
  * A limit entry, alone. **Zero Trading calls** — it is entirely OrderOps.
@@ -1617,6 +1635,100 @@ export function assertOpenLimitGroup(
     }
     did("attached take-profit: trigger, acceptable, size, link mode, base id, builder tuple");
   }
+
+  return { ok: findings.length === 0, findings, checked };
+}
+
+/** What the user was told they were cancelling. */
+export type DisplayedCancel = {
+  sender: string;
+  /** The order the UI named. Compared exactly against the arg. */
+  ownerOrderId: bigint;
+  /** Attached child ids, when cancelling a bracket. */
+  attachedOrderIds: bigint[];
+  collateralAssetId: number;
+};
+
+/**
+ * Assert a cancel group.
+ *
+ * ── What can actually go wrong here ─────────────────────────────────────────
+ * Cancelling moves nothing out of the wallet — every refund is an inner
+ * transaction — so the usual asset-movement checks have nothing to compare.
+ * The two real hazards are different:
+ *
+ * 1. **Cancelling the wrong order.** `cancel_order` takes one uint64 and the
+ *    contract derives the box from the SENDER, so a group that names a
+ *    different id cancels a different order of the user's own — plausibly the
+ *    take-profit protecting a live position rather than the resting entry they
+ *    clicked on. Nothing on chain distinguishes those; only this check does.
+ * 2. **Something outbound smuggled into a group the user approves as "cancel".**
+ *    A cancel prompt is the most benign-looking signature this product asks
+ *    for, which makes it the best place to hide a transfer. The shape forbids
+ *    every axfer and every pay, so there is nothing to hide behind.
+ */
+export function assertCancelGroup(
+  txnsIn: unknown[], shown: DisplayedCancel,
+): GroupAssertion {
+  const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
+  const findings: GroupFinding[] = [];
+  const checked: string[] = [];
+  const fail = (code: string, detail: string) => findings.push({ code, detail });
+  const did = (n: string) => checked.push(n);
+  const shape = shown.attachedOrderIds.length > 0 ? SHAPE_CANCEL_BRACKET : SHAPE_CANCEL;
+
+  checkTxnShape(txns, shape, fail, did);
+  checkCallBudget(txns, fail, shape);
+  checkEveryTransaction(txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did);
+  checkMathCarriers(txns, fail, did);
+
+  const calls = txns.filter((t) => t.applicationCall
+    && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps);
+  if (calls.length !== 1) {
+    fail("cancel_call_count", `expected 1 OrderOps call, found ${calls.length}`);
+    return { ok: false, findings, checked };
+  }
+  const A = calls[0].applicationCall!.appArgs ?? [];
+  if (hex(A[0] ?? new Uint8Array()) !== PEX_SELECTORS.cancelOrder) {
+    fail("cancel_selector", `OrderOps call is not cancel_order (${hex(A[0] ?? new Uint8Array())})`);
+  }
+  if (A.length !== 2) {
+    fail("cancel_arg_count", `cancel_order carries ${A.length} arg(s), expected 2`);
+  }
+  const id = A[1] ? algosdk.decodeUint64(A[1], "bigint") : BigInt(-1);
+  if (id !== shown.ownerOrderId) {
+    fail("cancel_order_id", `group cancels order ${id}, the screen said ${shown.ownerOrderId}`);
+  }
+  did("cancel_order selector and the exact order id the screen named");
+
+  // Every box this touches must be an `o2:` box belonging to the USER, and must
+  // be one of the ids they were shown. A box for someone else's order would be
+  // refused on chain, but a box for a DIFFERENT order of their own would not.
+  const expected = new Set([shown.ownerOrderId, ...shown.attachedOrderIds].map(String));
+  const pk = algosdk.decodeAddress(shown.sender).publicKey;
+  for (const t of txns) {
+    for (const b of (t.applicationCall?.boxes ?? []) as { name?: Uint8Array }[]) {
+      const name = b.name as Uint8Array;
+      if (!name || name.length === 0) continue;
+      if (name.length !== 43) {
+        fail("cancel_box_shape", `box reference is ${name.length} bytes, expected a 43-byte o2: key`);
+        continue;
+      }
+      if (String.fromCharCode(...Array.from(name.slice(0, 3))) !== "o2:") {
+        fail("cancel_box_prefix", "cancel names a box that is not an order box");
+        continue;
+      }
+      if (!sameBytes(name.slice(3, 35), pk)) {
+        fail("cancel_box_owner", "cancel names an order box belonging to another account");
+        continue;
+      }
+      const boxId = algosdk.decodeUint64(name.slice(35, 43), "bigint");
+      if (!expected.has(String(boxId))) {
+        fail("cancel_box_id", `cancel names order ${boxId}, which the screen did not mention`);
+      }
+    }
+  }
+  did("every order box named is the user's own, and one the screen named");
 
   return { ok: findings.length === 0, findings, checked };
 }

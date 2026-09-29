@@ -16,6 +16,10 @@ import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
 import { ORDER_KIND } from "@/lib/perpsReads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
+import { useState } from "react";
+import algosdk from "algosdk";
+import { ALGOD_URLS } from "@/lib/constants";
+import { cancelOrder } from "@/lib/perpsClient";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -87,6 +91,30 @@ export function PositionsPanel() {
   const { positions, loading, error, refresh } = usePerpsPositions(who);
   const { orders, loading: ordersLoading, error: ordersError, refresh: refreshOrders } =
     usePerpsOrders(who);
+  /** Which order is mid-cancel, and anything that went wrong doing it. */
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  async function doCancel(orderId: bigint, attached: bigint[]) {
+    if (!wallet.address || cancelling) return;
+    setCancelError(null);
+    setCancelling(String(orderId));
+    try {
+      await cancelOrder({
+        algod: new algosdk.Algodv2("", ALGOD_URLS.mainnet, ""),
+        signTransactions: (txns) => wallet.signTransactions(txns),
+        sender: wallet.address,
+        ownerOrderId: orderId,
+        attachedOrderIds: attached,
+      });
+      refreshOrders();
+      refresh();
+    } catch (e) {
+      setCancelError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   if (!wallet.isConnected) return null;
 
@@ -346,6 +374,47 @@ export function PositionsPanel() {
 
                   <p className="mt-2 text-[11px] leading-relaxed text-white/40">{state.note}</p>
 
+                  {/* ── Cancelling ─────────────────────────────────────────
+                      Everything the order holds comes back: the stake for an
+                      entry, the keeper fee, and the order-box MBR. Measured
+                      exact against a paired submit/cancel on chain.
+
+                      The warning below is the part that matters. With no close
+                      path in this UI, a take-profit bound to a live position is
+                      that position's ONLY exit — cancelling it leaves
+                      liquidation as the sole remaining outcome. That has to be
+                      said at the click, not discovered afterwards. */}
+                  {(() => {
+                    const isBound = !isEntry && order.position_id > BigInt(0);
+                    const children = orders
+                      .filter((o) => o.order.owner_order_id > order.owner_order_id
+                        && o.order.owner_order_id <= order.owner_order_id + BigInt(2)
+                        && Number(o.order.order_kind) !== ORDER_KIND.openLimit)
+                      .map((o) => o.order.owner_order_id);
+                    const busy = cancelling === String(order.owner_order_id);
+                    return (
+                      <div className="mt-2.5">
+                        {isBound && (
+                          <p className="mb-1.5 text-[11px] leading-relaxed text-amber-300/80">
+                            This is the only exit on that position — closing from this page
+                            is not built yet. Cancel it and liquidation becomes the only
+                            outcome left.
+                          </p>
+                        )}
+                        <button onClick={() => doCancel(order.owner_order_id, children)}
+                          disabled={!!cancelling}
+                          className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/60 transition-colors hover:border-white/30 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40">
+                          {busy ? "Cancelling…" : isEntry ? "Cancel order" : "Cancel"}
+                        </button>
+                        <span className="ml-2 text-[10px] text-white/30">
+                          {isEntry
+                            ? "Returns your stake, the keeper fee and the ALGO box deposit."
+                            : "Returns the keeper fee and the ALGO box deposit."}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   {/* PEX considering an order collectable is a money fact, not a
                       status nuance: the escrow is recoverable and nobody has to
                       recover it. Never rendered as resolved. */}
@@ -368,6 +437,10 @@ export function PositionsPanel() {
             until it executes or is cancelled.
           </p>
         </div>
+      )}
+
+      {cancelError && (
+        <p className="mt-2 text-[11px] text-red-300/90">{cancelError}</p>
       )}
 
       {ordersError && (
