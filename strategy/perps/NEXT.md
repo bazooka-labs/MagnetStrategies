@@ -180,10 +180,16 @@ two together rather than separately.
 ## Still open, unchanged
 
 - **`doi:` is pinned against nothing.** Raised with Ultrade, unanswered.
-- **The funding field does not reconcile.** See
-  [FUNDING-FIELD-QUESTION-FOR-ULTRADE.md](./FUNDING-FIELD-QUESTION-FOR-ULTRADE.md)
-  — drafted, not yet sent. Blocks itemising the exit-cost breakdown; the single
-  net figure shipped in its place is exact and needs no change.
+- ~~The funding field does not reconcile.~~ **Resolved 2026-09-29 by reading the
+  SDK, without asking Ultrade.** `funding_fee_collateral_amount` is a GROSS
+  accrued cost, forced non-negative by `max(0n, fundingFee - snapshot)` in
+  `settledPosition`, so it was never a settlement and has no sign.
+  `collateral_funding_net_amount` is the signed net
+  (`collateralIncrease - collateralDecrease`) and equals
+  `collateral_delta - collateral_amount` on **9 of 9 live positions**. Longs
+  credit more often than shorts because the funding claimable TO a position can
+  exceed its accrued cost, which is exactly why the gross field disagreed on
+  longs and looked fine on shorts. The exit-cost itemisation is restored.
 - **H1's keeper-fee leg** was never re-tested after B6 cleared. It is now
   testable and simply has not been run.
 - **LOW 8–12 from audit 7**, deferred and listed in

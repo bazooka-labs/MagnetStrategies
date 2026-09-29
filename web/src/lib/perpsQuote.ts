@@ -95,8 +95,11 @@ export type CloseQuote = {
   pnlUsd: number;
   closeFeeUsd: number;
   builderFeeUsd: number;
+  /** Gross accrued funding cost, unsigned. Not what settled — see `fundingNetUsd`. */
   fundingFeeUsd: number;
   borrowingFeeUsd: number;
+  /** Funding and borrowing as settled into collateral. Positive = paid to you. */
+  fundingNetUsd: number;
   impactUsd: number;
   liquidatable: boolean;
   raw: Record<string, unknown>;
@@ -464,8 +467,30 @@ export function quoteClose(input: {
     pnlUsd: toUsd(raw.effective_profit_usd) - toUsd(raw.loss_usd),
     closeFeeUsd: toUsd(raw.close_fee_usd ?? raw.platform_fee_amount),
     builderFeeUsd: toUsd(raw.builder_fee_paid),
+    /**
+     * Funding as a **gross accrued cost**, and never the settlement.
+     *
+     * `settledPosition` computes it from
+     * `max(0n, fundingFee - funding_fee_per_size_snapshot_milli_bps)`, so it is
+     * non-negative by construction. Rendering it as "what funding cost you" was
+     * wrong on 5 of 8 live positions, where funding had in fact been CREDITED.
+     * Use `fundingNetUsd` for anything a user reads.
+     */
     fundingFeeUsd: toUsd(raw.funding_fee_collateral_amount),
     borrowingFeeUsd: toUsd(raw.borrowing_fee_collateral_amount),
+    /**
+     * Funding and borrowing as actually settled into collateral. **Signed.**
+     *
+     * `collateralIncrease - collateralDecrease` in the SDK's `settledPosition`:
+     * positive means funding paid the trader, negative means it charged them.
+     * The claimable funding owed TO a position can exceed its accrued cost —
+     * which is why longs credit more often than shorts, and why the gross field
+     * above disagrees with the chain on exactly those.
+     *
+     * Verified against the WHOLE live population, 9 of 9 positions on
+     * 2026-09-29: this equals `collateral_delta - collateral_amount` exactly.
+     */
+    fundingNetUsd: toUsd(raw.collateral_funding_net_amount),
     impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
     liquidatable: Boolean(raw.liquidatable),
     raw,

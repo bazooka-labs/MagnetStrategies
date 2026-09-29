@@ -221,35 +221,31 @@ export function PositionsPanel() {
               </dl>
 
               {/* Why the net figure differs from the price move.
-                  ── Why this is ONE number and not an itemised breakdown ──
-                  It was five fields — close fee, Magnet fee, funding,
-                  borrowing, price impact — and reviewing that against all
-                  eight live positions found it did not add up on any of the
-                  four two-asset longs, off by $0.14–$0.18 on stakes as small
-                  as $5.50. The whole residual was the funding term:
-                  `funding_fee_collateral_amount` reported a COST on five of
-                  eight positions where funding had in fact been CREDITED to the
-                  trader, so the line both inverted the largest term's sign and
-                  printed it under a heading that said "costs".
-                  Why the itemisation is not simply sign-corrected: the
-                  mechanism is not established. `collateral_delta −
-                  collateral_amount` reconciles exactly on all eight, which says
-                  the settlement is real and knowable, but which PEX field
-                  carries the token-denominated half of it is an open question
-                  with Ultrade. Publishing a decomposition we cannot derive is
-                  the same mistake as `collateral_delta` itself — internally
-                  plausible, wrong at the boundary.
-                  So: the difference between the two figures above, which is
-                  exact by construction because both ends are verified. It
-                  cannot disagree with them, because it is defined as their
-                  gap. */}
+
+                  The headline gap is shown first and is exact by construction —
+                  both ends are verified and this is defined as their
+                  difference, so it cannot disagree with them.
+
+                  The itemisation was pulled once, because it did not add up on
+                  any of the five live longs. The cause was `fundingFeeUsd`:
+                  PEX's `funding_fee_collateral_amount` is a GROSS accrued cost,
+                  forced non-negative in `settledPosition`, so it reported a cost
+                  on positions that had been CREDITED — inverting the largest
+                  term's sign under a heading that said "costs".
+                  `collateral_funding_net_amount` is the signed settlement, and
+                  it matches `collateral_delta - collateral_amount` on 9 of 9
+                  live positions. Hence `fundingNetUsd`, and hence the sign
+                  rendered explicitly rather than assumed negative. */}
               {p.close && netUsd !== null && priceMove !== null && (
                 <p className="mt-2 text-[11px] text-white/35">
-                  Exit costs and funding, net:{" "}
+                  Exit costs, net:{" "}
                   <span className="tabular-nums text-white/55">{fmtSigned(netUsd - priceMove)}</span>
-                  {" "}— the difference between the two figures above. We don&apos;t itemise it
-                  yet, because one of PEX&apos;s fee fields doesn&apos;t reconcile against what
-                  the chain settled and we&apos;d rather show one number we can stand behind.
+                  {" "}— close fee {fmtUsd(p.close.closeFeeUsd)}, Magnet fee{" "}
+                  {fmtUsd(p.close.builderFeeUsd)}, price impact{" "}
+                  {p.close.impactUsd >= 0 ? "+" : "−"}{fmtUsd(Math.abs(p.close.impactUsd))},
+                  {" "}funding {p.close.fundingNetUsd >= 0 ? "+" : "−"}
+                  {fmtUsd(Math.abs(p.close.fundingNetUsd))}
+                  {p.close.fundingNetUsd > 0 && " (paid to you)"}.
                 </p>
               )}
 
