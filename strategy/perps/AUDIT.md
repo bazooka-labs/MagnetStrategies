@@ -1242,8 +1242,19 @@ settles three things that were previously inference:
    transaction's fee and so probably broke fee pooling rather than tripping a fee
    ceiling. It is not evidence that an overpaid fee is refused, and is not
    recorded as such.
-2. **`doi:` is pinned against nothing.** Ask Ultrade for a declared format, or
-   pin by observation and say so. Raised with Ultrade; unanswered.
+2. ~~**`doi:` is pinned against nothing.**~~ **CLOSED.** The protocol manifest
+   declares it as `dynamic_oi_margin_config` — prefix `646f693a` (`doi:`),
+   owner `PDexV2TradingRiskOps`, 32 bytes, four uint64s, `DynamicOiMarginConfigV1`.
+   It arrived with the manifest re-pin that came alongside the SDK bump, so this
+   item was stale rather than open.
+
+   It is now pinned in **three independent places** and `dynamicOiLayoutProblem()`
+   asserts they agree: the SDK's `V2_DYNAMIC_OI_MARGIN_CONFIG_*` constants, the
+   manifest format, and the live box. Verified 2026-09-29 — all three agree, and
+   the live factors read 1.0 on market 1 and 0.641026 on market 2, matching what
+   [OVERVIEW.md](./OVERVIEW.md) documents. The check returns rather than throws,
+   so a future drift stops trading through the preflight instead of taking down
+   the page.
 3. **The yield-recall question gates the close write path.** Whether pool state
    can make a recall *mandatory* on close — ALGO legs show
    `observed_available_underlying = 0`, and profit on an ALGO/USD long is paid in

@@ -179,7 +179,9 @@ two together rather than separately.
 
 ## Still open, unchanged
 
-- **`doi:` is pinned against nothing.** Raised with Ultrade, unanswered.
+- ~~`doi:` is pinned against nothing.~~ **Closed** — the manifest declares it as
+  `dynamic_oi_margin_config`, and `dynamicOiLayoutProblem()` checks the SDK, the
+  manifest and the live box against each other. Verified agreeing 2026-09-29.
 - ~~The funding field does not reconcile.~~ **Resolved 2026-09-29 by reading the
   SDK, without asking Ultrade.** `funding_fee_collateral_amount` is a GROSS
   accrued cost, forced non-negative by `max(0n, fundingFee - snapshot)` in
