@@ -46,8 +46,17 @@ ALGO's number is wrong on BTC. Every figure the card shows is read per market,
 including the price, which comes from that market's own verified oracle payload
 rather than a separate display feed.
 
-It is deliberately **not** a trading terminal, and deliberately **not** framed as
-hedging. An earlier draft built it around protecting an existing holding — *"protect
+**Renamed in the UI to "Trading Terminal" on 2026-09-29.** The paragraph below is
+kept because it records a real decision and why it was reversed, not because it
+still holds. The product shipped as a five-input purchase flow that deliberately
+avoided the term; it has since grown market and limit entries, an optional
+take-profit, closing, cancelling, charts with drawing tools and live funding
+rates. At that point insisting it is not a terminal misleads the user rather than
+protecting them. The route, the component names and the `perps` tab key are
+unchanged — this is a label, not a restructure.
+
+The original position, now retired: it was deliberately **not** a trading
+terminal, and deliberately **not** framed as hedging. An earlier draft built it around protecting an existing holding — *"protect
 against a drop"* — and that framing was dropped because it forces the user to hold two
 models at once: their own exposure, and an instrument that moves opposite to it.
 **Long and short are one step.** The target user still wants speed and simplicity;

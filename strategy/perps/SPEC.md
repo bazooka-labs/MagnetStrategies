@@ -637,7 +637,9 @@ Available on Surface 2:
 
 A user who never opens the advanced surface must still learn that they are at risk.
 
-**Guard:** Surface 2 stays outcome-framed. More outcomes available, not more jargon exposed. The moment it reads as a trading terminal, the product has lost the thing that made it worth building.
+**Guard, and its reversal.** Surface 2 was to stay outcome-framed: more outcomes available, not more jargon exposed, on the reasoning that *"the moment it reads as a trading terminal, the product has lost the thing that made it worth building."*
+
+**That was overtaken by the product, and the UI now says "Trading Terminal" (2026-09-29.)** The guard was written when opening was the only action and five inputs covered it. The surface now carries market and limit entries, an optional take-profit, closing, cancelling, per-position protection, charts with drawing tools and live funding direction — and a user who can do all of that is not served by a label insisting they cannot. What survives of the guard is the part that was always the real point: **outcome-framed language, no unexplained jargon, and every risk stated before the signature rather than after.** Those are still enforced and still worth defending.
 
 ---
 

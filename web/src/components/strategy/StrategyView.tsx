@@ -1,7 +1,8 @@
 "use client";
 
 // Mirrors TokensView: one page, a pill toggle across the arm's products.
-// Perps is the only pill today; further products become additional pills rather
+// One pill today, labelled "Trading Terminal"; further products become
+// additional pills rather
 // than separate routes, so the URL and the layout stay put as the arm grows.
 
 import { useEffect, useState } from "react";
@@ -48,7 +49,7 @@ export function StrategyView() {
             active={tab === "perps"}
             onClick={() => setTab("perps")}
             icon={<TrendingUp className="h-4 w-4" />}
-            label="Perps"
+            label="Trading Terminal"
           />
         </div>
       </div>

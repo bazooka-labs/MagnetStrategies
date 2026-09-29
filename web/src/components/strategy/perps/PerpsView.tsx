@@ -1,6 +1,6 @@
 "use client";
 
-// Perps tab. Hero block mirrors MagnetTokenView so the arm reads as part of the
+// The Trading Terminal tab. Hero block mirrors MagnetTokenView so the arm reads as part of the
 // same product family — same rounded-2xl panel, hairline, drifting blob, display
 // face and status pill.
 
@@ -99,8 +99,15 @@ export function PerpsView() {
               />
             </div>
             <div>
+              {/* "Trading Terminal", not "Perps". The product started as a
+                  five-input purchase flow and deliberately avoided the term;
+                  it has since grown market and limit entries, an optional
+                  take-profit, closing, cancelling, charts with drawing tools
+                  and live funding — so the name now describes what it is. The
+                  route, the component names and the `perps` tab key are
+                  unchanged; this is a label, not a rename. */}
               <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
-                Perps
+                Trading Terminal
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
                 Go long or short on {Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).join(" and ")} with
