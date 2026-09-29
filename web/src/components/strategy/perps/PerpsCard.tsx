@@ -747,8 +747,27 @@ export function PerpsCard({
       <Seam />
       <div className="p-5 sm:p-6">
       {/* The market toggle lives above the chart now, not here. */}
-      <div className="flex items-baseline justify-between">
+      {/* Market label left, order type centred, price right. `flex-1` on the
+          middle group centres it against the card rather than against the gap,
+          so it holds position as the label and price change width — the same
+          arrangement the chart panel uses for Basic/Advanced. */}
+      <div className="flex items-center gap-3">
         <span className="font-display text-base font-semibold text-white">{market.label}</span>
+
+        <div className="flex flex-1 justify-center">
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+            {([["market", "Market", "Fills now, at the current price"],
+               ["limit", "Limit", "Rests until the price reaches your trigger"]] as const).map(([m, text, title]) => (
+              <button key={m} type="button" disabled={submitting} title={title}
+                onClick={() => { setMode(m); setTriggerPrice(""); setTpPct(null); setTpPrice(""); }}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-40 ${
+                  mode === m ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <span className="text-xs tabular-nums text-white/45">
           {/* `view.indexUsd`, not `indexUsd`. Review caught this as the one
               field already IN the snapshot that was still read live at a second
@@ -789,20 +808,6 @@ export function PerpsCard({
       <div className="mt-4 grid gap-x-6 gap-y-1 lg:grid-cols-3">
 
       <div>
-      {/* Market or limit. Above direction because it decides what the rest of
-          this column means: a limit entry fills later, or never. */}
-      <div className="mt-4 flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
-        {([["market", "Market", "Fills now, at the current price"],
-           ["limit", "Limit", "Rests until the price reaches your trigger"]] as const).map(([m, text, title]) => (
-          <button key={m} type="button" disabled={submitting} title={title}
-            onClick={() => { setMode(m); setTriggerPrice(""); setTpPct(null); setTpPrice(""); }}
-            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
-              mode === m ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
-            {text}
-          </button>
-        ))}
-      </div>
-
       {/* Direction */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         {(["long", "short"] as Side[]).map((s) => {
