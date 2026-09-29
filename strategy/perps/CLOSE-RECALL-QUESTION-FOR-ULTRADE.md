@@ -1,0 +1,56 @@
+<!--
+Drafted 2026-09-29, NOT yet sent. Blocks the close write path — the last large
+gap in the product. The question is small and specific; the investigation
+behind it is below so the answer can be short.
+-->
+
+Morning Dan — following your "always use recall" answer, I got most of the way
+and hit one value I can't source. Short question, then the working.
+
+**Is `xalgo_provider_fee_credit_per_call_microalgos` stable enough for us to
+pin, and what is it for ALGO/USD (market 1)? If not, is
+`/v2/market-yield/action-recall-plan` the intended way for a frontend to get
+it?**
+
+## What we established
+
+Recall really is required, as you said. `decrease_or_close` with
+`yieldRecallMode: 0` builds fine and then fails in simulation at
+`inner tx 0` on a live ALGO/USD long — so the no-recall path is not an option
+even when it looks like one.
+
+With `yieldRecallMode: 1` the build throws:
+
+    marketYieldRegistry is required for xALGO action recall
+
+Tracing it: `withV2ActionXalgoProviderFeeCredit` only fires when a recall cap
+lands on native ALGO, which for an ALGO/USD long is always — the PnL leg pays
+in ALGO. It then reads exactly one field out of the registry's matching
+strategy, `xalgo_provider_fee_credit_per_call_microalgos`, and uses it solely to
+raise `flatFeeMicroAlgo`. Nothing else on that path touches the registry.
+
+We can already source everything else locally. The recall caps come from our own
+close quote — `primary_output_amount` and `pnl_output_amount` aggregated by
+asset, per your last answer — so we do not need the plan to size the recall. And
+`mxac:` on the xALGO vault carries the rest of the strategy config on chain.
+
+It is that single fee-credit value that is not in any box we can find.
+
+## Why we are asking rather than calling the endpoint
+
+Our frontend has no backend and takes no live dependency that shapes a signed
+transaction. The oracle is the one external read, and it is a **static published
+file** on R2 — no server, no request that could return a different answer to
+different callers.
+
+`action-recall-plan` is a POST to a live service whose response would feed into
+a group the user then signs. That is a different trust shape, and we would
+rather not add it for one constant if that constant is stable. If it is stable,
+we pin it next to the app ids and the manifest hash, and a change fails our
+preflight loudly rather than silently.
+
+If it is not stable — if it tracks a real cost that moves — then the endpoint is
+the right answer and we will wire it, and we would just want to know whether it
+is intended to be called keylessly from a browser.
+
+Happy to send the exact group and the simulation output.

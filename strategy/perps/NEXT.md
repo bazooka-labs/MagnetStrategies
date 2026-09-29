@@ -53,7 +53,34 @@ the last large capability missing — and the one that every open position today
 is waiting on. It is also what makes the "cancel your only exit" warning in the
 orders panel stop being necessary.
 
-**Three things to settle before building, all read-only:**
+### Blocked on one value (2026-09-29)
+
+Investigated to the point of a precise question, which is drafted in
+[CLOSE-RECALL-QUESTION-FOR-ULTRADE.md](./CLOSE-RECALL-QUESTION-FOR-ULTRADE.md)
+and **not yet sent**.
+
+**Recall really is required**, as Ultrade said: `decrease_or_close` with
+`yieldRecallMode: 0` builds and then fails in simulation at `inner tx 0` on a
+live ALGO/USD long. The no-recall path is not an option even when it looks like
+one.
+
+With `yieldRecallMode: 1` the build throws `marketYieldRegistry is required for
+xALGO action recall`. That fires whenever a recall cap lands on native ALGO —
+always, for an ALGO/USD long, because the PnL leg pays in ALGO. The path then
+reads **exactly one field**, `xalgo_provider_fee_credit_per_call_microalgos`,
+and uses it only to raise `flatFeeMicroAlgo`.
+
+Everything else is already local: the recall caps come from our own close
+quote's per-asset outputs, and `mxac:` carries the rest of the xALGO strategy
+config on chain. That one fee constant is in no box we can find.
+
+The SDK's supported route is a POST to `/v2/market-yield/action-recall-plan`.
+That is a **different trust shape from the oracle** — the oracle is a static
+published file with no server in the path, while this is a live service whose
+response would feed a group the user signs. Worth one question before adopting
+it for a single constant.
+
+**The other things to settle, all read-only:**
 
 1. **Group size.** Recall adds carriers — the SDK budgets
    `3 * strategyAssets.length` for the round trip — on top of a close group that
