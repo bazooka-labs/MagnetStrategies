@@ -19,8 +19,27 @@ import algosdk from "algosdk";
 import { BUILDER_ADDRESS, COLLATERAL_ASSET_ID } from "./perps";
 import { assertBuilderAddressUsable, dynamicOiLayoutProblem, verifyProgramPins } from "./perpsReads";
 
+/**
+ * Which refusals apply to EXITING, as opposed to opening.
+ *
+ * Review of the audit-8 remediation (M-3): gating close and cancel on `canOpen`
+ * swept in two kinds that cannot affect them.
+ *
+ * - `builder` is `assertBuilderAddressUsable` — OUR treasury's USDC opt-in.
+ *   A cancel group has zero transfers and zero payments, and a close pays no
+ *   builder fee we need an opt-in for. Blocking escrow recovery on our own
+ *   misconfiguration is the trade-blocking pattern, not caution.
+ * - `layout` is `dynamicOiLayoutProblem`, which sets the leverage CEILING.
+ *   `cancel_order` takes one uint64; there is no ceiling to get wrong.
+ *
+ * `drift` and `unreachable` do apply: a redeployed app or an unreadable chain
+ * means we would be guessing at the ABI, and that is no safer because the user
+ * is trying to get out.
+ */
+export const EXIT_BLOCKING_KINDS: ReadonlySet<string> = new Set(["drift", "unreachable"]);
+
 export type PreflightResult = {
-  /** False means opens must be refused. Exits are unaffected — see below. */
+  /** False means opens must be refused. Exits: see `EXIT_BLOCKING_KINDS`. */
   canOpen: boolean;
   /**
    * User-facing reason opens are refused, or null.
@@ -67,8 +86,9 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
   const layout = dynamicOiLayoutProblem();
   if (layout) {
     return {
+      // Opens only — this is the leverage ceiling, which an exit does not use.
       canOpen: false, kind: "layout",
-      reason: "New positions are paused: the exchange's data format no longer matches what this build expects.",
+      reason: "New positions are paused: the exchange's data format no longer matches what this build expects. Closing and cancelling are unaffected.",
       detail: layout,
       checkedAt,
     };
@@ -82,13 +102,28 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
     // Drift first: it is the more serious of the two, and it is the one whose
     // remedy is "stop opening", not "fix a setting".
     //
-    // Blocking opens while leaving exits live is deliberate. A redeploy leaves
-    // existing positions in the old app, so a blanket halt strands whoever is
-    // holding one — and the close path deliberately does not consult this.
+    /**
+     * ── This comment and this string were both wrong ─────────────────────────
+     * They claimed the close path "deliberately does not consult this" and told
+     * the user "Existing positions can still be closed." `closePositionInner`
+     * does consult it and throws `reason` verbatim — so the banner promised
+     * closing worked, and pressing Close produced an error whose own text said
+     * closing worked. Audit 8 HIGH 6.
+     *
+     * **The gate is kept; the claim is fixed.** Refusing to build against a
+     * drifted manifest is right, and it is not safer because the user is trying
+     * to get OUT — we would be guessing at the ABI in either direction, on a
+     * group that moves their collateral. Stranding someone is bad; signing a
+     * group we cannot decode on their behalf is worse.
+     *
+     * So this now says what is true, and `cancelOrder` consults the preflight
+     * too — otherwise a user in this state could remove their take-profit but
+     * not close, leaving liquidation as the only remaining exit.
+     */
     if (!pins.ok) {
       return {
         canOpen: false, kind: "drift",
-        reason: "PEX has been upgraded since this build was pinned. New positions are paused while we re-verify. Existing positions can still be closed.",
+        reason: "PEX has been upgraded since this build was pinned. Everything is paused — opening, closing and cancelling — until we have re-verified against the new contracts. Your position is untouched and PEX's own interface can still act on it.",
         detail: `program drift: ${pins.drifted.join("; ")}`,
         checkedAt,
       };

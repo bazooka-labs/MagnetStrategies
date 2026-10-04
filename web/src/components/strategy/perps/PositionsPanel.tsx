@@ -20,6 +20,7 @@ import { useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import { cancelOrder, closePosition } from "@/lib/perpsClient";
+import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -117,6 +118,32 @@ export function PositionsPanel() {
     Number(o.order.order_kind) === ORDER_KIND.openLimit
     || o.order.position_id === BigInt(0)
     || !livePositionIds.has(String(o.order.position_id)));
+
+  /**
+   * The same gate the write paths use — audit 8 HIGH 6.
+   *
+   * `closePosition` and `cancelOrder` both refuse when the preflight refuses,
+   * and this panel rendered no preflight state at all: it offered a Close button
+   * gated only on `close.ok` and then threw. A button that is offered and then
+   * refuses is worse than one that explains why it is disabled.
+   */
+  const preflight = usePerpsPreflight();
+  /**
+   * `!== true`, not `=== false`.
+   *
+   * The previous version's own comment said null must not read as permission,
+   * and then let it: while the first check was in flight `blocked` was null, the
+   * banner was hidden and Close was offered — then `closePosition` consulted the
+   * same preflight and threw. That is the "offered, then refuses" defect HIGH 6
+   * was about, reintroduced one layer up.
+   *
+   * `usePerpsPreflight` states the contract explicitly: null means "not yet",
+   * never "yes". The card honours it with `canOpen === true`; this now does too.
+   */
+  const checking = preflight.canOpen === null;
+  const blocked = preflight.canOpen !== true
+    ? (preflight.reason ?? "Checking the exchange contracts…")
+    : null;
 
   const [closing, setClosing] = useState<string | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
@@ -391,8 +418,12 @@ export function PositionsPanel() {
                         {fmtPrice(price12ToUsd(order.trigger_price))}
                       </span>
                     </span>
+                    {/* Gated for the same reason Close is: `cancelOrder`
+                        consults the preflight now, so an ungated button is one
+                        that is offered and then throws. */}
                     <button onClick={() => doCancel(order.owner_order_id, [])}
-                      disabled={!!cancelling || !!closing}
+                      disabled={!!cancelling || !!closing || !!blocked}
+                      title={blocked ?? undefined}
                       className="ml-auto text-[10px] text-white/35 underline underline-offset-2 transition-colors hover:text-white/70 disabled:opacity-40">
                       {busy ? "Removing…" : "Remove"}
                     </button>
@@ -407,7 +438,8 @@ export function PositionsPanel() {
                   error. The blocked reason is already stated above it. */}
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <button onClick={() => doClose(p)}
-                  disabled={!p.close?.ok || !!closing || !!cancelling}
+                  disabled={!p.close?.ok || !!closing || !!cancelling || !!blocked}
+                  title={blocked ?? undefined}
                   className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
                   {closing === `${p.marketId}-${p.side}` ? "Closing…" : "Close position"}
                 </button>
@@ -505,13 +537,14 @@ export function PositionsPanel() {
                       <div className="mt-2.5">
                         {isBound && (
                           <p className="mb-1.5 text-[11px] leading-relaxed text-amber-300/80">
-                            This is the only exit on that position — closing from this page
-                            is not built yet. Cancel it and liquidation becomes the only
-                            outcome left.
+                            This is that position&apos;s automatic exit. Remove it and the
+                            position stays open until you close it yourself, or it
+                            liquidates.
                           </p>
                         )}
                         <button onClick={() => doCancel(order.owner_order_id, children)}
-                          disabled={!!cancelling}
+                          disabled={!!cancelling || !!blocked}
+                          title={blocked ?? undefined}
                           className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/60 transition-colors hover:border-white/30 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40">
                           {busy ? "Cancelling…" : isEntry ? "Cancel order" : "Cancel"}
                         </button>
@@ -546,6 +579,14 @@ export function PositionsPanel() {
             until it executes or is cancelled.
           </p>
         </div>
+      )}
+
+      {/* Stated once, above the list, rather than per row. */}
+      {blocked && !checking && (
+        <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{blocked}</span>
+        </p>
       )}
 
       {closeError && (

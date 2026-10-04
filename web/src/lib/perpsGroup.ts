@@ -34,6 +34,7 @@ import {
   BUILDER_ADDRESS,
   MAX_KEEPER_FEE_ESCROW_USDC,
   PEX_APPS,
+  PEX_ASSETS,
   POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
 } from "./perps";
@@ -235,6 +236,37 @@ export const MAX_GROUP_FEE_MICRO_ALGO = 120_000;
 export const MAX_CLOSE_GROUP_FEE_MICRO_ALGO = 200_000;
 
 /**
+ * The same ceiling for a limit entry, and for a cancel.
+ *
+ * **Both paths had none.** They called `checkEveryTransaction` and discarded its
+ * return value — which is the group's total fee — while the open and close paths
+ * captured and bounded it. Audit 8 confirmed MainNet accepts a **5.03 ALGO**
+ * limit group and a **5 ALGO cancel**, on all three live orders, with the
+ * assertion green. That is precisely what `MAX_GROUP_FEE_MICRO_ALGO`'s docstring
+ * calls "the one tamper that nothing else would catch", and on cancel it is the
+ * signature this product presents as the most harmless it asks for.
+ *
+ * Measured, re-checked across 8 real groups: a limit entry with a take-profit is
+ * **36,000** µALGO (10 transactions) and bare is 20,000 (7). An earlier version
+ * of this note said 52,000, which was wrong — it mattered only as justification,
+ * but a cap defended by a figure nobody re-measured is how a cap ends up in the
+ * wrong place.
+ *
+ * The worst LEGITIMATE case is **65,000**: an attached take-profit that is
+ * already crossed. The limit path checks the entry's trigger for crossing and
+ * not the child's, so that group is buildable and correct. 120,000 leaves ~1.85x
+ * over it.
+ *
+ * A cancel is 14,000 standalone and 15,000 for a bracket. That bound is
+ * deliberately tight: 14,000 is `V2_ORDER_OPS_METHOD_FLAT_FEE_MICRO_ALGO`, a
+ * constant rather than a congestion-scaled suggestion, and
+ * `SHAPE_CANCEL_BRACKET.applMax` caps carrier growth at +2,000. There is nothing
+ * to leave room for.
+ */
+export const MAX_LIMIT_GROUP_FEE_MICRO_ALGO = 120_000;
+export const MAX_CANCEL_GROUP_FEE_MICRO_ALGO = 40_000;
+
+/**
  * The only two storage-escrow payments a legitimate group makes.
  *
  * `V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO` (100,200) on a first
@@ -294,7 +326,22 @@ export type GroupShape = {
 };
 
 /** Collateral transfer + app calls. No order box, so no MBR payment. */
-export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 10, trading: 1 };
+/**
+ * `orderOps: 0` on the three flows below is audit 8's HIGH 4.
+ *
+ * They left it undefined, so `checkCallBudget` fell back to `CALL_BUDGET`'s
+ * `0..1` — and neither `assertOpenGroup` nor `assertCloseGroup` inspects OrderOps
+ * calls at all. Verified: a real close group with an injected `cancel_order(2)`,
+ * which cancels **that user's own take-profit**, passes the assertion and
+ * simulates. On a partial close the position survives with its protection
+ * silently removed, inside a group approved as "Close position".
+ *
+ * None of these flows has a legitimate OrderOps call, so the honest bound is
+ * zero rather than one.
+ */
+export const SHAPE_OPEN: GroupShape = {
+  axfer: 1, pay: 0, applMin: 1, applMax: 10, trading: 1, orderOps: 0,
+};
 /**
  * A bare open for a trader whose storage escrow needs funding first.
  *
@@ -304,7 +351,7 @@ export const SHAPE_OPEN: GroupShape = { axfer: 1, pay: 0, applMin: 1, applMax: 1
  * optional; a first-time trader opening with no target builds exactly this.
  */
 export const SHAPE_OPEN_STORAGE: GroupShape = {
-  axfer: 1, pay: 1, applMin: 2, applMax: 11, trading: 2,
+  axfer: 1, pay: 1, applMin: 2, applMax: 11, trading: 2, orderOps: 0,
 };
 /** Adds the keeper-fee escrow transfer and the order-box MBR payment. */
 export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10, trading: 1 };
@@ -330,7 +377,7 @@ export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3,
  * next correct group that happens to need one more.
  */
 export const SHAPE_CLOSE: GroupShape = {
-  axfer: 0, pay: 0, applMin: 1, applMax: 16, trading: 1, mathMax: 14,
+  axfer: 0, pay: 0, applMin: 1, applMax: 16, trading: 1, mathMax: 14, orderOps: 0,
 };
 
 /**
@@ -677,6 +724,60 @@ function checkEveryTransaction(
  * Returns every finding rather than throwing on the first, so a failure report
  * shows the whole picture instead of one symptom at a time.
  */
+
+/**
+ * The storage-escrow payment, on every path that can carry one.
+ *
+ * ── Why this is a shared helper and not inline ──────────────────────────────
+ * It lived only inside `assertOpenWithTakeProfit`. `assertOpenGroup` — the bare
+ * open, reachable since the take-profit became optional — had **no storage
+ * check at all**, and `checkEveryTransaction` never inspects a payment's
+ * receiver or amount. Audit 8 verified the consequence: **50 ALGO** moved into
+ * the user's PEX storage escrow on a group presented as "open a $20 position",
+ * with the assertion green and MainNet accepting it. Into an escrow this UI
+ * cannot withdraw from, as `storagePaymentNeeded` and the card both say.
+ *
+ * The pinned-constant check that catches it existed twelve hundred lines away on
+ * the other path. One copy, called by both, is the fix — a second copy is how
+ * this happened.
+ */
+function checkStoragePayment(
+  txns: AnyTxn[], storagePaymentMicro: bigint,
+  fail: (code: string, detail: string) => void, did: (n: string) => void,
+): void {
+  const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+  const payments = txns.filter((t) => t.payment);
+  const storagePay = payments.find((t) => String(t.payment!.receiver) === tradingAddr);
+  if (!storagePay) {
+    fail("storage_payment_missing", "no storage escrow payment to the pinned Trading app address");
+    return;
+  }
+  const amt = big(storagePay.payment!.amount);
+  if (amt !== storagePaymentMicro) {
+    fail("storage_payment_amount", `storage payment ${amt}, displayed ${storagePaymentMicro}`);
+  }
+  /**
+   * And against the PINNED constants, not only the caller's number.
+   *
+   * Equality with the displayed value alone proves the group matches whatever
+   * the client computed — it cannot notice the client computing the wrong thing,
+   * and a tamper moving both together passes. Every other value-moving leg has
+   * an anchor outside the caller; this one needs one too.
+   */
+  if (amt !== STORAGE_ESCROW_MICRO_ALGO && amt !== POSITION_BOX_MBR_MICRO_ALGO) {
+    fail("storage_payment_unpinned",
+      `storage payment ${amt} is neither ${STORAGE_ESCROW_MICRO_ALGO} (first trade) nor ${POSITION_BOX_MBR_MICRO_ALGO} (top-up)`);
+  }
+  // And the call it pays for. Binding the payment without binding what consumes
+  // it leaves an unattached payment to a correct address.
+  const fundCall = txns.find((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.trading
+    && hex((t.applicationCall!.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.fundStorage);
+  if (!fundCall) {
+    fail("fund_storage_missing", "storage is paid for but no Trading fund_storage call is present");
+  }
+  did("storage escrow: amount against the displayed value AND the pinned constants, receiver, fund_storage call");
+}
+
 export function assertOpenGroup(
   txnsIn: unknown[], shown: DisplayedOpen, shape: GroupShape = SHAPE_OPEN,
 ): GroupAssertion {
@@ -706,6 +807,18 @@ export function assertOpenGroup(
     txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
   );
   checkTxnShape(txns, shape, fail, did);
+  /**
+   * The bare-open path's missing storage check — audit 8 HIGH 5.
+   *
+   * Driven off the DISPLAYED value rather than the group's shape, so a group
+   * that smuggles in a payment the caller never intended is caught by
+   * `checkTxnShape`'s `pay` count, and one the caller did intend is checked
+   * against the pinned constants. Both halves are needed: the shape alone would
+   * accept 50 ALGO, and the amount alone would accept an extra payment.
+   */
+  if (shown.storagePaymentMicro > BigInt(0)) {
+    checkStoragePayment(txns, shown.storagePaymentMicro, fail, did);
+  }
   checkCallBudget(txns, fail, shape);
   checkMathCarriers(txns, fail, did);
   did("sender is the user on every transaction");
@@ -990,6 +1103,21 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
   }
   did("distinct transaction IDs");
 
+  /**
+   * The recall's assets are already pinned — compare them. Audit 8 LOW 11.
+   *
+   * `readYieldRegistry` derives them from PEX's and Folks' own boxes, which makes
+   * the set chain-derived but closed only relative to those admins. Both values
+   * happen to equal constants this codebase already pins, and nothing was
+   * checking that. Free tightening, and it makes the "we build it ourselves"
+   * claim mean something on the asset axis at least.
+   */
+  for (const a of shown.recall.assets) {
+    if (a !== PEX_ASSETS.xAlgo && a !== PEX_ASSETS.fUsdc) {
+      fail("recall_asset_unpinned",
+        `recall names asset ${a}, which is neither the pinned xALGO (${PEX_ASSETS.xAlgo}) nor fUSDC (${PEX_ASSETS.fUsdc})`);
+    }
+  }
   const allowAccounts = new Set(shown.recall.accounts);
   const allowAssets = new Set(shown.recall.assets);
   const allowApps = new Set(shown.recall.apps);
@@ -1285,40 +1413,18 @@ export function assertOpenWithTakeProfit(
     fail("mbr_count", `expected ${expectedPayments} payment(s), found ${payments.length}`);
   }
 
-  if (fundsStorage) {
-    const storagePay = payments.find((t) => String(t.payment!.receiver) === tradingAddr);
-    if (!storagePay) {
-      fail("storage_payment_missing", "no storage escrow payment to the pinned Trading app address");
-    } else if (big(storagePay.payment!.amount) !== shownOpen.storagePaymentMicro) {
-      fail("storage_payment_amount",
-        `storage payment ${storagePay.payment!.amount}, displayed ${shownOpen.storagePaymentMicro}`);
-    }
-    // And against the PINNED constants, not only against the caller's number.
-    //
-    // Equality with `shownOpen.storagePaymentMicro` alone proves the group
-    // matches whatever `openPosition` computed — it cannot notice
-    // `openPosition` computing the wrong thing, and a tamper that moved both
-    // together passed. Every other value-moving leg has an anchor outside the
-    // caller: the collateral against a figure the card renders, the keeper
-    // escrow against MAX_KEEPER_FEE_ESCROW_USDC, the order-box MBR against
-    // ORDER_BOX_MBR_MICRO_ALGO. This one had none.
-    const amt = storagePay ? big(storagePay.payment!.amount) : BigInt(0);
-    if (amt !== STORAGE_ESCROW_MICRO_ALGO && amt !== POSITION_BOX_MBR_MICRO_ALGO) {
-      fail("storage_payment_unpinned",
-        `storage payment ${amt} is neither ${STORAGE_ESCROW_MICRO_ALGO} (first trade) nor ${POSITION_BOX_MBR_MICRO_ALGO} (top-up)`);
-    }
-    // And the call it pays for: `fund_storage` on Trading, the group's first
-    // Trading call. Binding the payment without binding what consumes it would
-    // leave an unattached payment to a correct address.
-    const tradingCalls = txns.filter((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.trading);
-    const fundCall = tradingCalls.find(
-      (t) => hex((t.applicationCall!.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.fundStorage,
-    );
-    if (!fundCall) {
-      fail("fund_storage_missing", "storage is paid for but no Trading fund_storage call is present");
-    }
-  }
-  did(fundsStorage ? "storage escrow: payment amount, receiver, and its fund_storage call" : "no storage payment expected");
+  /**
+   * NOT re-run here.
+   *
+   * `assertOpenWithTakeProfit` delegates to `assertOpenGroup` above, which now
+   * calls `checkStoragePayment` itself — so calling it again duplicated every
+   * finding it produces ("storage_payment_amount, storage_payment_amount, …").
+   * Verdict-identical, but a duplicated finding list is what the user reads.
+   *
+   * The whole point of extracting the helper was one copy called by both paths;
+   * two call sites on the same path was the old mistake wearing a new shape.
+   */
+  if (!fundsStorage) did("no storage payment expected");
 
   const mbr = payments.filter((t) => String(t.payment!.receiver) !== tradingAddr);
   if (mbr.length !== 1) {
@@ -1560,8 +1666,15 @@ export function assertOpenLimitGroup(
   checkCallBudget(txns, fail, shape);
   // The shared hardening: every sender is the user, no rekey/close/clawback,
   // no foreign assets. Identical stakes to the market path, so identical check.
-  checkEveryTransaction(txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did);
+  const totalFee = checkEveryTransaction(
+    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+  );
   checkMathCarriers(txns, fail, did);
+  // The return value was being thrown away here. See the constant's own note.
+  if (totalFee > BigInt(MAX_LIMIT_GROUP_FEE_MICRO_ALGO)) {
+    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_LIMIT_GROUP_FEE_MICRO_ALGO} microALGO`);
+  }
+  did("total fee under cap");
 
   const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
 
@@ -1594,6 +1707,36 @@ export function assertOpenLimitGroup(
   }
   did("limit escrow: stake + keeper fee, receiver, asset, keeper cap, non-zero");
 
+  /**
+   * The CHILD's keeper-fee transfer — audit 8 MEDIUM 9.
+   *
+   * `SHAPE_OPEN_LIMIT_TP` allows two transfers and only the entry's was bound,
+   * so the child's could be redirected to an opted-in attacker or inflated to 20
+   * USDC and still pass. PEX rejects both on chain (`pc=6908`,
+   * `global CurrentApplicationAddress; ==; assert`), which makes it defence in
+   * depth rather than a live exploit — and exactly the reason to have ours too.
+   * This is the hardening `assertOpenWithTakeProfit` already had and this path
+   * never got.
+   */
+  if (shownTp) {
+    const childEscrow = transfers.find((t) => t !== entryTransfer);
+    if (!childEscrow) {
+      fail("tp_escrow_missing", "no keeper-fee escrow transfer for the attached take-profit");
+    } else {
+      const x = childEscrow.assetTransfer!;
+      if (big(x.amount) !== shownTp.keeperFeeMicro) {
+        fail("tp_escrow_amount", `child escrow ${big(x.amount)}, displayed ${shownTp.keeperFeeMicro}`);
+      }
+      if (String(x.receiver) !== orderOpsAddr) {
+        fail("tp_escrow_receiver", "child keeper-fee escrow does not go to the pinned OrderOps address");
+      }
+      if (Number(x.assetIndex) !== shown.collateralAssetId) {
+        fail("tp_escrow_asset", `child escrow asset ${x.assetIndex}, expected ${shown.collateralAssetId}`);
+      }
+    }
+    did("attached take-profit escrow: amount, receiver, asset");
+  }
+
   // ── The order-box MBR ────────────────────────────────────────────────────
   //
   // A limit parent pays 100,200; an attached child pays 99,700. Different
@@ -1624,18 +1767,55 @@ export function assertOpenLimitGroup(
     return { ok: findings.length === 0, findings, checked };
   }
 
-  // The ENTRY is the one declaring OPEN_LIMIT. Found by its kind rather than by
-  // position, so a reordered group cannot make the child be read as the entry.
+  /**
+   * `submit_linked_order`'s real argument order, from the SDK itself
+   * (`@pdex/sdk/dist/src/transactions.js:1086-1105`):
+   *
+   *     A[1] ownerOrderId  A[2] orderKind  A[3] targetKind  A[4] marketId
+   *     A[5] side          A[6] collateralAssetId  A[7] sizeUsdDelta  …
+   *
+   * ── This was wrong, and the way it hid is the lesson ────────────────────────
+   * Audit 8 found this function reading `A[1]` as orderKind, `A[3]` as marketId
+   * and `A[4]` as ownerOrderId — three offsets shifted, while
+   * `assertOpenWithTakeProfit` had the layout right all along.
+   *
+   * It passed every check anyone ran because `ORDER_KIND_OPEN_LIMIT`,
+   * `ORDER_TARGET_PAIR`, ALGO/USD's `marketId` and a fresh account's
+   * `baseOrderId` are **all the literal 1**. A four-way coincidence.
+   *
+   * What it actually cost: BTC/USD limit orders were impossible at any order id,
+   * and any account holding an `o2:` box was locked out on both markets — which
+   * is everyone who has ever opened with a take-profit, since that creates a box
+   * at `base + 1`. They saw "Safety check failed, so nothing was sent" on a
+   * perfectly correct group.
+   *
+   * And the tamper table that was supposed to cover this touched the escrow
+   * amount, the trigger (`A[9]`), a carrier account and the MBR receiver — not
+   * one of the three broken indices. A tamper table that tests around a bug
+   * reads as thorough and proves nothing, which is why the test added alongside
+   * this fix tampers EVERY argument position rather than a chosen few.
+   */
   const u64 = (b?: Uint8Array) => (b ? algosdk.decodeUint64(b, "bigint") : BigInt(-1));
-  const entry = submits.find((t) => u64((t.applicationCall!.appArgs ?? [])[1]) === ORDER_KIND_OPEN_LIMIT);
+  const entry = submits.find((t) => u64((t.applicationCall!.appArgs ?? [])[2]) === ORDER_KIND_OPEN_LIMIT);
   if (!entry) {
     fail("limit_entry_missing", "no submit_linked_order declares orderKind OPEN_LIMIT");
     return { ok: false, findings, checked };
   }
   const A = entry.applicationCall!.appArgs ?? [];
 
-  if (u64(A[3]) !== BigInt(shown.marketId)) fail("limit_market", `marketId ${u64(A[3])}, displayed ${shown.marketId}`);
-  if (u64(A[4]) !== shown.baseOrderId) fail("limit_order_id", `ownerOrderId ${u64(A[4])}, allocated ${shown.baseOrderId}`);
+  // `orderKind` needs no separate check: the leg is LOCATED by `A[2]` equalling
+  // OPEN_LIMIT, so a group without one fails `limit_entry_missing` above and a
+  // group with one has already proved the field. An explicit re-check here would
+  // be unreachable, and an unreachable check is worse than none — it reads as
+  // coverage. What was actually missing before was that the find used the WRONG
+  // index, so neither the locate nor any check bound the real field.
+  // Nothing checked this before. A pair market's legs resolve differently from a
+  // single-token market's, so the target is part of what the user is signing.
+  if (u64(A[3]) !== ORDER_TARGET_PAIR) {
+    fail("limit_target_kind", `targetKind ${u64(A[3])}, expected PAIR (${ORDER_TARGET_PAIR})`);
+  }
+  if (u64(A[1]) !== shown.baseOrderId) fail("limit_order_id", `ownerOrderId ${u64(A[1])}, allocated ${shown.baseOrderId}`);
+  if (u64(A[4]) !== BigInt(shown.marketId)) fail("limit_market", `marketId ${u64(A[4])}, displayed ${shown.marketId}`);
   if (u64(A[5]) !== BigInt(shown.side)) fail("limit_side", `side ${u64(A[5])}, displayed ${shown.side}`);
   if (u64(A[6]) !== BigInt(shown.collateralAssetId)) fail("limit_collateral_asset", `collateralAssetId ${u64(A[6])}`);
   if (u64(A[7]) !== shown.sizeUsdDeltaMicro) fail("limit_size", `sizeUsdDelta ${u64(A[7])}, displayed ${shown.sizeUsdDeltaMicro}`);
@@ -1773,8 +1953,16 @@ export function assertCancelGroup(
 
   checkTxnShape(txns, shape, fail, did);
   checkCallBudget(txns, fail, shape);
-  checkEveryTransaction(txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did);
+  const totalFee = checkEveryTransaction(
+    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+  );
   checkMathCarriers(txns, fail, did);
+  // Also discarded here. A cancel is the cheapest group this product builds and
+  // had the loosest bound of any — namely none.
+  if (totalFee > BigInt(MAX_CANCEL_GROUP_FEE_MICRO_ALGO)) {
+    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_CANCEL_GROUP_FEE_MICRO_ALGO} microALGO`);
+  }
+  did("total fee under cap");
 
   const calls = txns.filter((t) => t.applicationCall
     && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps);

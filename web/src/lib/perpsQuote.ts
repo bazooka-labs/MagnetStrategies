@@ -438,6 +438,13 @@ export function quoteClose(input: {
   builderAddress: string;
   slippageBps?: number;
   builderFeeBps?: number;
+  /**
+   * ALGO's price in USD, Price12 — from market 1's signed payload.
+   *
+   * Only needed when ALGO is not this market's index asset, which is market 2.
+   * Without it a BTC position cannot show what closing returns. Audit 8 MEDIUM 7.
+   */
+  algoPrice12?: bigint;
 }): CloseQuote {
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const base = {
@@ -476,6 +483,10 @@ export function quoteClose(input: {
     collateralAssetId: input.collateralAssetId,
     indexAssetId: Number(input.state.core.index_asset_id),
     indexPrice12: input.oracle.indexPrice12,
+    // Passed through so a BTC close, which pays out in ALGO, can be valued —
+    // see the field's note. Optional, so a caller without it keeps the old
+    // withhold-rather-than-guess behaviour.
+    algoPrice12: input.algoPrice12,
   });
 
   return {
@@ -799,13 +810,33 @@ export function aggregateCloseOutputs(
  */
 export function valueCloseOutputs(
   outputs: CloseOutput[],
-  ctx: { collateralAssetId: number; indexAssetId: number; indexPrice12: bigint },
+  ctx: {
+    collateralAssetId: number; indexAssetId: number; indexPrice12: bigint;
+    /**
+     * ALGO's price, when it is not this market's index asset.
+     *
+     * **Audit 8 MEDIUM 7.** Market 2's `index_asset_id` is the synthetic
+     * `9000000000000000`, but a BTC/USD close actually pays out in ALGO and
+     * USDC — so ALGO matched neither branch, `payoutUsd` went null, and every
+     * BTC position showed no payout, no net figure and no cost breakdown at all.
+     * Fail-safe rather than wrong, but on one of two markets a user could not see
+     * what closing returned.
+     *
+     * ALGO is asset 0 on both markets and is priceable from market 1's signed
+     * payload, so the caller supplies it. Omitted, the old behaviour stands:
+     * withhold rather than guess.
+     */
+    algoPrice12?: bigint;
+  },
 ): number | null {
   let total = 0;
   for (const o of outputs) {
     if (o.assetId === ctx.collateralAssetId) total += Number(o.amount) / 1e6;
     else if (o.assetId === ctx.indexAssetId) {
       total += (Number(o.amount) / 1e6) * (Number(ctx.indexPrice12) / 1e12);
+    } else if (o.assetId === 0 && ctx.algoPrice12 !== undefined
+      && ctx.algoPrice12 > BigInt(0)) {
+      total += (Number(o.amount) / 1e6) * (Number(ctx.algoPrice12) / 1e12);
     } else return null;
   }
   return total;

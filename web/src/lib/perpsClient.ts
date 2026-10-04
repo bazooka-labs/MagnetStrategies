@@ -57,7 +57,7 @@ import {
 } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
-import { preflight } from "./perpsPreflight";
+import { EXIT_BLOCKING_KINDS, preflight } from "./perpsPreflight";
 import {
   assertCancelGroup,
   assertCloseGroup,
@@ -194,8 +194,16 @@ const CONFIRM_ROUNDS = 40;
  * so it could not have known which case it was in.
  */
 const GROUP_FEE_HEADROOM_MICRO = BigInt(60_000);
-const minAlgoMicro = (storagePayment: bigint): bigint =>
-  storagePayment + ORDER_BOX_MBR_MICRO_ALGO + GROUP_FEE_HEADROOM_MICRO;
+/**
+ * The order-box MBR only applies when there IS an order — audit 8 MEDIUM 8.
+ *
+ * It was added unconditionally, so a funded repeat trader opening with no
+ * take-profit was told *"Needs about 0.16 spendable ALGO"* against a real need of
+ * ~0.034. Trade-blocking at the margin, and for a box the group never creates.
+ */
+const minAlgoMicro = (storagePayment: bigint, wantsTakeProfit: boolean): bigint =>
+  storagePayment + (wantsTakeProfit ? ORDER_BOX_MBR_MICRO_ALGO : BigInt(0))
+  + GROUP_FEE_HEADROOM_MICRO;
 
 /**
  * Seconds of oracle validity that must remain when the wallet is prompted.
@@ -293,8 +301,14 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     (a: { assetId?: bigint | number }) => Number(a.assetId) === COLLATERAL_ASSET_ID,
   );
   if (!usdcHeld) throw new Error("This wallet does not hold USDC.");
-  if (BigInt(usdcHeld.amount) < micro(collateralUsd) + micro(CHILD_KEEPER_FEE_USDC)) {
-    throw new Error("Not enough USDC for the position plus its keeper fee.");
+  // The keeper fee is only escrowed when a take-profit is attached. Demanding it
+  // unconditionally refused a wallet that held exactly enough. Audit 8 MEDIUM 8.
+  const usdcNeeded = micro(collateralUsd)
+    + (wantsTakeProfit ? micro(CHILD_KEEPER_FEE_USDC) : BigInt(0));
+  if (BigInt(usdcHeld.amount) < usdcNeeded) {
+    throw new Error(wantsTakeProfit
+      ? "Not enough USDC for the position plus its keeper fee."
+      : "Not enough USDC for the position.");
   }
 
   // ── One position per (market, side) ──────────────────────────────────────
@@ -330,7 +344,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const fundsStorage = storagePayment > BigInt(0);
 
   // Now the ALGO requirement is knowable, so it can be both correct and honest.
-  const algoNeeded = minAlgoMicro(storagePayment);
+  const algoNeeded = minAlgoMicro(storagePayment, wantsTakeProfit);
   if (algoSpendable < algoNeeded) {
     throw new Error(
       `Needs about ${(Number(algoNeeded) / 1e6).toFixed(2)} spendable ALGO${
@@ -873,6 +887,8 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
 
   stage("building");
   const sp = await algod.getTransactionParams().do();
+  // Same pin as the market-open path — see HIGH 3 on the fee cap.
+  sp.fee = sp.minFee;
   sp.flatFee = true;
   const stakeMicro = micro(collateralUsd);
   const sizeMicro = micro(notionalUsd);
@@ -1081,8 +1097,28 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
   stage("preparing");
   await installProtocolManifest();
 
+  /**
+   * Cancelling consults the preflight too — audit 8 HIGH 6.
+   *
+   * It did not, while opening and closing both did. In a drift state that let a
+   * user remove their take-profit but not close, leaving liquidation as the only
+   * remaining exit. Whatever the gate is, the write paths have to agree on it.
+   */
+  const pre = await preflight(algod);
+  // Same narrow set as closing, and for the same reason — a cancel group moves
+  // nothing at all, so our treasury's opt-in and the leverage ceiling are
+  // irrelevant to it.
+  if (EXIT_BLOCKING_KINDS.has(pre.kind)) {
+    if (pre.detail) console.warn(`perps: preflight refused the cancel — ${pre.detail}`);
+    throw new Error(pre.reason ?? "Trading is unavailable right now.");
+  }
+
   stage("building");
   const sp = await algod.getTransactionParams().do();
+  // Pinned to the network minimum, for the reason `openPositionInner` gives:
+  // algod's suggestion scales with congestion, and a fee is not where this
+  // product should surprise anyone. Audit 8 HIGH 3.
+  sp.fee = sp.minFee;
   sp.flatFee = true;
   const built = buildV2CancelOrderTransactions({
     sender,
@@ -1223,10 +1259,13 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   await installProtocolManifest();
 
   const [state, pre] = await Promise.all([readMarketState(algod, marketId), preflight(algod)]);
-  if (!pre.canOpen) {
-    // The same gate as opening: a drifted manifest or an upgraded app means we
-    // do not know what we are building against, and that is not safer just
-    // because the user is trying to get OUT.
+  // Not `!pre.canOpen`: only the kinds that actually affect an exit. A drifted
+  // or unreachable chain means we would be guessing at the ABI, which is no
+  // safer because the user is trying to get out — but our own builder-address
+  // configuration and the leverage ceiling have nothing to do with closing, and
+  // blocking escrow recovery on them would be a self-inflicted trap. See
+  // `EXIT_BLOCKING_KINDS`.
+  if (EXIT_BLOCKING_KINDS.has(pre.kind)) {
     if (pre.detail) console.warn(`perps: preflight refused the close — ${pre.detail}`);
     throw new Error(pre.reason ?? "Trading is unavailable right now.");
   }
@@ -1260,10 +1299,15 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   /**
    * Recall caps, from our own close quote.
    *
-   * `quoteClose` already aggregates what this close pays out per asset, which is
-   * exactly what a recall must make available. The cap is a MAXIMUM, so sizing
-   * it at the quoted output is the tight, honest choice — not a round number
-   * chosen to be safe.
+   * `quoteClose` aggregates what this close pays out per asset, and a recall must
+   * make at least that much available.
+   *
+   * **A unit note, because the comment used to overstate this.** These args are
+   * RECEIPT-token caps (xALGO, fUSDC) and the outputs are denominated in the
+   * UNDERLYING. Lending receipts appreciate against underlying, so the cap comes
+   * out generous rather than tight. That is safe in the only direction it can be
+   * — a cap is a maximum, and all 11 live closes pass with it — but calling it
+   * "the tight, honest choice" was describing a number in the wrong unit.
    */
   const capFor = (assetId: number) =>
     quote.outputs.find((o) => o.assetId === assetId)?.amount ?? BigInt(0);
@@ -1291,6 +1335,10 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
 
   const acceptablePrice = acceptableForClose(quote.executionPrice12, side, slippageBps);
   const sp = await algod.getTransactionParams().do();
+  // The close path needs the same pin as the other three: algod's suggestion
+  // scales with congestion, and the close fee cap is the only thing between a
+  // congested network and a multi-ALGO group. Audit 8 HIGH 3.
+  sp.fee = sp.minFee;
   sp.flatFee = true;
 
   let built: algosdk.Transaction[] | null = null;

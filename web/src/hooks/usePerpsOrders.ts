@@ -142,14 +142,17 @@ export function usePerpsOrders(owner: string | null): OrdersStatus {
               order,
               blockers: (a.executionBlockers ?? []).slice(),
               cleanupReason: String(a.cleanupReason ?? ""),
-              indexUsd: snap ? Number(snap.min) / 1e12 : null,
+              // The MID of the signed band, not its lower edge. It was
+              // `snap.min`, surfaced to the UI as "the live index" — small
+              // (0.05% on market 1) and consistently low. Audit 8 LOW 13.
+              indexUsd: snap ? Number(snap.min + snap.max) / 2e12 : null,
             };
           } catch {
             // An order we cannot analyse is still an order holding the user's
             // escrow. Shown with an explicit unknown state rather than dropped.
             return {
               order, blockers: ["unknown_order_state"], cleanupReason: "",
-              indexUsd: snap ? Number(snap.min) / 1e12 : null,
+              indexUsd: snap ? Number(snap.min + snap.max) / 2e12 : null,
             };
           }
         });

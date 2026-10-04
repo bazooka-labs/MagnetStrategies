@@ -148,6 +148,8 @@ type CardSnapshot = {
   funding: { annualPct: number; youPay: boolean } | null;
   /** No target set — a choice now, and the button and warnings reflect it. */
   tpEmpty: boolean;
+  /** What this signature moves, derived from the constants. Frozen with the rest. */
+  moves: { keeperUsd: number; algo: number; algoFirstTrade: number };
 };
 
 export type PerpsCardProps = {
@@ -250,6 +252,23 @@ export function PerpsCard({
   useEffect(() => {
     setTpPrice("");
     setTpPct(null);
+    /**
+     * `triggerPrice` too — audit 8 SHIP-BLOCKER 2.
+     *
+     * It was reset only by the mode toggle, and the market toggle lives outside
+     * this card and changes nothing but `marketId`. So a $0.12 ALGO trigger
+     * carried onto BTC/USD, and the crossing guard did not catch it: it tests
+     * `trigger >= index`, and `1.2e11 >= 8.46e16` is false. The card then quoted
+     * against a payload rescaled to the stale trigger and rendered an entry of
+     * $0.120249 and a liquidation of $0.093459 on a market at $84,573 — submit
+     * enabled.
+     *
+     * A short tripped its own crossing test; a long did not. This belongs here
+     * rather than in a guard: a price typed for one market is not a price for
+     * another, whatever its magnitude.
+     */
+    setTriggerPrice("");
+    setTriggerHint(null);
   }, [marketId]);
 
   const settledAmount = useDebounced(amount, 120);
@@ -570,6 +589,42 @@ export function PerpsCard({
     return () => onBusyChange?.(false);
   }, [submitting, onBusyChange]);
 
+  /**
+   * What this signature actually moves, derived rather than written out.
+   *
+   * ── Why it is computed ──────────────────────────────────────────────────────
+   * The prose version keyed on `tpEmpty` alone and was wrong for a targetless
+   * LIMIT order: a limit entry always escrows a keeper fee and always pays a
+   * 100,200 µALGO order-box MBR, whether or not a take-profit rides along. So
+   * the line said "collateral only, ~0.03 ALGO" where the truth was collateral
+   * plus $0.10 plus ~0.12 ALGO — understated, on the one line in the product
+   * that enumerates what leaves the wallet, directly above a sentence telling
+   * the user their money is being escrowed.
+   *
+   * That was a regression introduced while fixing the targetless-MARKET case,
+   * which is exactly what hand-written prose over four combinations invites.
+   * Deriving it from the same constants the client bills against means the text
+   * cannot drift from the group again.
+   *
+   * Measured, and matching this arithmetic: market bare 34,000 µALGO of fees;
+   * market with target 51,000 + 99,700 of order box; limit bare 20,000 +
+   * 100,200; limit with target 36,000 + 100,200 + 99,700.
+   */
+  const moves = useMemo(() => {
+    const feeMicro = isLimit ? (tpEmpty ? 20_000 : 36_000) : (tpEmpty ? 34_000 : 51_000);
+    // One box per resting order. A market open creates one only for its
+    // take-profit; a limit entry creates its own, plus the child's.
+    const boxMicro = (isLimit ? 100_200 : 0) + (tpEmpty ? 0 : 99_700);
+    // The keeper fee is escrowed per resting order, for the same reason.
+    const keeperCount = (isLimit ? 1 : 0) + (tpEmpty ? 0 : 1);
+    const firstTradeExtra = 100_200;
+    return {
+      keeperUsd: keeperCount * CHILD_KEEPER_FEE_USDC,
+      algo: (feeMicro + boxMicro) / 1e6,
+      algoFirstTrade: (feeMicro + boxMicro + firstTradeExtra) / 1e6,
+    };
+  }, [isLimit, tpEmpty]);
+
   const [frozen, setFrozen] = useState<CardSnapshot | null>(null);
 
   /**
@@ -592,7 +647,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
-    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty,
+    ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -1138,7 +1193,7 @@ export function PerpsCard({
                   "choose a target above $X" reads as a correction for a number
                   the user has not entered yet. */}
               {view.tpPrice.trim() === ""
-                ? "Pick a profit target above, or type an exit price. Every position needs one."
+                ? "Pick a profit target above, or type an exit price. A target closes it automatically if the price gets there."
                 : !bounds
                 ? "Enter a take-profit price."
                 : tpTooNear
@@ -1247,9 +1302,14 @@ export function PerpsCard({
               offer neither. Nine of the nineteen live PEX traders are sitting on
               idle escrow right now. And ~0.15-0.25 ALGO is not "small" against
               the stakes this card is built for, so it is quantified. */}
-          One signature. {fmtUsd(view.collateralUsd)} collateral and {fmtUsd(CHILD_KEEPER_FEE_USDC)} keeper
-          fee leave your wallet, plus about 0.15 ALGO for the on-chain order record
-          — or 0.25 on your first PEX trade, which also sets up a storage record PEX keeps.
+          One signature. {fmtUsd(view.collateralUsd)} collateral
+          {view.moves.keeperUsd > 0 && <> and {fmtUsd(view.moves.keeperUsd)} keeper
+            fee{view.moves.keeperUsd > CHILD_KEEPER_FEE_USDC ? "s" : ""}</>}
+          {" "}leave{view.moves.keeperUsd > 0 ? "" : "s"} your wallet, plus about{" "}
+          {view.moves.algo.toFixed(2)} ALGO
+          {view.moves.algo > 0.04 ? " in network fees and the on-chain order record" : " in network fees"}
+          {" "}— or {view.moves.algoFirstTrade.toFixed(2)} on your first PEX trade, which also sets
+          up a storage record PEX keeps.
           {view.isLimit && (
             // The part that is genuinely different: nothing is traded on this
             // signature, and the money is escrowed until it fills or is

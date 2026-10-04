@@ -103,6 +103,23 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
     const load = async () => {
       try {
         const found: OpenPosition[] = [];
+        /**
+         * ALGO's price, read once, from market 1's signed payload.
+         *
+         * A BTC/USD close pays out in ALGO and USDC, but market 2's
+         * `index_asset_id` is the synthetic `9000000000000000` — so ALGO matched
+         * no pricing branch and every BTC position showed no payout, no net
+         * figure and no cost breakdown. Audit 8 MEDIUM 7.
+         *
+         * Read outside the market loop because it is the same number for both,
+         * and tolerated as null: without it `valueCloseOutputs` falls back to
+         * withholding the total, which is the behaviour being replaced rather
+         * than a new failure.
+         */
+        let algoPrice12: bigint | null = null;
+        try {
+          algoPrice12 = (await getOraclePayload(PEX_APPS.trading, 1)).indexPrice12;
+        } catch { /* a BTC payout stays unpriced, exactly as before */ }
         for (const marketId of ENABLED_MARKET_IDS) {
           // Both sides first: if neither exists, the market's state and oracle
           // are never fetched at all.
@@ -132,6 +149,7 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
                 collateralAssetId: COLLATERAL_ASSET_ID,
                 builderAddress: BUILDER_ADDRESS,
                 builderFeeBps: POSITION_BUILDER_FEE_BPS,
+                ...(algoPrice12 !== null ? { algoPrice12 } : {}),
               });
             } catch (e) {
               // A position that cannot be priced is still a position. Show it.
