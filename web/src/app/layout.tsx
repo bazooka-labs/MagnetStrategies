@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import { WalletProvider } from "@/hooks/useWallet";
+import { AmbientField } from "@/components/AmbientField";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -41,6 +42,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-surface text-gray-100 antialiased overflow-x-hidden">
+        {/* Behind every route. The landing page keeps its own photographic
+            background, which covers this in the hero — deliberately, so the
+            two treatments never compete. The other six routes had no ambient
+            layer at all before this. */}
+        <AmbientField />
         <WalletProvider>
           {children}
           <Toaster position="bottom-right" theme="dark" richColors />

@@ -211,3 +211,56 @@ body {
    stall rather than as a reveal. */
 .animate-hero-outro-1 { animation: fade-up 0.6s ease-out 6.05s both; }
 .animate-hero-outro-2 { animation: fade-up 0.6s ease-out 6.15s both; }
+
+/* ── Ambient magnetic field lines ──────────────────────────────────────────
+   Drives <AmbientField />, which mounts once in the root layout. The loop
+   geometry and the per-loop timing live in that component; only the motion
+   is here.
+
+   Opacity is animated rather than stroke-dashoffset or a filter: opacity is
+   composited on the GPU, where a dashoffset animation repaints the path and
+   a blur re-rasterises it every frame. Nine paths pulsing for the whole
+   session has to cost effectively nothing, and the existing `blur-[100px]`
+   blobs are already the expensive thing on low-end hardware.
+
+   Each path supplies its own --field-dim / --field-bright, so one animation
+   covers all nine without nine keyframe blocks. */
+@keyframes field-pulse {
+  0%, 100% { opacity: var(--field-dim, 0.07); }
+  50%      { opacity: var(--field-bright, 0.18); }
+}
+.animate-field-pulse {
+  animation: field-pulse 18s ease-in-out infinite;
+}
+
+/* The pole glow breathes slower than every line, so it never beats with them. */
+@keyframes field-glow {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.animate-field-glow {
+  animation: field-glow 31s ease-in-out infinite;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────
+   There was no `prefers-reduced-motion` rule anywhere in this stylesheet
+   before the ambient layer landed. Site-wide background motion is what makes
+   it an obligation rather than a nicety.
+
+   The field is held at its bright end rather than hidden: the request is to
+   stop things moving, not to strip the decoration. The hero sequence is left
+   alone deliberately — it is a one-shot reveal that settles, not a loop, and
+   suppressing it mid-sequence would leave the landing page blank. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-field-pulse {
+    animation: none;
+    opacity: var(--field-bright, 0.18);
+  }
+  .animate-field-glow,
+  .animate-blob-drift,
+  .animate-blob-drift-slow,
+  .animate-float,
+  .animate-pulse-slow {
+    animation: none;
+  }
+}
