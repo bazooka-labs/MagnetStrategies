@@ -124,6 +124,51 @@ describe("assertCancelGroup", () => {
     expect(codes.some((c) => c === "cancel_call_count" || c === "call_budget")).toBe(true);
   });
 
+  it("accepts a bracket parent declaring its whole reserved stride", () => {
+    /**
+     * The defect a real cancel hit on 2026-10-04.
+     *
+     * `cancel_order` on a bracket parent PROBES both reserved child slots to
+     * clean them up, and a box reference must be declared even for a box that
+     * does not exist — `box_len` on an undeclared key is `invalid Box
+     * reference`, not zero. A limit entry with no take-profit therefore could
+     * not be cancelled at all: the UI saw no children and declared none.
+     *
+     * Confirmed by simulation: none declared fails on slot 2, slot 2 alone
+     * fails on slot 3, both succeed. So the rule is the STRIDE
+     * (`ORDER_ID_STRIDE` = 3), never the observed children — the third defect
+     * this stride has caused, after the limit submit path needed the same two
+     * references added by hand.
+     */
+    // Two transactions, as a real bracket cancel builds: the call plus a budget
+    // carrier. `SHAPE_CANCEL_BRACKET` expects that.
+    const call = algosdk.makeApplicationNoOpTxnFromObject({
+      sender: SENDER, appIndex: PEX_APPS.orderOps,
+      appArgs: [hexBytes(PEX_SELECTORS.cancelOrder), u64(ORDER_ID)],
+      boxes: [ORDER_ID, ORDER_ID + BigInt(1), ORDER_ID + BigInt(2)].map((id) => orderBox(SENDER, id)),
+      foreignAssets: [COLLATERAL_ASSET_ID],
+      suggestedParams: { ...(sp as object), fee: 14_000 } as never,
+    });
+    const carrier = algosdk.makeApplicationNoOpTxnFromObject({
+      sender: SENDER, appIndex: PEX_APPS.math,
+      appArgs: [hexBytes(PEX_SELECTORS.mathNoop)],
+      suggestedParams: { ...(sp as object), fee: 1_000 } as never,
+    });
+    const g = [call, carrier];
+    algosdk.assignGroupID(g);
+    const a = assertCancelGroup(g, shownCancel([ORDER_ID + BigInt(1), ORDER_ID + BigInt(2)]));
+    expect(a.findings.map((f) => f.code)).toEqual([]);
+  });
+
+  it("still refuses a stride slot the screen did not name", () => {
+    // The stride is declared by the CLIENT from the order being cancelled, so
+    // the assertion must keep rejecting ids nobody passed — otherwise widening
+    // for the stride would widen for anything.
+    const g = cancelGroup({ ids: [ORDER_ID, ORDER_ID + BigInt(1)] });
+    const a = assertCancelGroup(g, shownCancel());   // no attached ids shown
+    expect(a.findings.map((f) => f.code)).toContain("cancel_box_id");
+  });
+
   it("bounds the total fee — the cap that did not exist", () => {
     // Audit 8 HIGH 3: this path discarded checkEveryTransaction's return value,
     // and MainNet accepted a 5 ALGO cancel on all three live orders.

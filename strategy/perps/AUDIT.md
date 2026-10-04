@@ -1223,6 +1223,59 @@ settles three things that were previously inference:
 
 ---
 
+## The reserved stride, a third time — cancel (2026-10-04)
+
+Found by a real cancel failing in production, not by an audit. Worth its own
+entry because it is the same root cause as two earlier defects and nothing in
+the codebase had generalised it.
+
+A limit entry was placed with **no take-profit** and then could not be cancelled:
+
+    invalid Box reference o2:…0000000000000002
+    app=3690309166, pc=5306, opcodes=concat; dup; box_len
+
+**`cancel_order` on a bracket parent probes BOTH reserved child slots**, and a
+box reference must be *declared* even for a box that does not exist —
+`box_len` on an undeclared key is that error rather than a zero. Our builder
+always submits a limit entry as `BRACKET_PARENT`, so the slots are always
+probed, whether or not a child was ever created.
+
+The UI derived the children from the orders it could see, found none, and
+declared none. Verified by simulation on the live order:
+
+| declared | result |
+|---|---|
+| nothing | fails on slot 2 |
+| slot 2 only | fails on slot 3 |
+| slots 2 and 3 | **ok** |
+
+**The rule is the STRIDE, never the observed children.** `ORDER_ID_STRIDE` is 3
+and the contract touches all three slots.
+
+### Why this is the third time, and what it should have taught
+
+- The limit **submit** path needed `base + 1` and `base + 2` added by hand,
+  because the SDK declares only the base order's box.
+- `assertOpenLimitGroup` read three argument offsets wrongly and survived
+  because of a value coincidence (audit 8, SB1).
+- Now **cancel** needs the same two references for the same reason.
+
+Each was found separately and fixed locally. The generalisation — *anything
+touching a bracket parent must declare the whole stride* — existed in a comment
+on the submit path and was not carried anywhere else. Both the submit patch and
+the cancel fix now say so explicitly, and `perpsCancelAssert.test.ts` pins it.
+
+A note on how it was caught: **this is the first defect in this product found by
+a user action rather than by an audit or a simulation sweep.** Three audits and
+dozens of simulated groups did not reach it, because every simulated cancel was
+run against orders that already had children — the audit-8 review's own cancel
+tests used the three live protection orders, all of which were children. The
+case that failed needs a bracket parent with *no* child, which only exists after
+someone places a targetless limit order. That shape became possible the day the
+take-profit became optional.
+
+---
+
 ## Audit 8 (2026-10-02) — and the offset that hid behind a coincidence
 
 Two ship-blockers, four HIGH, three MEDIUM, five LOW. Both ship-blockers were on

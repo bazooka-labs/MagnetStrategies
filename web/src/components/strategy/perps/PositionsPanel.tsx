@@ -172,7 +172,7 @@ export function PositionsPanel() {
     }
   }
 
-  async function doCancel(orderId: bigint, attached: bigint[]) {
+  async function doCancel(orderId: bigint, isBracketParent: boolean) {
     if (!wallet.address || cancelling) return;
     setCancelError(null);
     setCancelling(String(orderId));
@@ -182,7 +182,10 @@ export function PositionsPanel() {
         signTransactions: (txns) => wallet.signTransactions(txns),
         sender: wallet.address,
         ownerOrderId: orderId,
-        attachedOrderIds: attached,
+        // A limit entry is a bracket parent: `cancelOrder` then declares its
+        // whole reserved stride rather than only the children we can see, which
+        // is what a real cancel failed on. See the note there.
+        isBracketParent,
       });
       refreshOrders();
       refresh();
@@ -421,7 +424,7 @@ export function PositionsPanel() {
                     {/* Gated for the same reason Close is: `cancelOrder`
                         consults the preflight now, so an ungated button is one
                         that is offered and then throws. */}
-                    <button onClick={() => doCancel(order.owner_order_id, [])}
+                    <button onClick={() => doCancel(order.owner_order_id, false)}
                       disabled={!!cancelling || !!closing || !!blocked}
                       title={blocked ?? undefined}
                       className="ml-auto text-[10px] text-white/35 underline underline-offset-2 transition-colors hover:text-white/70 disabled:opacity-40">
@@ -527,11 +530,6 @@ export function PositionsPanel() {
                       said at the click, not discovered afterwards. */}
                   {(() => {
                     const isBound = !isEntry && order.position_id > BigInt(0);
-                    const children = orders
-                      .filter((o) => o.order.owner_order_id > order.owner_order_id
-                        && o.order.owner_order_id <= order.owner_order_id + BigInt(2)
-                        && Number(o.order.order_kind) !== ORDER_KIND.openLimit)
-                      .map((o) => o.order.owner_order_id);
                     const busy = cancelling === String(order.owner_order_id);
                     return (
                       <div className="mt-2.5">
@@ -542,7 +540,7 @@ export function PositionsPanel() {
                             liquidates.
                           </p>
                         )}
-                        <button onClick={() => doCancel(order.owner_order_id, children)}
+                        <button onClick={() => doCancel(order.owner_order_id, isEntry)}
                           disabled={!!cancelling || !!blocked}
                           title={blocked ?? undefined}
                           className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/60 transition-colors hover:border-white/30 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40">

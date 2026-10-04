@@ -1066,6 +1066,14 @@ export type CancelOrderInput = {
   ownerOrderId: bigint;
   /** Its attached children, so their boxes are released in the same call. */
   attachedOrderIds?: bigint[];
+  /**
+   * True when this order is a bracket PARENT — i.e. a limit entry.
+   *
+   * Decides whether the reserved sibling slots are declared. See the stride note
+   * in the body; getting this wrong is the difference between a cancel that
+   * works and one that dies on a box reference.
+   */
+  isBracketParent?: boolean;
   onStage?: (s: OpenStage) => void;
 };
 
@@ -1090,7 +1098,34 @@ export type CancelOrderInput = {
  */
 export async function cancelOrder(input: CancelOrderInput): Promise<OpenPositionResult> {
   const { algod, signTransactions, sender, ownerOrderId } = input;
-  const attachedOrderIds = input.attachedOrderIds ?? [];
+  /**
+   * A bracket parent's cancel must declare its whole reserved STRIDE, whether
+   * or not children exist.
+   *
+   * ── Found by a real cancel failing, 2026-10-04 ──────────────────────────────
+   * A limit entry with no take-profit was placed and then could not be
+   * cancelled: `invalid Box reference o2:…0000000000000002`, at
+   * `concat; dup; box_len`. `cancel_order` on a bracket parent PROBES both child
+   * slots to clean them up, and a box reference must be DECLARED even for a box
+   * that does not exist — `box_len` on an undeclared key is the error above, not
+   * a zero.
+   *
+   * The UI derived the children from orders it could see, found none, and
+   * declared none. Confirmed by simulation: no children declared → fails on
+   * slot 2; declare slot 2 only → fails on slot 3; declare both → ok.
+   *
+   * **This is the third time the reserved stride has caused a defect** — the
+   * limit SUBMIT path needed the same two references added by hand, for the same
+   * reason. `ORDER_ID_STRIDE` is 3 and the contract touches all three slots, so
+   * the rule is the stride, never the observed children.
+   *
+   * A standalone or child reduce order probes nothing, and declaring extra
+   * references there would only widen what `assertCancelGroup` permits, so the
+   * caller says which kind this is.
+   */
+  const attachedOrderIds = input.isBracketParent
+    ? [ownerOrderId + BigInt(1), ownerOrderId + BigInt(2)]
+    : (input.attachedOrderIds ?? []);
   const stage = (s: OpenStage) => input.onStage?.(s);
   if (ownerOrderId <= BigInt(0)) throw new Error("That order id is not valid.");
 
