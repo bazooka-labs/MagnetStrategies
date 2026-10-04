@@ -1223,7 +1223,97 @@ settles three things that were previously inference:
 
 ---
 
-## Unaudited surface (2026-09-29) — scope for audit 8
+## Audit 8 (2026-10-02) — and the offset that hid behind a coincidence
+
+Two ship-blockers, four HIGH, three MEDIUM, five LOW. Both ship-blockers were on
+the limit path. Full remediation and its own review in
+[AUDIT-8-REMEDIATION.md](./AUDIT-8-REMEDIATION.md); fixed in `5f85472`.
+
+### SB1 — three ABI offsets, masked by a four-way coincidence
+
+`assertOpenLimitGroup` read `A[1]` as `orderKind`, `A[3]` as `marketId` and
+`A[4]` as `ownerOrderId`. The SDK's real order is `ownerOrderId, orderKind,
+targetKind, marketId`. `assertOpenWithTakeProfit` had it right all along.
+
+**It passed everything anyone ran because `ORDER_KIND_OPEN_LIMIT`,
+`ORDER_TARGET_PAIR`, ALGO/USD's `marketId` and a fresh account's `baseOrderId`
+are all the literal `1`.** Four unrelated values that happen to be equal.
+
+What it cost: BTC/USD limit orders were **impossible at any order id**, and every
+account holding an `o2:` box was locked out on both markets — which is everyone
+who had opened with a take-profit, since that creates a box at `base + 1`. They
+saw *"Safety check failed, so nothing was sent"* on a correct group. And
+`orderKind` was compared to nothing, while three other fields were compared to
+the wrong things.
+
+**The lesson is about the tamper table, not the offsets.** The four tampers run
+when this shipped touched the escrow amount, the trigger (`A[9]`), a carrier
+account and the MBR receiver. **Not one of the three broken indices.** The table
+read as thorough and proved nothing. The replacement sweeps every entry-leg
+argument position and asserts each one is bound — and a mutation test confirmed
+it: deleting any one of the twelve per-index checks makes the sweep name exactly
+that index.
+
+A smaller note worth keeping: an explicit `orderKind` check was added as part of
+the fix and then **removed**, because writing the test showed it could never
+fire — the entry leg is *located* by that field. An unreachable check is worse
+than none, because it reads as coverage.
+
+### SB2 — a stale trigger survived a market switch
+
+`[marketId]` reset the take-profit and not the limit trigger. A `$0.12` ALGO
+trigger carried onto BTC/USD did not trip the crossing guard, because that guard
+tests `trigger >= index` and `1.2e11 >= 8.46e16` is false. The card then quoted
+against a payload rescaled to the stale trigger: entry `$0.120249`, liquidation
+`$0.093459`, submit enabled, on a market at `$84,573`. A short tripped its own
+test; a long did not.
+
+### The four HIGH findings, in one line each
+
+- **Fee caps:** the limit and cancel paths called `checkEveryTransaction` and
+  **discarded its return value**, which is the group's total fee. MainNet
+  accepted a 5.03 ALGO limit group and a 5 ALGO cancel on all three live orders.
+- **An unasserted OrderOps call** rode inside a close and a bare open: a real
+  close plus an injected `cancel_order` — cancelling that user's own take-profit
+  — passed and simulated. On a partial close the position survives with its
+  protection silently removed.
+- **The storage payment was unasserted** on the bare-open path: **50 ALGO** into
+  an escrow this UI cannot withdraw from, on a group presented as "open a $20
+  position", assertion green and MainNet green. The check that catches it existed
+  twelve hundred lines away on the other path.
+- **The preflight lied.** It told the user *"Existing positions can still be
+  closed"* while `closePositionInner` refused on exactly that condition — three
+  artefacts contradicting each other, one of them the string the user reads.
+
+### What held, and is worth recording as held
+
+`checkMathCarriers`' relaxation — audit 8's own Tier 1 concern — **survived
+attack**: the allow set is built from non-Math calls' resources, and every one of
+those is independently bounded by `checkEveryTransaction` in the same pass, so a
+carrier genuinely cannot widen the group's reach. The close path held completely:
+all 11 live positions close, the two-shape loop re-asserts per shape, and the
+re-group on the limit path cannot leave asserted bytes differing from signed
+bytes. The synthetic oracle payload cannot reach a group. The exit-cost
+itemisation reconciles to within $0.0078 on a $343 payout.
+
+### The remediation's own review found a regression
+
+Fixing the "what leaves your wallet" line for a targetless **market** open broke
+it for a targetless **limit** order, which always escrows a keeper fee and always
+pays a 100,200 µALGO box MBR. The line understated the ALGO by 4x and omitted the
+keeper fee entirely — directly above a sentence telling the user their money was
+being escrowed.
+
+It is now **derived from the same constants the client bills against**, because
+hand-written prose over four combinations is what invited the error. And HIGH 6
+was only half-fixed on the first pass: cancel was gated in the client but not in
+the UI, an unresolved preflight still read as permission, and the gate swept in
+two refusal kinds — our own builder opt-in and the leverage ceiling — that no
+exit touches.
+
+---
+
+## Unaudited surface (2026-09-29) — scope for audit 8 (RUN; see above)
 
 Everything below landed **after** audit 7's remediation (`9c19778`) and has had
 no adversarial review. It is a far larger and more dangerous surface than audit

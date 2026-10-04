@@ -136,10 +136,16 @@ two together rather than separately.
   market open path has had one real signature — our own trade on 2026-09-28,
   which opened and closed successfully — but `openLimitOrder`, `cancelOrder`
   and the close path have had none.
-- **Audit 8 has not run.** Its scope is written up in
-  [AUDIT.md](./AUDIT.md#unaudited-surface-2026-09-29--scope-for-audit-8) and is
-  larger than audit 7's: three new write paths, plus a deliberate **relaxation**
-  of `checkMathCarriers`, which the market path also depends on.
+- ~~Audit 8 has not run.~~ **Run 2026-10-02 and remediated in `5f85472`** — two
+  ship-blockers, four HIGH, three MEDIUM, five LOW, plus a regression its own
+  review caught in the remediation. See
+  [AUDIT.md](./AUDIT.md#audit-8-2026-10-02--and-the-offset-that-hid-behind-a-coincidence).
+- **Audit 9 has not run.** Unaudited since `5f85472`: the remediation itself.
+  Three areas deserve naming rather than a blanket note — the derived
+  "what leaves your wallet" figures, which are new arithmetic on the signing
+  screen; `EXIT_BLOCKING_KINDS`, which deliberately narrows a gate; and the two
+  new test files, which are now the only thing standing between a future offset
+  error and a shipped one.
 
 ---
 
