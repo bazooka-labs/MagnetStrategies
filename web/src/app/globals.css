@@ -214,23 +214,64 @@ body {
 
 /* ── Ambient magnetic field lines ──────────────────────────────────────────
    Drives <AmbientField />, which mounts once in the root layout. The loop
-   geometry and the per-loop timing live in that component; only the motion
+   geometry and the per-loop phasing live in that component; only the motion
    is here.
 
-   Opacity is animated rather than stroke-dashoffset or a filter: opacity is
-   composited on the GPU, where a dashoffset animation repaints the path and
-   a blur re-rasterises it every frame. Nine paths pulsing for the whole
-   session has to cost effectively nothing, and the existing `blur-[100px]`
-   blobs are already the expensive thing on low-end hardware.
+   Two animations run on every loop at once:
 
-   Each path supplies its own --field-dim / --field-bright, so one animation
-   covers all nine without nine keyframe blocks. */
+     field-pulse   each loop brightens and dims on its OWN period (14–28s,
+                   sharing no common factor) so the family never beats.
+     field-ripple  every loop shares ONE period and steps its delay evenly
+                   outward, which is what makes a single wave appear to travel
+                   through the field. A shared period is the entire mechanism —
+                   give the loops their own durations here and the wave
+                   dissolves into ten unrelated wobbles.
+
+   The ripple is scaleX about the pole axis (`transform-origin: 100% 50%` with
+   `transform-box: fill-box` puts the origin on each path's own right edge, which
+   IS the axis, since every loop anchors there and bulges left). So the anchors
+   stay pinned and only the bulge breathes, which is how a field line actually
+   moves. Outer loops carry a larger --field-swell, so the wave grows as it
+   travels outward.
+
+   `field-flow` drives the travelling glint: a second, brighter copy of each
+   line with a dashed stroke whose offset moves, so a lit segment runs along
+   the line. It is the part that actually reads as motion — the scaleX wave is
+   proportional to bulge, which leaves the bright inner loops moving about a
+   pixel.
+
+   On cost: pulse and ripple are opacity and transform, which composite on the
+   GPU for free. `stroke-dashoffset` does not — it repaints the path each
+   frame. Ten thin strokes is a repaint budget worth spending for the one cue
+   that makes the field look alive, and it is still far cheaper than animating
+   `d` or an feTurbulence displacement, either of which re-rasterises
+   everything every frame. The existing `blur-[100px]` blobs remain the most
+   expensive thing on the page by a wide margin. */
 @keyframes field-pulse {
-  0%, 100% { opacity: var(--field-dim, 0.07); }
-  50%      { opacity: var(--field-bright, 0.18); }
+  0%, 100% { opacity: var(--field-dim, 0.1); }
+  50%      { opacity: var(--field-bright, 0.25); }
 }
-.animate-field-pulse {
-  animation: field-pulse 18s ease-in-out infinite;
+@keyframes field-ripple {
+  0%, 100% { transform: scaleX(1); }
+  50%      { transform: scaleX(var(--field-swell, 1.045)); }
+}
+@keyframes field-flow {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -1000; }
+}
+.animate-field-flow {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  animation:
+    field-ripple 9s ease-in-out var(--field-ripple-delay, 0s) infinite,
+    field-flow var(--field-flow-dur, 9s) linear var(--field-flow-delay, 0s) infinite;
+}
+.animate-field-line {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  animation:
+    field-pulse  var(--field-pulse-dur, 18s) ease-in-out var(--field-pulse-delay, 0s) infinite,
+    field-ripple 9s ease-in-out var(--field-ripple-delay, 0s) infinite;
 }
 
 /* The pole glow breathes slower than every line, so it never beats with them. */
@@ -252,9 +293,16 @@ body {
    alone deliberately — it is a one-shot reveal that settles, not a loop, and
    suppressing it mid-sequence would leave the landing page blank. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-field-pulse {
+  .animate-field-line {
     animation: none;
-    opacity: var(--field-bright, 0.18);
+    opacity: var(--field-bright, 0.25);
+    transform: none;
+  }
+  /* The glint is purely a motion artefact — frozen it would be an arbitrary
+     bright segment sitting on one line, so it goes rather than stops. */
+  .animate-field-flow {
+    animation: none;
+    opacity: 0;
   }
   .animate-field-glow,
   .animate-blob-drift,
