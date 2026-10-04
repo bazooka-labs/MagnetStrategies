@@ -44,11 +44,11 @@ export function PerpsInfoModal({ open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm sm:items-center"
-      onClick={onClose} role="dialog" aria-modal="true" aria-label="About Perps">
+      onClick={onClose} role="dialog" aria-modal="true" aria-label="About the Trading Terminal">
       <div className="my-auto w-full max-w-2xl rounded-2xl border border-amber-400/25 bg-[#0b0b0d] shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="font-display text-lg font-semibold text-amber-200">About Perps</h2>
+          <h2 className="font-display text-lg font-semibold text-amber-200">About the Trading Terminal</h2>
           <button onClick={onClose} aria-label="Close"
             className="rounded-lg p-1 text-white/40 transition-colors hover:bg-white/5 hover:text-white/80">
             <X className="h-4 w-4" />
@@ -95,8 +95,18 @@ export function PerpsInfoModal({ open, onClose }: Props) {
                 price faster the higher you go.
               </li>
               <li>
-                <span className="text-white/90">Every position carries a take-profit.</span> It
-                closes automatically at the price you set, so you do not have to watch it.
+                <span className="text-white/90">A take-profit is optional.</span> Set one and
+                the position closes automatically at that price, so you do not have to watch
+                it. Leave it off and the position runs until you close it yourself — or until
+                it is liquidated. Nothing closes an unprotected position in your favour.
+              </li>
+              <li>
+                <span className="text-white/90">You can close a position early</span>, in full,
+                at the current price. You are never locked in waiting for a trigger.
+              </li>
+              <li>
+                <span className="text-white/90">A limit order rests until its trigger.</span>{" "}
+                Your collateral is escrowed while it waits and returned in full if you cancel.
               </li>
             </ul>
           </section>
@@ -128,17 +138,20 @@ export function PerpsInfoModal({ open, onClose }: Props) {
             <h3 className="font-display text-base font-semibold text-white">What leaves your wallet</h3>
             <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-300">
               <li>
-                <span className="text-white/90">Your collateral in USDC</span>, plus a small keeper
-                fee that pays for your take-profit to be executed.
+                <span className="text-white/90">Your collateral in USDC</span>, plus a small
+                keeper fee for each automatic trigger you attach — about five cents. Attach
+                none and you pay no keeper fee.
               </li>
               <li>
-                <span className="text-white/90">A little ALGO for on-chain storage.</span> PEX holds
-                it as a reusable escrow — it is released back into that escrow when you close, not
-                returned to your wallet.
+                <span className="text-white/90">A little ALGO for on-chain storage.</span> PEX
+                holds it as a reusable escrow. Closing a position releases it back into that
+                escrow rather than to your wallet; cancelling a resting order returns it to
+                your wallet outright.
               </li>
               <li>
-                <span className="text-white/90">Magnet charges 10 bps</span> when you open and again
-                when you close. It is listed on the card before you sign.
+                <span className="text-white/90">Magnet charges 10 bps</span> when you open and
+                again when you close. The card shows your total cost, this included, before
+                you sign.
               </li>
             </ul>
           </section>

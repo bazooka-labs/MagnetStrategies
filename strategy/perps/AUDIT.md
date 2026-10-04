@@ -1535,22 +1535,81 @@ before.
    [OVERVIEW.md](./OVERVIEW.md) documents. The check returns rather than throws,
    so a future drift stops trading through the preflight instead of taking down
    the page.
-3. **The yield-recall question gates the close write path.** Whether pool state
-   can make a recall *mandatory* on close — ALGO legs show
-   `observed_available_underlying = 0`, and profit on an ALGO/USD long is paid in
-   ALGO. Sent to Ultrade 2026-09-28, unanswered. See
-   [YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md).
-   Until it is answered the positions view is read-only, and a position opened
-   through our UI has exactly two exits: the take-profit fires, or it liquidates.
-4. **No group in this codebase has ever been signed by a real wallet.** Six
-   audits, entirely against `simulate_transactions`. This is the largest
-   remaining category of unknown and it is **not** blocked on Ultrade. Simulation
-   cannot reach wallet encoding, group ordering as the wallet presents it, the
-   signing budget, or submission. The `fixSigners: true` fix from audit 6 —
-   rekeyed accounts — has likewise only ever run in simulation.
+3. ~~**The yield-recall question gates the close write path.**~~ **CLOSED.**
+   Answered by Ultrade (always recall, `yieldRecallMode: 1`) and then settled by
+   execution: close is built, asserted, and signed on MainNet — 7 transactions,
+   20.87 xALGO recalled, fee exactly 120,000 µALGO as measured. A position opened
+   through our UI no longer has only two exits; the user closes it when they
+   choose. The registry is built from chain rather than from Ultrade's API, so
+   this does not depend on an endpoint we do not control.
+4. ~~**No group in this codebase has ever been signed by a real wallet.**~~
+   **CLOSED 2026-10-04.** All four write paths now have real signatures from a
+   real wallet: `openPosition` (market, with take-profit), `openLimitOrder`,
+   `closePosition`, `cancelOrder`. This stood open across eight audits and was
+   the largest remaining category of unknown.
+
+   It was worth what it cost to close. Simulation never reached wallet encoding,
+   group ordering as the wallet presents it, the signing budget, or submission —
+   and the **one defect a user found before an audit did** (the cancel stride,
+   below) lived precisely there: every simulated cancel had run against orders
+   that already had children, so the bug was invisible to the sweep that was
+   supposed to catch it.
 5. **These were instances of the same model reviewing its own work.** That
    catches assumptions and arithmetic — it did, repeatedly — but it is weakest
    where the error is systematic rather than local. The close-payout defect above
    is the case in point: internally consistent, wrong at the boundary, invisible
    to six passes. Before this holds meaningful money, an outside reviewer is
    worth more than another bot.
+
+
+---
+
+## Cancel, measured end to end (2026-10-04)
+
+The stride fix (`430fcbf`) was verified by refund rather than by simulation.
+Cancelling the live limit order — id 1, `OPEN_LIMIT`, market 1, long,
+$60.847808 at a $0.12 trigger, no child — returned **everything** escrowed:
+
+| | returned |
+|---|---|
+| collateral | 6 USDC |
+| keeper fee | 0.1 USDC |
+| storage MBR | 100,200 µALGO |
+| group fee paid | 14,000 µALGO (cap 40,000) |
+
+Two things this settles that were previously inference:
+
+1. **The keeper fee really is refunded on cancel.** [NEXT.md](./NEXT.md) records
+   it as refunded-on-cancel, kept-on-execution. The execution half was observed
+   on 2026-09-29; the cancel half is observed here. Both halves are now measured.
+2. **The storage MBR returns to the wallet on cancel**, as a `pay` inner
+   transaction — it does *not* stay in PEX's reusable escrow the way it does on
+   close. The info modal asserted the opposite in plain language. Fixed below.
+
+### Disclosure drift found while verifying it — `PerpsInfoModal.tsx`
+
+Four claims in the risk/explainer modal had gone stale under features shipped
+after it was written. For a product whose threat surface *is* what the interface
+claims, these are defects, not copy nits:
+
+| claim | was | now |
+|---|---|---|
+| take-profit | "**Every** position carries a take-profit. It closes automatically… so you do not have to watch it." | optional; explicitly states nothing closes an unprotected position in your favour |
+| keeper fee | "pays for your take-profit to be executed" | per attached trigger; none attached, none paid |
+| storage ALGO | "released back into that escrow when you close, **not returned to your wallet**" | distinguishes close (escrow) from cancel (wallet), per the measurement above |
+| title | "About Perps" | "About the Trading Terminal" — the rename missed this file and its `aria-label` |
+
+The first is the serious one. Take-profit became optional precisely so a user
+could let a leveraged long run; the modal still promised that same user their
+position would close itself. It also gained the two features it never mentioned:
+closing early, and what a resting limit order does with collateral.
+
+**A near-miss worth recording.** The draft replacement read "take-profit and
+stop-loss are optional," because the working conversation had referred to stop
+loss as the optional thing. **Stop-loss is not implemented.** `stopLossPrice12`
+is hardcoded `null` (`PerpsCard.tsx:547`); there is no input, and no write path
+constructs a `DECREASE_STOP_LOSS` order. `PositionsPanel` and `PerpsView` only
+*label* and *draw* kind 3 if one existed, so the scaffolding reads as a feature
+on inspection. Checking the write path before writing the sentence is what
+caught it. Advertising an absent protection feature on a leveraged-trading screen
+is among the worst claims this UI could make.

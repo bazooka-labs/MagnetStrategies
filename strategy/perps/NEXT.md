@@ -132,10 +132,30 @@ two together rather than separately.
 
 - **Everything after audit 7's remediation is unaudited**, including the orders
   read path shipped in `159e6e4`.
-- **No group in this codebase has ever been signed by a real wallet.** The
-  market open path has had one real signature — our own trade on 2026-09-28,
-  which opened and closed successfully — but `openLimitOrder`, `cancelOrder`
-  and the close path have had none.
+- ~~**No group in this codebase has ever been signed by a real wallet.**~~
+  **CLOSED 2026-10-04.** All four write paths are signed: `openPosition`,
+  `openLimitOrder`, `closePosition`, `cancelOrder` — the last confirmed by a
+  full refund (6 USDC + 0.1 USDC keeper fee + 100,200 µALGO MBR). See
+  [AUDIT.md](./AUDIT.md#cancel-measured-end-to-end-2026-10-04).
+- **Stop-loss is not built, but the codebase reads as though it were.**
+  `stopLossPrice12` exists on the card's state and is hardcoded `null`
+  (`PerpsCard.tsx:547`); `PositionsPanel.tsx:86` labels order kind 3 "Stop loss"
+  and `PerpsView.tsx:79` draws an amber overlay line for it. None of it can ever
+  fire, because no write path constructs a `DECREASE_STOP_LOSS` order — the
+  constant appears only in a test. The scaffolding is the hazard: it survived a
+  grep during the disclosure fix and nearly put "stop-loss is optional" into the
+  risk modal, which would have advertised a protection that does not exist.
+
+  Building it is mostly done already. `submit_linked_order` takes
+  `orderKind: 3`, the assertion shapes are parameterised by kind, and a
+  stop-loss is the same child-leg shape as a take-profit with the trigger on the
+  other side of the index. What is genuinely new is the direction check — a
+  stop-loss trigger must be *below* the index for a long and *above* for a
+  short, the mirror of `quoteTakeProfitCrossed` — and the keeper-fee disclosure,
+  since a second trigger is a second fee and a second 99,700 µALGO box.
+
+  Until it is built, either remove the dead scaffolding or leave it with a
+  comment saying it is inert. Right now it says neither.
 - ~~Audit 8 has not run.~~ **Run 2026-10-02 and remediated in `5f85472`** — two
   ship-blockers, four HIGH, three MEDIUM, five LOW, plus a regression its own
   review caught in the remediation. See
