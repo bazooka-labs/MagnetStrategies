@@ -1613,3 +1613,42 @@ constructs a `DECREASE_STOP_LOSS` order. `PositionsPanel` and `PerpsView` only
 on inspection. Checking the write path before writing the sentence is what
 caught it. Advertising an absent protection feature on a leveraged-trading screen
 is among the worst claims this UI could make.
+
+
+## The targetless open, signed (2026-10-04)
+
+A market short with **no take-profit** — the branch where `wantsTakeProfit` is
+false, which had been built and simulated but never signed. Group `gcAk14P4`,
+round 65675835.
+
+`SHAPE_OPEN` matched exactly: 1 axfer, 0 pay, 1 trading call, 3 math carriers,
+**0 orderOps**. Fee 34,000 µALGO against the 120,000 cap. **Zero `o2:` boxes**
+after the fact, which is the assertion that matters — the targetless path must
+attach nothing, and this is the first evidence from settlement rather than from
+simulation that it does.
+
+Fee accounting reconciles exactly, which is the first independent check of the
+combined line item on the card:
+
+| | USDC | rate on $46.437896 notional |
+|---|---|---|
+| sent | 6.000000 | |
+| Magnet fee | −0.046441 | 10.001 bps |
+| PEX fee | −0.027864 | 6.000 bps |
+| **collateral in `p2:`** | **5.925695** | combined **16.001 bps** |
+
+Position id 105, side 2, market 1, entry $0.130546998, 7.837x. The uint48/uint16
+packing decodes correctly on a *fresh* position id (105, not 0) — the earlier
+decode bug was invisible on legacy id-0 positions, so this is the first fresh,
+non-zero id to round-trip since it was fixed.
+
+Two further firsts: the **short side** had never been signed (every prior trade
+was a long), and this trade landed twenty minutes after the disclosure fix above.
+It is the live confirmation of the corrected sentence — a single 6 USDC transfer,
+no keeper fee, no 99,700 µALGO order box, no storage payment. Under the old copy
+the user would have been told this position closes itself at a take-profit. It
+has two exits: closed by hand, or liquidated.
+
+**`SHAPE_OPEN_STORAGE` is still unexercised.** There is no `pay` leg here because
+the trader's storage box already existed. It needs a genuinely first-time trader
+opening with no target, which is the one remaining unsigned shape.
