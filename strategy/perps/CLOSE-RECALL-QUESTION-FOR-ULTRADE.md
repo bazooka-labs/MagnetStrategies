@@ -1,7 +1,13 @@
 <!--
-Drafted 2026-09-29, NOT yet sent. Blocks the close write path — the last large
-gap in the product. The question is small and specific; the investigation
-behind it is below so the answer can be short.
+Drafted 2026-09-29, NOT yet sent.
+
+DOWNGRADED 2026-10-04: this no longer blocks anything. The close write path is
+built and signed on MainNet — 7 transactions, 20.87 xALGO recalled — by building
+the yield registry from chain state instead of waiting on an answer. What remains
+is a confirmation of two details: the xALGO provider fee credit
+(XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO = 20,000, the only invented value in the
+registry) and whether proposer addresses must be supplied. Worth sending, but it
+is no longer on the critical path.
 -->
 
 Morning Dan — following your "always use recall" answer, I got most of the way

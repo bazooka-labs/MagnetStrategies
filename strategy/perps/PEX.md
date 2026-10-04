@@ -4,7 +4,10 @@ Perps is the PEX-integrated arm of Perps: leveraged directional positions on Alg
 
 Magnet Strategies does not operate an exchange here. PEX is a third-party protocol built by Ultrade. Everything in this section is an **integration**, not a deployment. We write no exchange contracts, custody no user funds, and hold no protocol role.
 
-**Status:** Design stage. One product scoped — Perps. Nothing is built or deployed.
+**Status (2026-10-04):** Integrated and live on MainNet. One product — the Trading
+Terminal (working directory name: Perps). Nothing is *deployed* because we deploy
+no contracts; the integration itself is complete and signed. See
+[SPEC.md](./SPEC.md) for build status.
 
 ---
 
@@ -22,7 +25,7 @@ Five properties define it:
 | Pool-backed markets | Each market has its own pool, its own risk limits, and its own capacity. |
 | On-chain conditional orders | Take-profit and stop-loss are native order kinds, not something we build. |
 
-**SDK:** `@pdex/sdk` v0.4.0, `ultrade-org/pex-ts-pubsdk`. Browser-first TypeScript. Builds transaction groups, decodes oracle messages, and computes quotes and risk **locally**. Actively developed — last observed commit 2026-09-16.
+**SDK:** `@pdex/sdk` **v0.6.6** (`6575dee`), `ultrade-org/pex-ts-pubsdk`, vendored as a committed tarball pinned by SHA-256 — see [`web/vendor/README.md`](../../web/vendor/README.md). (This line read v0.4.0 until 2026-10-04, five releases behind.) Browser-first TypeScript. Builds transaction groups, decodes oracle messages, and computes quotes and risk **locally**. Actively developed — last observed commit 2026-09-16.
 
 The SDK is a frontend tool. It requires a backend and node that *we* supply. There is no PEX-operated backend and the SDK states outright that no fallback selects one.
 

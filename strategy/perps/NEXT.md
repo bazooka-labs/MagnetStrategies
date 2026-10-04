@@ -3,10 +3,13 @@
 Written 2026-09-29, at the end of a working session, so the next one starts with
 the reasoning rather than re-deriving it. Order is deliberate and argued below.
 
-**None of this is built.** Everything here is a plan plus the measurements that
-justify it. What IS built is in [SPEC.md](./SPEC.md#build-status--2026-09-29)
-and the orders read path in
-[SPEC.md](./SPEC.md#orders--read-and-write-paths-built-2026-09-28-extended-2026-09-29).
+**Sections 1 and 2 have since been built and signed** — they are kept with their
+reasoning intact rather than deleted, because the argument for the order is still
+the record of why it was done that way. Section 3 onward is still a plan plus the
+measurements that justify it.
+
+For what is built, read [SPEC.md](./SPEC.md#build-status--2026-09-29) — which
+carries the current status line — rather than this file's section headings.
 
 ---
 
@@ -64,7 +67,10 @@ The assertion is **tighter** here than elsewhere: because we build the registry,
 `DisplayedClose` carries the closed set of accounts, assets and apps a recall may
 touch, and anything outside it fails.
 
-**Still true:** no group on this path has been signed by a real wallet.
+~~**Still true:** no group on this path has been signed by a real wallet.~~
+**Signed 2026-10-04.** Close ran on MainNet: 7 transactions, 20.87 xALGO
+recalled, group fee exactly 120,000 µALGO as measured. The index-leg-only
+recall shape was the one that fit.
 
 ## 2. Limit orders — **BUILT 2026-09-29**
 
@@ -75,15 +81,25 @@ the conditional-quote decision are all in
 
 **What is NOT done, and matters:**
 
-- **No group on this path has been signed by a real wallet.** Same standing gap
-  as the market path, now across three more write paths.
-- **Cancel has never been simulated against a live order** — there were none
-  resting when it was written. The assertion and four tampers are verified; the
-  contract round trip is not. One placed order closes this.
-- **The limit assertion has no fixture test.** Verification was a live network
-  probe, which does not run in CI. `perpsGroupReal.test.ts` works from captured
-  fixtures and the limit shape needs capturing the same way — the difference
-  between "verified once" and "stays verified".
+- ~~**No group on this path has been signed by a real wallet.**~~ **Signed
+  2026-10-04.** A limit order posted and was then cancelled with every escrowed
+  amount refunded — 6 USDC collateral, 0.1 USDC keeper fee, 100,200 µALGO MBR.
+- ~~**Cancel has never been simulated against a live order.**~~ **Closed, and it
+  cost us.** This bullet predicted the only defect in this product that a user
+  found before an audit did. Cancelling a bracket parent failed in production
+  with `invalid Box reference o2:…0000000000000002`: `cancel_order` probes both
+  reserved child slots, and a box reference must be declared even when the box
+  does not exist. Fixed in `430fcbf`.
+
+  **Why no sweep caught it:** every simulated cancel had run against an order
+  that already had children — including the audit-8 review's own tests, which
+  used the three live protection orders. A resting limit entry with no child was
+  a state no test had ever constructed. Third occurrence of the reserved-stride
+  root cause; see [AUDIT.md](./AUDIT.md).
+- ~~**The limit assertion has no fixture test.**~~ **Closed.**
+  `perpsLimitAssert.test.ts` (6 tests, sweeping every entry-leg arg position) and
+  `perpsCancelAssert.test.ts` (13 tests, including the stride cases) both run in
+  CI. 277 tests pass.
 - **The storage-funding variant is refused, not supported.** A first-time trader
   cannot place a limit order until they have opened once at market. The shape
   has never been simulated, so the refusal is honest rather than lazy — but it

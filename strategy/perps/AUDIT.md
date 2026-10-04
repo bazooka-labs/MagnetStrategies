@@ -930,6 +930,10 @@ across six audits, used a throwing signer. That is the one remaining link with
 no execution behind it — and given F1, the first real signature is worth taking
 on a rekeyed account specifically.
 
+> **Superseded 2026-10-04** — all four write paths are now signed. Left in place
+> because it is audit 7's record, not a current status. The current status is at
+> the top of [SPEC.md](./SPEC.md).
+
 **F7 from audit 5** — `quoteClose`'s funding and borrowing fees do not scale
 with a partial close while payout and PnL do. Still a question for Ultrade,
 still blocking a partial-close cost breakdown.

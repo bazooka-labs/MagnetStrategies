@@ -4,9 +4,17 @@ Perps is a simplified product surface over PEX perpetual positions. Four inputs:
 
 **Product name is not final.** "Perps" is the working name for both the product and its unit. It was chosen over "contract" deliberately: *contract* plus a payout table is the vocabulary of a derivatives offering and is not worth borrowing.
 
-**Status:** Design stage. Nothing is built or deployed.
+**Status (2026-10-04):** Built and live on MainNet. All four write paths —
+`openPosition`, `openLimitOrder`, `closePosition`, `cancelOrder` — have been
+signed by a real wallet and settled on chain. No contract is deployed because
+none exists: every economic action is a PEX call signed by the user. The one
+group shape never exercised by a real signature is `SHAPE_OPEN_STORAGE`, which
+needs a first-time trader opening with no target.
 
-> **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.2 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. Citations are current against **0.6.2** (`d9f43a4`).
+Eight audits have run; **audit 9 has not**, and the tree is unaudited since
+`5f85472`. See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
+
+> **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.2 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. The pinned SDK is **0.6.6** (`6575dee`), but the citations here were last systematically derived against **0.6.2** (`d9f43a4`) and have *not* been re-derived since — symbol names are stable across those releases, which is why this is a caveat rather than a defect, but verify by grep rather than trusting the version stamp.
 
 Read [PEX.md](./PEX.md) first for PEX platform facts, verified constants, and the integration paths that were rejected.
 
@@ -504,7 +512,7 @@ There are **two distinct cleanup mechanisms**, and the one that matters for Perp
 | `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **Only if Protection ships.** With a take profit alone there is no sibling. With Protection there are two, and this becomes the governing cleanup path — one of the reasons Protection is blocked, since the symbol itself is [UNVERIFIED](#protection--an-optional-stop) |
 | `PARENT_RETIRED` | Position-identity upgrade: execution attempted on a legacy bracket entry; parent retired, children removed | Only at the 0.5.0 cutover |
 
-**None of the four covers our orphan case *as currently scoped*** — a single mandatory take profit. **This section is written for one bracket and does not cover Protection**, which introduces a sibling and makes `OCO_SIBLING_CANCELLED` governing. Rewrite it before Protection ships, including the partial-reduction case where OCO would leave the surviving position with no brackets at all.
+**None of the four covers our orphan case *as currently scoped*** — a single **optional** take profit. (It was mandatory when this was written; it became optional on 2026-10-02, once closing existed. A position with no take-profit has no bracket to orphan, so the orphan case now applies to a subset of positions rather than all of them.) **This section is written for one bracket and does not cover Protection**, which introduces a sibling and makes `OCO_SIBLING_CANCELLED` governing. Rewrite it before Protection ships, including the partial-reduction case where OCO would leave the surviving position with no brackets at all.
 
 **Our case — a position closed while its take profit rests — is handled separately**, by `v2_order_cancelled` (232) with:
 
@@ -1366,9 +1374,9 @@ Tracked against [Build Order](#build-order) above, because that list describes t
 
 **Built and verified against MainNet simulation:** steps 1, 2 (with the gaps noted in that step), 5, 6, 7. The open path is complete, including the attached take-profit — `openPosition` in `perpsClient.ts` is the only place a group reaches a wallet, and `perpsGroup.ts` asserts every transaction in it before it does.
 
-**Built, read-only:** step 9's *reading* half. `PositionsPanel` shows live per-position quotes with the per-asset payout breakdown above. **There is no close, partial-close, add, add-collateral or reclaim write path.** That was blocked on the yield-recall question and is no longer — Ultrade answered on 2026-09-29 — so it is now simply unbuilt, and it is the top item in [NEXT.md](./NEXT.md).
+**Built and signed — close.** `closePosition` ships with `assertCloseGroup`, and closing is verified on MainNet: 7 transactions, 20.87 xALGO recalled, group fee exactly 120,000 µALGO as measured. It was blocked on the yield-recall question, which Ultrade answered on 2026-09-29. **Partial-close, add, add-collateral and reclaim remain unbuilt** — `closePosition` closes in full.
 
-**Built 2026-09-29 — limit orders, end to end.** Place (`openLimitOrder`), read (`usePerpsOrders`, the `o2:` decoder) and cancel (`cancelOrder`), each with its own assertion. See the orders section above. Three new write paths, none of which has been signed by a real wallet.
+**Built 2026-09-29 — limit orders, end to end.** Place (`openLimitOrder`), read (`usePerpsOrders`, the `o2:` decoder) and cancel (`cancelOrder`), each with its own assertion. See the orders section above. **All three have since been signed by a real wallet** (2026-10-04) — a limit order posted, then cancelled with every escrowed amount refunded. Cancel needed a fix first: a bracket parent must declare its whole reserved stride, which no simulation had caught because every simulated cancel ran against an order that already had children.
 
 **Built and not in the Build Order at all**, because they were added after it was written:
 

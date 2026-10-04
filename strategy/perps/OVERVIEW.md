@@ -1,13 +1,18 @@
 # Perps
 
-Perpetual positions on Algorand, wrapped in a product surface that deliberately does
-not look like a trading terminal. A product in the [Strategy](../OVERVIEW.md) arm.
+Perpetual positions on Algorand, shipped as a full trading surface — **"Trading
+Terminal"** in the UI. A product in the [Strategy](../OVERVIEW.md) arm.
+
+> This opened as a deliberately non-terminal five-input purchase flow, and said so
+> right here. That decision was reversed on 2026-09-29 once the surface grew market
+> and limit entries, an optional take-profit, closing and cancelling. The reasoning
+> on both sides is kept below rather than deleted.
 
 Perps does not operate an exchange. It integrates **PEX**, a third-party perpetuals
 protocol built by Ultrade. Magnet Strategies writes no exchange contracts, custodies
 no user funds, and holds no protocol role.
 
-**Status (2026-09-29):** The **open path is complete** — config, on-chain reads, the
+**Status (2026-10-04):** The **open path is complete** — config, on-chain reads, the
 risk-bar solver, oracle verification, the quote layer, group construction and the
 signing flow, including an attached take-profit. The **full lifecycle has now run on
 MainNet** — opened, and closed by its own take-profit, unattended, 2026-09-29.
@@ -15,8 +20,17 @@ MainNet** — opened, and closed by its own take-profit, unattended, 2026-09-29.
 limit order, read, cancel and **close**, each with its own group assertion.
 Closing verified across every live MainNet position. A take-profit is now
 optional rather than mandatory, which it could not be until closing existed.
-No contract is deployed because none exists. **The product name is provisional** —
-"Perps" describes the instrument, not the product.
+**All four write paths have now been signed by a real wallet and settled on chain**
+(2026-10-04) — `openPosition` (with and without a take-profit), `openLimitOrder`,
+`closePosition`, `cancelOrder`. That gap stood open across eight audits. The one
+group shape still unexercised by a real signature is `SHAPE_OPEN_STORAGE`, which
+needs a first-time trader opening with no target.
+
+No contract is deployed because none exists. **Audit 9 has not run** — the tree is
+unaudited since `5f85472`, which includes the audit-8 remediation itself.
+
+The directory, route, component names and tab key all still say `perps`; the UI
+says Trading Terminal. That is a label, not a restructure.
 
 Detail: [SPEC.md](./SPEC.md#build-status--2026-09-29) for what is built,
 [NEXT.md](./NEXT.md) for what to build next and why in that order,
