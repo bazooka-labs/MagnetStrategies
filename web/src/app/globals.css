@@ -227,12 +227,20 @@ body {
                    give the loops their own durations here and the wave
                    dissolves into ten unrelated wobbles.
 
-   The ripple is scaleX about the pole axis (`transform-origin: 100% 50%` with
-   `transform-box: fill-box` puts the origin on each path's own right edge, which
-   IS the axis, since every loop anchors there and bulges left). So the anchors
-   stay pinned and only the bulge breathes, which is how a field line actually
-   moves. Outer loops carry a larger --field-swell, so the wave grows as it
-   travels outward.
+   The ripple is a uniform scale about the MIDPOINT OF THE POLE AXIS, shared by
+   every loop (`transform-box: view-box` makes `transform-origin` resolve in
+   viewBox user units rather than per-path, which is the only way ten different
+   paths can agree on one centre).
+
+   It used to be `scaleX` about each path's own right edge, and that was correct
+   only while the axis was vertical and every loop anchored on the right. On the
+   diagonal axis the bounding-box edge is no longer the axis, so scaling along x
+   would shear the arcs off their own poles instead of breathing along them.
+
+   Scaling about the midpoint does move the poles slightly — but both poles sit
+   off-screen by construction, so the only visible effect is the arcs swelling
+   and relaxing. Outer loops carry a larger --field-swell, so the wave grows as
+   it travels outward.
 
    `field-flow` drives the travelling glint: a second, brighter copy of each
    line with a dashed stroke whose offset moves, so a lit segment runs along
@@ -252,23 +260,23 @@ body {
   50%      { opacity: var(--field-bright, 0.25); }
 }
 @keyframes field-ripple {
-  0%, 100% { transform: scaleX(1); }
-  50%      { transform: scaleX(var(--field-swell, 1.045)); }
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(var(--field-swell, 1.045)); }
 }
 @keyframes field-flow {
   from { stroke-dashoffset: 0; }
   to   { stroke-dashoffset: -1000; }
 }
 .animate-field-flow {
-  transform-box: fill-box;
-  transform-origin: 100% 50%;
+  transform-box: view-box;
+  transform-origin: var(--field-origin-x, 50%) var(--field-origin-y, 50%);
   animation:
     field-ripple 9s ease-in-out var(--field-ripple-delay, 0s) infinite,
     field-flow var(--field-flow-dur, 9s) linear var(--field-flow-delay, 0s) infinite;
 }
 .animate-field-line {
-  transform-box: fill-box;
-  transform-origin: 100% 50%;
+  transform-box: view-box;
+  transform-origin: var(--field-origin-x, 50%) var(--field-origin-y, 50%);
   animation:
     field-pulse  var(--field-pulse-dur, 18s) ease-in-out var(--field-pulse-delay, 0s) infinite,
     field-ripple 9s ease-in-out var(--field-ripple-delay, 0s) infinite;
