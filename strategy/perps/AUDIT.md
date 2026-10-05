@@ -1656,3 +1656,119 @@ has two exits: closed by hand, or liquidated.
 **`SHAPE_OPEN_STORAGE` is still unexercised.** There is no `pay` leg here because
 the trader's storage box already existed. It needs a genuinely first-time trader
 opening with no target, which is the one remaining unsigned shape.
+
+
+---
+
+# Audit 9 — 2026-10-04
+
+Scope: `5f85472^..HEAD` — the audit-8 remediation itself plus everything after
+it (the cancel stride fix, the disclosure corrections). ~1,000 added lines,
+centred on `perpsGroup.ts` (+276) and `perpsClient.ts` (+113).
+
+Five findings. No ship-blocker: nothing here lets a group move funds the screen
+did not describe. The serious one is the opposite failure — a user who **cannot
+get out** in a state where the code was specifically rewritten to let them.
+
+## HIGH 1 — the narrowed exit gate is defeated by the UI
+
+`EXIT_BLOCKING_KINDS` was audit 8's HIGH 6 fix: close and cancel must not be
+blocked by refusals that cannot affect them. It narrows the client's exit gate
+to `{drift, unreachable}`, deliberately excluding `builder` (our treasury's own
+USDC opt-in) and `layout` (the leverage ceiling).
+
+The UI does not use it:
+
+| | gate | blocks on |
+|---|---|---|
+| `perpsClient.ts:1146,1303` | `EXIT_BLOCKING_KINDS.has(pre.kind)` | drift, unreachable |
+| `PositionsPanel.tsx:144` | `preflight.canOpen !== true` | drift, unreachable, **builder**, **layout** |
+
+So on `builder` or `layout` the client would build and submit a close happily,
+and the panel disables the button and shows a banner. The only path a user has
+is the panel, so the fix is **inert where it matters**.
+
+`PositionsPanel.tsx:123` claims "The same gate the write paths use — audit 8
+HIGH 6." It is not the same gate. The client's own comment at 1298 says blocking
+escrow recovery on builder/layout "would be a self-inflicted trap" — the panel
+builds that trap.
+
+**Root cause:** `usePerpsPreflight` returns `{ canOpen, reason }` and never
+exposes `kind`, so the panel *cannot* apply `EXIT_BLOCKING_KINDS`. The
+remediation added the narrow gate to the write path and never plumbed the field
+the UI would need to honour it.
+
+**Consequence:** if our builder address loses its USDC opt-in, every user with
+an open position is reduced to two exits — take-profit or liquidation. That is
+the exact state closing was built to end, reachable by a misconfiguration on our
+side rather than theirs.
+
+**Fix:** expose `kind` from the hook and gate the panel on
+`EXIT_BLOCKING_KINDS`, keeping `null` as "not yet" rather than permission.
+
+## MEDIUM 2 — the allocator can hand out an id inside a live bracket's stride
+
+`allocateBaseOrderId` takes `highest + 1`, commented "the whole stride sits
+above every id already in use". That holds only when every reserved slot is
+occupied. `listOrderIds` enumerates **existing `o2:` boxes**, and a bracket
+parent with no children occupies one slot of the three it reserves.
+
+Reachable from the state this account was in on 2026-10-04:
+
+1. Bare limit order → base 1, reserves {1,2,3}, creates **box 1 only**.
+2. Second bare limit order → `listOrderIds` sees {1}, highest 1, base **2** —
+   inside order 1's reserved stride.
+3. Cancelling order 1 declares boxes 1, 2, 3 (correctly, per the stride rule),
+   and `cancel_order(1)` probes slots 2 and 3 — where slot 2 is now an
+   unrelated live order.
+4. `assertCancelGroup` **passes**: box 2 is in `expected` via the stride.
+
+Whether PEX then touches order 2 depends on it validating the child's
+`link_base_order_id`, which is **not verified here** — it needs two live orders
+to test and was not worth spending to confirm. Either way neither of our two
+layers prevents the collision or can detect it, and "our layer is the control"
+is this product's whole thesis.
+
+**Fix:** allocate above the highest *reserved* id, not the highest existing one
+— `highest + ORDER_ID_STRIDE` when the highest belongs to a bracket parent, or
+simply always. The fourth occurrence of the reserved stride causing a defect.
+
+## MEDIUM 3 — "derived from the constants" is not true
+
+`PerpsCard.tsx`'s `moves` says deriving it "from the same constants the client
+bills against means the text cannot drift from the group again." It hard-codes
+`100_200` and `99_700` as literals. The real constants are
+`LIMIT_ORDER_BOX_MBR_MICRO_ALGO` and `ORDER_BOX_MBR_MICRO_ALGO`
+(`perpsGroup.ts:1261,1263`), and are not imported.
+
+The drift it claims to have closed is still open — and a comment asserting a
+guarantee the code does not provide makes it *less* likely to be caught, which
+is the same failure mode as audit 8's unreachable check reading as coverage.
+
+**Fix:** import the two constants. One line each.
+
+## LOW 4 — a typo in `EXIT_BLOCKING_KINDS` compiles
+
+Typed `ReadonlySet<string>`, so membership is unchecked against the `kind`
+union. Verified by substituting `"drifttypo"`: **zero** tsc errors, and `drift`
+silently stops blocking exits. A new `kind` likewise defaults to not-blocking.
+
+**Fix:** `Record<PreflightKind, boolean>` so every kind must be classified at
+compile time.
+
+## LOW 5 — one fee literal does not match measurement
+
+`moves` models a bare limit at 20,000 µALGO. Measured on chain: **18,000**
+(group `cezp/Nh/`, 7 txns — submit 14,000 plus four 1,000 carriers). Overstates
+by 0.002 ALGO, so the direction is safe, but the comment says these were
+"Measured, and matching this arithmetic", and for this case they were not.
+
+Verified against real groups: market bare **34,000** (twice, two accounts),
+market with target **51,000** + 99,700 box, limit bare **18,000** + 100,200 box.
+
+## Method note
+
+Findings 1 and 4 came from reading the gate and then testing it rather than
+trusting the comment beside it — both comments asserted the property that was
+missing. Finding 5 came from measuring the four combinations on chain instead of
+reading the measurement already written in the comment.
