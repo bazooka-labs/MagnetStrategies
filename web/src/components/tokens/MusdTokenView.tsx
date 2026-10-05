@@ -102,10 +102,10 @@ export function MusdTokenView({
       {/* Stats + chart + swap, one unified panel */}
       <Panel className="mb-8">
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
-          <StatCell label="mUSD Peg" value={pegDisplay} sub="Market Price via Vestige" />
-          <StatCell label="Holders" value={holders} sub="mUSD wallets" />
-          <StatCell label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" />
-          <StatCell label="Backing Ratio" value={backing} sub="USDC Reserves" />
+          <StatCell label="mUSD Peg" value={pegDisplay} sub="Market Price via Vestige" tone="green" />
+          <StatCell label="Holders" value={holders} sub="mUSD wallets" tone="amber" />
+          <StatCell label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" tone="teal" />
+          <StatCell label="Backing Ratio" value={backing} sub="USDC Reserves" tone="magnet" />
         </div>
 
         <div className="border-t border-white/10" />

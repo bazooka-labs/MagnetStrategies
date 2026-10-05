@@ -74,9 +74,9 @@ export function MagnetTokenView({
       {/* Stats + chart + swap, one unified panel */}
       <Panel className="mb-8">
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
-          <StatCell label="Price" value={price} sub="USDC" />
-          <StatCell label="Holders" value={holders} sub="Active wallets" />
-          <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" />
+          <StatCell label="Price" value={price} sub="USDC" tone="green" />
+          <StatCell label="Holders" value={holders} sub="Active wallets" tone="amber" />
+          <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" tone="teal" />
           <TvlRankStat />
         </div>
 

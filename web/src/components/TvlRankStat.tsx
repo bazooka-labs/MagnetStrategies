@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+// This is the fourth box in the Magnet page's metric row, so its colour has to
+// come from the same table the other three use — see StatCell.
+import { STAT_TONES } from "@/components/tokens/StatCell";
 
 const MAGNET_ASA_ID = 3081853135;
 const PANEL =
@@ -109,7 +112,7 @@ export function TvlRankStat() {
         className="group relative w-full p-5 text-left transition-colors enabled:hover:bg-white/5 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-magnet-500"
       >
         <p className="text-xs font-medium uppercase tracking-wider text-gray-500">TVL Rank</p>
-        <p className="mt-2 font-mono text-2xl font-bold text-green-400">{value}</p>
+        <p className={`mt-2 font-mono text-2xl font-bold ${STAT_TONES.magnet}`}>{value}</p>
         {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
         {board && (
           <span className="absolute bottom-3 right-4 inline-flex items-center gap-1 font-mono text-[10px] tracking-wide text-magnet-400 transition-colors group-hover:text-magnet-300">
