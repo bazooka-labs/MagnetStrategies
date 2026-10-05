@@ -365,6 +365,50 @@ export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax
  * group, which is how a fix for one thing becomes a block on everything.
  */
 export const SHAPE_OPEN_TP_STORAGE: GroupShape = { axfer: 2, pay: 2, applMin: 3, applMax: 11, trading: 2 };
+
+/**
+ * The shape of an open group carrying `legs` attached protective orders.
+ *
+ * Derived rather than hand-written, because a second leg would otherwise double
+ * six measured constants into twelve. Each attached leg costs exactly the same
+ * three things: one axfer (its keeper fee), one pay (its order-box MBR), and one
+ * OrderOps call (its `submit_linked_order`).
+ *
+ * `orderOps: legs` is doing real work, not bookkeeping. It was `0` on the open
+ * shapes after audit 8 HIGH 4, which caught a close group carrying an injected
+ * `cancel_order`. Making it the leg count preserves that control exactly: a
+ * group may carry as many OrderOps calls as it has legs, and not one more.
+ *
+ * The measured constants above are kept and asserted equal to this function in
+ * `perpsStopLoss.test.ts`. If the derivation and a shape verified against real
+ * MainNet output ever disagree, the measurement wins and the test says so —
+ * audit 8's ship-blocker was a shape/offset error that passed everything anyone
+ * ran, and a derivation checked against measured values is the cheap guard
+ * against repeating it.
+ */
+export const openShape = (legs: number, fundsStorage: boolean): GroupShape => ({
+  axfer: 1 + legs,
+  pay: legs + (fundsStorage ? 1 : 0),
+  applMin: 1 + legs + (fundsStorage ? 1 : 0),
+  /**
+   * NOT `applMin + a fixed carrier budget`.
+   *
+   * The first draft of this derivation said `9 + legs + storage`, which agreed
+   * with both take-profit shapes and disagreed with both bare ones: the measured
+   * `SHAPE_OPEN` allows 10, the formula produced 9. Tightening a ceiling that
+   * was verified against real MainNet output would fail-closed on a correct
+   * group, which is how a fix for one thing becomes a block on everything.
+   *
+   * The measured ceilings are 10 / 11 / 10 / 11 for (0,no) (0,yes) (1,no)
+   * (1,yes) — so the carrier budget does NOT grow with the first leg; its
+   * submit call fits inside the headroom the bare shape already had. Only a
+   * SECOND leg adds a call the measurement has never covered, so only that one
+   * widens the ceiling.
+   */
+  applMax: 10 + (fundsStorage ? 1 : 0) + Math.max(0, legs - 1),
+  trading: fundsStorage ? 2 : 1,
+  orderOps: legs,
+});
 /** Closing moves no value in the group itself. */
 /**
  * Closing. Measured on a live ALGO/USD long: seven transactions, all app calls,
@@ -1340,258 +1384,329 @@ export function decodeLinkedTail(t: Uint8Array): LinkedTail | null {
  *   value overrides the parent's. Pointed at an attacker it takes 10 bps of close
  *   notional from inside PEX, with no transfer in our group at all.
  */
-export function assertOpenWithTakeProfit(
+/** `V2_ORDER_KIND.DECREASE_STOP_LOSS`. The second reserved child slot, base+2. */
+export const ORDER_KIND_STOP_LOSS = BigInt(3);
+
+/**
+ * One attached protective order, as the card showed it.
+ *
+ * Take-profit and stop-loss are the same leg shape with a different kind and a
+ * different reserved slot, so they are one type rather than two near-copies.
+ */
+export type DisplayedLeg = DisplayedTakeProfit & {
+  /** `ORDER_KIND_TAKE_PROFIT` (base+1) or `ORDER_KIND_STOP_LOSS` (base+2). */
+  orderKind: bigint;
+  /** The slot this kind belongs in. Checked, not assumed — see below. */
+  childOrderId: bigint;
+};
+
+/**
+ * Assert an open group carrying zero, one or two attached protective orders.
+ *
+ * This replaced `assertOpenWithTakeProfit`, which could only ever see one leg,
+ * and it is NOT a wrapper around it — the old single-leg version located the
+ * keeper-fee escrow by elimination:
+ *
+ *     transfers.find((t) => amount !== shownOpen.collateralAmountMicro)
+ *
+ * "the transfer that is not the collateral". Unambiguous with one child. With
+ * two there are two such transfers, `.find` returns the first, and one leg's
+ * escrow — amount, receiver, asset, cap, note — goes completely unchecked while
+ * the leg that WAS checked may be the other one. Keeping a wrapper would have
+ * left that path alive, so it is gone.
+ *
+ * Every leg is now located by the note the SDK stamps with its own child order
+ * id, so each is bound to its transfer by identity. Transfers and payments that
+ * match no leg are findings, not ignored extras.
+ *
+ * Two fields per leg carry attacks no asset-movement check can see:
+ *
+ * - `triggerPrice` — show $0.12, submit $0.40. The order never fires and the
+ *   user believes they are protected.
+ * - the child's **own** `builderFee`. `V2AttachedOrderLegInput` carries one and
+ *   the child input spreads `...parent, ...leg`, so a leg-level value overrides
+ *   the parent's. Pointed at an attacker it takes 10 bps of close notional from
+ *   inside PEX, with no transfer in our group at all.
+ *
+ * And one that is new with two legs: `orderKind` and `childOrderId` must agree
+ * with each other and with what the screen said. Crossing them turns a
+ * stop-loss into a take-profit — a long's "protection" at a price below the
+ * index becomes an order that sells into the loss it was meant to cap.
+ */
+export function assertOpenWithAttachedOrders(
   txnsIn: unknown[],
   shownOpen: DisplayedOpen,
-  shownTp: DisplayedTakeProfit,
+  legs: DisplayedLeg[],
 ): GroupAssertion {
-  // Everything the plain open path checks still applies to the open leg.
   const fundsStorage = shownOpen.storagePaymentMicro > BigInt(0);
-  const base = assertOpenGroup(
-    txnsIn, shownOpen, fundsStorage ? SHAPE_OPEN_TP_STORAGE : SHAPE_OPEN_TP,
-  );
+  const base = assertOpenGroup(txnsIn, shownOpen, openShape(legs.length, fundsStorage));
   const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
   const findings = [...base.findings];
   const checked = [...base.checked];
   const fail = (code: string, detail: string) => findings.push({ code, detail });
   const did = (n: string) => checked.push(n);
+  const u64 = (a: Uint8Array) => algosdk.decodeUint64(a, "bigint");
 
-  // Transfer and payment counts come from SHAPE_OPEN_TP, asserted above by the
-  // inherited `assertOpenGroup` call. This used to splice a `transfer_count`
-  // finding back out of the inherited list, which meant the correct count was
-  // never actually asserted on this path — only the wrong one was deleted.
-  const transfers = txns.filter((t) => t.assetTransfer);
   const orderOpsAddr = algosdk.getApplicationAddress(PEX_APPS.orderOps).toString();
-  // The take-profit is the first linked child: base + 1. The SDK stamps that id
-  // into the escrow and storage notes, so it is checkable rather than assumed.
-  const childOrderId = shownTp.baseOrderId + BigInt(1);
-  const escrow = transfers.find((t) => big(t.assetTransfer!.amount) !== shownOpen.collateralAmountMicro);
-  if (!escrow) {
-    fail("keeper_escrow_missing", "no keeper-fee escrow transfer found");
-  } else {
-    const x = escrow.assetTransfer!;
-    const amt = big(x.amount);
-    if (amt !== shownTp.keeperFeeMicro) {
-      fail("keeper_escrow_amount", `escrow ${amt}, displayed ${shownTp.keeperFeeMicro}`);
-    }
-    // Receiver and asset were BOTH unbound here while the collateral leg beside
-    // them was fully checked. An escrow redirected to an attacker passed, and so
-    // did one whose asset had been swapped — 100,000 units of an arbitrary ASA
-    // is not $0.10, and for a low-decimal asset it is arbitrary value.
-    if (String(x.receiver) !== orderOpsAddr) {
-      fail("keeper_escrow_receiver", "keeper-fee escrow does not go to the pinned OrderOps address");
-    }
-    if (Number(x.assetIndex) !== shownOpen.collateralAssetId) {
-      fail("keeper_escrow_asset", `keeper-fee escrow asset ${x.assetIndex}, expected ${shownOpen.collateralAssetId}`);
-    }
-    // The absolute cap is the control and it is read from config, never accepted
-    // from the caller. A ratio alone is not a control: both sides of a ratio come
-    // from the frontend, so displaying $400 and escrowing $800 would pass.
-    const absoluteCap = BigInt(Math.round(MAX_KEEPER_FEE_ESCROW_USDC * 1e6));
-    if (amt > absoluteCap) {
-      fail("keeper_escrow_cap", `escrow ${amt} exceeds the absolute cap ${absoluteCap}`);
-    }
-    if (amt === BigInt(0)) fail("keeper_escrow_zero", "keeper fee is zero; the order would never be executed");
-    // Bound to THIS bracket's child order id, not merely to the marker shape.
-    // A well-formed note naming a different order is a leg from another bracket.
-    if (noteText(escrow) !== `pdex-v2-linked-escrow-${childOrderId}`) {
-      fail("escrow_note", `escrow note "${noteText(escrow)}", expected pdex-v2-linked-escrow-${childOrderId}`);
-    }
-  }
-  did("keeper-fee escrow: amount, receiver, asset, absolute cap, non-zero, linked note");
-
-  // ── Payments ─────────────────────────────────────────────────────────────
-  //
-  // One when the escrow is already funded (the order-box MBR to OrderOps), two
-  // when it is not (an escrow payment to Trading, first). They go to different
-  // apps for different amounts, so each is found by its receiver rather than by
-  // position — a group that reordered them must not slip through.
   const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+  const transfers = txns.filter((t) => t.assetTransfer);
   const payments = txns.filter((t) => t.payment);
-  const expectedPayments = fundsStorage ? 2 : 1;
-  if (payments.length !== expectedPayments) {
-    fail("mbr_count", `expected ${expectedPayments} payment(s), found ${payments.length}`);
-  }
-
-  /**
-   * NOT re-run here.
-   *
-   * `assertOpenWithTakeProfit` delegates to `assertOpenGroup` above, which now
-   * calls `checkStoragePayment` itself — so calling it again duplicated every
-   * finding it produces ("storage_payment_amount, storage_payment_amount, …").
-   * Verdict-identical, but a duplicated finding list is what the user reads.
-   *
-   * The whole point of extracting the helper was one copy called by both paths;
-   * two call sites on the same path was the old mistake wearing a new shape.
-   */
-  if (!fundsStorage) did("no storage payment expected");
-
-  const mbr = payments.filter((t) => String(t.payment!.receiver) !== tradingAddr);
-  if (mbr.length !== 1) {
-    fail("mbr_count", `expected 1 order-box MBR payment, found ${mbr.length}`);
-  } else {
-    const pay = mbr[0].payment!;
-    if (big(pay.amount) !== ORDER_BOX_MBR_MICRO_ALGO) {
-      fail("order_box_mbr", `storage payment ${pay.amount}, expected ${ORDER_BOX_MBR_MICRO_ALGO}`);
-    }
-    // The receiver was unbound: the payment could be redirected while the amount
-    // still matched. Small per trade, but it rides inside a group the user has
-    // been told was verified.
-    if (String(pay.receiver) !== orderOpsAddr) {
-      fail("mbr_receiver", "order-box MBR does not go to the pinned OrderOps address");
-    }
-    if (noteText(mbr[0]) !== `pdex-v2-linked-storage-${childOrderId}`) {
-      fail("mbr_note", `storage note "${noteText(mbr[0])}", expected pdex-v2-linked-storage-${childOrderId}`);
-    }
-  }
-  did("order-box MBR: amount, receiver, linked note");
-
   const subs = txns.filter(
     (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps,
   );
-  if (subs.length !== 1) {
-    fail("submit_count", `expected 1 OrderOps call, found ${subs.length}`);
+
+  // Each leg must name a DIFFERENT slot, or two legs could both claim base+1 and
+  // the per-leg lookups below would bind to the same transfer twice.
+  if (new Set(legs.map((l) => String(l.childOrderId))).size !== legs.length) {
+    fail("leg_slot_collision", "two attached orders claim the same child order id");
     return { ok: false, findings, checked };
   }
-  const A = subs[0].applicationCall!.appArgs ?? [];
-  if (hex(A[0] ?? new Uint8Array()) !== SUBMIT_LINKED_ORDER_SELECTOR) {
-    fail("tp_selector", `selector ${hex(A[0] ?? new Uint8Array())}, expected ${SUBMIT_LINKED_ORDER_SELECTOR}`);
-  }
-  if (A.length !== 16) {
-    fail("tp_arg_count", `${A.length - 1} args after selector, expected 15`);
-    return { ok: false, findings, checked };
-  }
-  const u64 = (a: Uint8Array) => algosdk.decodeUint64(a, "bigint");
-
-  if (u64(A[1]) !== shownTp.baseOrderId + BigInt(1)) {
-    fail("owner_order_id", `ownerOrderId ${u64(A[1])}, expected baseOrderId+1`);
-  }
-  if (u64(A[2]) !== ORDER_KIND_TAKE_PROFIT) fail("order_kind", `orderKind ${u64(A[2])}, expected take-profit`);
-  if (u64(A[3]) !== ORDER_TARGET_PAIR) fail("target_kind", `targetKind ${u64(A[3])}, expected pair`);
-  if (u64(A[4]) !== BigInt(shownOpen.marketId)) fail("tp_market_id", `${u64(A[4])} vs ${shownOpen.marketId}`);
-  if (u64(A[5]) !== BigInt(shownOpen.side)) fail("tp_side", `${u64(A[5])} vs ${shownOpen.side}`);
-  if (u64(A[6]) !== BigInt(shownOpen.collateralAssetId)) fail("tp_collateral_asset", `${u64(A[6])}`);
-  if (u64(A[7]) !== shownTp.sizeUsdDeltaMicro) {
-    fail("tp_size", `TP closes ${u64(A[7])}, position will be ${shownTp.sizeUsdDeltaMicro}`);
-  }
-  // ...and the displayed TP size must equal the position being opened. Without
-  // this the two are only checked against each other, so a take-profit sized at
-  // 1% of the position asserts clean — and the card never displays the TP size,
-  // so there is no "what was shown" to catch it. Take-profit is the only exit.
-  if (shownTp.sizeUsdDeltaMicro !== shownOpen.sizeUsdDeltaMicro) {
-    fail("tp_size_mismatch",
-      `take-profit covers ${shownTp.sizeUsdDeltaMicro} of a ${shownOpen.sizeUsdDeltaMicro} position`);
-  }
-  if (u64(A[8]) !== BigInt(0)) fail("tp_collateral_amount", `collateralAmount ${u64(A[8])}, expected 0`);
-  did("TP identity: order id, kind, target, market, side, asset, size");
-
-  // Show $0.12, submit $0.40 — never fires, user believes they are protected.
-  if (u64(A[9]) !== shownTp.triggerPrice12) {
-    fail("trigger_price", `trigger ${u64(A[9])}, screen showed ${shownTp.triggerPrice12}`);
-  }
-  did("triggerPrice equals the displayed target exactly");
-
-  // The SDK checks only the side of this, never the distance.
-  // Direction matters and an absolute distance cannot see it. This check used
-  // Math.abs, which meant the assertion module could not catch a take-profit
-  // priced on the wrong side of its own trigger — the exact defect that made
-  // every group unbuildable. A close inverts relative to an open.
-  const tpAccept = u64(A[10]);
-  const tpBound = acceptableWithin(
-    tpAccept, shownTp.triggerPrice12, shownOpen.side, shownTp.slippageBps, "closing",
-  );
-  if (!tpBound.ok) fail("tp_slippage", `take-profit ${tpBound.why}`);
-  // Equality against the displayed value, not only the directional bound.
-  //
-  // `DisplayedTakeProfit.acceptablePrice12` was declared and documented and
-  // never read, so the TP leg was held only to "somewhere inside the slippage
-  // band around the trigger" while the open leg got both this and the bound.
-  // The slack is the full band: on a $772 short close that is up to $3.86 of
-  // worse fill, inside a group the user was told had been verified.
-  if (tpAccept !== shownTp.acceptablePrice12) {
-    fail("tp_acceptable_price", `arg ${tpAccept}, displayed ${shownTp.acceptablePrice12}`);
-  }
-  if (u64(A[11]) !== BigInt(shownOpen.collateralAssetId)) fail("keeper_fee_asset", `keeperFeeAssetId ${u64(A[11])}`);
-  if (u64(A[12]) !== shownTp.keeperFeeMicro) fail("keeper_fee_arg", `keeperFeeAmount ${u64(A[12])} vs escrow ${shownTp.keeperFeeMicro}`);
-  if (u64(A[13]) !== BigInt(0)) fail("tp_swap_mode", `outputSwapMode ${u64(A[13])}, expected 0`);
-  if (u64(A[14]) !== BigInt(0)) fail("tp_min_primary", `minPrimary ${u64(A[14])}, expected 0`);
-  did("TP acceptable price, keeper fee asset/amount, swap mode, minimums");
-
-  const tail = decodeLinkedTail(A[15]);
-  if (!tail) {
-    fail("tp_tail_decode", "could not decode the packed trailing tuple");
-    return { ok: false, findings, checked };
-  }
-  if (tail.minSecondary !== BigInt(0)) fail("tp_min_secondary", `minSecondary ${tail.minSecondary}`);
-  // GTC is 1. This check used to demand 0 and so agreed with B6 rather than
-  // catching it — an assertion is only worth what its expected value is worth.
-  if (tail.timeInForce !== BigInt(TAKE_PROFIT_TIME_IN_FORCE)) {
-    fail("time_in_force", `timeInForce ${tail.timeInForce}, expected GTC (${TAKE_PROFIT_TIME_IN_FORCE})`);
-  }
-  if (tail.expiryTime !== BigInt(0)) fail("expiry_time", `expiryTime ${tail.expiryTime}, expected 0`);
-  if (tail.linkMode !== ORDER_LINK_MODE_CHILD_ACTIVE) fail("link_mode", `linkMode ${tail.linkMode}, expected child-active`);
-  if (tail.linkBaseOrderId !== shownTp.baseOrderId) {
-    fail("link_base_order_id", `linkBaseOrderId ${tail.linkBaseOrderId}, expected ${shownTp.baseOrderId}`);
-  }
-  did("GTC, no expiry, link mode and base order id");
-
-  // The binding pair. On a same-group open the position does not exist yet, so
-  // expectedPositionId is 0 and the offset points back at the entry. Measured on
-  // a real group: the offset is the distance between the two transactions.
-  // By selector again: with a storage prefix the first Trading call is
-  // `fund_storage`, and measuring the offset from it is off by two.
-  const openIdx = txns.findIndex(
-    (t) => t.applicationCall && Number(t.applicationCall.appIndex) === PEX_APPS.trading
-      && hex((t.applicationCall.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.openOrIncrease,
-  );
-  const tpIdx = txns.findIndex((t) => t === subs[0]);
-  if (tail.expectedPositionId !== BigInt(0)) {
-    fail("tp_expected_position_id", `same-group open requires expectedPositionId 0, got ${tail.expectedPositionId}`);
-  }
-  const wantOffset = BigInt(tpIdx - openIdx);
-  if (tail.entryGroupOffset !== wantOffset) {
-    fail("entry_group_offset", `entryGroupOffset ${tail.entryGroupOffset}, expected ${wantOffset} (tp@${tpIdx} − open@${openIdx})`);
-  }
-  if (tail.entryGroupOffset < BigInt(1) || tail.entryGroupOffset > BigInt(15)) {
-    fail("entry_group_offset_range", `entryGroupOffset ${tail.entryGroupOffset} outside 1..15`);
-  }
-  did("expectedPositionId / entryGroupOffset binding pair");
-
-  // A leg-level builder fee overrides the parent's, invisibly to every transfer check.
-  if (tail.builderAddress !== BUILDER_ADDRESS) {
-    fail("tp_builder_address", "the CHILD's builder fee is not pointed at BUILDER_ADDRESS");
-  }
-  if (tail.builderFeeBps !== BigInt(POSITION_BUILDER_FEE_BPS)) {
-    fail("tp_builder_bps", `child builder fee ${tail.builderFeeBps} bps, expected ${POSITION_BUILDER_FEE_BPS}`);
-  }
-  did("child builder address and fee bps");
-
-  // Against the CHILD's payload, not the open leg's. This check used to compare
-  // with `shownOpen.oracleMessage`, which meant it actively enforced the second
-  // half of B6 — the assertion agreed with the bug, exactly as the timeInForce
-  // check did. Two of our own controls were holding the defect in place.
-  if (!tail.oracleMessage || !sameBytes(tail.oracleMessage, shownTp.oracleMessage)) {
-    fail("tp_oracle_message", "TP oracle message is not the verified child payload bytes");
-  }
-  if (!tail.oracleSignature || !sameBytes(tail.oracleSignature, shownTp.oracleSignature)) {
-    fail("tp_oracle_signature", "TP oracle signature is not the verified child signature bytes");
-  }
-  // And bind the target directly, from the SIGNED bytes.
-  //
-  // Byte-equality with what the client fetched only proves the group matches the
-  // client; it cannot notice the client fetching the wrong payload, which is the
-  // mistake that actually happened. The signed message carries the app it may be
-  // presented to at offset 37 — read it and require OrderOps.
-  if (tail.oracleMessage && tail.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
-    const view = new DataView(
-      tail.oracleMessage.buffer, tail.oracleMessage.byteOffset, tail.oracleMessage.byteLength);
-    const target = view.getBigUint64(ORACLE_TARGET_APP_OFFSET, false);
-    if (target !== BigInt(PEX_APPS.orderOps)) {
-      fail("tp_oracle_target",
-        `TP oracle payload is bound to app ${target}, expected OrderOps (${PEX_APPS.orderOps})`);
+  /**
+   * The kind must be one WE pin, not merely whatever the caller passed.
+   *
+   * `orderKind` was compared against a module constant before the rewrite and
+   * became `leg.orderKind` after it — caller-supplied, with nothing constraining
+   * it. A leg with kind 7 fell through `kindName`/`tag` to "take-profit" and
+   * through `expectedSlot` to base+1, and asserted green over an order of an
+   * unknown kind. Defence in depth today, since the only caller is ours, but the
+   * module's rule is that every expected value has an anchor outside the caller.
+   */
+  for (const l of legs) {
+    if (l.orderKind !== ORDER_KIND_TAKE_PROFIT && l.orderKind !== ORDER_KIND_STOP_LOSS) {
+      fail("leg_kind_unknown", `attached order kind ${l.orderKind} is neither take-profit nor stop-loss`);
+      return { ok: false, findings, checked };
     }
   }
-  // The open leg's payload must equally be Trading's, and must NOT be the child's.
+  if (subs.length !== legs.length) {
+    fail("submit_count", `expected ${legs.length} OrderOps call(s), found ${subs.length}`);
+    return { ok: false, findings, checked };
+  }
+
+  // Nothing may ride along unaccounted for. The collateral leg is checked by
+  // assertOpenGroup; every other transfer must be a leg escrow we recognise.
+  const escrowNotes = new Set(legs.map((l) => `pdex-v2-linked-escrow-${l.childOrderId}`));
+  const storageNotes = new Set(legs.map((l) => `pdex-v2-linked-storage-${l.childOrderId}`));
+  for (const t of transfers) {
+    if (big(t.assetTransfer!.amount) === shownOpen.collateralAmountMicro) continue;
+    if (!escrowNotes.has(noteText(t))) {
+      fail("unknown_transfer", `a transfer of ${t.assetTransfer!.amount} matches no attached order`);
+    }
+  }
+  did("every transfer is the collateral or a recognised leg escrow");
+
+  for (const leg of legs) {
+    const kindName = leg.orderKind === ORDER_KIND_STOP_LOSS ? "stop-loss" : "take-profit";
+    const tag = leg.orderKind === ORDER_KIND_STOP_LOSS ? "sl" : "tp";
+
+    // The slot a kind belongs in is fixed by the protocol:
+    // `v2ExpectedLinkedChildOrderId` puts the take-profit at base+1 and the
+    // stop-loss at base+2. A leg claiming the other slot is mislabelled.
+    const expectedSlot = leg.baseOrderId
+      + (leg.orderKind === ORDER_KIND_STOP_LOSS ? BigInt(2) : BigInt(1));
+    if (leg.childOrderId !== expectedSlot) {
+      fail(`${tag}_slot`, `${kindName} at order ${leg.childOrderId}, expected ${expectedSlot}`);
+    }
+
+    // ── Keeper-fee escrow, found by ITS OWN note ──────────────────────────
+    const escrow = transfers.find((t) => noteText(t) === `pdex-v2-linked-escrow-${leg.childOrderId}`);
+    if (!escrow) {
+      fail(`${tag}_escrow_missing`, `no keeper-fee escrow for the ${kindName} (order ${leg.childOrderId})`);
+    } else {
+      const x = escrow.assetTransfer!;
+      const amt = big(x.amount);
+      if (amt !== leg.keeperFeeMicro) {
+        fail(`${tag}_escrow_amount`, `escrow ${amt}, displayed ${leg.keeperFeeMicro}`);
+      }
+      // Receiver and asset were BOTH unbound here once, while the collateral leg
+      // beside them was fully checked: an escrow redirected to an attacker
+      // passed, and so did one whose asset had been swapped — 100,000 units of
+      // an arbitrary ASA is not $0.10.
+      if (String(x.receiver) !== orderOpsAddr) {
+        fail(`${tag}_escrow_receiver`, `${kindName} escrow does not go to the pinned OrderOps address`);
+      }
+      if (Number(x.assetIndex) !== shownOpen.collateralAssetId) {
+        fail(`${tag}_escrow_asset`, `${kindName} escrow asset ${x.assetIndex}, expected ${shownOpen.collateralAssetId}`);
+      }
+      // The absolute cap is the control and it is read from config, never from
+      // the caller: both sides of a ratio come from the frontend, so displaying
+      // $400 and escrowing $800 would pass a ratio check.
+      const absoluteCap = BigInt(Math.round(MAX_KEEPER_FEE_ESCROW_USDC * 1e6));
+      if (amt > absoluteCap) fail(`${tag}_escrow_cap`, `escrow ${amt} exceeds the absolute cap ${absoluteCap}`);
+      if (amt === BigInt(0)) {
+        fail(`${tag}_escrow_zero`, `${kindName} keeper fee is zero; the order would never be executed`);
+      }
+    }
+
+    // ── Order-box MBR, also by its own note ───────────────────────────────
+    const mbr = payments.find((t) => noteText(t) === `pdex-v2-linked-storage-${leg.childOrderId}`);
+    if (!mbr) {
+      fail(`${tag}_mbr_missing`, `no order-box MBR for the ${kindName} (order ${leg.childOrderId})`);
+    } else {
+      const pay = mbr.payment!;
+      if (big(pay.amount) !== ORDER_BOX_MBR_MICRO_ALGO) {
+        fail(`${tag}_order_box_mbr`, `MBR ${pay.amount}, expected ${ORDER_BOX_MBR_MICRO_ALGO}`);
+      }
+      // The receiver was unbound once: the payment could be redirected while the
+      // amount still matched. Small per trade, inside a group the user has been
+      // told was verified.
+      if (String(pay.receiver) !== orderOpsAddr) {
+        fail(`${tag}_mbr_receiver`, `${kindName} order-box MBR does not go to the pinned OrderOps address`);
+      }
+    }
+
+    // ── The submit call for THIS leg, matched by its own order id ─────────
+    const sub = subs.find((t) => {
+      const a = t.applicationCall!.appArgs ?? [];
+      return a.length > 1 && u64(a[1]) === leg.childOrderId;
+    });
+    if (!sub) {
+      fail(`${tag}_submit_missing`, `no submit_linked_order for order ${leg.childOrderId}`);
+      continue;
+    }
+    const A = sub.applicationCall!.appArgs ?? [];
+    if (hex(A[0] ?? new Uint8Array()) !== SUBMIT_LINKED_ORDER_SELECTOR) {
+      fail(`${tag}_selector`, `selector ${hex(A[0] ?? new Uint8Array())}, expected ${SUBMIT_LINKED_ORDER_SELECTOR}`);
+    }
+    if (A.length !== 16) {
+      fail(`${tag}_arg_count`, `${A.length - 1} args after selector, expected 15`);
+      continue;
+    }
+
+    if (u64(A[2]) !== leg.orderKind) {
+      fail(`${tag}_order_kind`, `orderKind ${u64(A[2])}, screen showed ${kindName} (${leg.orderKind})`);
+    }
+    if (u64(A[3]) !== ORDER_TARGET_PAIR) fail(`${tag}_target_kind`, `targetKind ${u64(A[3])}, expected pair`);
+    if (u64(A[4]) !== BigInt(shownOpen.marketId)) fail(`${tag}_market_id`, `${u64(A[4])} vs ${shownOpen.marketId}`);
+    if (u64(A[5]) !== BigInt(shownOpen.side)) fail(`${tag}_side`, `${u64(A[5])} vs ${shownOpen.side}`);
+    if (u64(A[6]) !== BigInt(shownOpen.collateralAssetId)) fail(`${tag}_collateral_asset`, `${u64(A[6])}`);
+    if (u64(A[7]) !== leg.sizeUsdDeltaMicro) {
+      fail(`${tag}_size`, `${kindName} closes ${u64(A[7])}, position will be ${leg.sizeUsdDeltaMicro}`);
+    }
+    // ...and the displayed size must equal the position being opened. Without
+    // this the two are only checked against each other, so protection sized at
+    // 1% of the position asserts clean — and the card never displays the leg
+    // size, so there is no "what was shown" to catch it.
+    if (leg.sizeUsdDeltaMicro !== shownOpen.sizeUsdDeltaMicro) {
+      fail(`${tag}_size_mismatch`,
+        `${kindName} covers ${leg.sizeUsdDeltaMicro} of a ${shownOpen.sizeUsdDeltaMicro} position`);
+    }
+    if (u64(A[8]) !== BigInt(0)) fail(`${tag}_collateral_amount`, `collateralAmount ${u64(A[8])}, expected 0`);
+
+    // Show $0.12, submit $0.40 — never fires, user believes they are protected.
+    if (u64(A[9]) !== leg.triggerPrice12) {
+      fail(`${tag}_trigger_price`, `trigger ${u64(A[9])}, screen showed ${leg.triggerPrice12}`);
+    }
+
+    // The SDK checks only the side of this, never the distance. Direction
+    // matters and an absolute distance cannot see it: a close inverts relative
+    // to an open, and an earlier version used Math.abs here, which meant the
+    // module could not catch a leg priced on the wrong side of its own trigger.
+    const accept = u64(A[10]);
+    const bound = acceptableWithin(
+      accept, leg.triggerPrice12, shownOpen.side, leg.slippageBps, "closing",
+    );
+    if (!bound.ok) fail(`${tag}_slippage`, `${kindName} ${bound.why}`);
+    // Equality against the displayed value, not only the directional bound: the
+    // slack is otherwise the full band, which on a $772 close is up to $3.86 of
+    // worse fill inside a group the user was told had been verified.
+    if (accept !== leg.acceptablePrice12) {
+      fail(`${tag}_acceptable_price`, `arg ${accept}, displayed ${leg.acceptablePrice12}`);
+    }
+    if (u64(A[11]) !== BigInt(shownOpen.collateralAssetId)) {
+      fail(`${tag}_keeper_fee_asset`, `keeperFeeAssetId ${u64(A[11])}`);
+    }
+    if (u64(A[12]) !== leg.keeperFeeMicro) {
+      fail(`${tag}_keeper_fee_arg`, `keeperFeeAmount ${u64(A[12])} vs escrow ${leg.keeperFeeMicro}`);
+    }
+    if (u64(A[13]) !== BigInt(0)) fail(`${tag}_swap_mode`, `outputSwapMode ${u64(A[13])}, expected 0`);
+    if (u64(A[14]) !== BigInt(0)) fail(`${tag}_min_primary`, `minPrimary ${u64(A[14])}, expected 0`);
+
+    const t = decodeLinkedTail(A[15]);
+    if (!t) {
+      fail(`${tag}_tail_decode`, `could not decode the ${kindName} packed trailing tuple`);
+      continue;
+    }
+    if (t.minSecondary !== BigInt(0)) fail(`${tag}_min_secondary`, `minSecondary ${t.minSecondary}`);
+    // GTC is 1. This check used to demand 0 and so agreed with B6 rather than
+    // catching it — an assertion is only worth what its expected value is worth.
+    if (t.timeInForce !== BigInt(TAKE_PROFIT_TIME_IN_FORCE)) {
+      fail(`${tag}_time_in_force`, `timeInForce ${t.timeInForce}, expected GTC (${TAKE_PROFIT_TIME_IN_FORCE})`);
+    }
+    if (t.expiryTime !== BigInt(0)) fail(`${tag}_expiry_time`, `expiryTime ${t.expiryTime}, expected 0`);
+    if (t.linkMode !== ORDER_LINK_MODE_CHILD_ACTIVE) {
+      fail(`${tag}_link_mode`, `linkMode ${t.linkMode}, expected child-active`);
+    }
+    if (t.linkBaseOrderId !== leg.baseOrderId) {
+      fail(`${tag}_link_base_order_id`, `linkBaseOrderId ${t.linkBaseOrderId}, expected ${leg.baseOrderId}`);
+    }
+
+    // The binding pair. On a same-group open the position does not exist yet, so
+    // expectedPositionId is 0 and the offset points back at the entry. By
+    // selector, not by app: with a storage prefix the first Trading call is
+    // `fund_storage`, and measuring from it is off by two.
+    const openIdx = txns.findIndex(
+      (x) => x.applicationCall && Number(x.applicationCall.appIndex) === PEX_APPS.trading
+        && hex((x.applicationCall.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.openOrIncrease,
+    );
+    const legIdx = txns.findIndex((x) => x === sub);
+    if (t.expectedPositionId !== BigInt(0)) {
+      fail(`${tag}_expected_position_id`,
+        `same-group open requires expectedPositionId 0, got ${t.expectedPositionId}`);
+    }
+    const wantOffset = BigInt(legIdx - openIdx);
+    if (t.entryGroupOffset !== wantOffset) {
+      fail(`${tag}_entry_group_offset`,
+        `entryGroupOffset ${t.entryGroupOffset}, expected ${wantOffset} (leg@${legIdx} − open@${openIdx})`);
+    }
+    if (t.entryGroupOffset < BigInt(1) || t.entryGroupOffset > BigInt(15)) {
+      fail(`${tag}_entry_group_offset_range`, `entryGroupOffset ${t.entryGroupOffset} outside 1..15`);
+    }
+
+    // A leg-level builder fee overrides the parent's, invisibly to every
+    // transfer check.
+    if (t.builderAddress !== BUILDER_ADDRESS) {
+      fail(`${tag}_builder_address`, `the ${kindName} CHILD's builder fee is not pointed at BUILDER_ADDRESS`);
+    }
+    if (t.builderFeeBps !== BigInt(POSITION_BUILDER_FEE_BPS)) {
+      fail(`${tag}_builder_bps`, `child builder fee ${t.builderFeeBps} bps, expected ${POSITION_BUILDER_FEE_BPS}`);
+    }
+
+    // Against the CHILD's payload, not the open leg's. This comparison once used
+    // `shownOpen.oracleMessage`, which meant it actively enforced the second half
+    // of B6 — the assertion agreed with the bug, exactly as timeInForce did.
+    if (!t.oracleMessage || !sameBytes(t.oracleMessage, leg.oracleMessage)) {
+      fail(`${tag}_oracle_message`, `${kindName} oracle message is not the verified child payload bytes`);
+    }
+    if (!t.oracleSignature || !sameBytes(t.oracleSignature, leg.oracleSignature)) {
+      fail(`${tag}_oracle_signature`, `${kindName} oracle signature is not the verified child signature bytes`);
+    }
+    // And bind the target directly, from the SIGNED bytes. Byte-equality with
+    // what the client fetched only proves the group matches the client; it
+    // cannot notice the client fetching the wrong payload, which is the mistake
+    // that actually happened.
+    if (t.oracleMessage && t.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
+      const view = new DataView(
+        t.oracleMessage.buffer, t.oracleMessage.byteOffset, t.oracleMessage.byteLength);
+      const target = view.getBigUint64(ORACLE_TARGET_APP_OFFSET, false);
+      if (target !== BigInt(PEX_APPS.orderOps)) {
+        fail(`${tag}_oracle_target`,
+          `${kindName} oracle payload is bound to app ${target}, expected OrderOps (${PEX_APPS.orderOps})`);
+      }
+    }
+    did(`${kindName}: slot, escrow, MBR, identity, trigger, acceptable price, tail, builder, oracle`);
+  }
+
+  // Order-box MBRs are matched per leg above; anything else that is not the
+  // storage escrow is unaccounted for.
+  for (const t of payments) {
+    if (String(t.payment!.receiver) === tradingAddr) continue;
+    if (!storageNotes.has(noteText(t))) {
+      fail("unknown_payment", `a payment of ${t.payment!.amount} matches no attached order`);
+    }
+  }
+  did("every payment is the storage escrow or a recognised leg MBR");
+
+  // The open leg's payload must equally be Trading's, and must NOT be a child's.
   if (shownOpen.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
     const view = new DataView(
       shownOpen.oracleMessage.buffer, shownOpen.oracleMessage.byteOffset, shownOpen.oracleMessage.byteLength);
@@ -1601,14 +1716,10 @@ export function assertOpenWithTakeProfit(
         `entry oracle payload is bound to app ${target}, expected Trading (${PEX_APPS.trading})`);
     }
   }
-  did("TP and entry oracle payloads are the verified bytes, each bound to its own app");
+  did("entry oracle payload is bound to Trading");
 
   return { ok: findings.length === 0, findings, checked };
 }
-
-// ── Limit entries ───────────────────────────────────────────────────────────
-
-/** What the card showed for a limit entry, checked against what was built. */
 export type DisplayedLimit = {
   sender: string;
   marketId: number;

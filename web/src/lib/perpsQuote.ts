@@ -406,6 +406,41 @@ export function takeProfitBounds(quote: OpenQuote): { minPrice12: bigint; maxPri
 }
 
 /**
+ * The band a stop-loss trigger must sit outside.
+ *
+ * ── Why this is not a comparison against the index price ───────────────────
+ * The first version of the stop-loss guard compared the trigger to
+ * `oracle.indexPrice12`. PEX does not: `v2OrderCrossedByOracle` measures a
+ * `DECREASE_STOP_LOSS` against the signed oracle's index BAND —
+ *
+ *     crossed = side === LONG ? indexMin <= trigger : indexMax >= trigger
+ *
+ * and `indexMin <= indexPrice <= indexMax`. So every long stop in
+ * `[indexMin, indexPrice)` and every short stop in `(indexPrice, indexMax]`
+ * passed the point comparison and was reported crossed by PEX. A crossed stop
+ * executes on arrival: the position opens and closes in the same group, and the
+ * user pays open fee, close fee, two builder fees, the keeper fee and exit
+ * impact for nothing.
+ *
+ * This codebase has already measured that exact failure for the take-profit —
+ * see `takeProfitBounds` above: a 0.188% window on live ALGO/USD, **$1.58 on a
+ * $50 stake, 3.2%, and no position**. The stop-loss reproduced it, under a
+ * comment claiming to be that guard's mirror.
+ *
+ * So the edge is the binding band edge moved outward by `CROSS_MARGIN_BPS`,
+ * the same margin and the same conservatism.
+ */
+export function stopLossBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice12: bigint } {
+  const tenK = BigInt(10_000);
+  const margin = BigInt(Math.round(CROSS_MARGIN_BPS));
+  return quote.side === "long"
+    // Below the LOWER edge: PEX crosses a long stop at indexMin and above.
+    ? { minPrice12: BigInt(1), maxPrice12: (quote.indexMinPrice12 * (tenK - margin)) / tenK }
+    // Above the UPPER edge: PEX crosses a short stop at indexMax and below.
+    : { minPrice12: (quote.indexMaxPrice12 * (tenK + margin)) / tenK, maxPrice12: BigInt(2) ** BigInt(63) };
+}
+
+/**
  * Quote closing a position, in full or in part.
  *
  * ── Two things this needs that an open does not ─────────────────────────────
@@ -623,7 +658,18 @@ export function roundPrice12(p12: bigint, direction: "up" | "down"): bigint {
  */
 const EXPECTED_PRE_OPEN_REASONS: ReadonlySet<string> = new Set(["position_missing"]);
 
-export function quoteTakeProfitCrossed(input: {
+/**
+ * PEX's own answer on whether a protective order is already crossed.
+ *
+ * Takes the KIND. It hardcoded `DECREASE_TAKE_PROFIT`, so the stop-loss had no
+ * equivalent of this layer at all — only our own arithmetic about PEX, where
+ * the take-profit has both that and this. `quoteV2DecreaseOrder` handles kind 3
+ * identically, so the only thing that was missing was the argument.
+ */
+export function quoteProtectiveOrderCrossed(input: {
+  /** `V2_ORDER_KIND` literal. Defaults to take-profit, so existing callers
+   *  are unchanged. Typed as the SDK types it, not as bigint. */
+  orderKind?: typeof V2_ORDER_KIND.DECREASE_TAKE_PROFIT | typeof V2_ORDER_KIND.DECREASE_STOP_LOSS;
   state: MarketState;
   oracle: OraclePayload;
   side: Side;
@@ -642,7 +688,7 @@ export function quoteTakeProfitCrossed(input: {
     position: null,
     owner: input.owner,
     marketId: BigInt(input.state.marketId),
-    orderKind: V2_ORDER_KIND.DECREASE_TAKE_PROFIT,
+    orderKind: input.orderKind ?? V2_ORDER_KIND.DECREASE_TAKE_PROFIT,
     collateralAssetId: BigInt(input.collateralAssetId),
     side: SIDE_CODE[input.side],
     sizeUsdDelta: BigInt(Math.round(input.notionalUsd * Number(USD_SCALE))),

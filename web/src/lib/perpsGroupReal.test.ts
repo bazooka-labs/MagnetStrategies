@@ -22,11 +22,30 @@ import algosdk from "algosdk";
 import fixture from "./__fixtures__/perpsGroups.json";
 import {
   POSITION_BOX_MBR_MICRO_ALGO,
-  assertOpenWithTakeProfit,
+  assertOpenWithAttachedOrders,
+  ORDER_KIND_STOP_LOSS,
+  ORDER_KIND_TAKE_PROFIT,
   type DisplayedOpen,
   type DisplayedTakeProfit,
 } from "./perpsGroup";
 import { COLLATERAL_ASSET_ID, PEX_APPS } from "./perps";
+
+/**
+ * The old single-leg call shape, for the fixtures captured under it.
+ *
+ * `assertOpenWithTakeProfit` is gone — it located the keeper-fee escrow by
+ * elimination ("the transfer that is not the collateral"), which breaks the
+ * moment a group carries two legs, so keeping a PRODUCTION wrapper would have
+ * kept the defect reachable. This adapter lives in the test only: it adapts the
+ * captured one-leg fixtures to the new signature, so every tamper below still
+ * exercises exactly what it did before.
+ */
+const assertTp = (txns: unknown[], open: DisplayedOpen, tp: DisplayedTakeProfit) =>
+  assertOpenWithAttachedOrders(txns, open, [{
+    ...tp,
+    orderKind: ORDER_KIND_TAKE_PROFIT,
+    childOrderId: tp.baseOrderId + BigInt(1),
+  }]);
 
 type Captured = {
   marketId: number; side: "long" | "short"; sender: string;
@@ -95,7 +114,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const c = groups[name];
 
     it(`${name}: accepts the real group unmodified`, () => {
-      const r = assertOpenWithTakeProfit(decode(c), shownOpen(c), shownTp(c));
+      const r = assertTp(decode(c), shownOpen(c), shownTp(c));
       expect(r.findings).toEqual([]);
       expect(r.ok).toBe(true);
     });
@@ -132,7 +151,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       manager: attacker, reserve: attacker, freeze: attacker, clawback: attacker,
       strictEmptyAddressChecking: false, suggestedParams: sp() as algosdk.SuggestedParams,
     });
-    const r = assertOpenWithTakeProfit([...decode(c), acfg], shownOpen(c), shownTp(c));
+    const r = assertTp([...decode(c), acfg], shownOpen(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("txn_type");
   });
@@ -142,7 +161,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       sender: c.sender, nonParticipation: true,
       suggestedParams: sp() as algosdk.SuggestedParams,
     });
-    const r = assertOpenWithTakeProfit([...decode(c), keyreg], shownOpen(c), shownTp(c));
+    const r = assertTp([...decode(c), keyreg], shownOpen(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("txn_type");
   });
@@ -152,7 +171,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       sender: c.sender, receiver: c.sender, amount: 1_000_000,
       suggestedParams: sp() as algosdk.SuggestedParams,
     });
-    const r = assertOpenWithTakeProfit([...decode(c), pay], shownOpen(c), shownTp(c));
+    const r = assertTp([...decode(c), pay], shownOpen(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("pay_count");
   });
@@ -162,7 +181,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       sender: c.sender, receiver: c.sender, amount: 1_000_000,
       assetIndex: COLLATERAL_ASSET_ID, suggestedParams: sp() as algosdk.SuggestedParams,
     });
-    const r = assertOpenWithTakeProfit([...decode(c), axfer], shownOpen(c), shownTp(c));
+    const r = assertTp([...decode(c), axfer], shownOpen(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("axfer_count");
   });
@@ -179,7 +198,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     mutate(txns);
     const tp = shownTp(c);
     alsoShownTp?.(tp);
-    const r = assertOpenWithTakeProfit(txns, shownOpen(c), tp);
+    const r = assertTp(txns, shownOpen(c), tp);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain(code);
   });
@@ -193,26 +212,26 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       const e = escrowOf(txns);
       (e.assetTransfer as unknown as { receiver: algosdk.Address }).receiver =
         algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU");
-    }, "keeper_escrow_receiver");
+    }, "tp_escrow_receiver");
 
   tamper("keeper escrow swapped to another asset",
     (txns) => {
       const e = escrowOf(txns);
       (e.assetTransfer as unknown as { assetIndex: bigint }).assetIndex = BigInt(1_284_444_444);
-    }, "keeper_escrow_asset");
+    }, "tp_escrow_asset");
 
   tamper("MBR payment redirected to an attacker",
     (txns) => {
       const p = txns.find((t) => t.payment)!;
       (p.payment as unknown as { receiver: algosdk.Address }).receiver =
         algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU");
-    }, "mbr_receiver");
+    }, "tp_mbr_receiver");
 
   tamper("MBR payment inflated",
     (txns) => {
       const p = txns.find((t) => t.payment)!;
       (p.payment as unknown as { amount: bigint }).amount = BigInt(5_000_000);
-    }, "order_box_mbr");
+    }, "tp_order_box_mbr");
 
   tamper("collateral transfer redirected to an attacker",
     (txns) => {
@@ -261,7 +280,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
       // exact binding to this bracket's child id can catch it.
       (e as unknown as { note: Uint8Array }).note =
         new TextEncoder().encode("pdex-v2-linked-escrow-999");
-    }, "escrow_note");
+    }, "tp_escrow_missing");
 
   tamper("an app call switched off NoOp",
     (txns) => {
@@ -298,7 +317,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
   for (const name of names) {
     const cc = groups[name];
     it(`${name}: accepts the real storage-funding group`, () => {
-      const r = assertOpenWithTakeProfit(decodeStorage(cc), shownOpenStorage(cc), shownTp(cc));
+      const r = assertTp(decodeStorage(cc), shownOpenStorage(cc), shownTp(cc));
       expect(r.findings).toEqual([]);
       expect(r.ok).toBe(true);
     });
@@ -317,14 +336,14 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
   it("refuses a storage-funding group presented as a plain open", () => {
     // The screen says no storage payment; the group funds storage anyway.
     // Shape, payment count and the Trading call count must all object.
-    const r = assertOpenWithTakeProfit(decodeStorage(c), shownOpen(c), shownTp(c));
+    const r = assertTp(decodeStorage(c), shownOpen(c), shownTp(c));
     expect(r.ok).toBe(false);
     const codes = r.findings.map((f) => f.code);
     expect(codes).toContain("pay_count");
   });
 
   it("refuses a plain open presented as storage-funding", () => {
-    const r = assertOpenWithTakeProfit(decode(c), shownOpenStorage(c), shownTp(c));
+    const r = assertTp(decode(c), shownOpenStorage(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("pay_count");
   });
@@ -335,7 +354,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
     (pay.payment as unknown as { receiver: algosdk.Address }).receiver =
       algosdk.decodeAddress("7777777777777777777777777777777777777777777777777774MSJUVU");
-    const r = assertOpenWithTakeProfit(txns, shownOpenStorage(c), shownTp(c));
+    const r = assertTp(txns, shownOpenStorage(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("storage_payment_missing");
   });
@@ -351,7 +370,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     (pay.payment as unknown as { amount: bigint }).amount = inflated;
     const shown = shownOpenStorage(c);
     shown.storagePaymentMicro = inflated;
-    const r = assertOpenWithTakeProfit(txns, shown, shownTp(c));
+    const r = assertTp(txns, shown, shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("storage_payment_unpinned");
   });
@@ -366,7 +385,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     (pay.payment as unknown as { amount: bigint }).amount = POSITION_BOX_MBR_MICRO_ALGO;
     const shown = shownOpenStorage(c);
     shown.storagePaymentMicro = POSITION_BOX_MBR_MICRO_ALGO;
-    const r = assertOpenWithTakeProfit(txns, shown, shownTp(c));
+    const r = assertTp(txns, shown, shownTp(c));
     expect(r.findings).toEqual([]);
   });
 
@@ -375,7 +394,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
     const pay = txns.find((t) => t.payment && String(t.payment.receiver) === tradingAddr)!;
     (pay.payment as unknown as { amount: bigint }).amount = BigInt(5_000_000);
-    const r = assertOpenWithTakeProfit(txns, shownOpenStorage(c), shownTp(c));
+    const r = assertTp(txns, shownOpenStorage(c), shownTp(c));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("storage_payment_amount");
   });
@@ -408,7 +427,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const tp = shownTp(c);
     tp.oracleMessage = bytes(c.oracleMessage);
     tp.oracleSignature = bytes(c.oracleSignature);
-    const r = assertOpenWithTakeProfit(decode(c), shownOpen(c), tp);
+    const r = assertTp(decode(c), shownOpen(c), tp);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("tp_oracle_message");
   });
@@ -429,7 +448,7 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
     const idx = indexOfSub(tail, bytes(c.tpOracleMessage));
     expect(idx).toBeGreaterThan(-1);
     tail.set(wrong, idx);
-    const r = assertOpenWithTakeProfit(txns, shownOpen(c), tp);
+    const r = assertTp(txns, shownOpen(c), tp);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toContain("tp_oracle_target");
   });
@@ -482,4 +501,77 @@ describe("assertOpenWithTakeProfit — the assertion production calls", () => {
   tamper("fees inflated across the group",
     (txns) => { txns.forEach((t) => { (t as unknown as { fee: bigint }).fee = BigInt(30_000); }); },
     "fee_cap");
+});
+
+describe("attached legs are bound by identity, not by elimination", () => {
+  // These are the tests the single-leg assertion could not have had. It found
+  // the keeper-fee escrow with `transfers.find(t => amount !== collateral)` —
+  // "the one that is not the collateral" — which is unambiguous only while
+  // there is exactly one child. Each case below passes a leg whose identity
+  // does NOT match the captured group, and the assertion has to notice.
+  const c = groups[Object.keys(groups)[0]];
+
+  it("refuses a leg that claims the wrong reserved slot", () => {
+    // base+2 is the stop-loss slot. A take-profit sitting there is mislabelled,
+    // and a mislabelled leg is a stop that behaves like a target.
+    const tp = shownTp(c);
+    const r = assertOpenWithAttachedOrders(decode(c), shownOpen(c), [{
+      ...tp,
+      orderKind: ORDER_KIND_TAKE_PROFIT,
+      childOrderId: tp.baseOrderId + BigInt(2),
+    }]);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("tp_slot");
+  });
+
+  it("refuses a leg whose escrow is not in the group", () => {
+    // The locate-by-note check doing its job: this leg names a child id the
+    // group carries no escrow for, so there is nothing to bind it to. Under
+    // locate-by-elimination it would have silently adopted the take-profit's
+    // escrow and passed every amount, receiver and asset check on it.
+    const tp = shownTp(c);
+    const r = assertOpenWithAttachedOrders(decode(c), shownOpen(c), [{
+      ...tp,
+      orderKind: ORDER_KIND_STOP_LOSS,
+      childOrderId: tp.baseOrderId + BigInt(2),
+    }]);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("sl_escrow_missing");
+  });
+
+  it("refuses two legs claiming the same slot", () => {
+    // Both would bind to the same transfer, so each would "check" the other's
+    // escrow and the group would look twice-verified while one leg was never
+    // examined at all.
+    const tp = shownTp(c);
+    const leg = {
+      ...tp, orderKind: ORDER_KIND_TAKE_PROFIT, childOrderId: tp.baseOrderId + BigInt(1),
+    };
+    const r = assertOpenWithAttachedOrders(decode(c), shownOpen(c), [leg, { ...leg }]);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toContain("leg_slot_collision");
+  });
+
+  it("refuses a second leg the group does not carry", () => {
+    // Declaring two legs against a one-leg group: the shape gate and the
+    // submit count both have to catch this, or a user could be shown "stop loss
+    // set" over a group that contains no stop loss.
+    const tp = shownTp(c);
+    const r = assertOpenWithAttachedOrders(decode(c), shownOpen(c), [
+      { ...tp, orderKind: ORDER_KIND_TAKE_PROFIT, childOrderId: tp.baseOrderId + BigInt(1) },
+      { ...tp, orderKind: ORDER_KIND_STOP_LOSS, childOrderId: tp.baseOrderId + BigInt(2) },
+    ]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("still accepts the captured one-leg group", () => {
+    // The control. Everything above must fail for its own reason, not because
+    // the new code rejects a group that has always been correct.
+    const tp = shownTp(c);
+    const r = assertOpenWithAttachedOrders(decode(c), shownOpen(c), [{
+      ...tp, orderKind: ORDER_KIND_TAKE_PROFIT, childOrderId: tp.baseOrderId + BigInt(1),
+    }]);
+    expect(r.findings.map((f) => f.code)).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
 });

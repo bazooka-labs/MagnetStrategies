@@ -51,6 +51,7 @@ import {
   formatPriceUsd,
   priceDisplayDecimals,
   type OpenQuote,
+  stopLossBounds,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
@@ -139,6 +140,13 @@ type CardSnapshot = {
   tradable: boolean;
   liquidatable: boolean;
   tpValid: boolean;
+  /** Stop-loss, frozen with everything else. Audit 7: a field added to the card
+   *  and not to the snapshot is read LIVE at the render site. */
+  slPrice: string;
+  slEmpty: boolean;
+  slValid: boolean;
+  slTooNear: boolean;
+  slPastLiquidation: boolean;
   tpPayoff: number | null;
   ceilingUsd: number;
   indexUsd: number | null;
@@ -205,6 +213,8 @@ export function PerpsCard({
   const [amount, setAmount] = useState<string>("");
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
+  /** Optional stop-loss. Empty means none, exactly as the take-profit does. */
+  const [slPrice, setSlPrice] = useState<string>("");
   /**
    * The chosen profit target as a fraction of stake, or null for a hand-typed
    * price. Null is also the starting state: the field begins empty.
@@ -220,6 +230,7 @@ export function PerpsCard({
    */
   const [amountHint, setAmountHint] = useState<string | null>(null);
   const [tpHint, setTpHint] = useState<string | null>(null);
+  const [slHint, setSlHint] = useState<string | null>(null);
 
   const { data, loading, error, attemptAt } = usePerpsMarket(marketId);
   const preflight = usePerpsPreflight();
@@ -259,6 +270,7 @@ export function PerpsCard({
   useEffect(() => {
     setTpPrice("");
     setTpPct(null);
+    setSlPrice("");
     /**
      * `triggerPrice` too — audit 8 SHIP-BLOCKER 2.
      *
@@ -523,6 +535,42 @@ export function PerpsCard({
   const tpTypo = !!(quote?.ok && bounds && tp12 > BigInt(0)
     && (side === "long" ? tp12 > bounds.maxPrice12 : tp12 < bounds.minPrice12));
   const tpPayoff = quote?.ok && tpValid ? payoffAtPrice(quote, tp12) : null;
+
+  // ── Stop-loss ──────────────────────────────────────────────────────────────
+  const sl12 = usdToPrice12(slPrice) ?? BigInt(0);
+  const slEmpty = slPrice.trim() === "";
+  /**
+   * Against the index BAND, not the index price — and only on market entries.
+   *
+   * The first version compared to `data.oracle.indexPrice12`, a point. PEX
+   * crosses a `DECREASE_STOP_LOSS` at `indexMin` for a long and `indexMax` for a
+   * short, and the index price sits between them, so every stop in the gap was
+   * accepted here and fired on arrival. `stopLossBounds` is the same band-plus-
+   * margin treatment `takeProfitBounds` already got after that cost $1.58 on a
+   * $50 stake, measured.
+   */
+  const slBounds = quote?.ok ? stopLossBounds(quote) : null;
+  const slTooNear = !!(slBounds && sl12 > BigInt(0)
+    && (sl12 < slBounds.minPrice12 || sl12 > slBounds.maxPrice12));
+  const slValid = !!(slBounds && sl12 > BigInt(0) && !slTooNear);
+  /**
+   * A WARNING, never a refusal.
+   *
+   * A long's stop at or below the liquidation price can never fire — the
+   * position is gone first — so the protection is decorative. But the
+   * liquidation price moves with funding, and a user may well want a stop only
+   * reachable after it drifts. Say so; do not decide for them.
+   */
+  const slPastLiquidation = !!(slValid && quote?.ok
+    // Inlined rather than reusing `liquidatable`, which is declared below: PEX
+    // signals "cannot be liquidated" with a zero price and an empty direction,
+    // and treating that zero as a real price would warn on every position that
+    // has no liquidation at all.
+    && quote.liquidationDirection !== "" && quote.liquidationPrice12 > BigInt(0)
+    && (side === "long"
+      ? sl12 <= quote.liquidationPrice12
+      : sl12 >= quote.liquidationPrice12));
+
   /**
    * Whether a liquidation price exists at all.
    *
@@ -629,8 +677,35 @@ export function PerpsCard({
    * which is the safe direction for a disclosure; claiming measurement it did
    * not have is the part that needed fixing.
    */
+  /** 0, 1 or 2 protective orders. Every per-order cost keys off this. */
+  /**
+   * Protective legs this entry will actually carry.
+   *
+   * `!isLimit` on the stop-loss term, because `openLimitOrder` has no
+   * `stopLossPrice12` — the limit path is stage two. Without the term the card
+   * charged a limit order for a second keeper fee and a second 99,700 µALGO box
+   * that its group never creates, and offered a stop it then discarded.
+   */
+  const legCount = (tpEmpty ? 0 : 1) + (!isLimit && !slEmpty ? 1 : 0);
   const moves = useMemo(() => {
-    const feeMicro = isLimit ? (tpEmpty ? 18_000 : 36_000) : (tpEmpty ? 34_000 : 51_000);
+    /**
+     * Fees by (entry kind, leg count).
+     *
+     * The two-leg market figure was 53,000, described as the one-leg figure plus
+     * "the per-transaction minimum for the extra submit and its carrier… it errs
+     * high". It errred LOW by 15,000: the OrderOps submit is 14,000, a flat
+     * protocol fee (`V2_ORDER_OPS_METHOD_FLAT_FEE_MICRO_ALGO`), not a 1,000
+     * minimum. Derived from the captured fixture rather than guessed: 51,000
+     * one-leg + 14,000 submit + 1,000 escrow + 1,000 MBR + 1,000 for the extra
+     * Math carrier a second child forces = 68,000.
+     *
+     * Unreachable today — the card allows one leg at a time — but a wrong number
+     * waiting behind a flag is still a wrong number, and understating what leaves
+     * the wallet is the exact regression audit 8 recorded.
+     */
+    const feeMicro = isLimit
+      ? (legCount === 0 ? 18_000 : 36_000)
+      : (legCount === 0 ? 34_000 : legCount === 1 ? 51_000 : 68_000);
     /**
      * One box per resting order. A market open creates one only for its
      * take-profit; a limit entry creates its own, plus the child's.
@@ -643,9 +718,9 @@ export function PerpsCard({
      * is in number.
      */
     const boxMicro = (isLimit ? Number(LIMIT_ORDER_BOX_MBR_MICRO_ALGO) : 0)
-      + (tpEmpty ? 0 : Number(ORDER_BOX_MBR_MICRO_ALGO));
+      + legCount * Number(ORDER_BOX_MBR_MICRO_ALGO);
     // The keeper fee is escrowed per resting order, for the same reason.
-    const keeperCount = (isLimit ? 1 : 0) + (tpEmpty ? 0 : 1);
+    const keeperCount = (isLimit ? 1 : 0) + legCount;
     /**
      * A DIFFERENT quantity that happens to equal the limit order-box MBR: the
      * one-off storage escrow a first-time trader funds.
@@ -668,7 +743,7 @@ export function PerpsCard({
       algo: (feeMicro + boxMicro) / 1e6,
       algoFirstTrade: (feeMicro + boxMicro + firstTradeExtra) / 1e6,
     };
-  }, [isLimit, tpEmpty]);
+  }, [isLimit, legCount]);
 
   const [frozen, setFrozen] = useState<CardSnapshot | null>(null);
 
@@ -692,6 +767,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
+    slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
@@ -727,9 +803,22 @@ export function PerpsCard({
    * input, not a decision.
    */
   const tpOk = tpEmpty || tpValid;
+  // Same rule: no stop-loss is fine, a stop-loss on the wrong side is not.
+  // A stop-loss cannot block a LIMIT entry, which never carries one.
+  /**
+   * One protective leg at a time — see `PROTECTION_ENABLED`.
+   *
+   * Not a technical limit: the group, the assertion and the shapes all handle
+   * two. It is the flag's own precondition, which is about OCO — whether PEX
+   * removes the sibling when one leg executes. With a single leg there is no
+   * sibling, so the question does not arise and the precondition is satisfied
+   * rather than waived.
+   */
+  const bothLegs = !isLimit && !tpEmpty && !slEmpty;
+  const slOk = (isLimit || slEmpty || slValid) && !bothLegs;
 
   const canSubmit = !!(
-    tradable && tpOk && quote?.ok && !submitting && triggerReady
+    tradable && tpOk && slOk && quote?.ok && !submitting && triggerReady
     && wallet.isConnected && wallet.address && notional > 0
   );
 
@@ -802,6 +891,7 @@ export function PerpsCard({
         collateralUsd,
         notionalUsd: notional,
         takeProfitPrice12: tp12,
+        stopLossPrice12: slEmpty ? BigInt(0) : sl12,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
         /**
          * **The exact values this render put on screen.**
@@ -885,7 +975,7 @@ export function PerpsCard({
             {([["market", "Market", "Fills now, at the current price"],
                ["limit", "Limit", "Rests until the price reaches your trigger"]] as const).map(([m, text, title]) => (
               <button key={m} type="button" disabled={submitting} title={title}
-                onClick={() => { setMode(m); setTriggerPrice(""); setTpPct(null); setTpPrice(""); }}
+                onClick={() => { setMode(m); setTriggerPrice(""); setTpPct(null); setTpPrice(""); setSlPrice(""); }}
                 className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-40 ${
                   mode === m ? "bg-magnet-500/20 text-white" : "text-white/45 hover:text-white/75"}`}>
                 {text}
@@ -1263,8 +1353,56 @@ export function PerpsCard({
         )}
       </label>
 
-      {/* Protection */}
-      {!PROTECTION_ENABLED && (
+      {/* Protection — the stop-loss. Optional, like the take-profit above. */}
+      {PROTECTION_ENABLED && !isLimit ? (
+        <label className="mt-4 block">
+          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+            Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span>
+          </span>
+          <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
+            <span className="text-white/40">$</span>
+            <input id="perps-sl" inputMode="decimal" value={view.slPrice}
+              onChange={(e) => {
+                const v = readNumericInput(e.target.value);
+                if (!v.ok) { setSlHint(v.hint); return; }
+                setSlHint(null);
+                setSlPrice(v.value);
+              }}
+              disabled={submitting}
+              className="w-full bg-transparent px-2 py-3 font-semibold tabular-nums text-white outline-none disabled:opacity-50" />
+          </div>
+          {slHint && <p className="mt-1 text-xs text-amber-300/90">{slHint}</p>}
+          {view.slEmpty ? (
+            /* The consequence, stated once, without nagging — the same treatment
+               the take-profit's empty state gets. */
+            <p className="mt-1 text-xs text-white/40">
+              No stop set — nothing closes this position early if the price moves
+              against you. Liquidation is the only floor.
+            </p>
+          ) : view.slTooNear ? (
+            <p className="mt-1 text-xs text-amber-300/90">
+              {side === "long"
+                ? "That stop is too close to the current price — it would trigger the moment the position opened, closing it straight away for a loss in fees. Move it further below."
+                : "That stop is too close to the current price — it would trigger the moment the position opened, closing it straight away for a loss in fees. Move it further above."}
+            </p>
+          ) : view.slPastLiquidation ? (
+            /* A warning, not a refusal: the liquidation price moves with funding,
+               so a stop beyond it today may be reachable tomorrow. Saying so is
+               the honest version; deciding for them is not. */
+            <p className="mt-1 text-xs text-amber-300/90">
+              This stop sits past the liquidation price, so the position would be
+              liquidated before it could fire. Still allowed — liquidation moves
+              with funding — but it protects nothing today.
+            </p>
+          ) : view.slValid ? (
+            <p className="mt-1 text-xs text-white/40">
+              Closes automatically if the price reaches this, capping the loss. Costs
+              a second keeper fee and a second order record — both are in the line
+              below.
+            </p>
+          ) : null}
+        </label>
+      ) : (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/45">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>

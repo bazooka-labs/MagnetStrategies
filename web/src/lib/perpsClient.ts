@@ -30,7 +30,7 @@ import {
   buildV2OpenOrIncreaseWithStorageTransactions,
   buildV2OpenLimitWithAttachedOrdersTransactions,
 } from "@pdex/sdk/transactions";
-import { V2_ORDER_TARGET } from "@pdex/sdk";
+import { V2_ORDER_KIND, V2_ORDER_TARGET } from "@pdex/sdk";
 import {
   BUILDER_ADDRESS,
   CHILD_KEEPER_FEE_USDC,
@@ -65,7 +65,10 @@ import {
   assertCloseGroup,
   assertOpenGroup,
   assertOpenLimitGroup,
-  assertOpenWithTakeProfit,
+  assertOpenWithAttachedOrders,
+  ORDER_KIND_STOP_LOSS,
+  ORDER_KIND_TAKE_PROFIT,
+  type DisplayedLeg,
   simulateGroup,
   ORDER_BOX_MBR_MICRO_ALGO,
   SHAPE_OPEN,
@@ -76,7 +79,8 @@ import {
   acceptableForClose,
   acceptableForOpen,
   quoteOpen,
-  quoteTakeProfitCrossed,
+  quoteProtectiveOrderCrossed,
+  stopLossBounds,
   takeProfitBounds,
   type CloseQuote,
 } from "./perpsQuote";
@@ -100,6 +104,8 @@ export type OpenPositionInput = {
   notionalUsd: number;
   /** Take-profit trigger, Price12, exactly as displayed. */
   takeProfitPrice12: bigint;
+  /** Optional stop-loss trigger, Price12. Zero or absent means none. */
+  stopLossPrice12?: bigint;
   /**
    * The prices the card had on screen when the user decided.
    *
@@ -195,7 +201,22 @@ const CONFIRM_ROUNDS = 40;
  * It also ran *before* the trader-state read that decides the storage payment,
  * so it could not have known which case it was in.
  */
-const GROUP_FEE_HEADROOM_MICRO = BigInt(60_000);
+/**
+ * Headroom over the measured group fee — now per LEG.
+ *
+ * A flat 60,000 was sized for the one-leg group. A second leg adds about 17,000:
+ * its OrderOps submit is 14,000, which is `V2_ORDER_OPS_METHOD_FLAT_FEE_MICRO_ALGO`
+ * — a FLAT protocol fee, not a per-transaction minimum — plus its escrow, its MBR
+ * payment and an extra Math carrier, since
+ * `buildV2LinkedOrderMarketResourceCarrierCalls` emits two carriers once there is
+ * more than one child order rather than one combined.
+ *
+ * Left flat, a two-leg group could clear this check and then be rejected by the
+ * node for overspend: the user signs and the group dies for want of a few
+ * thousand microALGO the check said they had.
+ */
+const groupFeeHeadroomMicro = (legs: number): bigint =>
+  BigInt(60_000) + BigInt(Math.max(0, legs - 1)) * BigInt(20_000);
 /**
  * The order-box MBR only applies when there IS an order — audit 8 MEDIUM 8.
  *
@@ -203,9 +224,11 @@ const GROUP_FEE_HEADROOM_MICRO = BigInt(60_000);
  * take-profit was told *"Needs about 0.16 spendable ALGO"* against a real need of
  * ~0.034. Trade-blocking at the margin, and for a box the group never creates.
  */
-const minAlgoMicro = (storagePayment: bigint, wantsTakeProfit: boolean): bigint =>
-  storagePayment + (wantsTakeProfit ? ORDER_BOX_MBR_MICRO_ALGO : BigInt(0))
-  + GROUP_FEE_HEADROOM_MICRO;
+// One order box per attached protective order, so this takes a COUNT. It took a
+// boolean while take-profit was the only leg; a second leg is a second MBR.
+const minAlgoMicro = (storagePayment: bigint, legs: number): bigint =>
+  storagePayment + BigInt(legs) * ORDER_BOX_MBR_MICRO_ALGO
+  + groupFeeHeadroomMicro(legs);
 
 /**
  * Seconds of oracle validity that must remain when the wallet is prompted.
@@ -245,6 +268,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     algod, signTransactions, sender, marketId, side,
     collateralUsd, notionalUsd, takeProfitPrice12, displayed,
   } = input;
+  const stopLossPrice12 = input.stopLossPrice12 ?? BigInt(0);
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const stage = (s: OpenStage) => input.onStage?.(s);
 
@@ -270,6 +294,38 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const wantsTakeProfit = takeProfitPrice12 > BigInt(0);
   if (takeProfitPrice12 < BigInt(0)) {
     throw new Error("That take-profit price is not valid.");
+  }
+  /**
+   * A stop-loss is the same deal: optional, zero means none, negative is a
+   * broken caller rather than a choice. It occupies the OTHER reserved slot —
+   * `v2ExpectedLinkedChildOrderId` puts the take-profit at base+1 and the
+   * stop-loss at base+2 — so the two never contend and either can ride alone.
+   */
+  const wantsStopLoss = stopLossPrice12 > BigInt(0);
+  if (stopLossPrice12 < BigInt(0)) {
+    throw new Error("That stop-loss price is not valid.");
+  }
+  /**
+   * How many protective orders ride along: 0, 1 or 2.
+   *
+   * Every per-order cost keys off this rather than off "is there a take-profit"
+   * — a second leg is a second keeper fee and a second order-box MBR, and the
+   * disclosure understating that is precisely the regression audit 8 recorded
+   * when the take-profit first became optional.
+   */
+  const legCount = (wantsTakeProfit ? 1 : 0) + (wantsStopLoss ? 1 : 0);
+  /**
+   * One protective leg at a time — see `PROTECTION_ENABLED`.
+   *
+   * Enforced HERE as well as in the card, because the card is advisory and this
+   * is the control. The restriction is the flag's own precondition about OCO:
+   * with a single leg there is no sibling to orphan, so the unobserved question
+   * does not arise. Lift both together, not one.
+   */
+  if (legCount > 1) {
+    throw new Error(
+      "A take-profit and a stop-loss cannot be set on the same position yet. Choose one for now.",
+    );
   }
   if (!Number.isFinite(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
     throw new Error("Slippage tolerance is out of range.");
@@ -306,7 +362,8 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // The keeper fee is only escrowed when a take-profit is attached. Demanding it
   // unconditionally refused a wallet that held exactly enough. Audit 8 MEDIUM 8.
   const usdcNeeded = micro(collateralUsd)
-    + (wantsTakeProfit ? micro(CHILD_KEEPER_FEE_USDC) : BigInt(0));
+    // One keeper fee per attached order, not per trade.
+    + BigInt(legCount) * micro(CHILD_KEEPER_FEE_USDC);
   if (BigInt(usdcHeld.amount) < usdcNeeded) {
     throw new Error(wantsTakeProfit
       ? "Not enough USDC for the position plus its keeper fee."
@@ -346,7 +403,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const fundsStorage = storagePayment > BigInt(0);
 
   // Now the ALGO requirement is knowable, so it can be both correct and honest.
-  const algoNeeded = minAlgoMicro(storagePayment, wantsTakeProfit);
+  const algoNeeded = minAlgoMicro(storagePayment, legCount);
   if (algoSpendable < algoNeeded) {
     throw new Error(
       `Needs about ${(Number(algoNeeded) / 1e6).toFixed(2)} spendable ALGO${
@@ -465,46 +522,55 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // A take-profit CLOSES the position, so its acceptable price sits on the
   // opposite side of the trigger from an open. See acceptableForClose.
   const tpAcceptable = acceptableForClose(takeProfitPrice12, side, slippageBps);
+  // A stop-loss closes too, so its acceptable price sits on the same side of its
+  // own trigger as a take-profit's.
+  const slAcceptable = wantsStopLoss
+    ? acceptableForClose(stopLossPrice12, side, slippageBps) : BigInt(0);
 
-  // ── The take-profit must not already be crossed ──────────────────────────
-  //
-  // Checked HERE and not only in the card, for two reasons. The card's bounds
-  // are computed from a snapshot up to a refresh cycle old, and the band moves;
-  // and a bound is our arithmetic about PEX, whereas this is PEX's own answer.
-  //
-  // A crossed take-profit executes on arrival, so the position opens and closes
-  // in one group: the user pays open fee, close fee, two builder fees, the
-  // keeper fee and exit impact, and holds nothing. On $50 at 9.27x that is
-  // about $1.58 — and the card had just promised a profit.
-  // Only when there IS one. A position opened with no target has no band to
-  // sit inside, and this check would otherwise read "no target" as "bad target".
-  const bounds = takeProfitBounds(probe);
-  if (wantsTakeProfit
-    && (takeProfitPrice12 < bounds.minPrice12 || takeProfitPrice12 > bounds.maxPrice12)) {
-    throw new Error(
-      "That take-profit price is no longer valid at the current market price. Check it and try again.",
-    );
-  }
-  // Skipped entirely without a target, not merely ignored: the SDK's own
-  // `quoteV2DecreaseOrder` validates the trigger and throws on zero, so calling
-  // it and discarding the answer surfaces as "raw Price12 must be positive"
-  // with no wallet prompt and no explanation.
-  const crossCheck = wantsTakeProfit
-    ? quoteTakeProfitCrossed({
+  /**
+   * ── A stop-loss must sit OUTSIDE the index band ──────────────────────────
+   *
+   * This compared the trigger to `oracle.indexPrice12` — a point. PEX does not:
+   * `v2OrderCrossedByOracle` measures a `DECREASE_STOP_LOSS` against the band,
+   * `indexMin <= trigger` for a long and `indexMax >= trigger` for a short. With
+   * `indexMin <= indexPrice <= indexMax`, every long stop in
+   * `[indexMin, indexPrice)` passed the point check and was crossed by PEX.
+   *
+   * A crossed stop executes on arrival: the position opens and closes in one
+   * group and the user holds nothing, having paid both fees, both builder fees,
+   * the keeper fee and exit impact — under a card that said the loss was capped.
+   * The identical defect was measured for the take-profit at $1.58 on a $50
+   * stake, and the guard this replaced claimed in its own comment to be that
+   * guard's mirror while having neither the band nor PEX's answer.
+   *
+   * Both layers now, as the take-profit has: our bounds first, because they are
+   * cheap and give a usable message, then PEX's own verdict.
+   */
+  if (wantsStopLoss) {
+    const slBounds = stopLossBounds(probe);
+    if (stopLossPrice12 < slBounds.minPrice12 || stopLossPrice12 > slBounds.maxPrice12) {
+      throw new Error(
+        side === "long"
+          ? "That stop-loss is too close to the current price — it would trigger the moment the position opened, closing it straight away for a loss in fees. Move it further below."
+          : "That stop-loss is too close to the current price — it would trigger the moment the position opened, closing it straight away for a loss in fees. Move it further above.",
+      );
+    }
+    const slCross = quoteProtectiveOrderCrossed({
+      orderKind: V2_ORDER_KIND.DECREASE_STOP_LOSS,
       state, oracle, side, owner: sender, notionalUsd,
-      triggerPrice12: takeProfitPrice12,
-      acceptablePrice12: tpAcceptable,
+      triggerPrice12: stopLossPrice12,
+      acceptablePrice12: slAcceptable,
       keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
       collateralAssetId: COLLATERAL_ASSET_ID,
       builderAddress: BUILDER_ADDRESS,
-    })
-    : { blocking: false, crossed: false, reasons: [] as string[] };
-  if (crossCheck.blocking) {
-    throw new Error(
-      crossCheck.crossed
-        ? "That take-profit would trigger immediately at the current price, closing the position as soon as it opened. Pick a target further away."
-        : `The exchange will not accept that take-profit: ${crossCheck.reasons.join(", ")}`,
-    );
+    });
+    if (slCross.blocking) {
+      throw new Error(
+        slCross.crossed
+          ? "That stop-loss would trigger immediately at the current price, closing the position as soon as it opened. Move it further away."
+          : `The exchange will not accept that stop-loss: ${slCross.reasons.join(", ")}`,
+      );
+    }
   }
 
   stage("building");
@@ -552,6 +618,23 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     indexAssetId: Number(state.core.index_asset_id),
     longAssetId: Number(state.core.long_asset_id),
     shortAssetId: Number(state.core.short_asset_id),
+    ...(wantsStopLoss ? { stopLoss: {
+      triggerPrice: stopLossPrice12,
+      acceptablePrice: slAcceptable,
+      sizeUsdDelta: micro(notionalUsd),
+      collateralAmount: BigInt(0),
+      keeperFeeAssetId: COLLATERAL_ASSET_ID,
+      keeperFeeAmount: keeperFee,
+      outputSwapMode: BigInt(0),
+      minPrimaryOutputAmount: BigInt(0),
+      minSecondaryOutputAmount: BigInt(0),
+      timeInForce: BigInt(TAKE_PROFIT_TIME_IN_FORCE),
+      expiryTime: BigInt(0),
+      // The same OrderOps-targeted payload the take-profit leg uses: both
+      // children are submitted to OrderOps, so both are bound to that app.
+      oracleMessage: childOracle.message,
+      oracleSignature: childOracle.signature,
+    } } : {}),
     ...(wantsTakeProfit ? { takeProfit: {
       triggerPrice: takeProfitPrice12,
       acceptablePrice: tpAcceptable,
@@ -576,28 +659,38 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     v2MarketXalgoYieldVaultAppId: PEX_APPS.marketXAlgoYieldVault,
     v2AdminControlAppId: PEX_APPS.adminControl,
   };
-  const group = (wantsTakeProfit
+  const group = (legCount > 0
     ? buildV2MarketOpenWithAttachedOrdersTransactions(openInput as never, sp)
     : buildV2OpenOrIncreaseWithStorageTransactions(openInput as never, sp)) as unknown[];
 
   stage("checking");
-  const assertion = wantsTakeProfit
-    ? assertOpenWithTakeProfit(
-    group,
-    {
-      storagePaymentMicro: storagePayment,
-      sender, marketId, side: side === "long" ? 1 : 2,
-      collateralAssetId: COLLATERAL_ASSET_ID,
-      collateralAmountMicro: micro(collateralUsd),
-      sizeUsdDeltaMicro: micro(notionalUsd),
-      acceptablePrice12: acceptablePrice,
-      executionPrice12: probe.executionPrice12,
-      indexPrice12: oracle.indexPrice12,
-      slippageBps,
-      oracleMessage: oracle.message,
-      oracleSignature: oracle.signature,
-    },
-    {
+  const shownOpen = {
+    storagePaymentMicro: storagePayment,
+    sender, marketId, side: (side === "long" ? 1 : 2) as 1 | 2,
+    collateralAssetId: COLLATERAL_ASSET_ID,
+    collateralAmountMicro: micro(collateralUsd),
+    sizeUsdDeltaMicro: micro(notionalUsd),
+    acceptablePrice12: acceptablePrice,
+    executionPrice12: probe.executionPrice12,
+    indexPrice12: oracle.indexPrice12,
+    slippageBps,
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+  };
+  /**
+   * One leg per attached order, each naming the slot its kind belongs in.
+   *
+   * The ORDER of this array does not matter — `assertOpenWithAttachedOrders`
+   * locates each leg's escrow, MBR and submit call by that leg's own child order
+   * id, never by position. That is the point of the rewrite: the single-leg
+   * version found the escrow by elimination ("the transfer that is not the
+   * collateral"), which with two legs would have checked one of them twice and
+   * the other not at all.
+   */
+  const legs: DisplayedLeg[] = [
+    ...(wantsTakeProfit ? [{
+      orderKind: ORDER_KIND_TAKE_PROFIT,
+      childOrderId: alloc.baseOrderId + BigInt(1),
       triggerPrice12: takeProfitPrice12,
       acceptablePrice12: tpAcceptable,
       sizeUsdDeltaMicro: micro(notionalUsd),
@@ -606,8 +699,22 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       slippageBps,
       oracleMessage: childOracle.message,
       oracleSignature: childOracle.signature,
-    },
-  )
+    }] : []),
+    ...(wantsStopLoss ? [{
+      orderKind: ORDER_KIND_STOP_LOSS,
+      childOrderId: alloc.baseOrderId + BigInt(2),
+      triggerPrice12: stopLossPrice12,
+      acceptablePrice12: slAcceptable,
+      sizeUsdDeltaMicro: micro(notionalUsd),
+      keeperFeeMicro: keeperFee,
+      baseOrderId: alloc.baseOrderId,
+      slippageBps,
+      oracleMessage: childOracle.message,
+      oracleSignature: childOracle.signature,
+    }] : []),
+  ];
+  const assertion = legCount > 0
+    ? assertOpenWithAttachedOrders(group, shownOpen, legs)
     // The bare open. SHAPE_OPEN was measured for exactly this group and has
     // been sitting unreachable since take-profit became mandatory.
     : assertOpenGroup(group, {

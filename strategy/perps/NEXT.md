@@ -153,29 +153,32 @@ two together rather than separately.
   `openLimitOrder`, `closePosition`, `cancelOrder` — the last confirmed by a
   full refund (6 USDC + 0.1 USDC keeper fee + 100,200 µALGO MBR). See
   [AUDIT.md](./AUDIT.md#cancel-measured-end-to-end-2026-10-04).
-- **Stop-loss is not built, but the codebase reads as though it were.**
-  `stopLossPrice12` exists on the card's state and is hardcoded `null`
-  (`PerpsCard.tsx:547`); `PositionsPanel.tsx:86` labels order kind 3 "Stop loss"
-  and `PerpsView.tsx:79` draws an amber overlay line for it. None of it can ever
-  fire, because no write path constructs a `DECREASE_STOP_LOSS` order — the
-  constant appears only in a test. The scaffolding is the hazard: it survived a
-  grep during the disclosure fix and nearly put "stop-loss is optional" into the
-  risk modal, which would have advertised a protection that does not exist.
+- ~~**Stop-loss is not built, but the codebase reads as though it were.**~~
+  **BUILT 2026-10-05, stage one: market entries.** Optional, alongside an
+  optional take-profit, in the reserved base+2 slot. `PROTECTION_ENABLED` is
+  true and the placeholder that said it was not enabled is gone — the panel's
+  kind-3 label and the chart's amber overlay line are reachable for the first
+  time, having been written for this and inert since.
 
-  Building it is mostly done already. `submit_linked_order` takes
-  `orderKind: 3`, the assertion shapes are parameterised by kind, and a
-  stop-loss is the same child-leg shape as a take-profit with the trigger on the
-  other side of the index. What is genuinely new is the direction check — a
-  stop-loss trigger must be *below* the index for a long and *above* for a
-  short, the mirror of `quoteTakeProfitCrossed` — and the keeper-fee disclosure,
-  since a second trigger is a second fee and a second 99,700 µALGO box.
+  The assertion was generalised to N legs on the way, which was the real work:
+  `assertOpenWithTakeProfit` located the keeper-fee escrow by elimination ("the
+  transfer that is not the collateral"), unambiguous with one child and wrong
+  with two — one leg would have been checked twice and the other not at all.
+  Legs are now bound by the note the SDK stamps with their own child order id.
+  Six hand-maintained shape constants became `openShape(legs, storage)`,
+  asserted equal to every measured constant rather than replacing them.
 
-  Until it is built, either remove the dead scaffolding or leave it with a
-  comment saying it is inert. Right now it says neither.
-- ~~Audit 8 has not run.~~ **Run 2026-10-02 and remediated in `5f85472`** — two
-  ship-blockers, four HIGH, three MEDIUM, five LOW, plus a regression its own
-  review caught in the remediation. See
-  [AUDIT.md](./AUDIT.md#audit-8-2026-10-02--and-the-offset-that-hid-behind-a-coincidence).
+  **One protective leg at a time** — take-profit or stop-loss, never both —
+  enforced in the card and again in the client. `PROTECTION_ENABLED`'s own
+  docstring says to allow a linked pair only after a TestNet TP/SL has one leg
+  execute and the sibling is observed removed. That is still unobserved; with a
+  single leg there is no sibling, so the precondition is satisfied rather than
+  waived. Lifting the rule needs that TestNet run and a funded TestNet account.
+
+  **Limit entries still have no stop-loss.** `assertOpenLimitGroup` locates its
+  child the same way (`submits.find(t => t !== entry)`) and so breaks
+  identically, and its child leg is only partly arg-checked already. Stage two.
+
 - **Audit 9 has not run.** Unaudited since `5f85472`: the remediation itself.
   Three areas deserve naming rather than a blanket note — the derived
   "what leaves your wallet" figures, which are new arithmetic on the signing

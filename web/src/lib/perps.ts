@@ -364,19 +364,29 @@ export const MAX_KEEPER_FEE_ESCROW_USDC = 0.5;
  * additive — no contract change — so the behaviour always existed; what changed
  * is that it is now stated.
  *
- * NOT cleared: nobody has watched it happen. `v2_order_executed` has still never
- * fired on MainNet, so OCO remains unobserved by us. A published table is better
- * evidence than a chat message and is still not a measurement — and this codebase
- * has already been burned once by treating a described cleanup as a verified one.
+ * ── On, with ONE protective leg at a time ─────────────────────────────────
+ * The precondition below was about OCO: if a take-profit and a stop-loss are
+ * both attached and one executes, does PEX remove the sibling? Unobserved —
+ * `v2_order_executed` has still never fired on MainNet for us, and a published
+ * table is better evidence than a chat message and still not a measurement.
+ * This codebase has been burned once already by treating a described cleanup as
+ * a verified one.
  *
- * Flip this only after a TestNet position with a linked TP/SL has one leg execute
- * and the sibling is observed removed, with the receipt read back. Needs a funded
- * TestNet account.
+ * So the flag is on and the card allows a take-profit OR a stop-loss, never
+ * both. With a single leg there is no sibling to orphan, so the OCO question
+ * does not arise — the precondition is SATISFIED for what ships, not waived.
+ * The two-leg machinery is built, asserted and tested behind that rule.
  *
- * Not a size constraint: open + both brackets measures 13 transactions against a
- * ceiling of 16 and always fits.
+ * To lift the one-leg rule: a TestNet position with a linked TP/SL has one leg
+ * execute and the sibling is observed removed, with the receipt read back.
+ * Needs a funded TestNet account. Until then, two legs would risk leaving a
+ * user a live stop against a closed position — holding a keeper fee and 99,700
+ * µALGO of MBR in a resting order they did not know to cancel.
+ *
+ * Not a size constraint: open + both brackets measures 13 transactions against
+ * a ceiling of 16 and always fits.
  */
-export const PROTECTION_ENABLED = false;
+export const PROTECTION_ENABLED = true;
 
 // ── Degradation ───────────────────────────────────────────────────────────────
 /**
