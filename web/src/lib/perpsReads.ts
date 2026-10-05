@@ -389,6 +389,27 @@ export async function assertBuilderAddressUsable(
   return { ok: !problem, optedIn, spendableAlgo, problem };
 }
 
+/**
+ * `V2_ORDER_LINK_MODE_FACTOR` — the order box's `flags` word packs
+ * `mode * 2^61 + linkBaseOrderId`.
+ */
+export const ORDER_LINK_MODE_FACTOR = BigInt(1) << BigInt(61);
+
+/**
+ * The id of the order this one is a CHILD of, or 0 when it stands alone.
+ *
+ * Mirrors the SDK's `orderLinkBaseOrderId`: with no explicit field it reads the
+ * packed `flags` word, `v2OrderLinkBase(flags) = flags % 2^61`
+ * (`transactions.js:691`, `orderLifecycle.js:268-276`).
+ *
+ * Needed because an order id ALONE cannot say whether a box sitting in a
+ * bracket's reserved slot is that bracket's child or an unrelated order that
+ * happens to occupy the id — which is exactly the state the old `highest + 1`
+ * allocator could leave behind. See `cancelOrder`.
+ */
+export const orderLinkBaseOrderId = (o: OrderState): bigint =>
+  o.flags > BigInt(0) ? o.flags % ORDER_LINK_MODE_FACTOR : BigInt(0);
+
 // ── Order id allocation ───────────────────────────────────────────────────────
 
 /** `v2ExpectedLinkedChildOrderId`: take-profit is base+1, stop-loss is base+2. */
@@ -422,6 +443,19 @@ export type BaseOrderIdAllocation = {
  * rejected on chain because the box already exists. No funds move. The wallet
  * prompt is wasted, which is why this is read immediately before building.
  */
+/**
+ * The allocation rule, separated from the read so it can be tested.
+ *
+ * The property that matters is not the arithmetic but the invariant: the three
+ * ids this returns must not intersect any id already on chain, NOR any slot an
+ * existing bracket has reserved. `allocateBaseOrderId` cannot assert that
+ * itself without a network, so the rule lives here and the test sweeps it.
+ */
+export function nextBaseOrderId(existing: readonly bigint[]): bigint {
+  const highest = existing.reduce((a, b) => (b > a ? b : a), BigInt(0));
+  return highest + ORDER_ID_STRIDE;
+}
+
 export async function allocateBaseOrderId(
   algod: algosdk.Algodv2, owner: string,
 ): Promise<BaseOrderIdAllocation> {
@@ -430,9 +464,34 @@ export async function allocateBaseOrderId(
   // hand out one that is already resting on chain.
   const existing = await listOrderIds(algod, owner);
 
-  const highest = existing.reduce((a, b) => (b > a ? b : a), BigInt(0));
-  // base must be > 0; the whole stride sits above every id already in use.
-  const baseOrderId = highest + BigInt(1);
+  /**
+   * `+ STRIDE`, not `+ 1` — audit 9, MEDIUM 2.
+   *
+   * This was `highest + 1`, commented "the whole stride sits above every id
+   * already in use". That is only true when every RESERVED slot is occupied,
+   * and `listOrderIds` enumerates **existing boxes**: a bracket parent reserves
+   * three ids and, with no children attached, occupies exactly one of them.
+   *
+   * So the next allocation could land inside a live bracket's stride. Reachable
+   * in two steps: a bare limit order takes base 1 and creates box 1 alone, then
+   * the next allocation sees `{1}` and picks base 2 — which is order 1's
+   * take-profit slot. Cancelling order 1 then declares boxes 1, 2 and 3, and
+   * `cancel_order` probes slots 2 and 3, where slot 2 is now someone's live
+   * order. `assertCancelGroup` cannot catch it: box 2 is legitimately inside the
+   * stride it was told to expect.
+   *
+   * An order at id K reserves at most K+2, so for every K <= highest,
+   * K+2 < highest+3. Stepping by the stride clears every reservation any
+   * existing order can hold, without reading a single order box to work out
+   * which ids are parents — the cheaper bound is also the more obviously
+   * correct one, and it needs no extra network round trip.
+   *
+   * Cost is id space, and there is none worth counting: `ORDER_ID_MAX_BASE` is
+   * 2^61 - 3, so an account would need ~7.7e17 orders to exhaust it. A fresh
+   * account now starts at 3 rather than 1, which `validateLinkBaseOrderId`
+   * accepts (it requires only 0 < base <= 2^61 - 3).
+   */
+  const baseOrderId = nextBaseOrderId(existing);
   if (baseOrderId > ORDER_ID_MAX_BASE) {
     throw new Error("perps: order id space exhausted for this account");
   }

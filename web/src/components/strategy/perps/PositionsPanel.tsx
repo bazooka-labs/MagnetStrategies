@@ -20,6 +20,7 @@ import { useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import { cancelOrder, closePosition } from "@/lib/perpsClient";
+import { exitBanner } from "@/lib/perpsPreflight";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
@@ -129,21 +130,29 @@ export function PositionsPanel() {
    */
   const preflight = usePerpsPreflight();
   /**
-   * `!== true`, not `=== false`.
+   * The EXIT rule, not the open rule — audit 9, HIGH 1.
    *
-   * The previous version's own comment said null must not read as permission,
-   * and then let it: while the first check was in flight `blocked` was null, the
-   * banner was hidden and Close was offered — then `closePosition` consulted the
-   * same preflight and threw. That is the "offered, then refuses" defect HIGH 6
-   * was about, reintroduced one layer up.
+   * This gated on `canOpen !== true`, and its own comment claimed that was "the
+   * same gate the write paths use". It was not. `closePosition` and
+   * `cancelOrder` gate on `exitBlocked(kind)`, which blocks only on `drift` and
+   * `unreachable`; `canOpen` is additionally false for `builder` (our treasury's
+   * own USDC opt-in) and `layout` (the leverage ceiling), neither of which an
+   * exit touches.
    *
-   * `usePerpsPreflight` states the contract explicitly: null means "not yet",
-   * never "yes". The card honours it with `canOpen === true`; this now does too.
+   * So on those two kinds the client would have built and submitted a close
+   * happily while this panel disabled the button — and the panel is the only
+   * path a user has. The whole point of `EXIT_BLOCKS` is that a user must never
+   * be trapped in a position by a misconfiguration on OUR side; gating here on
+   * `canOpen` rebuilt that trap one layer up, which is the same shape of mistake
+   * HIGH 6 was.
+   *
+   * `null` still means "not yet", never "yes". That ordering matters: check
+   * `checking` FIRST, because a null kind must not fall through to "not
+   * blocked". The previous version's comment said this and then let null read as
+   * permission, which is how it got reintroduced once already.
    */
   const checking = preflight.canOpen === null;
-  const blocked = preflight.canOpen !== true
-    ? (preflight.reason ?? "Checking the exchange contracts…")
-    : null;
+  const blocked = exitBanner(preflight.canOpen, preflight.kind, preflight.reason);
 
   const [closing, setClosing] = useState<string | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);

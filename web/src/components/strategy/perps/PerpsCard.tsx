@@ -26,6 +26,13 @@ import {
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
 } from "@/lib/perps";
+// The MBRs the client actually bills, so the disclosure cannot drift from the
+// group it describes — audit 9, MEDIUM 3.
+import {
+  LIMIT_ORDER_BOX_MBR_MICRO_ALGO,
+  ORDER_BOX_MBR_MICRO_ALGO,
+  STORAGE_ESCROW_MICRO_ALGO,
+} from "@/lib/perpsGroup";
 import { Seam } from "./Seam";
 import {
   minimumCollateralUsd,
@@ -606,18 +613,56 @@ export function PerpsCard({
    * Deriving it from the same constants the client bills against means the text
    * cannot drift from the group again.
    *
-   * Measured, and matching this arithmetic: market bare 34,000 µALGO of fees;
-   * market with target 51,000 + 99,700 of order box; limit bare 20,000 +
-   * 100,200; limit with target 36,000 + 100,200 + 99,700.
+   * ── The fee figures ───────────────────────────────────────────────────────
+   * Group fee totals observed on real MainNet groups:
+   *
+   *   market, no target     34,000 µALGO   (twice, two different accounts)
+   *   market with target    51,000         + 99,700 order box
+   *   limit, no target      18,000         + 100,200 order box
+   *   limit with target     36,000         + 100,200 + 99,700
+   *
+   * Audit 9 LOW 5: this comment previously claimed 20,000 for a bare limit and
+   * called the set "measured". The measured value is 18,000. These are also not
+   * constants — the total is per-transaction minFee times the transaction count,
+   * and the carrier count varies with resource packing, so treat them as the
+   * observed figure rounded for display. The line says "about" and errs high,
+   * which is the safe direction for a disclosure; claiming measurement it did
+   * not have is the part that needed fixing.
    */
   const moves = useMemo(() => {
-    const feeMicro = isLimit ? (tpEmpty ? 20_000 : 36_000) : (tpEmpty ? 34_000 : 51_000);
-    // One box per resting order. A market open creates one only for its
-    // take-profit; a limit entry creates its own, plus the child's.
-    const boxMicro = (isLimit ? 100_200 : 0) + (tpEmpty ? 0 : 99_700);
+    const feeMicro = isLimit ? (tpEmpty ? 18_000 : 36_000) : (tpEmpty ? 34_000 : 51_000);
+    /**
+     * One box per resting order. A market open creates one only for its
+     * take-profit; a limit entry creates its own, plus the child's.
+     *
+     * Audit 9 MEDIUM 3: these were the literals 100_200 and 99_700, under a
+     * comment claiming the figures were derived from the constants the client
+     * bills against. They were not — so the drift this was written to close was
+     * still open, behind a comment saying it was shut. Imported now, converted
+     * at the point of use because the constants are bigint and this arithmetic
+     * is in number.
+     */
+    const boxMicro = (isLimit ? Number(LIMIT_ORDER_BOX_MBR_MICRO_ALGO) : 0)
+      + (tpEmpty ? 0 : Number(ORDER_BOX_MBR_MICRO_ALGO));
     // The keeper fee is escrowed per resting order, for the same reason.
     const keeperCount = (isLimit ? 1 : 0) + (tpEmpty ? 0 : 1);
-    const firstTradeExtra = 100_200;
+    /**
+     * A DIFFERENT quantity that happens to equal the limit order-box MBR: the
+     * one-off storage escrow a first-time trader funds.
+     *
+     * It gets its own constant rather than sharing the order-box import, so a
+     * change to one cannot silently move the other — but it is still an IMPORT.
+     * Review caught this left as the literal `100_200` under a comment arguing
+     * for the separation, which conflated "separate quantity" with "hard-code
+     * it": the right constant already existed in the module this file now
+     * imports from, and it is the same one `assertOpenGroup` checks the storage
+     * payment against. It is derived from the SDK's
+     * `V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO`, so it tracks PEX.
+     *
+     * That is the audit-9 MEDIUM 3 defect re-created inside its own fix, which
+     * is why the comment is kept rather than tidied away.
+     */
+    const firstTradeExtra = Number(STORAGE_ESCROW_MICRO_ALGO);
     return {
       keeperUsd: keeperCount * CHILD_KEEPER_FEE_USDC,
       algo: (feeMicro + boxMicro) / 1e6,

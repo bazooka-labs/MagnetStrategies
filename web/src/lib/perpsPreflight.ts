@@ -19,27 +19,79 @@ import algosdk from "algosdk";
 import { BUILDER_ADDRESS, COLLATERAL_ASSET_ID } from "./perps";
 import { assertBuilderAddressUsable, dynamicOiLayoutProblem, verifyProgramPins } from "./perpsReads";
 
+/** Every refusal the preflight can return. One source for the map below. */
+export type PreflightKind =
+  | "ok"
+  | "drift"
+  /** Builder address not opted in to the collateral asset. Blocks exits too. */
+  | "builder_optin"
+  /** Builder address below its minimum balance. Does NOT block exits. */
+  | "builder_balance"
+  | "layout"
+  | "unreachable";
+
 /**
- * Which refusals apply to EXITING, as opposed to opening.
+ * Which refusals block an EXIT (close, cancel), as opposed to an open.
  *
- * Review of the audit-8 remediation (M-3): gating close and cancel on `canOpen`
- * swept in two kinds that cannot affect them.
+ * ── The builder split, and the claim that was false ────────────────────────
+ * Audit 8 excluded `builder` from the exit gate on the stated grounds that "a
+ * close pays no builder fee we need an opt-in for". **That is wrong.** The close
+ * group charges one: `closePosition` passes
+ * `builderFee: { BUILDER_ADDRESS, POSITION_BUILDER_FEE_BPS }`, and
+ * `assertCloseGroup` REQUIRES the close leg's builder tuple to be exactly that —
+ * it fails with `builder_address` otherwise. Audit 9's own remediation repeated
+ * the claim in three comments before review caught it.
  *
- * - `builder` is `assertBuilderAddressUsable` — OUR treasury's USDC opt-in.
- *   A cancel group has zero transfers and zero payments, and a close pays no
- *   builder fee we need an opt-in for. Blocking escrow recovery on our own
- *   misconfiguration is the trade-blocking pattern, not caution.
- * - `layout` is `dynamicOiLayoutProblem`, which sets the leverage CEILING.
- *   `cancel_order` takes one uint64; there is no ceiling to get wrong.
+ * So the two causes behind the old single `builder` kind are not alike, and
+ * `BuilderCheck` already distinguishes them:
  *
- * `drift` and `unreachable` do apply: a redeployed app or an unreadable chain
- * means we would be guessing at the ABI, and that is no safer because the user
- * is trying to get out.
+ * - **not opted in** — the close's builder-fee transfer fails at the chain, so
+ *   the close fails. This MUST block exits, or the panel offers a button that
+ *   dies in simulation with an opaque message: "offered, then refuses", which is
+ *   the defect this lineage keeps reintroducing.
+ * - **below minimum balance** — receiving an ASA needs no spendable ALGO, so a
+ *   close is unaffected. This must NOT block exits; trapping a user in a
+ *   leveraged position over our treasury's ALGO balance is the self-inflicted
+ *   trap the narrow gate exists to prevent.
+ *
+ * `layout` is `dynamicOiLayoutProblem`, which sets the leverage CEILING. It is a
+ * local three-way declaration check and the close path never reads `doi:`, so it
+ * is genuinely irrelevant to an exit.
+ *
+ * `drift` and `unreachable` block everything: a redeployed app or an unreadable
+ * chain means we would be guessing at the ABI, and that is no safer because the
+ * user is trying to get out.
+ *
+ * ── Why a total Record and not a Set ───────────────────────────────────────
+ * This was `ReadonlySet<string>`, and audit 9 (LOW 4) showed a typo in it
+ * compiled with ZERO errors: `"drifttypo"` type-checks, and `drift` silently
+ * stops blocking exits. A total `Record` makes that impossible: every key must be
+ * a real kind, and every kind must be given an answer.
  */
-export const EXIT_BLOCKING_KINDS: ReadonlySet<string> = new Set(["drift", "unreachable"]);
+export const EXIT_BLOCKS: Record<PreflightKind, boolean> = {
+  ok: false,
+  drift: true,
+  unreachable: true,
+  builder_optin: true,
+  builder_balance: false,
+  layout: false,
+};
+
+/** Whether this refusal should stop a close or a cancel. */
+/**
+ * Whether this refusal should stop a close or a cancel.
+ *
+ * `?? true`, not a bare lookup. The `Record` is total at COMPILE time, but a
+ * value arriving from outside the type — a cached result from an older build,
+ * say — indexes to `undefined` and reads as "does not block", which is the same
+ * runtime fail-open the `Set` had. Review of audit 9 (LOW 5) caught the comment
+ * above claiming the Record closed a hole it had only closed statically. An
+ * unknown refusal blocks.
+ */
+export const exitBlocked = (kind: PreflightKind): boolean => EXIT_BLOCKS[kind] ?? true;
 
 export type PreflightResult = {
-  /** False means opens must be refused. Exits: see `EXIT_BLOCKING_KINDS`. */
+  /** False means opens must be refused. Exits: see `exitBlocked`. */
   canOpen: boolean;
   /**
    * User-facing reason opens are refused, or null.
@@ -61,7 +113,7 @@ export type PreflightResult = {
    * outcome the comment below says it prevents. Copy is for people; this is for
    * code.
    */
-  kind: "ok" | "drift" | "builder" | "layout" | "unreachable";
+  kind: PreflightKind;
   checkedAt: number;
 };
 
@@ -132,8 +184,12 @@ async function run(algod: algosdk.Algodv2): Promise<PreflightResult> {
       // Every open would fail at the chain with the builder-fee transfer, which
       // presents as our bug because it is one. Refuse early and plainly rather
       // than letting each user discover it at signing time.
+      // The cause decides whether EXITS are blocked too — see `EXIT_BLOCKS`. A
+      // missing opt-in breaks the close's builder fee as surely as an open's; a
+      // low ALGO balance does not, because receiving an ASA costs the receiver
+      // nothing.
       return {
-        canOpen: false, kind: "builder",
+        canOpen: false, kind: builder.optedIn ? "builder_balance" : "builder_optin",
         reason: "Trading is temporarily unavailable. This is a configuration problem on our side, not with your wallet.",
         detail: `builder address: ${builder.problem}`,
         checkedAt,
@@ -186,4 +242,28 @@ export function preflight(algod: algosdk.Algodv2, force = false): Promise<Prefli
 export function resetPreflightCache(): void {
   cached = null;
   inFlight = null;
+}
+
+/**
+ * The exit banner text for a positions panel, or null when exits are allowed.
+ *
+ * Extracted from `PositionsPanel` so it can be tested. The panel's gate is the
+ * thing audit 9 HIGH 1 found broken, and it had NO coverage: reverting it to
+ * `canOpen !== true`, or reordering the ternary so a null kind read as
+ * permission, left the whole suite green. A rule that only exists inside JSX is
+ * a rule nothing can check.
+ *
+ * Ordering is the substance, not the formatting:
+ *   1. `null` means the first check has not landed. It must read as "not yet",
+ *      never as permission — that regression has been introduced twice.
+ *   2. Otherwise block only on refusals that actually affect an exit.
+ */
+export function exitBanner(
+  canOpen: boolean | null,
+  kind: PreflightKind | null,
+  reason: string | null,
+): string | null {
+  if (canOpen === null || kind === null) return "Checking the exchange contracts…";
+  if (exitBlocked(kind)) return reason ?? "Trading is unavailable right now.";
+  return null;
 }

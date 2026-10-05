@@ -47,6 +47,8 @@ import {
 } from "./perps";
 import {
   allocateBaseOrderId,
+  orderLinkBaseOrderId,
+  readOrders,
   assertBaseOrderIdFree,
   readMarketState,
   readPosition,
@@ -57,7 +59,7 @@ import {
 } from "./perpsReads";
 import { getOraclePayload } from "./perpsOracle";
 import { installProtocolManifest } from "./perpsManifest";
-import { EXIT_BLOCKING_KINDS, preflight } from "./perpsPreflight";
+import { exitBlocked, preflight } from "./perpsPreflight";
 import {
   assertCancelGroup,
   assertCloseGroup,
@@ -1126,6 +1128,48 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
   const attachedOrderIds = input.isBracketParent
     ? [ownerOrderId + BigInt(1), ownerOrderId + BigInt(2)]
     : (input.attachedOrderIds ?? []);
+
+  /**
+   * Refuse if a reserved slot holds an order that is NOT this one's child.
+   *
+   * ── Why this is needed, and only for accounts that already exist ──────────
+   * `allocateBaseOrderId` now steps by the stride, so no NEW allocation can land
+   * inside a live bracket's reservation. But ids already on chain were handed
+   * out by the old `highest + 1` rule, which could: a bare limit order creates
+   * box N alone while reserving {N, N+1, N+2}, so the next allocation took N+1.
+   *
+   * For those accounts the stride declaration above names a box belonging to an
+   * unrelated live order, and `assertCancelGroup` cannot catch it — N+1 is
+   * legitimately inside the stride it was told to expect. Review of audit 9
+   * (HIGH 2) pointed out that the forward fix does nothing for them, and it is
+   * right: this is the part that does.
+   *
+   * The check is an ownership question, not an id question, so it reads the link
+   * the protocol itself uses: a child's `flags` word packs its parent's id, and
+   * `orderLinkBaseOrderId` mirrors the SDK's own accessor. A slot that is empty
+   * is fine and must still be declared — the contract probes it either way, which
+   * is the whole reason the stride is declared at all.
+   *
+   * Refusing is the conservative end. The alternative is submitting a group that
+   * asks `cancel_order` to clean up a box the user still wants, and the cost of
+   * being wrong in that direction is someone else's resting order.
+   */
+  if (input.isBracketParent) {
+    const siblings = await readOrders(algod, sender);
+    const bySlot = new Map(siblings.map((o) => [String(o.owner_order_id), o]));
+    for (const slot of attachedOrderIds) {
+      const occupant = bySlot.get(String(slot));
+      if (!occupant) continue;
+      const parent = orderLinkBaseOrderId(occupant);
+      if (parent !== ownerOrderId) {
+        throw new Error(
+          `This order cannot be cancelled safely: order ${slot} sits in its reserved range but belongs to `
+          + `${parent === BigInt(0) ? "no bracket" : `order ${parent}`}. Cancelling would ask the exchange to `
+          + `clean up an order you did not choose. Cancel order ${slot} first, or contact us.`,
+        );
+      }
+    }
+  }
   const stage = (s: OpenStage) => input.onStage?.(s);
   if (ownerOrderId <= BigInt(0)) throw new Error("That order id is not valid.");
 
@@ -1143,7 +1187,7 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
   // Same narrow set as closing, and for the same reason — a cancel group moves
   // nothing at all, so our treasury's opt-in and the leverage ceiling are
   // irrelevant to it.
-  if (EXIT_BLOCKING_KINDS.has(pre.kind)) {
+  if (exitBlocked(pre.kind)) {
     if (pre.detail) console.warn(`perps: preflight refused the cancel — ${pre.detail}`);
     throw new Error(pre.reason ?? "Trading is unavailable right now.");
   }
@@ -1299,8 +1343,8 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   // safer because the user is trying to get out — but our own builder-address
   // configuration and the leverage ceiling have nothing to do with closing, and
   // blocking escrow recovery on them would be a self-inflicted trap. See
-  // `EXIT_BLOCKING_KINDS`.
-  if (EXIT_BLOCKING_KINDS.has(pre.kind)) {
+  // `EXIT_BLOCKS`.
+  if (exitBlocked(pre.kind)) {
     if (pre.detail) console.warn(`perps: preflight refused the close — ${pre.detail}`);
     throw new Error(pre.reason ?? "Trading is unavailable right now.");
   }

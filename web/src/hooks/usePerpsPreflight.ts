@@ -52,6 +52,18 @@ export function usePerpsPreflight() {
      * to refuse until the programs have been verified.
      */
     canOpen: result ? result.canOpen : null,
+    /**
+     * WHICH refusal this is, or null while the first check is in flight.
+     *
+     * Exposed because `canOpen` alone cannot express the exit rule: closing and
+     * cancelling are blocked by a narrower set of refusals than opening is, and
+     * without this field a consumer has no choice but to gate exits on
+     * `canOpen`. That is exactly what `PositionsPanel` did, which left audit 8's
+     * HIGH 6 fix inert on the only path a user actually takes. Audit 9, HIGH 1.
+     *
+     * Same contract as `canOpen`: null means "not yet", never "no refusal".
+     */
+    kind: result ? result.kind : null,
     reason: result?.reason ?? null,
     checking,
     recheck,
