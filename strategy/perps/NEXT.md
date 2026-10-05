@@ -179,12 +179,17 @@ two together rather than separately.
   child the same way (`submits.find(t => t !== entry)`) and so breaks
   identically, and its child leg is only partly arg-checked already. Stage two.
 
-- **Audit 9 has not run.** Unaudited since `5f85472`: the remediation itself.
-  Three areas deserve naming rather than a blanket note — the derived
-  "what leaves your wallet" figures, which are new arithmetic on the signing
-  screen; `EXIT_BLOCKING_KINDS`, which deliberately narrows a gate; and the two
-  new test files, which are now the only thing standing between a future offset
-  error and a shipped one.
+- ~~**Audit 9 has not run.**~~ **Ran 2026-10-04, remediated in `d45f0f5`.**
+  Five findings, no ship-blocker; the serious one was a user who could not EXIT
+  because the panel gated closes on the open rule. Its remediation's own review
+  then caught a defect the remediation introduced — see
+  [AUDIT-9-REMEDIATION.md](./AUDIT-9-REMEDIATION.md).
+- **Audit 10 has not run.** Unaudited since `d45f0f5`, which is the audit-9
+  remediation plus the stop-loss change (`e2adc4d`). The latter is the larger
+  surface: `assertOpenWithTakeProfit` was replaced by an N-leg
+  `assertOpenWithAttachedOrders`, six shape constants became a derivation, and
+  the stop-loss direction guard was rebuilt twice — the first version compared
+  against the index point where PEX uses the band, which review caught.
 
 ---
 

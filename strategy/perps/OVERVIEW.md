@@ -26,8 +26,12 @@ optional rather than mandatory, which it could not be until closing existed.
 group shape still unexercised by a real signature is `SHAPE_OPEN_STORAGE`, which
 needs a first-time trader opening with no target.
 
-No contract is deployed because none exists. **Audit 9 has not run** — the tree is
-unaudited since `5f85472`, which includes the audit-8 remediation itself.
+No contract is deployed because none exists. **Audit 9 ran on 2026-10-04** —
+five findings, no ship-blocker — and was remediated in `d45f0f5`.
+
+**Stop-loss ships on market entries** (2026-10-05), one protective leg at a
+time: take-profit or stop-loss, never both, until PEX's sibling cleanup is
+observed on TestNet. Limit entries do not carry one yet.
 
 The directory, route, component names and tab key all still say `perps`; the UI
 says Trading Terminal. That is a label, not a restructure.

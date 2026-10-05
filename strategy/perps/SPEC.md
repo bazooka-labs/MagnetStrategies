@@ -11,8 +11,16 @@ none exists: every economic action is a PEX call signed by the user. The one
 group shape never exercised by a real signature is `SHAPE_OPEN_STORAGE`, which
 needs a first-time trader opening with no target.
 
-Eight audits have run; **audit 9 has not**, and the tree is unaudited since
-`5f85472`. See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
+**Nine audits have run.** Audit 9 (2026-10-04) found five issues, no
+ship-blocker, and was remediated in `d45f0f5` — a remediation whose own review
+caught a defect it had introduced, recorded in
+[AUDIT-9-REMEDIATION.md](./AUDIT-9-REMEDIATION.md).
+
+**Stop-loss ships on market entries** (2026-10-05, `e2adc4d`), one protective
+leg at a time — see `PROTECTION_ENABLED` below. The attached-order assertion was
+generalised to N legs on the way. Unaudited since then.
+
+See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
 
 > **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.2 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. The pinned SDK is **0.6.6** (`6575dee`), but the citations here were last systematically derived against **0.6.2** (`d9f43a4`) and have *not* been re-derived since — symbol names are stable across those releases, which is why this is a caveat rather than a defect, but verify by grep rather than trusting the version stamp.
 
@@ -205,7 +213,7 @@ Perps-side constants:
 | `MAX_PLAUSIBLE_NOTIONAL_USD` | 25,000 | **A tripwire, not a product cap.** The fixed 250 launch ceiling was removed 2026-09-24 — see below. This sits far above any plausible solved value and exists only so a decode or arithmetic bug cannot render an absurd right-hand end. If it binds in normal use, something upstream is broken. |
 | `RISK_BAR_MIN_LEVERAGE` | **solved live** | `max(min_position_size_usd, dynamic_min) / amount`. **Never a constant** — a pinned 1× sat above the ceiling on the short side today |
 | `RISK_BAR_MAX_LEVERAGE` | **solved live** | `min(N_margin, OI_headroom, MAX_POSITION_NOTIONAL_USD) / amount`, confirmed by a live quote returning `ok === true`. Never `10000 / initial_margin_bps`, and never the raw `effective_max_leverage_bps` — that field omits the fee term |
-| `PROTECTION_ENABLED` | **`false` — BLOCKED** | Not a size check: open + both brackets measures 13 against a ceiling of 16 and always fits. Blocked on the unverified OCO symbols — see [Protection](#protection--an-optional-stop). Do not plan work against it |
+| `PROTECTION_ENABLED` | **`true` — ONE LEG** | Stop-loss ships on market entries, take-profit **or** stop-loss, never both. Not a size check: open + both brackets measures 13 against a ceiling of 16 and always fits. The pair stays blocked on the unverified OCO symbols — with a single leg there is no sibling to orphan, so the precondition is satisfied rather than waived. Lifting it needs a TestNet run where one leg executes and the sibling is observed removed |
 
 | `BUILDER_ADDRESS` | MS treasury | Build-time constant |
 | `POSITION_BUILDER_FEE_BPS` | 10 | Protocol cap is 10 |
@@ -512,7 +520,7 @@ There are **two distinct cleanup mechanisms**, and the one that matters for Perp
 | `OCO_SIBLING_CANCELLED` | One linked TP/SL executes, cancelling the other, even on a partial reduction | **Only if Protection ships.** With a take profit alone there is no sibling. With Protection there are two, and this becomes the governing cleanup path — one of the reasons Protection is blocked, since the symbol itself is [UNVERIFIED](#protection--an-optional-stop) |
 | `PARENT_RETIRED` | Position-identity upgrade: execution attempted on a legacy bracket entry; parent retired, children removed | Only at the 0.5.0 cutover |
 
-**None of the four covers our orphan case *as currently scoped*** — a single **optional** take profit. (It was mandatory when this was written; it became optional on 2026-10-02, once closing existed. A position with no take-profit has no bracket to orphan, so the orphan case now applies to a subset of positions rather than all of them.) **This section is written for one bracket and does not cover Protection**, which introduces a sibling and makes `OCO_SIBLING_CANCELLED` governing. Rewrite it before Protection ships, including the partial-reduction case where OCO would leave the surviving position with no brackets at all.
+**None of the four covers our orphan case *as currently scoped*** — a single **optional** take profit. (It was mandatory when this was written; it became optional on 2026-10-02, once closing existed. A position with no take-profit has no bracket to orphan, so the orphan case now applies to a subset of positions rather than all of them.) **This section is written for one bracket and does not cover a take-profit and stop-loss PAIR**, which introduces a sibling and makes `OCO_SIBLING_CANCELLED` governing. Stop-loss shipped on 2026-10-05 restricted to one leg at a time precisely because this is unwritten and OCO is unobserved — rewrite this, including the partial-reduction case where OCO would leave the surviving position with no brackets at all, before the pair is allowed.
 
 **Our case — a position closed while its take profit rests — is handled separately**, by `v2_order_cancelled` (232) with:
 

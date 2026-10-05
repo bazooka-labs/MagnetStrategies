@@ -1618,6 +1618,13 @@ on inspection. Checking the write path before writing the sentence is what
 caught it. Advertising an absent protection feature on a leveraged-trading screen
 is among the worst claims this UI could make.
 
+> **Superseded 2026-10-05** — stop-loss ships on market entries (`e2adc4d`), one
+> protective leg at a time. Left in place because it is audit 9's record of what
+> was true when it ran, and because the near-miss it describes — nearly writing
+> "stop-loss is optional" into a risk modal for a feature that did not exist —
+> is the reason the feature got built. Current status is at the top of
+> [SPEC.md](./SPEC.md).
+
 
 ## The targetless open, signed (2026-10-04)
 
