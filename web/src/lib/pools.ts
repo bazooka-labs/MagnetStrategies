@@ -13,6 +13,34 @@ export type Pool = {
   addLiquidityUrl: string;
 };
 
+/**
+ * Where a pool's "add liquidity" link points.
+ *
+ * Derived rather than written out per pool. These were hard-coded, and when
+ * Pact moved to its new contracts every Pact link 404'd while the `ref` beside
+ * it stayed correct — the API reads kept working, so only the buttons broke.
+ * A URL and the id it is built from cannot drift apart if only one of them is
+ * written down.
+ *
+ * Both DEXes happen to use the same shape today. That is a coincidence worth
+ * keeping visible rather than collapsing into one string, because they are
+ * independent products and either can move without the other.
+ */
+const DEX_POOL_URL: Record<PoolDex, (ref: string) => string> = {
+  tinyman: (ref) => `https://app.tinyman.org/pool/${ref}`,
+  // Was `/add-liquidity/${ref}`, which now 404s. Verified 2026-10-04: this
+  // path server-renders the pool (≈136–253 kB carrying both asset ids),
+  // where an unknown id returns a ~10 kB shell — so the check is the body,
+  // not the status code, which is 200 either way.
+  pact: (ref) => `https://app.pact.fi/pool/${ref}`,
+};
+
+type PoolDef = Omit<Pool, "addLiquidityUrl">;
+const withUrl = (p: PoolDef): Pool => ({
+  ...p,
+  addLiquidityUrl: DEX_POOL_URL[p.dex](p.ref),
+});
+
 /** Live-fetched numbers merged onto an Pool. APRs are percentages (e.g. 36.78). */
 export type PoolData = Pool & {
   tvlUsd: number | null;
@@ -21,51 +49,35 @@ export type PoolData = Pool & {
   totalApr: number | null;
 };
 
-export const POOLS: Pool[] = [
+export const POOLS: Pool[] = ([
   // ── Tinyman ──
   {
     id: "u-talgo", pair: "U / tALGO", partner: "tALGO", dex: "tinyman",
     ref: "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
-    addLiquidityUrl: "https://app.tinyman.org/pool/AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
   },
   {
     id: "u-mooj", pair: "U / MOOJ", partner: "MOOJ", dex: "tinyman",
     ref: "YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I",
-    addLiquidityUrl: "https://app.tinyman.org/pool/YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I",
   },
   {
     id: "u-usdc", pair: "U / USDC", partner: "USDC", dex: "tinyman",
     ref: "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
-    addLiquidityUrl: "https://app.tinyman.org/pool/ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
   },
   // ── Pact ──
-  {
-    id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", dex: "pact",
-    ref: "3693600164", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3693600164",
-  },
-  {
-    id: "u-compx", pair: "U / COMPX", partner: "COMPX", dex: "pact",
-    ref: "3692558822", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3692558822",
-  },
-  {
-    id: "u-hay", pair: "U / HAY", partner: "HAY", dex: "pact",
-    ref: "3692640639", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3692640639",
-  },
-  {
-    id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", dex: "pact",
-    ref: "3693574268", addLiquidityUrl: "https://app.pact.fi/add-liquidity/3693574268",
-  },
-];
+  { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", dex: "pact", ref: "3693600164" },
+  { id: "u-compx", pair: "U / COMPX", partner: "COMPX", dex: "pact", ref: "3692558822" },
+  { id: "u-hay",   pair: "U / HAY",   partner: "HAY",   dex: "pact", ref: "3692640639" },
+  { id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", dex: "pact", ref: "3693574268" },
+] satisfies PoolDef[]).map(withUrl);
 
 // mUSD liquidity pools showcased on the mUSD token page. Same live fee/farm APR fetch as
 // POOLS above (shared fetchPoolMetrics) via /api/musd-pools.
-export const MUSD_POOLS: Pool[] = [
+export const MUSD_POOLS: Pool[] = ([
   {
     id: "musd-usdc", pair: "mUSD / USDC", partner: "USDC", dex: "tinyman",
     ref: "QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4",
-    addLiquidityUrl: "https://app.tinyman.org/pool/QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4",
   },
-];
+] satisfies PoolDef[]).map(withUrl);
 
 export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "Pact" };
 
