@@ -31,9 +31,16 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 
-/** Fade in, hold, fade out. Sums to the 1.5s the splash is specified at. */
+/**
+ * Fade in, hold, fade out. Sums to 2s.
+ *
+ * Was 1.5s and read as hurried — the mark arrived and left before it had been
+ * taken in. The extra 500ms all goes to the HOLD: lengthening the fades instead
+ * would make it feel slow rather than deliberate, which is a different and worse
+ * problem.
+ */
 const IN_MS = 260;
-const HOLD_MS = 880;
+const HOLD_MS = 1380;
 const OUT_MS = 360;
 const TOTAL_MS = IN_MS + HOLD_MS + OUT_MS;
 
@@ -77,14 +84,23 @@ export function MagnetFiSplash() {
           breathe on a different curve — a single animated group would make the
           light and the mark move as one flat sticker. */}
       <div className="animate-splash-glow absolute h-[36rem] w-[36rem] rounded-full bg-magnet-500/25 blur-[120px]" />
-      <Image
-        src="/magnetfi-logo.png"
-        alt=""
-        width={1011}
-        height={247}
-        priority
-        className="animate-splash-mark relative w-[17rem] max-w-[72vw] sm:w-[23rem] lg:w-[28rem] h-auto drop-shadow-[0_0_28px_rgba(168,85,247,0.45)]"
-      />
+      {/* Mark, rule, subtext — the landing page's own arrangement, so arriving
+          here reads as the same brand rather than a second one. */}
+      <div className="relative flex flex-col items-center px-6 text-center">
+        <Image
+          src="/magnetfi-logo.png"
+          alt=""
+          width={1011}
+          height={247}
+          priority
+          className="animate-splash-mark w-[17rem] max-w-[72vw] sm:w-[23rem] lg:w-[28rem] h-auto drop-shadow-[0_0_28px_rgba(168,85,247,0.45)]"
+        />
+        {/* Same hairline the landing page uses under its headline. */}
+        <div className="animate-splash-rule mt-5 h-px w-32 bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+        <p className="animate-splash-sub font-display mt-4 max-w-md text-sm font-semibold leading-relaxed text-white/80 sm:text-base">
+          Digital Asset Lending and Borrowing on Algorand
+        </p>
+      </div>
     </div>
   );
 }

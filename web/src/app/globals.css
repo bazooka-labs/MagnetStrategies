@@ -387,20 +387,25 @@ body {
 
    Timings mirror IN_MS / HOLD_MS / OUT_MS in MagnetFiSplash.tsx. They are
    stated in both places because the component needs the total to unmount
-   itself; if one changes the other has to follow. */
+   itself; if one changes the other has to follow. Total is 2s.
+
+   The rule and the subtext arrive AFTER the mark rather than with it. Landing
+   together reads as one image appearing; staggered, it reads as a thing being
+   introduced — which is the same reason the landing page staggers its own
+   headline, rule and tagline. */
 @keyframes splash-scrim {
-  0%, 76%  { opacity: 1; }
+  0%, 82%  { opacity: 1; }
   100%     { opacity: 0; }
 }
-.animate-splash { animation: splash-scrim 1.5s ease-in forwards; }
+.animate-splash { animation: splash-scrim 2s ease-in forwards; }
 
 @keyframes splash-mark {
   0%   { opacity: 0; transform: scale(0.965); }
-  18%  { opacity: 1; transform: scale(1); }
-  76%  { opacity: 1; transform: scale(1); }
+  13%  { opacity: 1; transform: scale(1); }
+  82%  { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.015); }
 }
-.animate-splash-mark { animation: splash-mark 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-splash-mark { animation: splash-mark 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
 /* Slower and softer: the glow is still opening while the mark has settled. */
 @keyframes splash-glow {
@@ -408,7 +413,7 @@ body {
   35%  { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.08); }
 }
-.animate-splash-glow { animation: splash-glow 1.5s ease-out forwards; }
+.animate-splash-glow { animation: splash-glow 2s ease-out forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. The component already removes itself on this setting, so
@@ -417,4 +422,25 @@ body {
     animation: none;
     opacity: 0;
   }
+}
+
+/* The rule draws out from the centre once the mark has landed. */
+@keyframes splash-rule {
+  0%, 14%  { opacity: 0; transform: scaleX(0.2); }
+  34%      { opacity: 1; transform: scaleX(1); }
+  82%      { opacity: 1; transform: scaleX(1); }
+  100%     { opacity: 0; transform: scaleX(1); }
+}
+.animate-splash-rule { animation: splash-rule 2s ease-out forwards; }
+
+@keyframes splash-sub {
+  0%, 22%  { opacity: 0; transform: translateY(6px); }
+  42%      { opacity: 1; transform: translateY(0); }
+  82%      { opacity: 1; transform: translateY(0); }
+  100%     { opacity: 0; transform: translateY(0); }
+}
+.animate-splash-sub { animation: splash-sub 2s ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-splash-rule, .animate-splash-sub { animation: none; opacity: 0; }
 }
