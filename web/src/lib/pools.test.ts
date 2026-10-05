@@ -15,7 +15,9 @@
 // record of the change, not in the suite — it is written up in the commit and in
 // the comment beside `DEX_POOL_URL`.
 
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { tokenIcon } from "@/components/magnetfi/v2/shared";
 import { MUSD_POOLS, POOLS, type Pool } from "./pools";
 
 const all: Pool[] = [...POOLS, ...MUSD_POOLS];
@@ -58,5 +60,31 @@ describe("pool deep links", () => {
   it("has no duplicate ids or refs", () => {
     expect(new Set(all.map((p) => p.id)).size).toBe(all.length);
     expect(new Set(all.map((p) => p.ref)).size).toBe(all.length);
+  });
+});
+
+describe("pool token icons", () => {
+  // A token with no entry falls back to a text chip. That is a deliberate
+  // feature of TokenChip, not an error — which is exactly why adding a pool
+  // and forgetting its logo shows something plausible and passes unnoticed.
+  // FOLKS sat that way until 2026-10-04.
+  const symbols = [...new Set([...POOLS, ...MUSD_POOLS].flatMap((p: Pool) => [
+    ...p.pair.split("/").map((s) => s.trim()),
+    p.partner,
+  ]))];
+
+  it("covers every token shown on a pool card", () => {
+    const missing = symbols.filter((s) => tokenIcon(s) === null);
+    expect(missing, `no icon mapped for: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("maps each one to a file that actually exists", () => {
+    // The map is strings, so a typo or a deleted file is a broken image at
+    // runtime and nothing at build time.
+    const broken = symbols.filter((s) => {
+      const icon = tokenIcon(s);
+      return icon !== null && !existsSync(`public${icon}`);
+    });
+    expect(broken, `icon path points at no file: ${broken.join(", ")}`).toEqual([]);
   });
 });

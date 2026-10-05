@@ -14,6 +14,7 @@ const TOKEN_ICONS: Record<string, string> = {
   ALPHA: "/tokens/alpha.png",
   COMPX: "/tokens/compx.png",
   HAY: "/tokens/hay.png",
+  FOLKS: "/tokens/folks.png",
 };
 /** Real icon path for a token symbol ("$"/case-insensitive), or null for a text fallback. */
 export const tokenIcon = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
