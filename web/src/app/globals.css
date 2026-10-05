@@ -397,7 +397,7 @@ body {
   0%, 82%  { opacity: 1; }
   100%     { opacity: 0; }
 }
-.animate-splash { animation: splash-scrim 2s ease-in forwards; }
+.animate-splash { animation: splash-scrim var(--splash-dur, 2s) ease-in forwards; }
 
 @keyframes splash-mark {
   0%   { opacity: 0; transform: scale(0.965); }
@@ -405,7 +405,7 @@ body {
   82%  { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.015); }
 }
-.animate-splash-mark { animation: splash-mark 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-splash-mark { animation: splash-mark var(--splash-dur, 2s) cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
 /* Slower and softer: the glow is still opening while the mark has settled. */
 @keyframes splash-glow {
@@ -413,7 +413,7 @@ body {
   35%  { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.08); }
 }
-.animate-splash-glow { animation: splash-glow 2s ease-out forwards; }
+.animate-splash-glow { animation: splash-glow var(--splash-dur, 2s) ease-out forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. The component already removes itself on this setting, so
@@ -431,7 +431,7 @@ body {
   82%      { opacity: 1; transform: scaleX(1); }
   100%     { opacity: 0; transform: scaleX(1); }
 }
-.animate-splash-rule { animation: splash-rule 2s ease-out forwards; }
+.animate-splash-rule { animation: splash-rule var(--splash-dur, 2s) ease-out forwards; }
 
 @keyframes splash-sub {
   0%, 22%  { opacity: 0; transform: translateY(6px); }
@@ -439,7 +439,7 @@ body {
   82%      { opacity: 1; transform: translateY(0); }
   100%     { opacity: 0; transform: translateY(0); }
 }
-.animate-splash-sub { animation: splash-sub 2s ease-out forwards; }
+.animate-splash-sub { animation: splash-sub var(--splash-dur, 2s) ease-out forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-splash-rule, .animate-splash-sub { animation: none; opacity: 0; }

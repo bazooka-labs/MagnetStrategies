@@ -32,20 +32,27 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 /**
- * Fade in, hold, fade out.
+ * Total duration, in ms. Per page, because the two are not the same read.
  *
- * Was 1.5s and read as hurried — the mark arrived and left before it had been
- * taken in. The extra 500ms all goes to the HOLD: lengthening the fades instead
- * would feel slow rather than deliberate, which is a different and worse
- * problem. Mirrored by the `splash-*` keyframes in globals.css, which are all
- * 2s; if one changes the other has to follow.
+ * MagnetFi's is a wordmark — one object, taken in at a glance. The Trading
+ * Terminal's is a mark, a line of type, a rule and a subtitle: four things to
+ * read, so the same 2s felt hurried there while being right for MagnetFi.
+ *
+ * The keyframes are written against `--splash-dur` rather than a literal, so
+ * this value drives the CSS instead of being mirrored by it. Mirroring is what
+ * put the fee table out of step with the group it described, twice.
  */
-const IN_MS = 260;
-const HOLD_MS = 1380;
-const OUT_MS = 360;
-const TOTAL_MS = IN_MS + HOLD_MS + OUT_MS;
+const DEFAULT_MS = 2000;
 
-export function ArrivalSplash({ mark, subtext }: { mark: ReactNode; subtext: string }) {
+export function ArrivalSplash({
+  mark,
+  subtext,
+  durationMs = DEFAULT_MS,
+}: {
+  mark: ReactNode;
+  subtext: string;
+  durationMs?: number;
+}) {
   /**
    * Starts true so the splash is present in the FIRST paint.
    *
@@ -68,9 +75,9 @@ export function ArrivalSplash({ mark, subtext }: { mark: ReactNode; subtext: str
       && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduced) { setShow(false); return; }
 
-    const t = setTimeout(() => setShow(false), TOTAL_MS);
+    const t = setTimeout(() => setShow(false), durationMs);
     return () => clearTimeout(t);
-  }, []);
+  }, [durationMs]);
 
   if (!show) return null;
 
@@ -80,6 +87,9 @@ export function ArrivalSplash({ mark, subtext }: { mark: ReactNode; subtext: str
       // `top-16` is the navbar's height: the blur starts under it, so the nav
       // stays legible and usable throughout.
       className="animate-splash pointer-events-none fixed inset-x-0 bottom-0 top-16 z-40 flex items-center justify-center overflow-hidden bg-black/55 backdrop-blur-md"
+      // Drives every `splash-*` keyframe. Set here so the timeout above and the
+      // animations cannot disagree about how long this lasts.
+      style={{ ["--splash-dur" as string]: `${durationMs}ms` }}
     >
       {/* The glow is its own element so it can breathe on a different curve — a
           single animated group makes the light and the mark move together like

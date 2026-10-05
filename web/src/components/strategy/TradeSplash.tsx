@@ -24,6 +24,10 @@ const markets = Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).joi
 export function TradeSplash() {
   return (
     <ArrivalSplash
+      // 2.5s rather than the 2s default: this mark is four things to read -
+      // icon, product name, rule, subtitle - where MagnetFi is a single wordmark
+      // taken in at a glance. The same duration read as hurried here.
+      durationMs={2500}
       subtext={`Go long or short on ${markets} with leverage`}
       mark={
         <div className="flex flex-col items-center gap-4">

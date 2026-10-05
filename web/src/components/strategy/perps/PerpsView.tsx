@@ -10,7 +10,6 @@ import { useMemo, useState } from "react";
 import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
-import Image from "next/image";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
 import { Panel } from "@/components/magnetfi/v2/shared";
 
@@ -83,55 +82,34 @@ export function PerpsView() {
 
   return (
     <>
-      {/* Hero */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
-        </div>
+      {/*
+        No page header here.
+        ──────────────────────────────────────────────────────────────────────
+        It carried the Magnet mark, "Trading Terminal" and a line describing
+        what the product does. The arrival splash now says all three, a beat
+        earlier and at full attention, so repeating them in a card the user
+        scrolls past is the chrome that makes a product feel like a brochure.
 
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-magnet-900/50">
-              <Image
-                src="/magnet-icon.png" alt="" width={56} height={56}
-                className="h-full w-full object-cover" priority
-              />
-            </div>
-            <div>
-              {/* "Trading Terminal", not "Perps". The product started as a
-                  five-input purchase flow and deliberately avoided the term;
-                  it has since grown market and limit entries, an optional
-                  take-profit, closing, cancelling, charts with drawing tools
-                  and live funding — so the name now describes what it is. The
-                  route, the component names and the `perps` tab key are
-                  unchanged; this is a label, not a rename. */}
-              <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
-                Trading Terminal
-              </h1>
-              <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Go long or short on {Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).join(" and ")} with
-                leverage. Pick a direction, an amount and a target — then sign once.
-              </p>
-            </div>
-          </div>
+        What was load-bearing in it were the two controls, and they keep their
+        colours: teal for live status, amber for the thing that opens the risk
+        disclosure. Right-aligned, out of the reading path, and a quiet top edge
+        rather than a full-width card competing with the terminal under it.
+      */}
+      <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
+        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
+          Live on MainNet
+        </span>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-              Live on MainNet
-            </span>
-
-            {/* Amber, matching the risk warnings it opens. A help-link grey
-                would read as optional; this is where "you can lose everything
-                you put in" now lives. */}
-            <button onClick={() => setInfoOpen(true)}
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15">
-              <Info className="h-3.5 w-3.5" />
-              More info
-            </button>
-          </div>
-        </div>
+        {/* Amber, matching the risk warnings it opens. A help-link grey would
+            read as optional; this is where "you can lose everything you put in"
+            lives, and it is now the only route to it — so it had to stay a pill
+            and stay visible rather than becoming a footnote. */}
+        <button onClick={() => setInfoOpen(true)} aria-haspopup="dialog"
+          className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500">
+          <Info className="h-3.5 w-3.5" />
+          More info
+        </button>
       </div>
 
       {/* ONE box. The chart, the order form and what you already hold are a
