@@ -4,8 +4,13 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
+// Matches the Trading Terminal's info modal: amber hairline, and a SOLID
+// surface rather than the site's usual `bg-black/40 backdrop-blur-sm` panel.
+// Solid matters now that an animated field sits behind every route — a
+// translucent panel lets the lines drift under body copy while it is being
+// read, which is the one place that motion is not ambience.
 const PANEL =
-  "relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm shadow-xl shadow-black/40";
+  "relative overflow-hidden rounded-2xl border border-amber-400/25 bg-[#0b0b0d] shadow-2xl shadow-black/40";
 
 export function AboutModal({
   triggerLabel,
@@ -32,7 +37,7 @@ export function AboutModal({
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        className="inline-flex w-fit items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:border-green-400/60 hover:bg-green-500/15 hover:text-green-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500"
+        className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
       >
         <Info className="h-3.5 w-3.5" />
         {triggerLabel}
@@ -45,12 +50,12 @@ export function AboutModal({
         >
           <div role="dialog" aria-modal="true" aria-label={heading} className={`${PANEL} w-full max-w-lg p-6 sm:p-8`}>
             <div className="flex items-start justify-between gap-4">
-              <h2 className="font-display text-lg font-semibold text-white">{heading}</h2>
+              <h2 className="font-display text-lg font-semibold text-amber-200">{heading}</h2>
               <button
                 type="button"
                 onClick={close}
                 aria-label="Close"
-                className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-gray-400 transition-colors hover:border-magnet-500/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-magnet-500"
+                className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-gray-400 transition-colors hover:border-amber-400/50 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
               >
                 ✕
               </button>
