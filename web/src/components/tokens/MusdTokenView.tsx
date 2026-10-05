@@ -100,7 +100,7 @@ export function MusdTokenView({
       </div>
 
       {/* Stats + chart + swap, one unified panel */}
-      <Panel className="mb-8">
+      <Panel className="animate-enter mb-8">
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
           <StatCell label="mUSD Peg" value={pegDisplay} sub="Market Price via Vestige" tone="green" />
           <StatCell label="Holders" value={holders} sub="mUSD wallets" tone="amber" />

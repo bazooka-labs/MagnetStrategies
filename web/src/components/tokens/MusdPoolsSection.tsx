@@ -20,7 +20,7 @@ function DexBadge({ dex }: { dex: PoolData["dex"] }) {
 function PoolCard({ p }: { p: PoolData }) {
   const farming = p.farmApr != null && p.farmApr > 0;
   return (
-    <Panel className="flex flex-col p-6 transition-colors hover:border-magnet-500/30">
+    <Panel className="hover-depth flex flex-col p-6">
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={["mUSD", p.partner]} />
@@ -71,7 +71,7 @@ export function MusdPoolsSection() {
   }, []);
 
   return (
-    <section className="mb-10">
+    <section className="animate-enter-1 mb-10">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">mUSD Liquidity Pools</h2>

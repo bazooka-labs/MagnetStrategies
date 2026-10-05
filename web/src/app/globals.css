@@ -320,3 +320,50 @@ body {
     animation: none;
   }
 }
+
+/* ── Page entrances ────────────────────────────────────────────────────────
+   A short stagger down the page, so a route resolves instead of appearing
+   fully formed. Four steps is enough: past ~4 the delay reads as lag rather
+   than sequence, and the last card arrives after the user has started reading.
+
+   Opacity only, reusing `fade-up`. The reason is the one stated above that
+   keyframe and it still binds: a `transform` on these wrappers would make any
+   `position: fixed` descendant — a modal overlay — position itself against the
+   animated element instead of the viewport, so a full-screen modal opened from
+   inside an entrance-animated section would be wrong.
+
+   Delays are baked into the classes rather than set with Tailwind's
+   `[animation-delay:…]`. They have to be: this stylesheet is emitted AFTER
+   `@tailwind utilities`, so the `animation` shorthand here beats an arbitrary
+   delay utility of equal specificity — which is exactly why the landing page's
+   divider and tagline silently ignored theirs for months. */
+.animate-enter   { animation: fade-up 0.5s ease-out both; }
+.animate-enter-1 { animation: fade-up 0.5s ease-out 0.07s both; }
+.animate-enter-2 { animation: fade-up 0.5s ease-out 0.14s both; }
+.animate-enter-3 { animation: fade-up 0.5s ease-out 0.21s both; }
+
+/* ── Depth on hover ────────────────────────────────────────────────────────
+   Hover on this site was colour-only: 55 `transition-colors` against a single
+   `transition-transform`. Nothing moved, so nothing felt clickable.
+
+   `translateY` is deliberately NOT here. It would make the card a containing
+   block for any `position: fixed` descendant for as long as the pointer is
+   over it — the same trap as above, but intermittent and therefore worse to
+   diagnose. Shadow and border carry the depth instead, and both composite
+   without laying out. */
+.hover-depth {
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+.hover-depth:hover {
+  border-color: rgb(168 85 247 / 0.35);
+  box-shadow: 0 8px 28px -12px rgb(168 85 247 / 0.45), 0 2px 8px -4px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-enter,
+  .animate-enter-1,
+  .animate-enter-2,
+  .animate-enter-3 { animation: none; }
+  /* The hover treatment stays: it is a response to the pointer, not ambient
+     motion, and removing it would leave the card with no affordance at all. */
+}

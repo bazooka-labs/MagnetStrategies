@@ -72,7 +72,7 @@ export function MagnetTokenView({
       </div>
 
       {/* Stats + chart + swap, one unified panel */}
-      <Panel className="mb-8">
+      <Panel className="animate-enter mb-8">
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
           <StatCell label="Price" value={price} sub="USDC" tone="green" />
           <StatCell label="Holders" value={holders} sub="Active wallets" tone="amber" />
