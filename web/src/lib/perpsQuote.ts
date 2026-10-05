@@ -293,14 +293,44 @@ export function quoteOpen(input: QuoteInput): OpenQuote {
  *
  * Returns null when nothing on the bar opens; the caller renders the side closed.
  */
+/**
+ * PEX's rejection reasons that are about the MARKET's current capacity rather
+ * than about the position being asked for.
+ *
+ * `checkOiAfter` and `checkReservesAfterTrade` push these, and both are called
+ * only from `quoteV2OpenPosition` — so they answer "can this open right now",
+ * which is not the question a resting limit order asks.
+ */
+const CAPACITY_REASONS = new Set([
+  "long_oi_cap", "short_oi_cap",
+  "long_reserves_exceeded", "short_reserves_exceeded",
+]);
+
 export function confirmCeiling(
   input: Omit<QuoteInput, "notionalUsd">,
-  opts: { maxSteps?: number } = {},
+  opts: { maxSteps?: number; marketCapacityApplies?: boolean } = {},
 ): { notionalUsd: number; quote: OpenQuote } | null {
   const maxSteps = opts.maxSteps ?? 12;
+  const capacityApplies = opts.marketCapacityApplies ?? true;
+  /**
+   * In limit mode a quote that fails ONLY on capacity is acceptable.
+   *
+   * Relaxing `solveBar` alone is not enough: this function confirms its ceiling
+   * with `quoteOpen`, which is `quoteV2OpenPosition` and applies the very caps
+   * the bar just stopped applying. Without this the bar would widen and every
+   * candidate would then be rejected, leaving the ceiling pinned at the floor —
+   * the same wrong answer by a longer route.
+   *
+   * Everything else the quote checks still binds, which is the point: margin,
+   * leverage, minimum size and fee coverage are properties of the position and
+   * are as true at fill time as now.
+   */
+  const acceptable = (q: OpenQuote): boolean =>
+    q.ok || (!capacityApplies && q.reasons.length > 0 && q.reasons.every((r) => CAPACITY_REASONS.has(r)));
   const d = input.oracle.decoded;
   const bar = solveBar(input.state, input.side, input.collateralUsd, input.oracle.indexPrice12, {
     builderFeeBps: input.builderFeeBps,
+    marketCapacityApplies: capacityApplies,
     prices: {
       indexPrice12: input.oracle.indexPrice12,
       longPrice12: (d.longMinPrice + d.longMaxPrice) / BigInt(2),
@@ -315,11 +345,11 @@ export function confirmCeiling(
   // would spend every attempt in the top 1% where the rejection actually is.
   for (let i = 0; i < maxSteps && candidate >= floor; i++) {
     const quote = quoteOpen({ ...input, notionalUsd: candidate });
-    if (quote.ok) return { notionalUsd: candidate, quote };
+    if (acceptable(quote)) return { notionalUsd: candidate, quote };
     candidate = floor + (candidate - floor) * 0.7;
   }
   const last = quoteOpen({ ...input, notionalUsd: floor });
-  return last.ok ? { notionalUsd: floor, quote: last } : null;
+  return acceptable(last) ? { notionalUsd: floor, quote: last } : null;
 }
 
 /**

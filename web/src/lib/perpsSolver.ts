@@ -265,19 +265,39 @@ export function solveBar(
     headroomShare?: number;
     /** Omit and the reserve term is skipped — see solveBar's note. */
     prices?: { indexPrice12: bigint; longPrice12: bigint; shortPrice12: bigint };
+    /**
+     * Whether the MARKET's current capacity binds this size. Default true.
+     *
+     * False for a resting LIMIT order — and that is the correct rule, not a
+     * relaxation. `oi_headroom` and `reserves` are properties of opening a
+     * position NOW; a limit order opens nothing until a keeper fills it, and PEX
+     * agrees: `checkOiAfter` and `checkReservesAfterTrade` are called from
+     * `quoteV2OpenPosition` and nowhere else in the SDK. Submitting a limit
+     * order consults neither.
+     *
+     * Applying them anyway is what capped a $7 limit long at 0.8x while another
+     * front end offered 6x on the same market in the same minute: ALGO/USD long
+     * OI was $1,498.37 against a $1,500 cap, so the headroom term solved to
+     * $1.63 — a true number, answering a question a limit order does not ask.
+     */
+    marketCapacityApplies?: boolean;
   } = {},
 ): SolvedBar {
   const sanityCap = opts.launchCapUsd ?? MAX_PLAUSIBLE_NOTIONAL_USD;
   const headroomShare = opts.headroomShare ?? OI_HEADROOM_SHARE;
+  const capacityApplies = opts.marketCapacityApplies ?? true;
 
   const terms: Record<BindingConstraint, number> = {
     margin: marginCeilingUsd(state, side, collateralUsd, opts.builderFeeBps),
     collateral: collateralCeilingUsd(state, collateralUsd, opts.builderFeeBps),
-    oi_headroom: num(oiHeadroomUsd(state.risk, state.oi, side)) * headroomShare,
+    oi_headroom: capacityApplies
+      ? num(oiHeadroomUsd(state.risk, state.oi, side)) * headroomShare
+      : Number.POSITIVE_INFINITY,
     // Skipped without prices rather than approximated: the long side needs the
     // index price to mark its OI, and a guessed mark would make this term wrong
     // in the overstating direction. Callers with an oracle payload pass prices.
-    reserves: opts.prices ? reserveCeilingUsd(state, side, opts.prices) : Number.POSITIVE_INFINITY,
+    reserves: capacityApplies && opts.prices
+      ? reserveCeilingUsd(state, side, opts.prices) : Number.POSITIVE_INFINITY,
     sanity_cap: sanityCap,
   };
 

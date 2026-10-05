@@ -158,6 +158,8 @@ type CardSnapshot = {
   chipPicks: Record<number, QuickPick>;
   /** Market or limit, and the trigger — the labels below depend on both. */
   isLimit: boolean;
+  /** Limit mode, and the market has no room for this size today. */
+  waitsForRoom: boolean;
   trigger12: bigint;
   /** Which way funding flows, and the paying side's annualised rate. */
   funding: { annualPct: number; youPay: boolean } | null;
@@ -199,6 +201,9 @@ export function PerpsCard({
    * `openLimitOrder`, which has its own group shape and its own assertion.
    */
   const [mode, setMode] = useState<"market" | "limit">("market");
+  /** Hoisted: the bar and the ceiling both need it, and both run above the
+   *  old declaration site. */
+  const isLimit = mode === "limit";
   /** The price a limit entry waits for, as typed. */
   const [triggerPrice, setTriggerPrice] = useState<string>("");
   const [triggerHint, setTriggerHint] = useState<string | null>(null);
@@ -312,13 +317,16 @@ export function PerpsCard({
     if (!data || collateralUsd <= 0) return null;
     const d = data.oracle.decoded;
     return solveBar(data.state, side, collateralUsd, data.oracle.indexPrice12, {
+      // A resting limit order opens nothing now, so the market's CURRENT
+      // capacity is not its constraint. See the note on the option.
+      marketCapacityApplies: !isLimit,
       prices: {
         indexPrice12: data.oracle.indexPrice12,
         longPrice12: (d.longMinPrice + d.longMaxPrice) / BigInt(2),
         shortPrice12: (d.shortMinPrice + d.shortMaxPrice) / BigInt(2),
       },
     });
-  }, [data, side, collateralUsd]);
+  }, [data, side, collateralUsd, isLimit]);
 
   /**
    * The bar's right end must be a size the chain will actually accept.
@@ -338,9 +346,36 @@ export function PerpsCard({
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
         collateralAssetId: COLLATERAL_ASSET_ID,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
-      });
+      // Must match the bar's. Widening the bar without widening this leaves
+      // every candidate rejected by `quoteOpen` and the ceiling pinned at the
+      // floor — the same wrong answer by a longer route.
+      }, { marketCapacityApplies: !isLimit });
     } catch { return null; }
   }, [data, bar, side, collateralUsd]);
+
+  /**
+   * Would this size open RIGHT NOW, ignoring that it is a limit order?
+   *
+   * Computed only in limit mode, and only to be honest about what the capacity
+   * terms no longer binding actually means: the order is placeable, but a keeper
+   * cannot fill it until the market has room. Saying nothing would mean offering
+   * 6x on a market with $1.63 of long headroom and letting the user find out as
+   * an order that silently never fills.
+   *
+   * Not a refusal. Headroom moves constantly, and a resting order waiting for
+   * room is a legitimate thing to want — it is the whole point of resting.
+   */
+  const capacityNow = useMemo(() => {
+    if (!data || !isLimit || collateralUsd <= 0) return null;
+    const d = data.oracle.decoded;
+    return solveBar(data.state, side, collateralUsd, data.oracle.indexPrice12, {
+      prices: {
+        indexPrice12: data.oracle.indexPrice12,
+        longPrice12: (d.longMinPrice + d.longMaxPrice) / BigInt(2),
+        shortPrice12: (d.shortMinPrice + d.shortMaxPrice) / BigInt(2),
+      },
+    });
+  }, [data, side, collateralUsd, isLimit]);
 
   const ceilingUsd = confirmed?.notionalUsd ?? 0;
 
@@ -413,7 +448,6 @@ export function PerpsCard({
   }, [data, side]);
 
   const trigger12 = usdToPrice12(triggerPrice) ?? BigInt(0);
-  const isLimit = mode === "limit";
 
   /**
    * The oracle payload the CARD quotes against.
@@ -745,6 +779,15 @@ export function PerpsCard({
     };
   }, [isLimit, legCount]);
 
+  /**
+   * Limit mode, and this size could not open right now.
+   *
+   * The order is still placeable — that is the fix — but it rests until the
+   * market has room, and the card says so rather than letting a user discover
+   * it as an order that never fills.
+   */
+  const waitsForRoom = !!(capacityNow && notional > capacityNow.maxNotionalUsd);
+
   const [frozen, setFrozen] = useState<CardSnapshot | null>(null);
 
   /**
@@ -769,6 +812,7 @@ export function PerpsCard({
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
     slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
+    waitsForRoom,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
   };
@@ -1352,6 +1396,20 @@ export function PerpsCard({
           )
         )}
       </label>
+
+      {view.waitsForRoom && (
+        /* Honest about what letting a limit order past the capacity check means:
+           placeable now, fillable when the market has room. */
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            This market is at its size limit on the {side} side right now, so this
+            order will rest until there is room. It can still be placed — it fills
+            when your price and the capacity are both there — but it will not fill
+            the moment your price is hit if the market is still full.
+          </span>
+        </div>
+      )}
 
       {/* Protection — the stop-loss. Optional, like the take-profit above. */}
       {PROTECTION_ENABLED ? (
