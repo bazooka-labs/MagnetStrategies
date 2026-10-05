@@ -33,8 +33,23 @@ five findings, no ship-blocker — and was remediated in `d45f0f5`.
 time: take-profit or stop-loss, never both, until PEX's sibling cleanup is
 observed on TestNet. Limit entries do not carry one yet.
 
-The directory, route, component names and tab key all still say `perps`; the UI
-says Trading Terminal. That is a label, not a restructure.
+**Route: `/trade`, nav: Trade** (2026-10-05). The product outgrew living under
+"Strategy" — nobody scans a nav for that word wanting a leveraged perps screen —
+so the nav now splits the arm by what the user is actually doing. The arm itself
+is unchanged and still groups this with the CLMM pools and vaults to come; see
+[../OVERVIEW.md](../OVERVIEW.md#why-the-arm-spans-two-nav-items). `/strategy`
+308-redirects.
+
+The directory and component names still say `perps` and `strategy`; the UI says
+Trading Terminal and Trade. Those are labels, not a restructure.
+
+**No sub-brand, deliberately.** MagnetFi has its own wordmark because it is a
+Magnet protocol. This is an INTERFACE onto PEX — we write no exchange contracts,
+custody no funds and hold no protocol role, and the About modal says so. A
+"MagnetTrade" mark would claim the opposite, and a logo asserts that more loudly
+than any sentence can withdraw it. The arrival splash uses the parent mark with
+the product name set in type. If we ever run our own matching engine, it gets a
+brand then, when the claim is true.
 
 Detail: [SPEC.md](./SPEC.md#build-status--2026-09-29) for what is built,
 [NEXT.md](./NEXT.md) for what to build next and why in that order,

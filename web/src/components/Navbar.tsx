@@ -9,7 +9,20 @@ import { WalletButton } from "@/components/WalletButton";
 const navLinks = [
   { href: "/tokens", label: "Tokens", external: false },
   { href: "/magnetfi", label: "Bank", external: false },
-  { href: "/strategy", label: "Strategy", external: false },
+  /**
+   * "Trade", not "Strategy".
+   *
+   * The Strategy ARM still exists and still groups this with the CLMM pools and
+   * vaults to come — but an arm is an organising principle and the nav is a
+   * shopping surface, and they do not have to match. Predict already proves it:
+   * by the arm's own definition ("you take a position") prediction markets are
+   * Strategy, and they are a top-level item because that is how people shop.
+   *
+   * Nobody scans a nav for "Strategy" wanting a leveraged perps screen. Strategy
+   * rejoins the nav when it has something to show; until then this is six items,
+   * not seven.
+   */
+  { href: "/trade", label: "Trade", external: false },
   { href: "/predict", label: "Predict", external: false },
   { href: "/vote", label: "Vote", external: false },
   { href: "/contact", label: "Contact", external: false },

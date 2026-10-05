@@ -14,6 +14,7 @@ const nextConfig = {
       { source: "/token", destination: "/tokens", permanent: true },
       { source: "/musd", destination: "/tokens?tab=musd", permanent: true },
       { source: "/pools", destination: "/tokens", permanent: true },
+      { source: "/strategy", destination: "/trade", permanent: true },
     ];
   },
   webpack: (config) => {

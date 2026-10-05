@@ -1,17 +1,51 @@
 # Strategy
 
-The DeFi strategy arm of Magnet Strategies, and the `Strategy` item in the app nav.
+The DeFi strategy arm of Magnet Strategies.
+
+**The arm is not a nav item.** It was, while it held one product. It now splits
+across two, and that is deliberate — see below.
 
 Strategy houses products where a user **takes a position or deploys capital into an
 engineered strategy**. Some run on our contracts, some on someone else's, some on
 both. The umbrella is the user's intent, not who wrote the code.
 
-| Product | What it is | Status |
-|---|---|---|
-| [Perps](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | Design stage, integration under construction |
-| CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | **Waiting on PactFi** to release the platform. Discussed, not designed; nothing written and no decisions taken |
-| Strategy vaults | Other engineered exposures — looped, structured | Not started |
-| Advanced trading | Surfaces for users who want the full instrument, not the simplified one | Not started |
+| Product | What it is | Nav | Status |
+|---|---|---|---|
+| [Trading Terminal](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | **Trade** | Live on MainNet |
+| Advanced trading | Surfaces for users who want the full instrument, not the simplified one | **Trade** | Not started |
+| CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | Strategy | **Waiting on PactFi** to release the platform. Discussed, not designed |
+| Strategy vaults | Other engineered exposures — looped, structured | Strategy | Not started |
+
+## Why the arm spans two nav items
+
+The definition above does real work, and it also hides a seam:
+
+> *you take a **position**, **or** hand capital to an engineered strategy*
+
+Those are two different users on two different errands. One wants to be at the
+controls — pick a side, pick leverage, set a stop, watch it. The other wants to
+hand over capital and stop thinking about it. "Strategy" is the right word for
+the second and the wrong word for the first, which is why a leveraged perps
+screen sat under it awkwardly for as long as it did.
+
+So the nav splits on the question the user is actually asking:
+
+- **Trade** — *do I take the position?* Trading Terminal, Advanced trading.
+- **Strategy** — *does a strategy take it for me?* CLMM pools, structured vaults.
+
+This is the same cut already drawn between Strategy and Bank — posted rate and
+passive, versus market outcome and active — applied one level down.
+
+**An arm is an organising principle; the nav is a shopping surface, and they do
+not have to match.** [Predict](../predict/OVERVIEW.md) already proves it: by the
+definition above, prediction markets are a position and so belong to this arm's
+logic, and they are a top-level nav item because that is how people shop.
+
+Strategy rejoins the nav when CLMM pools or vaults ship. Trade does not move,
+rename or lose anything when that happens — which is the point of doing it this
+way round rather than letting Trade borrow the slot and hand it back.
+
+**Route:** `/trade`. `/strategy` 308-redirects to it, so older links survive.
 
 ---
 
