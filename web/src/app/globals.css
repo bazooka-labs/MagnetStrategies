@@ -337,6 +337,17 @@ body {
    `@tailwind utilities`, so the `animation` shorthand here beats an arbitrary
    delay utility of equal specificity — which is exactly why the landing page's
    divider and tagline silently ignored theirs for months. */
+/* ── Put these on the element that is ITSELF blurred, never on a wrapper ──
+   An element with a running opacity animation becomes a BACKDROP ROOT, so a
+   descendant's `backdrop-filter` can no longer sample the page behind it — it
+   sees only the (transparent) subtree, and the blur silently does nothing.
+
+   That is not theoretical: these were first applied to the pool sections'
+   `<section>` wrapper, and the pool cards lost their blur while every other
+   card kept it. The ones that kept it were the heroes and the stats panels,
+   where the animated element and the blurred element are the same node.
+
+   So: animate the card, not the section around it. */
 .animate-enter   { animation: fade-up 0.5s ease-out both; }
 .animate-enter-1 { animation: fade-up 0.5s ease-out 0.07s both; }
 .animate-enter-2 { animation: fade-up 0.5s ease-out 0.14s both; }

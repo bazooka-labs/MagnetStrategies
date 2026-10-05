@@ -121,7 +121,7 @@ export default function VotePage() {
 
       {/* Admin */}
       {isAdmin && (
-        <div className="animate-enter-1 mb-8">
+        <div className="mb-8">
           <AdminPanel onProposalCreated={load} />
         </div>
       )}
