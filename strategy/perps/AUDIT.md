@@ -1779,3 +1779,43 @@ Findings 1 and 4 came from reading the gate and then testing it rather than
 trusting the comment beside it — both comments asserted the property that was
 missing. Finding 5 came from measuring the four combinations on chain instead of
 reading the measurement already written in the comment.
+
+
+---
+
+## The Ultrade questions, closed out (2026-10-05)
+
+Four letters were drafted to Ultrade and kept in the repo rather than a scratch
+directory. Three are now discarded; what each concluded is recorded here so
+deleting the draft does not delete the finding.
+
+**B6 — "OrderOps rejects the attached take-profit leg." Never sent, and it was
+ours.** Resolved 2026-09-27: the rejection came from an assumption in our own
+code, not from PEX. Two of our own controls were holding the defect in place —
+the `timeInForce` check demanded 0 where GTC is 1, and the child's oracle
+payload was compared against the entry's rather than its own. Sending this would
+have asked Ultrade to explain our bug. The second question in the same draft,
+`doi:` having no declared format, was already stale: the manifest declares it,
+and it is now pinned in three independent places.
+
+**YIELD-RECALL — answered 2026-09-29.** *"Always use recall."* So
+`yieldRecallMode: 1` unconditionally, with the registry built from chain state
+rather than Ultrade's API. Captured in SPEC.md and NEXT.md.
+
+**CLOSE-RECALL — downgraded, then closed by construction.** Both remaining
+details answered themselves:
+
+- `XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO = 20,000` is not a value needing
+  confirmation, it is a deliberate over-provision. The failure modes are
+  asymmetric: too low and the group underpays and dies in **simulation**, before
+  a wallet opens; too high and the user overpays a few thousand microALGO,
+  bounded by `MAX_CLOSE_GROUP_FEE_MICRO_ALGO`. Confirmed sufficient against a
+  live position, and close has since run 20/20 and settled on MainNet.
+- Proposer addresses *are* supplied — `readXalgoProposers` reads them from the
+  consensus app's `pr` box.
+
+**CLOSE-QUOTE — kept, and still unanswered.** Which fields of
+`quoteV2DecreasePosition` scale with `sizeUsdDelta` on a PARTIAL close. It
+blocks nothing today because partial close is not built: `closePosition` closes
+in full. It is the groundwork for the day that changes, and it is the one of the
+four that genuinely still needs Ultrade.

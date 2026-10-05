@@ -1,6 +1,7 @@
 <!--
 Drafted 2026-09-28, NOT yet sent. Kept in the repo rather than a scratch
-directory, same as B6-QUESTION-FOR-ULTRADE.md.
+directory. (The B6, yield-recall and close-recall letters were discarded on
+2026-10-05 once resolved; what each concluded is in AUDIT.md.)
 
 Context: strategy/perps/AUDIT.md, audit 5 finding F7.
 Blocks: the position-management UI's close preview for a PARTIAL close.

@@ -137,10 +137,7 @@ MagnetFi state at all.
 | [PEX.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
 | [NEXT.md](./NEXT.md) | What to build next — close, cancel, limit orders, USDC-only payout — and what each needs settled first |
 | [AUDIT.md](./AUDIT.md) | Adversarial audit findings, the one-position decision, and what the earlier verification got wrong |
-| [B6-QUESTION-FOR-ULTRADE.md](./B6-QUESTION-FOR-ULTRADE.md) | **Resolved.** The attached take-profit leg rejected by OrderOps — kept for the elimination method |
-| [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md) | **Answered 2026-09-28.** Partial-close payout semantics — the answer found two defects in shipped code |
-| [YIELD-RECALL-QUESTION-FOR-ULTRADE.md](./YIELD-RECALL-QUESTION-FOR-ULTRADE.md) | **Answered 2026-09-29.** Always recall |
-| [CLOSE-RECALL-QUESTION-FOR-ULTRADE.md](./CLOSE-RECALL-QUESTION-FOR-ULTRADE.md) | **Drafted, not sent.** The one value the close path still needs — an xALGO fee credit that is not on chain |
+| [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md) | **Drafted, NOT sent, unanswered.** Which `quoteV2DecreasePosition` fields scale on a PARTIAL close. Blocks nothing — partial close is not built — and is the only one of the four Ultrade letters still live |
 | [AUDIT-7-REMEDIATION.md](./AUDIT-7-REMEDIATION.md) | Audit 7's findings, the fixes, and what the review of those fixes then found |
 | [../ORACLE.md](../ORACLE.md) | Arm-level price doctrine — Perps consumes PEX's signed payloads and runs no feed of its own |
 | [../OVERVIEW.md](../OVERVIEW.md) | The Strategy arm — admission criterion and arm-wide commitments |
