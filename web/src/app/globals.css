@@ -378,3 +378,43 @@ body {
   /* The hover treatment stays: it is a response to the pointer, not ambient
      motion, and removing it would leave the card with no affordance at all. */
 }
+
+/* ── /magnetfi arrival splash ──────────────────────────────────────────────
+   1.5s total: the overlay fades the whole scrim out at the end, while the mark
+   and its glow run their own curves underneath. Three animations rather than
+   one because a single group makes the light and the wordmark move together
+   like a sticker — the mark should settle while the glow is still breathing.
+
+   Timings mirror IN_MS / HOLD_MS / OUT_MS in MagnetFiSplash.tsx. They are
+   stated in both places because the component needs the total to unmount
+   itself; if one changes the other has to follow. */
+@keyframes splash-scrim {
+  0%, 76%  { opacity: 1; }
+  100%     { opacity: 0; }
+}
+.animate-splash { animation: splash-scrim 1.5s ease-in forwards; }
+
+@keyframes splash-mark {
+  0%   { opacity: 0; transform: scale(0.965); }
+  18%  { opacity: 1; transform: scale(1); }
+  76%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.015); }
+}
+.animate-splash-mark { animation: splash-mark 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Slower and softer: the glow is still opening while the mark has settled. */
+@keyframes splash-glow {
+  0%   { opacity: 0; transform: scale(0.8); }
+  35%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+.animate-splash-glow { animation: splash-glow 1.5s ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces. The component already removes itself on this setting, so
+     this only covers the single frame before its effect runs. */
+  .animate-splash, .animate-splash-mark, .animate-splash-glow {
+    animation: none;
+    opacity: 0;
+  }
+}

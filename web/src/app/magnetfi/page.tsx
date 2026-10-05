@@ -6,6 +6,7 @@ import { Landmark, Coins, Shield } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PROTOCOL_LIVE, MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import dynamic from "next/dynamic";
+import { MagnetFiSplash } from "@/components/magnetfi/MagnetFiSplash";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -34,6 +35,10 @@ export default function MagnetFiPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      {/* A sibling of the content, never a parent of it: the splash blurs the
+          live page behind it, and an ancestor with a running opacity animation
+          would become a backdrop root and leave it blurring nothing. */}
+      <MagnetFiSplash />
       {/* Hero */}
       <div className="animate-enter relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
