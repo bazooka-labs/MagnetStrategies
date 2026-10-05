@@ -16,9 +16,20 @@ ship-blocker, and was remediated in `d45f0f5` — a remediation whose own review
 caught a defect it had introduced, recorded in
 [AUDIT-9-REMEDIATION.md](./AUDIT-9-REMEDIATION.md).
 
-**Stop-loss ships on market entries** (2026-10-05, `e2adc4d`), one protective
-leg at a time — see `PROTECTION_ENABLED` below. The attached-order assertion was
-generalised to N legs on the way. Unaudited since then.
+**Stop-loss ships on both entry paths** (2026-10-05) — market in `e2adc4d`,
+limit in `aacf0e0` — one protective leg at a time, take-profit OR stop-loss, see
+`PROTECTION_ENABLED` below. The attached-order assertion was generalised to N
+legs on the way, and audit 9's recorded arg gap on the limit child was closed as
+a prerequisite: `C[2]` is the order KIND, and with two kinds reachable an
+unchecked kind is a protection inversion.
+
+**Market capacity no longer binds a resting limit order** (`599ebf3`). Reported
+from production: a $7 limit long offered 0.8x where another front end offered
+6x. `checkOiAfter` and `checkReservesAfterTrade` are called from
+`quoteV2OpenPosition` and nowhere else in the SDK, so a limit submit consults
+neither — the capacity that matters is the capacity when a keeper fills it.
+
+**Audit 10 has not run.** Unaudited since `d45f0f5`.
 
 See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
 
