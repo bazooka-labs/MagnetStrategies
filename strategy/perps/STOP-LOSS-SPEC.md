@@ -289,3 +289,59 @@ observation the docstring always asked for.
 - `applMax`'s comment claimed only a second leg adds one call; it adds two
   (`buildV2LinkedOrderMarketResourceCarrierCalls` emits two carriers above one
   child). The bound still holds; the stated reason was wrong.
+
+---
+
+# Stage two — limit entries (2026-10-05)
+
+The delegated review hit a session rate limit and died before producing
+findings, so **this stage was reviewed by the author**, not independently. That
+is a weaker check than stages one and two of the audit-9 work received, and it
+is recorded here rather than left to be inferred. Worth re-running when limits
+reset.
+
+The self-review found three things.
+
+## The direction rule, and a coupling that was not written down
+
+A limit child is `CHILD_WAIT_PARENT`: it does not arm until the keeper fills the
+parent, and at that point the index sits at the limit price, not today's. So the
+rule is directional against the ENTRY trigger, not the index band the market
+path uses.
+
+That is sound, but only because of a second guard. The SDK picks the child's
+link mode at build time from whether the **entry** is crossed:
+
+```js
+childLinkMode = v2OrderCrossedByOracle(input) ? CHILD_ACTIVE : CHILD_WAIT_PARENT
+```
+
+If the entry were crossed the child would arm immediately and the band rule
+would be required. It cannot be: our crossed-entry check refuses `trigger >=
+index` for a long where PEX only calls it crossed at `trigger >= indexMax`, and
+`index <= indexMax` — so we refuse a superset and every accepted entry is
+un-crossed by PEX's own rule. **Loosening that check to match PEX exactly would
+silently invalidate the stop-loss rule.** Now stated at the guard.
+
+## Two gaps against the market path
+
+- **The slot did not follow from the kind.** `C[1]` was compared to a
+  caller-supplied `childOrderId`, which proves the group matches the client and
+  cannot notice a client putting a stop-loss at base+1. Both the declared slot
+  and the arg are now derived from the kind.
+- **The child's oracle payload was not bound at all** — not its bytes, not the
+  app the signed message is addressed to. The market leg checks both. B6 was
+  exactly this: a check comparing against the wrong payload, agreeing with the
+  bug.
+
+## The fixture could not have passed a correct check
+
+`ORACLE_MSG` was `new Uint8Array(133).fill(9)`, so the target app at offset 37
+read as garbage. Nothing noticed while no test asserted a clean result — every
+case asserted a specific failure code, and `toContain` passes just as happily
+when five other things are also wrong.
+
+Adding a **positive control** — a correct limit + stop-loss group must produce
+an empty findings list — failed immediately and is what surfaced it. Both kinds
+now have one. A suite of only negative cases would let an assertion that refuses
+every correct bracket look fully covered.

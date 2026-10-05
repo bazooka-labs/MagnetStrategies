@@ -19,7 +19,10 @@ import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import {
   assertOpenLimitGroup,
+  ORDER_LINK_MODE_CHILD_WAIT_PARENT,
   ORDER_KIND_OPEN_LIMIT,
+  ORDER_KIND_TAKE_PROFIT,
+  ORDER_KIND_STOP_LOSS,
   ORDER_LINK_MODE_BRACKET_PARENT,
   ORDER_TARGET_PAIR,
   PEX_SELECTORS,
@@ -47,13 +50,26 @@ const STAKE = BigInt(6_000_000);
 const KEEPER = BigInt(100_000);
 const TRIGGER = BigInt(80_000_000_000_000_000);
 const ACCEPT = BigInt(80_400_000_000_000_000);
-const ORACLE_MSG = new Uint8Array(133).fill(9);
+/**
+ * A realistic signed payload: the app the message is addressed to sits at
+ * `ORACLE_TARGET_APP_OFFSET` (37), and for an OrderOps leg it must be OrderOps.
+ *
+ * This was `fill(9)` throughout, so offset 37 read as garbage. It went unnoticed
+ * while nothing checked an oracle target here — the positive control below is
+ * what surfaced it, on a group that is otherwise entirely correct. A fixture
+ * that cannot pass a correct check is a fixture that hides the check.
+ */
+const ORACLE_MSG = (() => {
+  const m = new Uint8Array(133).fill(9);
+  new DataView(m.buffer).setBigUint64(37, BigInt(PEX_APPS.orderOps), false);
+  return m;
+})();
 const ORACLE_SIG = new Uint8Array(64).fill(8);
 
 /** The tail `decodeLinkedTail` expects: 7 uint64s, a 40-byte builder tuple, two offsets. */
-function tail(): Uint8Array {
+function tail(linkMode: bigint = ORDER_LINK_MODE_BRACKET_PARENT): Uint8Array {
   const head: number[] = [];
-  for (const v of [0, TAKE_PROFIT_TIME_IN_FORCE, 0, Number(ORDER_LINK_MODE_BRACKET_PARENT), Number(BASE), 0, 0]) {
+  for (const v of [0, TAKE_PROFIT_TIME_IN_FORCE, 0, Number(linkMode), Number(BASE), 0, 0]) {
     head.push(...u64(v));
   }
   head.push(...algosdk.decodeAddress(BUILDER_ADDRESS).publicKey, ...u64(POSITION_BUILDER_FEE_BPS));
@@ -192,5 +208,133 @@ describe("assertOpenLimitGroup — the offsets audit 8 found wrong", () => {
     const g = group();
     for (const t of g) (t as unknown as { fee: bigint }).fee = BigInt(5_000_000);
     expect(assertOpenLimitGroup(g, shown()).findings.map((f) => f.code)).toContain("fee_cap");
+  });
+});
+
+describe("the attached child's KIND is bound — audit 9's arg gap, closed", () => {
+  // This leg checked C[7], C[9], C[10] and the tail and nothing else. With only
+  // a take-profit reachable that was a recorded weakness; with a stop-loss
+  // reachable it is a protection inversion — the screen promises a stop and the
+  // group submits a target, so a long's downside is uncapped and its upside
+  // closes instead. These are the tests that leg never had.
+  const CHILD_TP = BASE + BigInt(1);
+  const CHILD_SL = BASE + BigInt(2);
+  const SL_TRIGGER = TRIGGER / BigInt(2);   // a long's stop, below its entry
+
+  /** The child's args, mirroring the entry's real order. */
+  const childArgs = (kind: bigint, ownerOrderId: bigint, trigger: bigint): Uint8Array[] => [
+    hexBytes(PEX_SELECTORS.submitLinkedOrder),
+    u64(ownerOrderId),               // 1  ownerOrderId
+    u64(kind),                       // 2  orderKind  <- the field that was unbound
+    u64(ORDER_TARGET_PAIR),          // 3
+    u64(MARKET),                     // 4
+    u64(1),                          // 5  side
+    u64(COLLATERAL_ASSET_ID),        // 6
+    u64(SIZE),                       // 7  sizeUsdDelta
+    u64(0),                          // 8  collateralAmount — a child closes
+    u64(trigger),                    // 9
+    u64(trigger),                    // 10 acceptablePrice (bound separately)
+    u64(COLLATERAL_ASSET_ID),        // 11
+    u64(KEEPER),                     // 12
+    u64(0),                          // 13
+    u64(0),                          // 14
+    tail(ORDER_LINK_MODE_CHILD_WAIT_PARENT), // 15 — a CHILD, not the parent
+  ];
+
+  const withChild = (
+    kind: bigint, ownerOrderId: bigint, trigger: bigint,
+    mutate?: (a: Uint8Array[]) => void,
+  ) => {
+    const escrow = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+      sender: SENDER, receiver: ORDER_OPS_ADDR, amount: Number(STAKE + KEEPER),
+      assetIndex: COLLATERAL_ASSET_ID, suggestedParams: sp });
+    const childEscrow = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+      sender: SENDER, receiver: ORDER_OPS_ADDR, amount: Number(KEEPER),
+      assetIndex: COLLATERAL_ASSET_ID, suggestedParams: sp });
+    const mbr = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      sender: SENDER, receiver: ORDER_OPS_ADDR, amount: 100_200, suggestedParams: sp });
+    const childMbr = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      sender: SENDER, receiver: ORDER_OPS_ADDR, amount: 99_700, suggestedParams: sp });
+    const entry = algosdk.makeApplicationNoOpTxnFromObject({
+      sender: SENDER, appIndex: PEX_APPS.orderOps, appArgs: entryArgs(), suggestedParams: sp });
+    const child = algosdk.makeApplicationNoOpTxnFromObject({
+      sender: SENDER, appIndex: PEX_APPS.orderOps,
+      appArgs: (() => { const a = childArgs(kind, ownerOrderId, trigger); mutate?.(a); return a; })(),
+      suggestedParams: sp });
+    const txns = [escrow, childEscrow, mbr, childMbr, entry, child];
+    algosdk.assignGroupID(txns);
+    return txns;
+  };
+
+  const shownChild = (kind: bigint, childOrderId: bigint, trigger: bigint) => ({
+    orderKind: kind, childOrderId,
+    triggerPrice12: trigger, acceptablePrice12: trigger,
+    sizeUsdDeltaMicro: SIZE, keeperFeeMicro: KEEPER,
+    baseOrderId: BASE, slippageBps: 50,
+    oracleMessage: ORACLE_MSG, oracleSignature: ORACLE_SIG,
+  });
+
+  it("refuses a take-profit when the screen promised a stop-loss", () => {
+    // The inversion. The group submits kind 2 at the take-profit slot; the card
+    // told the user their loss was capped.
+    const g = withChild(ORDER_KIND_TAKE_PROFIT, CHILD_SL, SL_TRIGGER);
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER));
+    expect(a.ok).toBe(false);
+    expect(a.findings.map((f) => f.code)).toContain("child_order_kind");
+  });
+
+  it("refuses a stop-loss when the screen promised a take-profit", () => {
+    const g = withChild(ORDER_KIND_STOP_LOSS, CHILD_TP, TRIGGER * BigInt(2));
+    const a = assertOpenLimitGroup(g, shown(),
+      shownChild(ORDER_KIND_TAKE_PROFIT, CHILD_TP, TRIGGER * BigInt(2)));
+    expect(a.ok).toBe(false);
+    expect(a.findings.map((f) => f.code)).toContain("child_order_kind");
+  });
+
+  it("refuses a child sitting in the wrong reserved slot", () => {
+    // A stop-loss belongs at base+2. At base+1 it is mislabelled, whatever its
+    // kind field says.
+    const g = withChild(ORDER_KIND_STOP_LOSS, CHILD_TP, SL_TRIGGER);
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER));
+    expect(a.ok).toBe(false);
+    expect(a.findings.map((f) => f.code)).toContain("child_order_id");
+  });
+
+  it("binds the child's collateral amount to zero", () => {
+    // C[8] was unbound. A child CLOSES; pulling collateral in is not a close.
+    const g = withChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER, (a) => { a[8] = u64(STAKE); });
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER));
+    expect(a.findings.map((f) => f.code)).toContain("child_collateral_amount");
+  });
+
+  it("binds the child's keeper fee to what was escrowed", () => {
+    // C[12] was unbound: the arg could claim a different fee from the transfer.
+    const g = withChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER,
+      (a) => { a[12] = u64(KEEPER * BigInt(9)); });
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER));
+    expect(a.findings.map((f) => f.code)).toContain("child_keeper_fee");
+  });
+
+  it("ACCEPTS a correct limit entry with a stop-loss", () => {
+    // The positive control, and the one that matters most. Every test above
+    // asserts a specific failure code, and a `toContain` passes just as happily
+    // when the assertion is rejecting the group for five other reasons too. If
+    // this suite had only negative cases, an assertion that refused EVERY
+    // correct stop-loss bracket would look fully covered — the feature would be
+    // dead on arrival and the tests would be green.
+    const g = withChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER);
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_STOP_LOSS, CHILD_SL, SL_TRIGGER));
+    expect(a.findings.map((f) => f.code)).toEqual([]);
+    expect(a.ok).toBe(true);
+  });
+
+  it("ACCEPTS a correct limit entry with a take-profit", () => {
+    // The same control for the kind that already shipped, so this change is
+    // shown not to have broken it.
+    const TP_TRIGGER = TRIGGER * BigInt(2);
+    const g = withChild(ORDER_KIND_TAKE_PROFIT, CHILD_TP, TP_TRIGGER);
+    const a = assertOpenLimitGroup(g, shown(), shownChild(ORDER_KIND_TAKE_PROFIT, CHILD_TP, TP_TRIGGER));
+    expect(a.findings.map((f) => f.code)).toEqual([]);
+    expect(a.ok).toBe(true);
   });
 });

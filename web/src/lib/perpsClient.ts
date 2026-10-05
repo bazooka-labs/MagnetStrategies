@@ -850,6 +850,9 @@ export type OpenLimitInput = {
   triggerPrice12: bigint;
   /** Attached take-profit trigger, Price12. Optional — unlike a market open. */
   takeProfitPrice12?: bigint;
+  /** Optional stop-loss trigger, Price12. Mutually exclusive with the
+   *  take-profit while `PROTECTION_ENABLED` allows one leg. */
+  stopLossPrice12?: bigint;
   slippageBps?: number;
   onStage?: (s: OpenStage) => void;
 };
@@ -894,6 +897,65 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
     throw new Error("Enter an amount first.");
   }
   if (input.triggerPrice12 <= BigInt(0)) throw new Error("Set a trigger price first.");
+  /**
+   * ── A limit child is measured against the ENTRY, not today's index ───────
+   *
+   * Deliberately NOT the band check the market path uses. That one asks "would
+   * this fire right now", which is the right question for an order that arms
+   * immediately. A limit child is `CHILD_WAIT_PARENT`: it does not exist as a
+   * live order until the keeper fills the parent, and when it does the index
+   * will be at the limit price, not here. Checking it against today's index
+   * would refuse perfectly good stops and accept bad ones as the market moved.
+   *
+   * It is the same reason the limit path has never had a crossing check for its
+   * take-profit either.
+   *
+   * ── This DEPENDS on the crossed-entry refusal below, and that is load-bearing
+   * `buildV2OpenLimitWithAttachedOrdersTransactions` picks the child's link mode
+   * at build time:
+   *
+   *     childLinkMode = v2OrderCrossedByOracle(input)   // the ENTRY, not the child
+   *       ? CHILD_ACTIVE : CHILD_WAIT_PARENT
+   *
+   * So a child only waits because the ENTRY is un-crossed. If the entry were
+   * crossed the child would arm immediately, against today's index, and this
+   * entry-relative rule would be the wrong one — the market path's band rule
+   * would be required instead.
+   *
+   * It cannot happen here: our crossed-entry check refuses `trigger >= index`
+   * for a long where PEX only calls it crossed at `trigger >= indexMax`, and
+   * `index <= indexMax`, so we refuse a superset of what PEX would. Every entry
+   * this client accepts is un-crossed by PEX's own rule and its child is always
+   * CHILD_WAIT_PARENT. The mirror holds for a short against `indexMin`.
+   *
+   * **If that check is ever loosened to match PEX exactly — i.e. to use the band
+   * — this rule stops being sufficient and must become the band rule too.** The
+   * two are coupled, and nothing but this comment says so.
+   *
+   * So the rule is directional against the trigger the entry fills at: a long's
+   * stop below it, a short's above. A stop on the wrong side of its own entry
+   * fires the instant the parent fills.
+   */
+  if (input.stopLossPrice12 !== undefined) {
+    if (input.stopLossPrice12 <= BigInt(0)) {
+      throw new Error("That stop-loss price is not valid.");
+    }
+    if (input.takeProfitPrice12 !== undefined) {
+      throw new Error(
+        "A take-profit and a stop-loss cannot be set on the same order yet. Choose one for now.",
+      );
+    }
+    const wrongSide = side === "long"
+      ? input.stopLossPrice12 >= input.triggerPrice12
+      : input.stopLossPrice12 <= input.triggerPrice12;
+    if (wrongSide) {
+      throw new Error(
+        side === "long"
+          ? "A stop-loss on a long has to be below the entry price — above it, the position would close the moment the order filled."
+          : "A stop-loss on a short has to be above the entry price — below it, the position would close the moment the order filled.",
+      );
+    }
+  }
   if (input.takeProfitPrice12 !== undefined && input.takeProfitPrice12 <= BigInt(0)) {
     throw new Error("The take-profit price is not valid.");
   }
@@ -922,7 +984,8 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
   // keeper fee of its own.
   const keeper = micro(CHILD_KEEPER_FEE_USDC);
   const usdcNeeded = micro(collateralUsd) + keeper
-    + (input.takeProfitPrice12 !== undefined ? keeper : BigInt(0));
+    // One keeper fee per attached child, take-profit or stop-loss.
+    + (input.takeProfitPrice12 !== undefined || input.stopLossPrice12 !== undefined ? keeper : BigInt(0));
   if (BigInt(usdcHeld.amount) < usdcNeeded) {
     throw new Error("Not enough USDC for the order plus its keeper fee.");
   }
@@ -991,8 +1054,11 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
   // Bounded against the TRIGGER, not the index — the order fills later, so the
   // index now says nothing about the fill. Matches the assertion exactly.
   const acceptablePrice = acceptableForOpen(input.triggerPrice12, side, slippageBps);
-  const tpAcceptable = input.takeProfitPrice12 !== undefined
-    ? acceptableForClose(input.takeProfitPrice12, side, slippageBps) : BigInt(0);
+  /** The one attached child, if any: take-profit at base+1 or stop-loss at base+2. */
+  const childTrigger12 = input.takeProfitPrice12 ?? input.stopLossPrice12;
+  const childIsStopLoss = input.stopLossPrice12 !== undefined;
+  const tpAcceptable = childTrigger12 !== undefined
+    ? acceptableForClose(childTrigger12, side, slippageBps) : BigInt(0);
 
   stage("building");
   const sp = await algod.getTransactionParams().do();
@@ -1025,9 +1091,18 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
     indexAssetId: Number(state.core.index_asset_id),
     longAssetId: Number(state.core.long_asset_id),
     shortAssetId: Number(state.core.short_asset_id),
-    ...(input.takeProfitPrice12 !== undefined ? {
-      takeProfit: {
-        triggerPrice: input.takeProfitPrice12,
+    /**
+     * The one attached child, under whichever key its kind requires.
+     *
+     * `V2OpenLimitWithAttachedOrdersInput` carries `takeProfit` and `stopLoss`
+     * independently. Putting a stop-loss under `takeProfit` would build a kind-2
+     * order at base+1 while the card said "stop loss" — the assertion catches
+     * that now via `C[2]`, but building it correctly is the control and the
+     * assertion is only the net.
+     */
+    ...(childTrigger12 !== undefined ? {
+      [childIsStopLoss ? "stopLoss" : "takeProfit"]: {
+        triggerPrice: childTrigger12,
         acceptablePrice: tpAcceptable,
         sizeUsdDelta: sizeMicro,
         collateralAmount: BigInt(0),
@@ -1101,8 +1176,14 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
     oracleSignature: oracle.signature,
   };
   const assertion = assertOpenLimitGroup(built, shown,
-    input.takeProfitPrice12 !== undefined ? {
-      triggerPrice12: input.takeProfitPrice12,
+    childTrigger12 !== undefined ? {
+      // Kind and slot travel together, and the assertion checks both — against
+      // `C[2]` and `C[1]`. A stop-loss claiming the take-profit slot is a
+      // mislabelled leg, and a mislabelled leg is a stop that behaves like a
+      // target.
+      orderKind: childIsStopLoss ? ORDER_KIND_STOP_LOSS : ORDER_KIND_TAKE_PROFIT,
+      childOrderId: alloc.baseOrderId + (childIsStopLoss ? BigInt(2) : BigInt(1)),
+      triggerPrice12: childTrigger12,
       acceptablePrice12: tpAcceptable,
       sizeUsdDeltaMicro: sizeMicro,
       keeperFeeMicro: keeper,

@@ -1764,14 +1764,21 @@ export type DisplayedLimit = {
 export function assertOpenLimitGroup(
   txnsIn: unknown[],
   shown: DisplayedLimit,
-  shownTp?: DisplayedTakeProfit,
+  /**
+   * The attached child, if any — take-profit OR stop-loss.
+   *
+   * Was `DisplayedTakeProfit`, which could not say WHICH kind the screen
+   * promised. With a stop-loss reachable here that is a protection inversion
+   * waiting to happen, so the kind is carried and checked against `C[2]`.
+   */
+  shownChild?: DisplayedLeg,
 ): GroupAssertion {
   const txns = txnsIn.map((t) => ((t as { txn?: AnyTxn }).txn ?? t) as AnyTxn);
   const findings: GroupFinding[] = [];
   const checked: string[] = [];
   const fail = (code: string, detail: string) => findings.push({ code, detail });
   const did = (n: string) => checked.push(n);
-  const shape = shownTp ? SHAPE_OPEN_LIMIT_TP : SHAPE_OPEN_LIMIT;
+  const shape = shownChild ? SHAPE_OPEN_LIMIT_TP : SHAPE_OPEN_LIMIT;
 
   checkTxnShape(txns, shape, fail, did);
   checkCallBudget(txns, fail, shape);
@@ -1829,20 +1836,20 @@ export function assertOpenLimitGroup(
    * This is the hardening `assertOpenWithTakeProfit` already had and this path
    * never got.
    */
-  if (shownTp) {
+  if (shownChild) {
     const childEscrow = transfers.find((t) => t !== entryTransfer);
     if (!childEscrow) {
       fail("tp_escrow_missing", "no keeper-fee escrow transfer for the attached take-profit");
     } else {
       const x = childEscrow.assetTransfer!;
-      if (big(x.amount) !== shownTp.keeperFeeMicro) {
-        fail("tp_escrow_amount", `child escrow ${big(x.amount)}, displayed ${shownTp.keeperFeeMicro}`);
+      if (big(x.amount) !== shownChild.keeperFeeMicro) {
+        fail("child_escrow_amount", `child escrow ${big(x.amount)}, displayed ${shownChild.keeperFeeMicro}`);
       }
       if (String(x.receiver) !== orderOpsAddr) {
-        fail("tp_escrow_receiver", "child keeper-fee escrow does not go to the pinned OrderOps address");
+        fail("child_escrow_receiver", "child keeper-fee escrow does not go to the pinned OrderOps address");
       }
       if (Number(x.assetIndex) !== shown.collateralAssetId) {
-        fail("tp_escrow_asset", `child escrow asset ${x.assetIndex}, expected ${shown.collateralAssetId}`);
+        fail("child_escrow_asset", `child escrow asset ${x.assetIndex}, expected ${shown.collateralAssetId}`);
       }
     }
     did("attached take-profit escrow: amount, receiver, asset");
@@ -1859,7 +1866,7 @@ export function assertOpenLimitGroup(
   } else if (String(parentMbr.payment!.receiver) !== orderOpsAddr) {
     fail("limit_mbr_receiver", "entry order-box MBR does not go to the pinned OrderOps address");
   }
-  if (shownTp) {
+  if (shownChild) {
     const childMbr = payments.find((t) => big(t.payment!.amount) === ORDER_BOX_MBR_MICRO_ALGO);
     if (!childMbr) {
       fail("child_mbr_missing", `no payment of ${ORDER_BOX_MBR_MICRO_ALGO} for the child order box`);
@@ -1873,8 +1880,8 @@ export function assertOpenLimitGroup(
   const submits = txns.filter((t) => t.applicationCall
     && Number(t.applicationCall.appIndex) === PEX_APPS.orderOps
     && hex((t.applicationCall.appArgs ?? [])[0] ?? new Uint8Array()) === PEX_SELECTORS.submitLinkedOrder);
-  if (submits.length !== (shownTp ? 2 : 1)) {
-    fail("limit_submit_count", `expected ${shownTp ? 2 : 1} submit_linked_order call(s), found ${submits.length}`);
+  if (submits.length !== (shownChild ? 2 : 1)) {
+    fail("limit_submit_count", `expected ${shownChild ? 2 : 1} submit_linked_order call(s), found ${submits.length}`);
     return { ok: findings.length === 0, findings, checked };
   }
 
@@ -1984,21 +1991,78 @@ export function assertOpenLimitGroup(
   did("entry tail: GTC, no expiry, bracket-parent, base id, no claimed position, builder tuple, oracle payload");
 
   // ── The attached child, when there is one ────────────────────────────────
-  if (shownTp) {
+  if (shownChild) {
     const child = submits.find((t) => t !== entry);
     const C = child!.applicationCall!.appArgs ?? [];
-    if (u64(C[9]) !== shownTp.triggerPrice12) {
-      fail("tp_trigger", `take-profit trigger ${u64(C[9])}, displayed ${shownTp.triggerPrice12}`);
+    const kindName = shownChild.orderKind === ORDER_KIND_STOP_LOSS ? "stop-loss" : "take-profit";
+
+    /**
+     * ── The arg gap audit 9 recorded, closed ───────────────────────────────
+     *
+     * This leg checked `C[7]`, `C[9]`, `C[10]` and the tail and nothing else:
+     * `C[1..6]`, `C[8]` and `C[11..14]` were unbound. It was recorded as a known
+     * weakness and left, because a take-profit was the only thing that could sit
+     * here and most of those fields could only be the one value the builder
+     * writes.
+     *
+     * A stop-loss changes that. `C[2]` is the KIND, and with two kinds reachable
+     * an unchecked kind means the screen can promise a stop while the group
+     * submits a target — a long whose downside is uncapped and whose upside
+     * closes instead, the inverse of what was asked for. That one field is why
+     * the rest are closed now rather than later.
+     */
+    /**
+     * The slot is derived from the KIND here, not taken from the caller.
+     *
+     * `shownChild.childOrderId` is caller-supplied, so comparing `C[1]` to it
+     * alone proves only that the group matches the client — it cannot notice a
+     * client that put a stop-loss at base+1. `v2ExpectedLinkedChildOrderId`
+     * fixes the slots: take-profit at base+1, stop-loss at base+2. Both are
+     * checked, so the kind, the slot and the screen all have to agree.
+     */
+    const expectedSlot = shown.baseOrderId
+      + (shownChild.orderKind === ORDER_KIND_STOP_LOSS ? BigInt(2) : BigInt(1));
+    if (shownChild.childOrderId !== expectedSlot) {
+      fail("child_slot", `${kindName} declared at order ${shownChild.childOrderId}, expected ${expectedSlot}`);
     }
-    if (u64(C[10]) !== shownTp.acceptablePrice12) {
-      fail("tp_acceptable_price", `take-profit acceptable ${u64(C[10])}, displayed ${shownTp.acceptablePrice12}`);
+    if (u64(C[1]) !== expectedSlot) {
+      fail("child_order_id", `child ownerOrderId ${u64(C[1])}, expected ${expectedSlot}`);
     }
-    if (u64(C[7]) !== shownTp.sizeUsdDeltaMicro) {
-      fail("tp_size", `take-profit size ${u64(C[7])}, displayed ${shownTp.sizeUsdDeltaMicro}`);
+    if (u64(C[2]) !== shownChild.orderKind) {
+      fail("child_order_kind",
+        `child orderKind ${u64(C[2])}, screen showed ${kindName} (${shownChild.orderKind})`);
+    }
+    if (u64(C[3]) !== ORDER_TARGET_PAIR) fail("child_target_kind", `child targetKind ${u64(C[3])}, expected pair`);
+    if (u64(C[4]) !== BigInt(shown.marketId)) {
+      fail("child_market_id", `child marketId ${u64(C[4])}, expected ${shown.marketId}`);
+    }
+    if (u64(C[5]) !== BigInt(shown.side)) fail("child_side", `child side ${u64(C[5])}, expected ${shown.side}`);
+    if (u64(C[6]) !== BigInt(shown.collateralAssetId)) {
+      fail("child_collateral_asset", `child collateralAssetId ${u64(C[6])}`);
+    }
+    // A child CLOSES. It must not pull collateral in.
+    if (u64(C[8]) !== BigInt(0)) fail("child_collateral_amount", `child collateralAmount ${u64(C[8])}, expected 0`);
+    if (u64(C[11]) !== BigInt(shown.collateralAssetId)) {
+      fail("child_keeper_fee_asset", `child keeperFeeAssetId ${u64(C[11])}`);
+    }
+    if (u64(C[12]) !== shownChild.keeperFeeMicro) {
+      fail("child_keeper_fee", `child keeperFeeAmount ${u64(C[12])}, escrowed ${shownChild.keeperFeeMicro}`);
+    }
+    if (u64(C[13]) !== BigInt(0)) fail("child_swap_mode", `child outputSwapMode ${u64(C[13])}, expected 0`);
+    if (u64(C[14]) !== BigInt(0)) fail("child_min_primary", `child minPrimary ${u64(C[14])}, expected 0`);
+
+    if (u64(C[9]) !== shownChild.triggerPrice12) {
+      fail("child_trigger", `${kindName} trigger ${u64(C[9])}, displayed ${shownChild.triggerPrice12}`);
+    }
+    if (u64(C[10]) !== shownChild.acceptablePrice12) {
+      fail("child_acceptable_price", `${kindName} acceptable ${u64(C[10])}, displayed ${shownChild.acceptablePrice12}`);
+    }
+    if (u64(C[7]) !== shownChild.sizeUsdDeltaMicro) {
+      fail("child_size", `${kindName} size ${u64(C[7])}, displayed ${shownChild.sizeUsdDeltaMicro}`);
     }
     const ctail = decodeLinkedTail(C[15]);
     if (!ctail) {
-      fail("tp_tail_decode", "could not decode the child's packed trailing tuple");
+      fail("child_tail_decode", "could not decode the child's packed trailing tuple");
     } else {
       // **CHILD_WAIT_PARENT, not CHILD_ACTIVE.** The entry has not filled, so
       // there is no position to arm against — the child activates only when the
@@ -2015,10 +2079,38 @@ export function assertOpenLimitGroup(
         fail("tp_builder_address", `child builder ${ctail.builderAddress}, expected ${BUILDER_ADDRESS}`);
       }
       if (ctail.builderFeeBps !== BigInt(POSITION_BUILDER_FEE_BPS)) {
-        fail("tp_builder_fee", `child builderFeeBps ${ctail.builderFeeBps}`);
+        fail("child_builder_fee", `child builderFeeBps ${ctail.builderFeeBps}`);
+      }
+      /**
+       * The child's oracle payload was not bound here at all.
+       *
+       * The market leg checks both its bytes and the app the SIGNED message is
+       * addressed to. This leg checked neither — the entry's payload is
+       * verified and the child happens to carry the same fetch, but the
+       * assertion had no way to know that, and a leg carrying different bytes
+       * would have passed. B6 is exactly this failure: a check that compared
+       * against the wrong payload and so agreed with the bug.
+       */
+      if (!ctail.oracleMessage || !sameBytes(ctail.oracleMessage, shownChild.oracleMessage)) {
+        fail("child_oracle_message", `${kindName} oracle message is not the verified payload bytes`);
+      }
+      if (!ctail.oracleSignature || !sameBytes(ctail.oracleSignature, shownChild.oracleSignature)) {
+        fail("child_oracle_signature", `${kindName} oracle signature is not the verified signature bytes`);
+      }
+      // From the SIGNED bytes, not from what the client fetched: byte-equality
+      // only proves the group matches the client, and the client fetching the
+      // wrong payload is the mistake that actually happened once.
+      if (ctail.oracleMessage && ctail.oracleMessage.length >= ORACLE_TARGET_APP_OFFSET + 8) {
+        const v = new DataView(
+          ctail.oracleMessage.buffer, ctail.oracleMessage.byteOffset, ctail.oracleMessage.byteLength);
+        const target = v.getBigUint64(ORACLE_TARGET_APP_OFFSET, false);
+        if (target !== BigInt(PEX_APPS.orderOps)) {
+          fail("child_oracle_target",
+            `${kindName} oracle payload is bound to app ${target}, expected OrderOps (${PEX_APPS.orderOps})`);
+        }
       }
     }
-    did("attached take-profit: trigger, acceptable, size, link mode, base id, builder tuple");
+    did("attached child: slot from kind, identity, trigger, acceptable, size, keeper fee, link mode, base id, builder tuple, oracle payload and target");
   }
 
   return { ok: findings.length === 0, findings, checked };

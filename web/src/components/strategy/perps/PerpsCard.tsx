@@ -686,7 +686,7 @@ export function PerpsCard({
    * charged a limit order for a second keeper fee and a second 99,700 µALGO box
    * that its group never creates, and offered a stop it then discarded.
    */
-  const legCount = (tpEmpty ? 0 : 1) + (!isLimit && !slEmpty ? 1 : 0);
+  const legCount = (tpEmpty ? 0 : 1) + (slEmpty ? 0 : 1);
   const moves = useMemo(() => {
     /**
      * Fees by (entry kind, leg count).
@@ -814,8 +814,8 @@ export function PerpsCard({
    * sibling, so the question does not arise and the precondition is satisfied
    * rather than waived.
    */
-  const bothLegs = !isLimit && !tpEmpty && !slEmpty;
-  const slOk = (isLimit || slEmpty || slValid) && !bothLegs;
+  const bothLegs = !tpEmpty && !slEmpty;
+  const slOk = (slEmpty || slValid) && !bothLegs;
 
   const canSubmit = !!(
     tradable && tpOk && slOk && quote?.ok && !submitting && triggerReady
@@ -1354,7 +1354,7 @@ export function PerpsCard({
       </label>
 
       {/* Protection — the stop-loss. Optional, like the take-profit above. */}
-      {PROTECTION_ENABLED && !isLimit ? (
+      {PROTECTION_ENABLED ? (
         <label className="mt-4 block">
           <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
             Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span>

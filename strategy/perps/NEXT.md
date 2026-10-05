@@ -175,9 +175,24 @@ two together rather than separately.
   single leg there is no sibling, so the precondition is satisfied rather than
   waived. Lifting the rule needs that TestNet run and a funded TestNet account.
 
-  **Limit entries still have no stop-loss.** `assertOpenLimitGroup` locates its
-  child the same way (`submits.find(t => t !== entry)`) and so breaks
-  identically, and its child leg is only partly arg-checked already. Stage two.
+  ~~**Limit entries still have no stop-loss.**~~ **Stage two done 2026-10-05.**
+  The two-leg generalisation was not needed here: the one-leg rule means a limit
+  entry carries at most one child, so `submits.find(t => t !== entry)` stays
+  unambiguous.
+
+  What WAS needed was audit 9's recorded arg gap, as a prerequisite rather than
+  a bonus. That leg checked `C[7]`, `C[9]`, `C[10]` and the tail; `C[2]` is the
+  KIND, and with two kinds reachable an unchecked kind is a protection
+  inversion — the card promises a stop while the group submits a target.
+  `C[1..6]`, `C[8]` and `C[11..14]` are closed with it, plus the child's oracle
+  payload and its target app, which were not bound at all.
+
+  The direction rule differs from the market path on purpose: a limit child is
+  `CHILD_WAIT_PARENT` and does not arm until the keeper fills the parent, so it
+  is checked against the ENTRY trigger, not today's index band. That is sound
+  only because our crossed-entry refusal is strictly tighter than PEX's, which
+  makes the child always wait-parent. **The two guards are coupled** — see the
+  note at the guard in `perpsClient.ts`.
 
 - ~~**Audit 9 has not run.**~~ **Ran 2026-10-04, remediated in `d45f0f5`.**
   Five findings, no ship-blocker; the serious one was a user who could not EXIT
