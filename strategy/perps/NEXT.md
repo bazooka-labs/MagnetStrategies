@@ -146,65 +146,78 @@ two together rather than separately.
 
 ## Still open
 
-- **Everything after audit 7's remediation is unaudited**, including the orders
-  read path shipped in `159e6e4`.
-- ~~**No group in this codebase has ever been signed by a real wallet.**~~
-  **CLOSED 2026-10-04.** All four write paths are signed: `openPosition`,
-  `openLimitOrder`, `closePosition`, `cancelOrder` — the last confirmed by a
-  full refund (6 USDC + 0.1 USDC keeper fee + 100,200 µALGO MBR). See
-  [AUDIT.md](./AUDIT.md#cancel-measured-end-to-end-2026-10-04).
-- ~~**Stop-loss is not built, but the codebase reads as though it were.**~~
-  **BUILT 2026-10-05, stage one: market entries.** Optional, alongside an
-  optional take-profit, in the reserved base+2 slot. `PROTECTION_ENABLED` is
-  true and the placeholder that said it was not enabled is gone — the panel's
-  kind-3 label and the chart's amber overlay line are reachable for the first
-  time, having been written for this and inert since.
+Only live items. Everything struck through here previously has moved to
+**Closed recently** or to the audit record — a list where most entries are
+finished reads as a changelog, and the things actually waiting get buried in it.
 
-  The assertion was generalised to N legs on the way, which was the real work:
-  `assertOpenWithTakeProfit` located the keeper-fee escrow by elimination ("the
-  transfer that is not the collateral"), unambiguous with one child and wrong
-  with two — one leg would have been checked twice and the other not at all.
-  Legs are now bound by the note the SDK stamps with their own child order id.
-  Six hand-maintained shape constants became `openShape(legs, storage)`,
-  asserted equal to every measured constant rather than replacing them.
+### 1. Audit 10 — the largest unaudited surface since audit 8
 
-  **One protective leg at a time** — take-profit or stop-loss, never both —
-  enforced in the card and again in the client. `PROTECTION_ENABLED`'s own
-  docstring says to allow a linked pair only after a TestNet TP/SL has one leg
-  execute and the sibling is observed removed. That is still unobserved; with a
-  single leg there is no sibling, so the precondition is satisfied rather than
-  waived. Lifting the rule needs that TestNet run and a funded TestNet account.
+Unaudited since `d45f0f5`. That covers the audit-9 remediation, **both stop-loss
+stages** and the limit-capacity fix. The stop-loss work is the bulk of it and it
+rewrote the most safety-critical function in the codebase:
+`assertOpenWithTakeProfit` became an N-leg `assertOpenWithAttachedOrders`, six
+measured shape constants became a derivation, and the limit child's arg gap was
+closed.
 
-  ~~**Limit entries still have no stop-loss.**~~ **Stage two done 2026-10-05.**
-  The two-leg generalisation was not needed here: the one-leg rule means a limit
-  entry carries at most one child, so `submits.find(t => t !== entry)` stays
-  unambiguous.
+Two things deserve naming rather than a blanket note:
 
-  What WAS needed was audit 9's recorded arg gap, as a prerequisite rather than
-  a bonus. That leg checked `C[7]`, `C[9]`, `C[10]` and the tail; `C[2]` is the
-  KIND, and with two kinds reachable an unchecked kind is a protection
-  inversion — the card promises a stop while the group submits a target.
-  `C[1..6]`, `C[8]` and `C[11..14]` are closed with it, plus the child's oracle
-  payload and its target app, which were not bound at all.
+- **The stop-loss direction guard was wrong once already.** The first version
+  compared against the index POINT where PEX uses the band, which review caught
+  only because it was asked for specifically. The limit version uses a different
+  rule again — entry-relative — whose soundness depends on a *second* guard
+  (the crossed-entry refusal being tighter than PEX's). That coupling is stated
+  in a comment and nowhere else.
+- **Stage two was self-reviewed.** The delegated review died on a rate limit, so
+  limit stop-loss has had no independent pass.
 
-  The direction rule differs from the market path on purpose: a limit child is
-  `CHILD_WAIT_PARENT` and does not arm until the keeper fills the parent, so it
-  is checked against the ENTRY trigger, not today's index band. That is sound
-  only because our crossed-entry refusal is strictly tighter than PEX's, which
-  makes the child always wait-parent. **The two guards are coupled** — see the
-  note at the guard in `perpsClient.ts`.
+### 2. A take-profit and a stop-loss at the same time
 
-- ~~**Audit 9 has not run.**~~ **Ran 2026-10-04, remediated in `d45f0f5`.**
-  Five findings, no ship-blocker; the serious one was a user who could not EXIT
-  because the panel gated closes on the open rule. Its remediation's own review
-  then caught a defect the remediation introduced — see
-  [AUDIT-9-REMEDIATION.md](./AUDIT-9-REMEDIATION.md).
-- **Audit 10 has not run.** Unaudited since `d45f0f5`, which is the audit-9
-  remediation plus the stop-loss change (`e2adc4d`). The latter is the larger
-  surface: `assertOpenWithTakeProfit` was replaced by an N-leg
-  `assertOpenWithAttachedOrders`, six shape constants became a derivation, and
-  the stop-loss direction guard was rebuilt twice — the first version compared
-  against the index point where PEX uses the band, which review caught.
+Blocked, deliberately. `PROTECTION_ENABLED` allows one leg because PEX's OCO
+sibling-cleanup is unobserved: if one leg executes, nothing confirms the other is
+removed, and a user could be left holding a live stop against a closed position —
+a keeper fee and 99,700 µALGO in a resting order they do not know to cancel.
+
+**Needs:** a funded TestNet account, a position with a linked TP/SL, one leg
+executed, the sibling observed gone, receipt read back. The two-leg machinery is
+already built, asserted and tested behind the rule.
+
+### 3. `SHAPE_OPEN_STORAGE` has never been signed
+
+The one group shape with no real signature. It needs a **first-time** trader
+opening with no target — unreachable from an account that has already traded, so
+it cannot be exercised deliberately from the main wallet. Either a fresh funded
+wallet, or it gets its first run from a real user, which is the worse of the two.
+
+### 4. Pay profit out in USDC — specified, unbuilt
+
+Section 3 above. One field on the take-profit we already submit
+(`output_swap_mode`) plus `min_primary_output_amount` as the slippage floor.
+Needs a measurement first: how often `checkOutputSwapReservesNotWorsened` would
+refuse it, since a payout that silently fails is worse than one in two assets.
+
+### 5. Partial close, add collateral, reclaim — unbuilt
+
+`closePosition` closes in full only. This is one cluster, and it has two
+prerequisites already on record:
+
+- **F7 (audit 5):** `quoteClose`'s funding and borrowing fees do not scale with a
+  partial close while payout and PnL do.
+- **`CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md`** — the last remaining Ultrade letter,
+  unsent and unanswered, asking which `quoteV2DecreasePosition` fields scale on a
+  partial close. It is the groundwork for exactly this and nothing else. If
+  partial close is not wanted, that letter can go with it.
+
+### 6. The status blocks drift faster than they are read
+
+Three times this week a status line in `SPEC.md` or `OVERVIEW.md` has been
+materially false within a day of being written — "audit 9 has not run" after it
+ran, `PROTECTION_ENABLED` as "`false` — BLOCKED" after it was true, a letter
+marked "Answered" that was never sent. Each was caught by sweeping, not by
+reading.
+
+The pattern is that these are hand-maintained facts that git already knows.
+Generating the status block from the log, or reducing it to a pointer, would
+remove the class rather than the instance.
 
 ---
 
