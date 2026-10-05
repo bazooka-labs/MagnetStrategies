@@ -27,8 +27,13 @@ export function LpVaultLearnMore() {
 
   return (
     <>
-      <button onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-400 transition-colors hover:text-white">
+      {/* Amber pill, matching every other explainer trigger on the site —
+          "About $U", "About the Trading Terminal", the Trading Terminal's
+          "More info". It was grey text, which read as a de-emphasised link
+          beside the heading it belongs to; an amber pill is the established
+          shape for "press here to understand what you are looking at". */}
+      <button onClick={() => setOpen(true)} aria-haspopup="dialog"
+        className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500">
         <BookOpen className="h-3.5 w-3.5" /> Learn more
       </button>
 

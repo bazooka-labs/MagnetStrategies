@@ -122,7 +122,9 @@ export default function MagnetFiPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/tokens?tab=musd"
-            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-magnet-500/50 hover:text-white"
+            // Magnet purple: this one leads to a Magnet product page, so it carries
+            // the brand accent rather than neutral chrome.
+            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-magnet-500/40 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200 transition-colors hover:border-magnet-400/60 hover:bg-magnet-500/15 hover:text-magnet-100"
           >
             <Coins className="h-3.5 w-3.5" /> mUSD
           </Link>
@@ -130,9 +132,13 @@ export default function MagnetFiPage() {
             <button
               onClick={() => setShowAdmin((v) => !v)}
               className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                // Amber — the colour every other "this is not ordinary
+                // browsing" control uses here: the risk disclosures and the
+                // explainer triggers. Admin reveals write controls over live
+                // protocol state, which is squarely that category.
                 showAdmin
-                  ? "border-magnet-500/60 bg-magnet-500/10 text-white"
-                  : "border-white/10 bg-white/5 text-gray-300 hover:border-magnet-500/50 hover:text-white"
+                  ? "border-amber-400/60 bg-amber-500/20 text-amber-100"
+                  : "border-amber-400/30 bg-amber-500/10 text-amber-200 hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100"
               }`}
             >
               <Shield className="h-3.5 w-3.5" /> Admin
