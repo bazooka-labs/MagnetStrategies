@@ -117,8 +117,8 @@ export function PerpsView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
               Live on MainNet
             </span>
 
