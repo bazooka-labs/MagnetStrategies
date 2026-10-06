@@ -168,8 +168,8 @@ type CardSnapshot = {
   /** Limit mode, and the market has no room for this size today. */
   waitsForRoom: boolean;
   trigger12: bigint;
-  /** How full each side's book is, as a percentage and the raw figures. */
-  openInterest: { long: OiSide; short: OiSide } | null;
+  /** The traded side's open interest, and the cap it sits under. */
+  openInterest: OiSide | null;
   /** Which way funding flows and the paying side's annualised rate — or that
    *  nobody is paying, which is a state and not an absence. */
   funding:
@@ -469,40 +469,40 @@ export function PerpsCard({
    * direction is stated and the receiving figure is not invented.
    */
   /**
-   * How full each side of this market's book is.
+   * Open interest on the side being traded, and the cap it sits under.
    *
-   * The card showed funding direction and rate and nothing about capacity, so
-   * the first a user heard about a full book was their leverage quietly
-   * collapsing — 1.1x on $10, and 0.8x the day before, both reported as bugs
-   * because a correct number arrived with no context.
+   * ONE SIDE, not two. The first version showed both and titled the pair "Open
+   * interest", which conflated two things: the open interest is the DOLLARS,
+   * and the percentage is those dollars against the cap. Under one heading the
+   * percentage read as though it were the open interest itself. Both now name
+   * themselves, and the side shown is the side being traded — the one whose
+   * headroom actually caps the order on screen.
    *
-   * BOTH sides, keyed off `data` alone and not `side`: the two books fill
-   * independently, and which one is fuller is a fact about the market that
-   * holds whichever way the reader is leaning. ALGO was 98.9% full going long
-   * and 59.9% going short on the same afternoon — a reader shown only their
-   * own side cannot see that the other one is half empty.
+   * NOT "pool utilisation", though the bar looks like one. This is
+   * `max_open_interest_*` — the `oi_headroom` constraint, "how much room this
+   * side of the market has left". The pool's own limit is a DIFFERENT check
+   * (`checkReservesAfterTrade`, reason `*_reserves_exceeded`, labelled "this
+   * market's available liquidity") against different fields in the `mp2:` box.
+   * Naming this one after that one would have the card contradict itself two
+   * lines apart.
+   *
+   * Null only when the market publishes no cap: a bar against no limit is a
+   * lie. A cap with nothing against it is NOT null — zero is a state, and this
+   * is the third place a true zero was rendering as an absence.
    */
   const openInterest = useMemo(() => {
     if (!data) return null;
-    const one = (s: "long" | "short") => {
-      const cap = s === "long"
-        ? data.state.risk.max_open_interest_long
-        : data.state.risk.max_open_interest_short;
-      if (cap <= BigInt(0)) return null;
-      const used = sideOiUsd(data.state.oi, s);
-      return {
-        pct: (Number(used) / Number(cap)) * 100,
-        usedUsd: Number(used) / 1e6,
-        capUsd: Number(cap) / 1e6,
-      };
+    const cap = side === "long"
+      ? data.state.risk.max_open_interest_long
+      : data.state.risk.max_open_interest_short;
+    if (cap <= BigInt(0)) return null;
+    const used = sideOiUsd(data.state.oi, side);
+    return {
+      pct: (Number(used) / Number(cap)) * 100,
+      usedUsd: Number(used) / 1e6,
+      capUsd: Number(cap) / 1e6,
     };
-    const long = one("long");
-    const short = one("short");
-    // A zero cap means the market publishes no limit on that side, and a bar
-    // against no limit is a lie. Both or neither, so the two bars are always
-    // comparable to each other.
-    return long && short ? { long, short } : null;
-  }, [data]);
+  }, [data, side]);
 
   /**
    * Funding: who pays, how much, or that nobody does.
@@ -1190,59 +1190,53 @@ export function PerpsCard({
 
       {/* ── Open interest ──────────────────────────────────────────────────
           A market fact, so it sits with the market and not inside the order.
-          The first version of this lived in the third column beside leverage
-          and funding, where it was true, live, and never found: the reader who
-          asked whether we showed open interest at all had it on screen. Named
-          "open interest" for the same reason — "side in use" is what it means,
-          but not what anyone looks for.
+          The first version lived in the third column beside leverage and
+          funding, where it was true, live, and never found: the reader who
+          asked whether we showed open interest at all had it on screen.
 
-          BOTH sides, because the books fill independently and the asymmetry is
-          itself the information: ALGO was 98.9% full going long and 59.9%
-          going short on the same afternoon. Showing only the selected side
-          hides half of that, and it answers a question about the market with
-          a number about the order.
+          The second version showed BOTH sides under one "Open interest"
+          heading, and that conflated two quantities — the open interest is the
+          dollar figure, the percentage is that figure against the cap. Each now
+          says what it is, and only the traded side is shown, because that is
+          the side whose headroom caps the order being built below.
 
-          The selected side is the brighter of the two — the contextual link to
-          what is being built below, without repeating it in prose. The sentence
-          about being capped stays where the cap is felt, next to leverage. */}
+          Zero is spelled out rather than drawn as an empty bar and left to be
+          guessed at. Three separate things on this card have now been reported
+          missing when they were in fact zero. */}
       {view.openInterest && (
         <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
-          <p className="mb-2 text-[11px] uppercase tracking-wider text-gray-500">Open interest</p>
-          <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
-            {(["long", "short"] as const).map((s) => {
-              const u = view.openInterest![s];
-              const on = s === side;
-              return (
-                <div key={s} className="min-w-0">
-                  <div className="mb-1 flex items-baseline justify-between gap-2">
-                    <p className={`text-[11px] font-semibold capitalize ${on ? "text-white/80" : "text-white/35"}`}>
-                      {s}
-                    </p>
-                    <p className={`font-mono text-[11px] tabular-nums ${on ? "text-gray-300" : "text-gray-500"}`}>
-                      {u.pct.toFixed(1)}%
-                      <span className={on ? "text-white/30" : "text-white/20"}>
-                        {" "}· {fmtUsd(u.usedUsd)} of {fmtUsd(u.capUsd)}
-                      </span>
-                    </p>
-                  </div>
-                  {/* Same thresholds and geometry as the Bank's utilisation bars
-                      so a full book looks the same in both products. The unselected
-                      side is dimmed rather than recoloured: it must stay readable,
-                      because deciding to take the OTHER side is one of the things
-                      this display is for. */}
-                  <div className={`h-1.5 w-full overflow-hidden rounded-full bg-white/10 ${on ? "" : "opacity-45"}`}>
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${
-                        u.pct > 80 ? "bg-red-500"
-                          : u.pct > 60 ? "bg-yellow-500"
-                          : "bg-magnet-500"}`}
-                      style={{ width: `${Math.min(u.pct, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          {/* Stacked, not side by side. Across one line the label and the
+              figures each wrapped to two at phone width, which rendering caught
+              and reading would not have. */}
+          <p className="text-[11px] uppercase tracking-wider text-gray-500">
+            {side === "long" ? "Long" : "Short"} open interest
+          </p>
+          <p className="mb-1.5 mt-0.5 font-mono text-[11px] tabular-nums text-gray-300">
+            {fmtUsd(view.openInterest.usedUsd)}
+            <span className="text-white/30">
+              {view.openInterest.usedUsd <= 0
+                ? " — nothing open on this side yet"
+                : ` · ${view.openInterest.pct.toFixed(1)}% of the ${fmtUsd(view.openInterest.capUsd)} cap`}
+            </span>
+          </p>
+          {/* Same thresholds and geometry as the Bank's utilisation bars, so a
+              full book looks the same in both products. The track stays visible
+              at zero: an empty bar is the picture of "room available", which is
+              the one thing a missing bar cannot say. */}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                view.openInterest.pct > 80 ? "bg-red-500"
+                  : view.openInterest.pct > 60 ? "bg-yellow-500"
+                  : "bg-magnet-500"}`}
+              style={{ width: `${Math.min(view.openInterest.pct, 100)}%` }}
+            />
           </div>
+          {view.openInterest.usedUsd <= 0 && (
+            <p className="mt-1 text-[11px] text-white/35">
+              The whole {fmtUsd(view.openInterest.capUsd)} cap is free on this side.
+            </p>
+          )}
         </div>
       )}
       {/* Laid out across rather than down. In a 420px column this was a long
