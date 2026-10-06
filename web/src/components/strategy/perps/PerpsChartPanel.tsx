@@ -323,29 +323,44 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
           Live price leads and is the only figure at full weight: the other
           three exist to give it a scale. */}
       {day && live !== null && (
-        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 sm:grid-cols-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">Live price</p>
-            <p className="font-mono text-sm tabular-nums text-white">{formatPriceUsd(live)}</p>
+        <div className="mt-3 grid grid-cols-2 divide-white/[0.07] rounded-xl border border-white/10 bg-white/[0.02] sm:grid-cols-4 sm:divide-x">
+          {/* Hairlines rather than four separate cards: the block stays one
+              object — these are four readings of one market, not four things to
+              choose between — while each figure still gets its own space. */}
+          <div className="px-4 py-3.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Live price</p>
+            <p className="mt-1.5 font-mono text-xl font-semibold tabular-nums text-white">
+              {formatPriceUsd(live)}
+            </p>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h change</p>
-            <p className={`font-mono text-sm tabular-nums ${
+          <div className="px-4 py-3.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">24h change</p>
+            {/* The ONLY colour in the row, because it is the only figure here
+                that carries a direction. The token pages run a four-colour row
+                whose colours are positional by design; on a trading screen
+                green and red already mean something, so borrowing that scheme
+                would have "24h high" and "24h low" implying a verdict they do
+                not have. */}
+            <p className={`mt-1.5 font-mono text-xl font-semibold tabular-nums ${
               changePct === null ? "text-white/40"
-                : changePct > 0 ? "text-green-300"
-                : changePct < 0 ? "text-red-300"
+                : changePct > 0 ? "text-green-400"
+                : changePct < 0 ? "text-red-400"
                 : "text-white/60"}`}>
               {changePct === null ? "—"
                 : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
             </p>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h high</p>
-            <p className="font-mono text-sm tabular-nums text-white/70">{formatPriceUsd(day.high)}</p>
+          <div className="px-4 py-3.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">24h high</p>
+            <p className="mt-1.5 font-mono text-xl font-semibold tabular-nums text-white/75">
+              {formatPriceUsd(day.high)}
+            </p>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h low</p>
-            <p className="font-mono text-sm tabular-nums text-white/70">{formatPriceUsd(day.low)}</p>
+          <div className="px-4 py-3.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">24h low</p>
+            <p className="mt-1.5 font-mono text-xl font-semibold tabular-nums text-white/75">
+              {formatPriceUsd(day.low)}
+            </p>
           </div>
         </div>
       )}

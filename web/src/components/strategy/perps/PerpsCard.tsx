@@ -230,6 +230,33 @@ const BINDING_LABEL: Record<string, string> = {
 };
 
 /**
+ * Keep the browser's own suggestion UI off the money fields.
+ *
+ * Typing in the amount box raised a white, OS-drawn dropdown of previously
+ * entered values over a dark card. It is form history, not anything this app
+ * renders, and it cannot be styled — so the only fix is to stop asking for it.
+ *
+ * `autoComplete="off"` alone is advisory and Chrome has historically ignored it
+ * on fields it believes it recognises; a `name` it cannot match to a known
+ * field is what actually settles it, and the two password managers that inject
+ * their own icons take their own opt-outs. `spellCheck` is off because a red
+ * squiggle under a number is noise.
+ *
+ * Deliberately NOT applied to the risk slider: it is a range input with no text
+ * entry and no suggestion UI to suppress.
+ */
+const NO_AUTOFILL = {
+  autoComplete: "off",
+  autoCorrect: "off",
+  spellCheck: false,
+  // Unguessable, so no heuristic matches it to "amount" or "price".
+  name: "magnet-np",
+  "data-1p-ignore": true,
+  "data-lpignore": "true",
+  "data-form-type": "other",
+} as const;
+
+/**
  * A section of the form that folds away.
  *
  * The card shows everything at once, which is right for someone who knows what
@@ -1264,64 +1291,6 @@ export function PerpsCard({
         </div>
       )}
 
-      {/* ── Open interest ──────────────────────────────────────────────────
-          A market fact, so it sits with the market and not inside the order.
-          The first version lived in the third column beside leverage and
-          funding, where it was true, live, and never found: the reader who
-          asked whether we showed open interest at all had it on screen.
-
-          The second version showed BOTH sides under one "Open interest"
-          heading, and that conflated two quantities — the open interest is the
-          dollar figure, the percentage is that figure against the cap.
-
-          Now titled for the constraint rather than the quantity: "OI headroom"
-          is what PEX is actually enforcing, and capping trades on open interest
-          is PEX's own design choice, not a universal of perps. The leading
-          figure is the utilisation, because "98.9% used" is the fact a trader
-          acts on. The side is not named: it is whichever the toggle is set to,
-          and the binding note below names it in words when it actually bites.
-
-          Zero is spelled out rather than drawn as an empty bar and left to be
-          guessed at. Three separate things on this card have now been reported
-          missing when they were in fact zero. */}
-      {view.openInterest && (
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
-          {/* Stacked, not side by side. Across one line the label and the
-              figures each wrapped to two at phone width, which rendering caught
-              and reading would not have. */}
-          <p className="text-[11px] uppercase tracking-wider text-gray-500">OI headroom</p>
-          <p className="mb-1.5 mt-0.5 font-mono text-[11px] tabular-nums text-gray-300">
-            {view.openInterest.usedUsd <= 0 ? (
-              <>0% used<span className="text-white/30"> — nothing open on this side yet</span></>
-            ) : (
-              <>
-                {view.openInterest.pct.toFixed(1)}% used
-                <span className="text-white/30">
-                  {" "}· {fmtUsd(view.openInterest.usedUsd)} of {fmtUsd(view.openInterest.capUsd)}
-                </span>
-              </>
-            )}
-          </p>
-          {/* Same thresholds and geometry as the Bank's utilisation bars, so a
-              full book looks the same in both products. The track stays visible
-              at zero: an empty bar is the picture of "room available", which is
-              the one thing a missing bar cannot say. */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${
-                view.openInterest.pct > 80 ? "bg-red-500"
-                  : view.openInterest.pct > 60 ? "bg-yellow-500"
-                  : "bg-magnet-500"}`}
-              style={{ width: `${Math.min(view.openInterest.pct, 100)}%` }}
-            />
-          </div>
-          {view.openInterest.usedUsd <= 0 && (
-            <p className="mt-1 text-[11px] text-white/35">
-              The whole {fmtUsd(view.openInterest.capUsd)} cap is free on this side.
-            </p>
-          )}
-        </div>
-      )}
       {/* Laid out across rather than down. In a 420px column this was a long
           scroll; with the chart leading the page there is width to use, and the
           three groups below are the three decisions in order: what and how
@@ -1352,7 +1321,7 @@ export function PerpsCard({
         <span className="text-xs font-medium uppercase tracking-wide text-white/50">Amount</span>
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
-          <input id="perps-amount" inputMode="decimal" value={amount}
+          <input id="perps-amount" {...NO_AUTOFILL} inputMode="decimal" value={amount}
             onChange={(e) => {
               // Strip only what cannot change the number; refuse the rest and
               // say why. "12,50" used to become 1250. See perpsInput.
@@ -1383,7 +1352,7 @@ export function PerpsCard({
           </label>
           <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
             <span className="text-white/40">$</span>
-            <input id="perps-trigger" inputMode="decimal" value={triggerPrice}
+            <input id="perps-trigger" {...NO_AUTOFILL} inputMode="decimal" value={triggerPrice}
               placeholder={indexUsd !== null ? fmtPrice(indexUsd).replace("$", "") : ""}
               disabled={submitting}
               onChange={(e) => {
@@ -1487,81 +1456,108 @@ export function PerpsCard({
             until room opens up.
           </p>
         )}
-        {/* Funding, as a direction and a rate — the thing that actually
-            changes whether this side is worth being on. */}
-        {view.funding && !view.funding.charged && (
-          <p className="mt-1 text-[11px] leading-relaxed text-white/35">
-            <span className="text-white/55">No funding is being charged here right now</span> —
-            neither side is paying the other. It moves with the market; on this market the
-            paying side&apos;s rate can reach about {view.funding.ceilingPct.toFixed(0)}% a year.
-          </p>
-        )}
-        {view.funding?.charged && (
-          <p className="mt-1 text-[11px] leading-relaxed text-white/35">
-            {view.funding.youPay ? (
-              <>
-                <span className="text-amber-300/80">
-                  Holding this side costs about {view.funding.annualPct.toFixed(0)}% a year
-                </span>{" "}
-                in funding, paid continuously to the other side while the position is open.
-              </>
-            ) : (
-              <>
-                <span className="text-green-300/80">Funding is in your favour here</span> — the
-                other side is paying about {view.funding.annualPct.toFixed(0)}% a year, and you
-                receive a share of it. Both the rate and the direction move with the market.
-              </>
-            )}
-          </p>
-        )}
       </div>
 
       </div>
 
       <div>
-      {/* Liquidation — permanent, not a disclosure the user can dismiss */}
-      <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3.5 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">
-            Liquidation{view.isLimit && view.trigger12 > BigInt(0) ? " if filled" : ""}
-          </span>
-          <span className="text-base font-bold tabular-nums text-red-300">
-            {!view.quoteUsable || !view.quote ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
-          </span>
+      {/* ── Open interest ──────────────────────────────────────────────────
+          Heads column two: the market conditions the exits below are chosen
+          against. It has moved twice. First it sat in the third column beside
+          leverage and funding, where it was true, live and never found — the
+          reader who asked whether we showed open interest at all had it on
+          screen. Then it ran full width under the header, which made it look
+          like a banner rather than something to read before setting an exit.
+
+          The second version showed BOTH sides under one "Open interest"
+          heading, and that conflated two quantities — the open interest is the
+          dollar figure, the percentage is that figure against the cap.
+
+          Now titled for the constraint rather than the quantity: "OI headroom"
+          is what PEX is actually enforcing, and capping trades on open interest
+          is PEX's own design choice, not a universal of perps. The leading
+          figure is the utilisation, because "98.9% used" is the fact a trader
+          acts on. The side is not named: it is whichever the toggle is set to,
+          and the binding note below names it in words when it actually bites.
+
+          Zero is spelled out rather than drawn as an empty bar and left to be
+          guessed at. Three separate things on this card have now been reported
+          missing when they were in fact zero. */}
+      {view.openInterest && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
+          {/* Stacked, not side by side. Across one line the label and the
+              figures each wrapped to two at phone width, which rendering caught
+              and reading would not have. */}
+          <p className="text-[11px] uppercase tracking-wider text-gray-500">OI headroom</p>
+          <p className="mb-1.5 mt-0.5 font-mono text-[11px] tabular-nums text-gray-300">
+            {view.openInterest.usedUsd <= 0 ? (
+              <>0% used<span className="text-white/30"> — nothing open on this side yet</span></>
+            ) : (
+              <>
+                {view.openInterest.pct.toFixed(1)}% used
+                <span className="text-white/30">
+                  {" "}· {fmtUsd(view.openInterest.usedUsd)} of {fmtUsd(view.openInterest.capUsd)}
+                </span>
+              </>
+            )}
+          </p>
+          {/* Same thresholds and geometry as the Bank's utilisation bars, so a
+              full book looks the same in both products. The track stays visible
+              at zero: an empty bar is the picture of "room available", which is
+              the one thing a missing bar cannot say. */}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                view.openInterest.pct > 80 ? "bg-red-500"
+                  : view.openInterest.pct > 60 ? "bg-yellow-500"
+                  : "bg-magnet-500"}`}
+              style={{ width: `${Math.min(view.openInterest.pct, 100)}%` }}
+            />
+          </div>
+          {view.openInterest.usedUsd <= 0 && (
+            <p className="mt-1 text-[11px] text-white/35">
+              The whole {fmtUsd(view.openInterest.capUsd)} cap is free on this side.
+            </p>
+          )}
         </div>
-        {view.quoteUsable && view.liquidatable && view.indexUsd !== null && (
-          <p className="mt-0.5 text-[11px] text-red-200/60">
-            {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
-            {/* Measured from the price this order is relative to: the LIVE
-                index for a market order, which is where the user is now, and
-                the ENTRY for a limit order, which is where they would be.
-                Mixing them — a trigger-based liquidation against a live index —
-                would be a number describing neither.
+      )}
+      {/* Funding, as a direction and a rate — the thing that actually
+          changes whether this side is worth being on. */}
+      {view.funding && !view.funding.charged && (
+        <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+          <span className="text-white/55">No funding is being charged here right now</span> —
+          neither side is paying the other. It moves with the market; on this market the
+          paying side&apos;s rate can reach about {view.funding.ceilingPct.toFixed(0)}% a year.
+        </p>
+      )}
+      {view.funding?.charged && (
+        <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+          {view.funding.youPay ? (
+            <>
+              <span className="text-amber-300/80">
+                Holding this side costs about {view.funding.annualPct.toFixed(0)}% a year
+              </span>{" "}
+              in funding, paid continuously to the other side while the position is open.
+            </>
+          ) : (
+            <>
+              <span className="text-green-300/80">Funding is in your favour here</span> — the
+              other side is paying about {view.funding.annualPct.toFixed(0)}% a year, and you
+              receive a share of it. Both the rate and the direction move with the market.
+            </>
+          )}
+        </p>
+      )}
 
-                Either way the distance is exact, including for a limit order:
-                liquidation scales with entry, so the ratio between them does
-                not depend on where the order fills. Measured identical at spot
-                and at trigger on both sides. The conditional part of a limit
-                quote is the two PRICES, not this. */}
-            {" · "}{(() => {
-              const liq = price12ToUsd(view.quote!.liquidationPrice12);
-              const ref = view.isLimit ? price12ToUsd(view.quote!.entryPrice12) : view.indexUsd!;
-              return (Math.abs(liq - ref) / ref * 100).toFixed(1);
-            })()}% away
-          </p>
-        )}
-        {view.quoteUsable && !view.liquidatable && (
-          <p className="mt-0.5 text-[11px] text-red-200/60">
-            At this size your position is smaller than your collateral, so it cannot be liquidated.
-            You can still lose money if the price moves against you.
-          </p>
-        )}
-      </div>
+      {/* Folded by default — see FormSection. The title moved into the header,
+          so the row inside carries only the target chips.
 
-      {/* Folded by default — see FormSection. The title moves into the header,
-          so the row inside now carries only the target chips. */}
+          "· optional" matches the stop loss below, because it is the same
+          truth: the position opens without either. The old title named the
+          market ("Take profit at ALGO price"), which the market pills and the
+          chart above already say twice. */}
       <FormSection
-        title={`Take profit at ${market.label.split("/")[0]} price`}
+        title={<>Take profit <span className="normal-case tracking-normal text-white/30">· optional</span></>}
         summary={view.tpEmpty ? "None" : `$${view.tpPrice}`}
         problem={!view.tpEmpty && !view.tpValid}
         open={tpOpen}
@@ -1614,7 +1610,7 @@ export function PerpsCard({
         </div>
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
           <span className="text-white/40">$</span>
-          <input id="perps-tp" inputMode="decimal" value={view.tpPrice}
+          <input id="perps-tp" {...NO_AUTOFILL} inputMode="decimal" value={view.tpPrice}
             onChange={(e) => {
               const v = readNumericInput(e.target.value);
               if (!v.ok) { setTpHint(v.hint); return; }
@@ -1716,7 +1712,7 @@ export function PerpsCard({
         <label className="mt-1.5 block">
           <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
             <span className="text-white/40">$</span>
-            <input id="perps-sl" inputMode="decimal" value={view.slPrice}
+            <input id="perps-sl" {...NO_AUTOFILL} inputMode="decimal" value={view.slPrice}
               onChange={(e) => {
                 const v = readNumericInput(e.target.value);
                 if (!v.ok) { setSlHint(v.hint); return; }
@@ -1771,6 +1767,45 @@ export function PerpsCard({
       </div>
 
       <div>
+      {/* Liquidation — permanent, not a disclosure the user can dismiss */}
+      <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-3.5 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-red-300/80">
+            Liquidation{view.isLimit && view.trigger12 > BigInt(0) ? " if filled" : ""}
+          </span>
+          <span className="text-base font-bold tabular-nums text-red-300">
+            {!view.quoteUsable || !view.quote ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
+          </span>
+        </div>
+        {view.quoteUsable && view.liquidatable && view.indexUsd !== null && (
+          <p className="mt-0.5 text-[11px] text-red-200/60">
+            {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
+            {/* Measured from the price this order is relative to: the LIVE
+                index for a market order, which is where the user is now, and
+                the ENTRY for a limit order, which is where they would be.
+                Mixing them — a trigger-based liquidation against a live index —
+                would be a number describing neither.
+
+                Either way the distance is exact, including for a limit order:
+                liquidation scales with entry, so the ratio between them does
+                not depend on where the order fills. Measured identical at spot
+                and at trigger on both sides. The conditional part of a limit
+                quote is the two PRICES, not this. */}
+            {" · "}{(() => {
+              const liq = price12ToUsd(view.quote!.liquidationPrice12);
+              const ref = view.isLimit ? price12ToUsd(view.quote!.entryPrice12) : view.indexUsd!;
+              return (Math.abs(liq - ref) / ref * 100).toFixed(1);
+            })()}% away
+          </p>
+        )}
+        {view.quoteUsable && !view.liquidatable && (
+          <p className="mt-0.5 text-[11px] text-red-200/60">
+            At this size your position is smaller than your collateral, so it cannot be liquidated.
+            You can still lose money if the price moves against you.
+          </p>
+        )}
+      </div>
+
       {/* Costs */}
       {view.quoteUsable && view.quote && (
         <dl className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">

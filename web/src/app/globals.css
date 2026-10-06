@@ -444,3 +444,22 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-splash-rule, .animate-splash-sub { animation: none; opacity: 0; }
 }
+
+/*
+ * If a browser autofills anyway, do not let it repaint the field white.
+ *
+ * WebKit applies its own background to `:-webkit-autofill` with a UA rule that
+ * `background-color` cannot beat; the long inset shadow is the standard way to
+ * cover it, and `-webkit-text-fill-color` is needed because the UA overrides
+ * `color` too. The React-side `NO_AUTOFILL` props stop the suggestion dropdown;
+ * this stops the one case that gets through — a password manager filling a
+ * field it decided was a form.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #0a0a0a inset;
+  -webkit-text-fill-color: #fff;
+  caret-color: #fff;
+  transition: background-color 9999s ease-in-out 0s;
+}
