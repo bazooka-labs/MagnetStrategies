@@ -34,6 +34,7 @@ import { V2_ORDER_KIND, V2_ORDER_TARGET } from "@pdex/sdk";
 import {
   BUILDER_ADDRESS,
   CHILD_KEEPER_FEE_USDC,
+  CROSS_MARGIN_BPS,
   COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS,
   MAX_DISPLAY_DRIFT_BPS,
@@ -543,9 +544,59 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
    * stake, and the guard this replaced claimed in its own comment to be that
    * guard's mirror while having neither the band nor PEX's answer.
    *
-   * Both layers now, as the take-profit has: our bounds first, because they are
+   * Both layers, as the take-profit has above: our bounds first, because they are
    * cheap and give a usable message, then PEX's own verdict.
    */
+  /**
+   * ── The take-profit must not already be crossed ──────────────────────────
+   *
+   * RESTORED. Audit 10 SB1: the commit that added the stop-loss guard deleted
+   * both of these and left only the stop-loss block in their place, so the write
+   * path had zero take-profit crossing checks while the stop-loss had two. The
+   * comment below it still read "Both layers now, as the take-profit has", which
+   * is how it survived a review — the review looked at what the commit added and
+   * not at what it removed.
+   *
+   * Checked HERE and not only in the card, for two reasons that have not
+   * changed: the card's bounds come from a snapshot up to a refresh cycle old
+   * and the band moves; and a bound is our arithmetic about PEX, whereas
+   * `quoteProtectiveOrderCrossed` is PEX's own answer.
+   *
+   * A crossed take-profit executes on arrival, so the position opens and closes
+   * in one group: open fee, close fee, two builder fees, the keeper fee and exit
+   * impact. Measured at about $1.58 on a $50 stake at 9.27x — 3.2% of it, and no
+   * position — under a card that had just promised a profit.
+   *
+   * Skipped entirely when there is no target, not merely ignored: the SDK's
+   * `quoteV2DecreaseOrder` validates the trigger and throws on zero, so calling
+   * it and discarding the answer surfaces as "raw Price12 must be positive" with
+   * no wallet prompt and no explanation.
+   */
+  if (wantsTakeProfit) {
+    const tpBounds = takeProfitBounds(probe);
+    if (takeProfitPrice12 < tpBounds.minPrice12 || takeProfitPrice12 > tpBounds.maxPrice12) {
+      throw new Error(
+        "That take-profit price is no longer valid at the current market price. Check it and try again.",
+      );
+    }
+    const tpCross = quoteProtectiveOrderCrossed({
+      orderKind: V2_ORDER_KIND.DECREASE_TAKE_PROFIT,
+      state, oracle, side, owner: sender, notionalUsd,
+      triggerPrice12: takeProfitPrice12,
+      acceptablePrice12: tpAcceptable,
+      keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
+      collateralAssetId: COLLATERAL_ASSET_ID,
+      builderAddress: BUILDER_ADDRESS,
+    });
+    if (tpCross.blocking) {
+      throw new Error(
+        tpCross.crossed
+          ? "That take-profit would trigger immediately at the current price, closing the position as soon as it opened. Pick a target further away."
+          : `The exchange will not accept that take-profit: ${tpCross.reasons.join(", ")}`,
+      );
+    }
+  }
+
   if (wantsStopLoss) {
     const slBounds = stopLossBounds(probe);
     if (stopLossPrice12 < slBounds.minPrice12 || stopLossPrice12 > slBounds.maxPrice12) {
@@ -932,31 +983,41 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
    * — this rule stops being sufficient and must become the band rule too.** The
    * two are coupled, and nothing but this comment says so.
    *
-   * So the rule is directional against the trigger the entry fills at: a long's
-   * stop below it, a short's above. A stop on the wrong side of its own entry
-   * fires the instant the parent fills.
+   * The rule itself lives beside the crossed-entry refusal below, because it
+   * needs the oracle band and this point in the function does not have it yet.
    */
-  if (input.stopLossPrice12 !== undefined) {
-    if (input.stopLossPrice12 <= BigInt(0)) {
-      throw new Error("That stop-loss price is not valid.");
-    }
-    if (input.takeProfitPrice12 !== undefined) {
-      throw new Error(
-        "A take-profit and a stop-loss cannot be set on the same order yet. Choose one for now.",
-      );
-    }
-    const wrongSide = side === "long"
-      ? input.stopLossPrice12 >= input.triggerPrice12
-      : input.stopLossPrice12 <= input.triggerPrice12;
-    if (wrongSide) {
-      throw new Error(
-        side === "long"
-          ? "A stop-loss on a long has to be below the entry price — above it, the position would close the moment the order filled."
-          : "A stop-loss on a short has to be above the entry price — below it, the position would close the moment the order filled.",
-      );
-    }
+  /**
+   * "Set" means a POSITIVE price, for both legs — matching `openPositionInner`.
+   *
+   * Hoisted above the validation because everything below keys off it: the
+   * both-legs refusal, the keeper-fee term and which child gets built. Leaving
+   * any of those on `!== undefined` would read a zero as "set" and charge for
+   * or build a leg at a trigger of 0.
+   */
+  const tpSet = (input.takeProfitPrice12 ?? BigInt(0)) > BigInt(0);
+  const slSet = (input.stopLossPrice12 ?? BigInt(0)) > BigInt(0);
+
+  /**
+   * Zero means NONE, not invalid — matching `openPositionInner`.
+   *
+   * These sibling functions had opposite contracts for the same field: market
+   * read `0` as "no stop", limit read any defined `<= 0` as a broken caller.
+   * Audit 10 LOW 9 caught it as a trap rather than a bug — the obvious wiring
+   * for the card, `stopLossPrice12: slEmpty ? 0n : sl12` (the exact line the
+   * market branch already uses), would have thrown "That stop-loss price is not
+   * valid" on EVERY limit order.
+   *
+   * Negative is still refused: a broken caller, not a choice.
+   */
+  if (input.stopLossPrice12 !== undefined && input.stopLossPrice12 < BigInt(0)) {
+    throw new Error("That stop-loss price is not valid.");
   }
-  if (input.takeProfitPrice12 !== undefined && input.takeProfitPrice12 <= BigInt(0)) {
+  if (slSet && tpSet) {
+    throw new Error(
+      "A take-profit and a stop-loss cannot be set on the same order yet. Choose one for now.",
+    );
+  }
+  if (input.takeProfitPrice12 !== undefined && input.takeProfitPrice12 < BigInt(0)) {
     throw new Error("The take-profit price is not valid.");
   }
   if (!Number.isFinite(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
@@ -985,7 +1046,8 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
   const keeper = micro(CHILD_KEEPER_FEE_USDC);
   const usdcNeeded = micro(collateralUsd) + keeper
     // One keeper fee per attached child, take-profit or stop-loss.
-    + (input.takeProfitPrice12 !== undefined || input.stopLossPrice12 !== undefined ? keeper : BigInt(0));
+    // One keeper fee per attached child, and only for a child that is SET.
+    + (tpSet || slSet ? keeper : BigInt(0));
   if (BigInt(usdcHeld.amount) < usdcNeeded) {
     throw new Error("Not enough USDC for the order plus its keeper fee.");
   }
@@ -1051,12 +1113,59 @@ async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionR
     );
   }
 
+  /**
+   * ── A limit stop-loss must clear the band AT THE ENTRY ───────────────────
+   *
+   * Audit 10 MEDIUM 4. The rule was `sl < trigger` for a long, which is
+   * directionally right and one band-width short — structurally the same
+   * mistake the market guard made (point instead of band) one stage earlier.
+   *
+   * The keeper fills a long parent when `indexMax <= trigger`; take the worst
+   * case, `indexMax == trigger`. At that instant the child's own crossed test is
+   * `indexMin <= sl`, and `indexMin` sits a band-width below `indexMax` — so
+   * every stop in `[trigger × (indexMin/indexMax), trigger)` is crossed the
+   * moment the parent fills, and fires on arrival. On the measured 0.188%
+   * ALGO/USD band that is any stop within ~0.19% of entry: both fees, both
+   * builder fees, the keeper fee and exit impact, and no position.
+   *
+   * The band RATIO comes from the live oracle because the width is a market
+   * property that travels with the price, while its absolute level at fill time
+   * is unknowable now. `CROSS_MARGIN_BPS` on top, the same buffer the other two
+   * crossing guards carry.
+   *
+   * The card already computed this correctly, by scaling `quoteOracle` to the
+   * trigger. So this is the control catching up with the advisory layer, which
+   * is the wrong way round and worth saying rather than quietly fixing.
+   */
+  if (slSet) {
+    const sl = input.stopLossPrice12 ?? BigInt(0);
+    const tenK = BigInt(10_000);
+    const margin = BigInt(Math.round(CROSS_MARGIN_BPS));
+    const bandMin = oracle.decoded.indexMinPrice;
+    const bandMax = oracle.decoded.indexMaxPrice;
+    const tooClose = side === "long"
+      // sl × indexMax must clear trigger × indexMin, less the margin.
+      ? bandMax <= BigInt(0)
+        || sl * bandMax * tenK >= input.triggerPrice12 * bandMin * (tenK - margin)
+      // sl × indexMin must clear trigger × indexMax, plus the margin.
+      : bandMin <= BigInt(0)
+        || sl * bandMin * tenK <= input.triggerPrice12 * bandMax * (tenK + margin);
+    if (tooClose) {
+      throw new Error(
+        side === "long"
+          ? "That stop is too close to your entry price — it would trigger the moment the order filled, closing the position straight away for a loss in fees. Move it further below."
+          : "That stop is too close to your entry price — it would trigger the moment the order filled, closing the position straight away for a loss in fees. Move it further above.",
+      );
+    }
+  }
+
   // Bounded against the TRIGGER, not the index — the order fills later, so the
   // index now says nothing about the fill. Matches the assertion exactly.
   const acceptablePrice = acceptableForOpen(input.triggerPrice12, side, slippageBps);
   /** The one attached child, if any: take-profit at base+1 or stop-loss at base+2. */
-  const childTrigger12 = input.takeProfitPrice12 ?? input.stopLossPrice12;
-  const childIsStopLoss = input.stopLossPrice12 !== undefined;
+  /** Which child, if any — on the same "> 0 means set" rule declared above. */
+  const childTrigger12 = tpSet ? input.takeProfitPrice12 : (slSet ? input.stopLossPrice12 : undefined);
+  const childIsStopLoss = slSet;
   const tpAcceptable = childTrigger12 !== undefined
     ? acceptableForClose(childTrigger12, side, slippageBps) : BigInt(0);
 

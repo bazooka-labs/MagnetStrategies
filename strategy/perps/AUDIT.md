@@ -1819,3 +1819,142 @@ details answered themselves:
 blocks nothing today because partial close is not built: `closePosition` closes
 in full. It is the groundwork for the day that changes, and it is the one of the
 four that genuinely still needs Ultrade.
+
+
+---
+
+# Audit 10 — 2026-10-05
+
+Scope: `d45f0f5..HEAD` — the audit-9 remediation, both stop-loss stages, the
+limit-capacity fix and the /trade move. ~1,600 added lines, centred on
+`perpsGroup.ts` (+699) and `perpsClient.ts` (+332). Delegated adversarial pass;
+every finding below verified against the code and the SDK before being recorded.
+
+**Two ship blockers, and they share a shape.** Both are *removals of a guard
+inside a commit that adds a guard*. Both survived because the thing removed had
+no test, and the comment beside it still described it as present. Both reviews
+looked at what the commit added. **Neither diffed what it deleted.**
+
+## SB1 — the take-profit crossing guard was deleted from the write path
+
+`e2adc4d` — the market stop-loss commit, the one that *was* independently
+reviewed — removed both take-profit crossing layers from `openPositionInner` and
+put only a stop-loss block in their place. `takeProfitBounds` became a dead
+import; `quoteProtectiveOrderCrossed` ran for the stop-loss and nothing ran for
+the take-profit. Verified: the import was present and uncalled.
+
+So the write path had **zero** take-profit crossing checks while the stop-loss
+had two — and the comment under it read *"Both layers now, as the take-profit
+has"*. That sentence is why the review passed: it described the state the commit
+had just destroyed.
+
+The consequence is the defect this codebase has already measured twice: a
+crossed take-profit executes on arrival, the position opens and closes in one
+group, and the user pays open fee, close fee, two builder fees, the keeper fee
+and exit impact — **$1.58 on a $50 stake, 3.2%, and no position** — under a card
+that had just printed a profit.
+
+**Fixed:** both layers restored, gated on `wantsTakeProfit`, with a test that
+fails when `takeProfitBounds(probe)` is removed again.
+
+## SB2 — the limit stop-loss was offered, validated, billed, and never built
+
+`aacf0e0` removed the three `!isLimit` gates and **never added
+`stopLossPrice12` to the `openLimitOrder` call**. The input was live, `slValid`
+computed, the disclosure charged $0.20 of keeper fees and ~0.24 ALGO — and the
+card passed only `takeProfitPrice12`. `childTrigger12` was `undefined`, no child
+was built, and `assertOpenLimitGroup` asserted a bare limit order green.
+
+Every piece of that commit's client and assertion work — the validation, the
+`[childIsStopLoss ? "stopLoss" : "takeProfit"]` key, the entire `C[1..14]` + kind
++ slot + oracle hardening — was unreachable from the product.
+
+A user typing a stop 10% below entry would read *"Closes automatically if the
+price reaches this, capping the loss"*, sign, and hold a position with **no stop
+of any kind**. The money direction of the disclosure error is safe (it
+overstates); the protection claim is the part that matters.
+
+**Fixed**, but only after LOW 9 below — the naive wiring would have refused
+every limit order.
+
+## HIGH 3 — the capacity loosening stopped one layer short
+
+`599ebf3` taught `solveBar` and `confirmCeiling` to ignore market capacity for a
+limit order, and did not teach the card's display quote. `canSubmit` requires
+`quote.ok`, and that quote had no relaxation — so the bar widened, the ceiling
+widened, and then every size the bar offered was refused. Dead button, no
+explanation, under the new banner saying *"It can still be placed."*
+
+Not reproducible on the day it was found (the market had room again), so
+verified by inspection and then by forcing the cap against live state: a
+capacity-failed quote returns `ok: false` with `reasons: ["long_oi_cap"]` and
+**carries real numbers** — entry price, liquidation price and direction all
+populated.
+
+The SDK claim underneath the original change does verify: `checkOiAfter` and
+`checkReservesAfterTrade` are called from `quoteV2OpenPosition` and nowhere else,
+and `CAPACITY_REASONS` is the exact set those two push. The loosening was also
+correctly bounded on the reason axis — `initial_margin_breach` scales with side
+OI, looks capacity-shaped, and is *not* in the set, so it still binds.
+
+**Fixed:** `capacityOnlyFailure()` is now applied to the display quote too, so
+display and submission use one rule. Its numbers are real; the only untrue thing
+about such a quote is that the position could open *this instant*, which is
+precisely what a resting order does not claim.
+
+## MEDIUM 4 — the limit stop-loss rule was one band-width short
+
+The coupling argument holds and was verified: our crossed-entry refusal is a
+strict superset of PEX's, so a limit child is always `CHILD_WAIT_PARENT`.
+
+The rule built on it was not sufficient. `sl < trigger` is directionally right
+and misses a band: the keeper fills a long parent when `indexMax <= trigger`, and
+the child's own crossed test is then `indexMin <= sl`. Every stop in
+`[trigger × (indexMin/indexMax), trigger)` fires on arrival — on the measured
+0.188% ALGO/USD band, any stop within ~0.19% of entry.
+
+Structurally the same mistake as stage one's blocker (point instead of band), in
+the stage that was reviewed by its own author. **Fixed:** the band is scaled to
+the entry and carries `CROSS_MARGIN_BPS`, matching the other two guards.
+
+Worth recording: the CARD was accidentally correct here, because it scales
+`quoteOracle` to the trigger. The advisory layer was right and the control was
+wrong, which inverts this module's own doctrine.
+
+## LOW 9 — two sibling functions, opposite contracts for one field
+
+`openPositionInner` read `stopLossPrice12 = 0` as "none"; `openLimitOrderInner`
+read any defined `<= 0` as a broken caller. Caught as a **trap rather than a
+bug**: the obvious fix for SB2 — copying the market branch's
+`stopLossPrice12: slEmpty ? 0n : sl12` — would have thrown *"That stop-loss price
+is not valid"* on every limit order. Aligned first, then SB2 was wired.
+
+## Clean
+
+**The market N-leg rewrite is clean.** Every `fail()` code from the pre-change
+function has a counterpart; four became locators and are equivalent or stronger;
+two early `return`s became `continue`, so a later check now runs that used to be
+skipped; `openShape` tightens `orderOps` from the default 0..1 to exactly `legs`.
+The `unknown_transfer` amount-exemption was probed and is closed by
+`assertOpenGroup`'s note-free binding of `transfers[0]`.
+
+**The one-leg rule holds.** All three enforcements agree, and the field-blank vs
+`price > 0` divergence cannot produce a submittable two-leg state.
+
+**Disclosure is correct for every reachable combination** except limit+SL, which
+was SB2.
+
+## Still open
+
+MEDIUM 5 — the limit child's trailing tuple remains half-bound: `timeInForce`,
+`expiryTime`, `minSecondary`, `expectedPositionId` and `entryGroupOffset` are
+unchecked there while the market leg checks all five, and the child's acceptable
+price has no directional bound, so `DisplayedLeg.slippageBps` is declared and
+never read on that path. Not a regression — all were unchecked before — but
+`aacf0e0`'s headline was that this leg's arg gap is closed, and for the tail it
+is not.
+
+LOW 7 — five limit-path findings still carry `tp_` codes and say "take-profit"
+when a stop-loss is what failed. LOW 8 — `confirmed`'s dependency array omits
+`isLimit` and is correct only by accident. LOW 10 — `algoFirstTrade` describes a
+group `openLimitOrderInner` refuses to build.

@@ -51,6 +51,7 @@ import {
   formatPriceUsd,
   priceDisplayDecimals,
   type OpenQuote,
+  capacityOnlyFailure,
   stopLossBounds,
 } from "@/lib/perpsQuote";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
@@ -139,6 +140,8 @@ type CardSnapshot = {
   tpPrice: string;
   tradable: boolean;
   liquidatable: boolean;
+  /** The quote is good enough to show and sign against — see `quoteUsable`. */
+  quoteUsable: boolean;
   tpValid: boolean;
   /** Stop-loss, frozen with everything else. Audit 7: a field added to the card
    *  and not to the snapshot is read LIVE at the render site. */
@@ -711,6 +714,17 @@ export function PerpsCard({
    * which is the safe direction for a disclosure; claiming measurement it did
    * not have is the part that needed fixing.
    */
+  /**
+   * Is the quote good enough to show and to sign against?
+   *
+   * `quote.ok` for a market order. For a LIMIT order, also a quote that failed
+   * only because the market has no room right now: its numbers are real, and
+   * "cannot open this instant" is not a claim a resting order makes. Without
+   * this the bar and the ceiling widened for limit orders and `canSubmit` then
+   * refused every size they offered — audit 10 HIGH 3.
+   */
+  const quoteUsable = !!quote?.ok || (isLimit && capacityOnlyFailure(quote));
+
   /** 0, 1 or 2 protective orders. Every per-order cost keys off this. */
   /**
    * Protective legs this entry will actually carry.
@@ -810,6 +824,7 @@ export function PerpsCard({
    */
   const live: CardSnapshot = {
     quote, notional, collateralUsd, tpPrice, tradable, liquidatable, tpValid, tpPayoff,
+    quoteUsable,
     slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
     waitsForRoom,
@@ -862,7 +877,7 @@ export function PerpsCard({
   const slOk = (slEmpty || slValid) && !bothLegs;
 
   const canSubmit = !!(
-    tradable && tpOk && slOk && quote?.ok && !submitting && triggerReady
+    tradable && tpOk && slOk && quoteUsable && !submitting && triggerReady
     && wallet.isConnected && wallet.address && notional > 0
   );
 
@@ -920,6 +935,20 @@ export function PerpsCard({
           notionalUsd: notional,
           triggerPrice12: trigger12,
           ...(tp12 > BigInt(0) ? { takeProfitPrice12: tp12 } : {}),
+          /**
+           * Audit 10 SB2: this was missing.
+           *
+           * The stop-loss input was un-gated for limit mode, validated, and
+           * billed for in the disclosure — and the value never reached
+           * `openLimitOrder`, so a bare limit order was built and asserted
+           * green. The card said "capping the loss" and charged $0.20 in keeper
+           * fees over a group carrying one keeper fee and no stop.
+           *
+           * Zero is "none" on both paths now; see the contract note in
+           * `openLimitOrderInner`, which had to be aligned FIRST or this exact
+           * line would have refused every limit order.
+           */
+          ...(sl12 > BigInt(0) ? { stopLossPrice12: sl12 } : {}),
           slippageBps: DEFAULT_SLIPPAGE_BPS,
           onStage: setStage,
         });
@@ -1157,7 +1186,7 @@ export function PerpsCard({
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-white/50">Risk</span>
           <span className="text-sm font-semibold tabular-nums text-white">
-            {view.tradable && view.quote?.ok ? `${view.quote.leverage.toFixed(2)}×` : "—"}
+            {view.tradable && view.quoteUsable && view.quote ? `${view.quote.leverage.toFixed(2)}×` : "—"}
           </span>
         </div>
         <input id="perps-risk" type="range" min={0} max={1} step={0.01} value={barPos}
@@ -1242,10 +1271,10 @@ export function PerpsCard({
             Liquidation{view.isLimit && view.trigger12 > BigInt(0) ? " if filled" : ""}
           </span>
           <span className="text-base font-bold tabular-nums text-red-300">
-            {!view.quote?.ok ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
+            {!view.quoteUsable || !view.quote ? "—" : view.liquidatable ? fmtPrice(price12ToUsd(view.quote.liquidationPrice12)) : "None"}
           </span>
         </div>
-        {view.quote?.ok && view.liquidatable && view.indexUsd !== null && (
+        {view.quoteUsable && view.liquidatable && view.indexUsd !== null && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             {side === "long" ? "Falls to" : "Rises to"} this and the position closes at a total loss of {fmtUsd(view.collateralUsd)}
             {/* Measured from the price this order is relative to: the LIVE
@@ -1266,7 +1295,7 @@ export function PerpsCard({
             })()}% away
           </p>
         )}
-        {view.quote?.ok && !view.liquidatable && (
+        {view.quoteUsable && !view.liquidatable && (
           <p className="mt-0.5 text-[11px] text-red-200/60">
             At this size your position is smaller than your collateral, so it cannot be liquidated.
             You can still lose money if the price moves against you.
@@ -1348,13 +1377,13 @@ export function PerpsCard({
               : `That target needs a ${(view.quickPick.moveBps! / 100).toFixed(0)}% price move at this risk level. Raise the risk level, or pick a smaller target.`}
           </p>
         )}
-        {view.quote?.ok && view.tpEmpty ? (
+        {view.quoteUsable && view.tpEmpty ? (
           /* Not an error. The consequence, stated once, without nagging. */
           <p className="mt-1 text-xs text-white/40">
             No target set — this position runs until you close it, or until it
             liquidates. You can add a target later by closing and reopening.
           </p>
-        ) : view.quote?.ok && (
+        ) : view.quoteUsable && (
           view.tpValid && view.tpPayoff !== null ? (
             <p className="mt-1 text-xs text-green-300/90">
               Closes for {fmtUsd(view.tpPayoff)} profit before costs
@@ -1474,7 +1503,7 @@ export function PerpsCard({
 
       <div>
       {/* Costs */}
-      {view.quote?.ok && (
+      {view.quoteUsable && view.quote && (
         <dl className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">
           {[
             [view.isLimit ? "Entry price if filled" : "Entry price",

@@ -306,6 +306,25 @@ const CAPACITY_REASONS = new Set([
   "long_reserves_exceeded", "short_reserves_exceeded",
 ]);
 
+/**
+ * A quote that failed ONLY because the market has no room right now.
+ *
+ * Its numbers are still real — entry price, liquidation price and direction are
+ * all computed before the capacity test runs, and were verified populated on a
+ * forced `long_oi_cap`. The only untrue thing about such a quote is that the
+ * position could open *this instant*, which is precisely the thing a resting
+ * limit order does not claim.
+ *
+ * Audit 10 HIGH 3: `solveBar` and `confirmCeiling` were taught to ignore
+ * capacity for a limit order and the card's display quote was not, so the bar
+ * widened, the ceiling widened, and then `canSubmit` — which requires
+ * `quote.ok` — refused every size the bar had just offered. Dead button, no
+ * explanation, under a banner saying the order could be placed. The loosening
+ * has to reach every layer or it is worse than not loosening at all.
+ */
+export const capacityOnlyFailure = (q: OpenQuote | null | undefined): boolean =>
+  !!q && !q.ok && q.reasons.length > 0 && q.reasons.every((r) => CAPACITY_REASONS.has(r));
+
 export function confirmCeiling(
   input: Omit<QuoteInput, "notionalUsd">,
   opts: { maxSteps?: number; marketCapacityApplies?: boolean } = {},
