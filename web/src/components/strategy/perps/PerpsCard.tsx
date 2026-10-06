@@ -54,6 +54,7 @@ import {
   capacityOnlyFailure,
   stopLossBounds,
 } from "@/lib/perpsQuote";
+import { sideOiUsd } from "@/lib/perpsReads";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
@@ -164,6 +165,8 @@ type CardSnapshot = {
   /** Limit mode, and the market has no room for this size today. */
   waitsForRoom: boolean;
   trigger12: bigint;
+  /** How full this side's book is, as a percentage and the raw figures. */
+  utilisation: { pct: number; usedUsd: number; capUsd: number } | null;
   /** Which way funding flows, and the paying side's annualised rate. */
   funding: { annualPct: number; youPay: boolean } | null;
   /** No target set — a choice now, and the button and warnings reflect it. */
@@ -458,6 +461,33 @@ export function PerpsCard({
    * real zero (the index only advances when `update_funding` runs). So the
    * direction is stated and the receiving figure is not invented.
    */
+  /**
+   * How full THIS side of the market is.
+   *
+   * The card showed funding direction and rate and nothing about capacity, so
+   * the first a user heard about a full book was their leverage quietly
+   * collapsing — 1.1x on $10, and 0.8x the day before, both reported as bugs
+   * because a correct number arrived with no context. A bar makes the condition
+   * visible before it becomes a surprise.
+   *
+   * Per SIDE, not per market: the two books fill independently and only the one
+   * being traded constrains the size. ALGO was 99% full on the long side and
+   * had 60% of its short side free on the same afternoon.
+   */
+  const utilisation = useMemo(() => {
+    if (!data) return null;
+    const cap = side === "long"
+      ? data.state.risk.max_open_interest_long
+      : data.state.risk.max_open_interest_short;
+    if (cap <= BigInt(0)) return null;
+    const used = sideOiUsd(data.state.oi, side);
+    return {
+      pct: (Number(used) / Number(cap)) * 100,
+      usedUsd: Number(used) / 1e6,
+      capUsd: Number(cap) / 1e6,
+    };
+  }, [data, side]);
+
   const funding = useMemo(() => {
     if (!data) return null;
     const factor = Number(data.state.adaptive.saved_factor_milli_bps);
@@ -847,6 +877,7 @@ export function PerpsCard({
     quoteUsable,
     slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
+    utilisation,
     waitsForRoom,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
@@ -1277,6 +1308,44 @@ export function PerpsCard({
         )}
         {/* Funding, as a direction and a rate — the thing that actually
             changes whether this side is worth being on. */}
+        {/* How full this side's book is. Same bar treatment as the Bank's
+            utilisation displays, so the two read as one product. Per side,
+            because the books fill independently and only this one caps the
+            size on screen. */}
+        {view.utilisation && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500">
+                {side === "long" ? "Long" : "Short"} side in use
+              </p>
+              <p className="font-mono text-[11px] text-gray-400">
+                {view.utilisation.pct.toFixed(1)}%
+                <span className="text-white/25">
+                  {" "}· {fmtUsd(view.utilisation.usedUsd)} of {fmtUsd(view.utilisation.capUsd)}
+                </span>
+              </p>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  view.utilisation.pct > 80 ? "bg-red-500"
+                    : view.utilisation.pct > 60 ? "bg-yellow-500"
+                    : "bg-magnet-500"}`}
+                style={{ width: `${Math.min(view.utilisation.pct, 100)}%` }}
+              />
+            </div>
+            {view.utilisation.pct > 90 && (
+              /* The sentence that would have saved two bug reports. Shown from
+                 90% because that is where the headroom share starts visibly
+                 capping size, not at an arbitrary round number. */
+              <p className="mt-1 text-[11px] text-amber-300/80">
+                Nearly full — the most you can open on this side right now is
+                limited by what is left here, not by your collateral.
+              </p>
+            )}
+          </div>
+        )}
+
         {view.funding && (
           <p className="mt-1 text-[11px] leading-relaxed text-white/35">
             {view.funding.youPay ? (
