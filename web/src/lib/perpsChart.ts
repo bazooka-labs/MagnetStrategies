@@ -161,6 +161,66 @@ export async function fetchCandles(
   return aggregate > 1 ? aggregateCandles(candles, aggregate, granularity) : candles;
 }
 
+/** The last 24 hours, as one summary. Prices in USD. */
+export type DayStats = { open: number; high: number; low: number; close: number };
+
+/**
+ * Rolling 24-hour high, low and open — NOT the calendar daily candle.
+ *
+ * A daily candle resets at 00:00 UTC, so at 00:30 its "high" and "low" describe
+ * thirty minutes while still being labelled 24h. Every exchange's 24h figures
+ * are a rolling window for that reason, and a trader reading "24h low" during
+ * the first hours of a UTC day would otherwise be reading a number that is true
+ * only of this morning.
+ *
+ * Hourly granularity: the extremes are then the hour's real high and low rather
+ * than a sampled close, and 24 rows is one cheap request.
+ *
+ * `open` is the oldest bucket's open, so a change computed against it spans the
+ * full window.
+ */
+export async function fetchDayStats(
+  marketId: number, fetchImpl: typeof fetch = fetch,
+): Promise<DayStats> {
+  const product = PRODUCT[marketId];
+  if (!product) throw new ChartUnavailableError(`no price history configured for market ${marketId}`);
+
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - 24 * 3600;
+  const url = `https://api.exchange.coinbase.com/products/${product}/candles`
+    + `?granularity=3600&start=${new Date(start * 1000).toISOString()}`
+    + `&end=${new Date(end * 1000).toISOString()}`;
+
+  let res: Response;
+  try {
+    res = await fetchImpl(url, { headers: { accept: "application/json" } });
+  } catch (e) {
+    throw new ChartUnavailableError(e instanceof Error ? e.message : String(e));
+  }
+  if (!res.ok) throw new ChartUnavailableError(`24h stats returned ${res.status}`);
+
+  const raw: unknown = await res.json();
+  if (!Array.isArray(raw)) throw new ChartUnavailableError("24h stats had an unexpected shape");
+
+  // Coinbase rows are [time, low, high, open, close, volume], newest first.
+  const rows: Candle[] = [];
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length < 5) continue;
+    const [t, l, h, o, c] = row as number[];
+    if (![t, l, h, o, c].every((v) => typeof v === "number" && Number.isFinite(v))) continue;
+    rows.push({ t, l, h, o, c });
+  }
+  if (rows.length === 0) throw new ChartUnavailableError("24h stats were empty");
+  rows.sort((a, b) => a.t - b.t);
+
+  return {
+    open: rows[0].o,
+    close: rows[rows.length - 1].c,
+    high: Math.max(...rows.map((r) => r.h)),
+    low: Math.min(...rows.map((r) => r.l)),
+  };
+}
+
 /**
  * Combine `n` candles into one, for intervals the exchange does not serve.
  *

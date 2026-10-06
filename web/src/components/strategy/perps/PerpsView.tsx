@@ -158,7 +158,8 @@ export function PerpsView() {
           wallet is connected. */}
       <Panel>
         <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
-          onMarketChange={setMarketId} lines={lines} busy={busy} />
+          onMarketChange={setMarketId} lines={lines} busy={busy}
+          indexUsd={overlay?.indexPrice12 ? Number(overlay.indexPrice12) / 1e12 : null} />
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
           onOverlayChange={setOverlay} onBusyChange={setBusy} />
         <PositionsPanel onLinesChange={setPositionLines} />

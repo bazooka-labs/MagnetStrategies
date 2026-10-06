@@ -32,6 +32,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ENABLED_MARKET_IDS, PEX_MARKETS } from "@/lib/perps";
 import { PerpsChart } from "./PerpsChart";
+import { fetchDayStats, type DayStats } from "@/lib/perpsChart";
+import { formatPriceUsd } from "@/lib/perpsQuote";
 import { CHART_RANGES, rangeLabel, type ChartRange } from "@/lib/perpsChart";
 
 /**
@@ -160,9 +162,17 @@ type Props = {
    * as "100.0% away". The signed group is unaffected; the screen was not.
    */
   busy?: boolean;
+  /**
+   * The oracle index, from the card.
+   *
+   * Not read again here: the price a trade executes against has one owner on
+   * this page, and a second poll on a second timer would let the strip and the
+   * card's header disagree about the live price by whatever the clocks drifted.
+   */
+  indexUsd?: number | null;
 };
 
-export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], busy = false }: Props) {
+export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], busy = false, indexUsd = null }: Props) {
   /**
    * Which chart is showing.
    *
@@ -183,6 +193,48 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
   const [range, setRange] = useState<ChartRange>("1d");
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
+
+  /**
+   * Rolling 24-hour high, low and open.
+   *
+   * Its own fetch rather than a slice of the chart's series: the chart's range
+   * is a control the user moves, and these figures must stay 24h whichever
+   * interval is on screen. One hourly request a minute is cheaper than making
+   * the two coupled.
+   *
+   * Failure is silent — the strip disappears rather than showing dashes. It is
+   * context, not a number anything is signed against, and the caption under the
+   * chart already says where the candles come from.
+   */
+  const [day, setDay] = useState<DayStats | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      void fetchDayStats(marketId)
+        .then((d) => { if (alive) setDay(d); })
+        .catch(() => { if (alive) setDay(null); });
+    };
+    setDay(null);
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(id); };
+  }, [marketId]);
+
+  /**
+   * The live number, and the move measured against the window's open.
+   *
+   * The oracle index when the card has reported one, because that is what a
+   * position prices against and what the card's own header shows. Coinbase's
+   * last close is the fallback, so the strip still reads before the card's
+   * first poll lands rather than sitting empty for ten seconds.
+   *
+   * The change is computed against the SAME live figure that is displayed, so
+   * the percentage and the price can never tell different stories.
+   */
+  const live = indexUsd ?? day?.close ?? null;
+  const changePct = day && day.open > 0 && live !== null
+    ? ((live - day.open) / day.open) * 100
+    : null;
 
   useEffect(() => {
     // `advanced` is a dependency, and that is the whole fix for a real bug:
@@ -258,6 +310,45 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
 
         <IntervalToggle range={range} onChange={setRange} />
       </div>
+
+      {/* ── The market, in four numbers ─────────────────────────────────────
+          ONE block, not four boxes. Four bordered cards in a row read as four
+          separate things to decide between; this is one fact — where the market
+          is — looked at from four angles, and the shared background says so.
+
+          Above the chart because it is what the chart is about. The strip
+          answers "where is it, and how far has it moved" without reading a
+          single candle, which is the question most visits open with.
+
+          Live price leads and is the only figure at full weight: the other
+          three exist to give it a scale. */}
+      {day && live !== null && (
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 sm:grid-cols-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-gray-500">Live price</p>
+            <p className="font-mono text-sm tabular-nums text-white">{formatPriceUsd(live)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h change</p>
+            <p className={`font-mono text-sm tabular-nums ${
+              changePct === null ? "text-white/40"
+                : changePct > 0 ? "text-green-300"
+                : changePct < 0 ? "text-red-300"
+                : "text-white/60"}`}>
+              {changePct === null ? "—"
+                : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h high</p>
+            <p className="font-mono text-sm tabular-nums text-white/70">{formatPriceUsd(day.high)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-gray-500">24h low</p>
+            <p className="font-mono text-sm tabular-nums text-white/70">{formatPriceUsd(day.low)}</p>
+          </div>
+        </div>
+      )}
 
       {/* Only the body changes between views. The container is always mounted
           so the widget effect has somewhere to build into; hiding it rather

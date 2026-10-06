@@ -125,6 +125,19 @@ export type CardOverlay = {
   takeProfitPrice12: bigint | null;
   stopLossPrice12: bigint | null;
   side: Side;
+  /**
+   * The oracle index, reported for the metric strip above the chart.
+   *
+   * Carried here rather than fetched again up there, because the price a trade
+   * executes against has exactly one owner on this page. A second read would be
+   * a second poll on its own timer, and the header and the strip would then
+   * disagree about the live price by whatever the two clocks drifted.
+   *
+   * Independent of `quote`: it is a property of the market, not of the order
+   * being composed, so it survives an empty form — the same distinction that
+   * kept the chart's position lines alive through a refresh.
+   */
+  indexPrice12: bigint | null;
 };
 
 /**
@@ -735,8 +748,9 @@ export function PerpsCard({
       // the chart already knows how to draw it.
       stopLossPrice12: null,
       side,
+      indexPrice12: data?.oracle.indexPrice12 ?? null,
     });
-  }, [quote, tpValid, tp12, side, onOverlayChange]);
+  }, [quote, tpValid, tp12, side, data, onOverlayChange]);
 
   const liquidatable = !!(quote?.ok
     && quote.liquidationDirection !== "" && quote.liquidationPrice12 > BigInt(0));
