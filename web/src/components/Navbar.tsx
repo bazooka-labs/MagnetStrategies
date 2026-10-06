@@ -24,7 +24,10 @@ const navLinks = [
    */
   { href: "/trade", label: "Trade", external: false },
   { href: "/predict", label: "Predict", external: false },
-  { href: "/vote", label: "Vote", external: false },
+  // No "Vote" entry: UVote is a section of the $U page now. One proposal had
+  // ever been opened, and a standing nav slot leading to "check back when the
+  // founder opens the first vote" spends attention this bar does not have.
+  // /vote redirects into it — see next.config.js.
   { href: "/contact", label: "Contact", external: false },
 ];
 

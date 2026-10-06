@@ -6,6 +6,8 @@ import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
 import { PoolsSection } from "@/components/tokens/PoolsSection";
 import { StatCell } from "@/components/tokens/StatCell";
+import { TreasuryStat } from "@/components/tokens/TreasuryStat";
+import { GovernanceSection } from "@/components/tokens/GovernanceSection";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -73,11 +75,15 @@ export function MagnetTokenView({
 
       {/* Stats + chart + swap, one unified panel */}
       <Panel className="animate-enter mb-8">
-        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
+        {/* Five across on desktop. On two columns the fifth would sit alone in a
+            half-width cell with a hanging divider, so it spans the row — a
+            deliberate last-row rule, not a gap. */}
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-5 lg:divide-y-0">
           <StatCell label="Price" value={price} sub="USDC" tone="green" />
           <StatCell label="Holders" value={holders} sub="Active wallets" tone="amber" />
           <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" tone="teal" />
           <TvlRankStat />
+          <div className="col-span-2 lg:col-span-1"><TreasuryStat /></div>
         </div>
 
         <div className="border-t border-white/10" />
@@ -94,6 +100,10 @@ export function MagnetTokenView({
 
       {/* $U liquidity pools */}
       <PoolsSection />
+
+      {/* Governance — last, because it is the part a reader comes to after
+          deciding they hold $U, not before. */}
+      <GovernanceSection />
     </>
   );
 }

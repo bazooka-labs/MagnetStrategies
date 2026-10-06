@@ -13,9 +13,15 @@
  * equal-sized numbers makes the brighter ones read as more important, and
  * nothing in this row outranks anything else.
  *
- * Exported because the Magnet page's fourth box is `TvlRankStat`, a separate
- * component with its own popover. It has to take its colour from here or the
- * row drifts the first time one of these is touched.
+ * Exported because two boxes in the row are not `StatCell`s: `TvlRankStat`,
+ * which owns a popover, and `TreasuryStat`, which owns a link. Both have to
+ * take their colour from here or the row drifts the first time one is touched.
+ *
+ * GREEN NOW APPEARS TWICE — price and treasury — which breaks the one-colour-
+ * per-position rule above. Deliberate: those two are the only figures in the
+ * row denominated in dollars the project actually holds or trades at, and
+ * pairing them is the point. If a sixth box ever lands, this is the rule that
+ * is already bent and should be reconsidered rather than bent further.
  */
 export const STAT_TONES = {
   green: "text-green-400",
