@@ -186,6 +186,26 @@ export type PerpsCardProps = {
   onBusyChange?: (busy: boolean) => void;
 };
 
+/**
+ * What actually caps the size, in words a user can act on.
+ *
+ * This rendered the raw enum, so a user whose size was capped by a nearly-full
+ * order book read "limited by oi headroom". Two separate reports came in
+ * reading a CORRECT number as a bug — 1.1x on $10, and 0.8x the day before —
+ * because the figure looked wrong and the label explained nothing.
+ *
+ * `oi_headroom` and `reserves` are the two worth naming properly: they are
+ * conditions of the MARKET rather than of the user's own position, they move on
+ * their own, and the other side or the other market is usually wide open.
+ */
+const BINDING_LABEL: Record<string, string> = {
+  margin: "the leverage limit at this size",
+  collateral: "the amount you entered",
+  oi_headroom: "how much room this side of the market has left",
+  reserves: "this market's available liquidity",
+  sanity_cap: "our own size cap",
+};
+
 export function PerpsCard({
   marketId: controlledMarketId, onMarketChange, onOverlayChange, onBusyChange,
 }: PerpsCardProps = {}) {
@@ -1236,7 +1256,23 @@ export function PerpsCard({
         )}
         {view.tradable && view.binding && (
           <p className="mt-1 text-[11px] text-white/35">
-            Position size {fmtUsd(view.notional)} · limited by {view.binding.replace(/_/g, " ")}
+            Position size {fmtUsd(view.notional)} · limited by{" "}
+            {BINDING_LABEL[view.binding] ?? view.binding.replace(/_/g, " ")}
+          </p>
+        )}
+        {/* When the MARKET is the cap, say so and say what to do about it.
+            A squeezed-but-open book previously showed only the raw enum: the
+            plain-English "at its size limit" line fires when the bar is CLOSED,
+            which is not the case that confused anyone. A long capped at 1.1x
+            looks broken; a long capped at 1.1x BECAUSE the book is nearly full
+            is information. Two separate reports read a correct number as a bug
+            before this line existed. */}
+        {view.tradable && (view.binding === "oi_headroom" || view.binding === "reserves") && (
+          <p className="mt-1 text-[11px] text-amber-300/80">
+            Not your limit — the {side} side of this market is nearly full right
+            now, so this is the largest position it can take. The other side and
+            the other market are usually unaffected, and a limit order can rest
+            until room opens up.
           </p>
         )}
         {/* Funding, as a direction and a rate — the thing that actually
