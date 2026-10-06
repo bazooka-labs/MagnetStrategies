@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import algosdk from "algosdk";
-import { ArrowDownRight, ArrowUpRight, Info, TriangleAlert } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronDown, Info, TriangleAlert } from "lucide-react";
 import {
   ACTIVE_MARKET_ID,
   BUILDER_ADDRESS,
@@ -229,6 +229,59 @@ const BINDING_LABEL: Record<string, string> = {
   sanity_cap: "our own size cap",
 };
 
+/**
+ * A section of the form that folds away.
+ *
+ * The card shows everything at once, which is right for someone who knows what
+ * they are looking at and intimidating for someone who does not. The exits are
+ * the two parts a first-time reader can safely meet later — the position opens
+ * without either.
+ *
+ * ── What collapsing must never hide ────────────────────────────────────────
+ * A value that is SET, and a problem with it.
+ *
+ * The header carries the summary, so a take-profit folded away still shows its
+ * price; collapsing hides the controls, not the commitment. And `problem`
+ * forces the section open and keeps it open, because the alternative is a
+ * disabled submit button with its explanation folded out of sight. Clicking
+ * collapse while a warning is up appears to do nothing — which is the intent,
+ * and the amber summary says why.
+ */
+function FormSection({
+  title, summary, problem, open, onToggle, children,
+}: {
+  title: React.ReactNode;
+  summary: string;
+  /** A validation failure: forces the body open and turns the summary amber. */
+  problem?: boolean;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const shown = open || !!problem;
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={shown}
+        className="flex w-full items-center justify-between gap-2 rounded-lg py-1 text-left transition-colors hover:bg-white/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-magnet-500"
+      >
+        <span className="text-xs font-medium uppercase tracking-wider text-gray-500">{title}</span>
+        <span className="flex items-center gap-1.5">
+          <span className={`font-mono text-[11px] tabular-nums ${problem ? "text-amber-300/90" : "text-white/45"}`}>
+            {summary}
+          </span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-white/35 transition-transform ${shown ? "rotate-180" : ""}`}
+          />
+        </span>
+      </button>
+      {shown && children}
+    </div>
+  );
+}
+
 export function PerpsCard({
   marketId: controlledMarketId, onMarketChange, onOverlayChange, onBusyChange,
 }: PerpsCardProps = {}) {
@@ -264,6 +317,15 @@ export function PerpsCard({
   const [amount, setAmount] = useState<string>("");
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
+  /**
+   * Both exits start folded.
+   *
+   * Opening a position needs neither, and a new reader meeting eleven controls
+   * at once reads the card as harder than the trade. A set value still shows in
+   * the collapsed header, so folding costs no information.
+   */
+  const [tpOpen, setTpOpen] = useState(false);
+  const [slOpen, setSlOpen] = useState(false);
   /** Optional stop-loss. Empty means none, exactly as the take-profit does. */
   const [slPrice, setSlPrice] = useState<string>("");
   /**
@@ -1496,12 +1558,17 @@ export function PerpsCard({
         )}
       </div>
 
-      {/* Take profit — mandatory */}
-      <label className="mt-4 block">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-white/50">
-            Take profit at {market.label.split("/")[0]} price
-          </span>
+      {/* Folded by default — see FormSection. The title moves into the header,
+          so the row inside now carries only the target chips. */}
+      <FormSection
+        title={`Take profit at ${market.label.split("/")[0]} price`}
+        summary={view.tpEmpty ? "None" : `$${view.tpPrice}`}
+        problem={!view.tpEmpty && !view.tpValid}
+        open={tpOpen}
+        onToggle={() => setTpOpen((v) => !v)}
+      >
+      <label className="mt-1.5 block">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Profit targets, as a fraction of the stake. Picking one makes the
               exit price follow the risk slider — "+25% on my stake" is a
               different price at 3x than at 12x, and the profit is what was
@@ -1618,6 +1685,7 @@ export function PerpsCard({
           )
         )}
       </label>
+      </FormSection>
 
       {view.waitsForRoom && (
         /* Honest about what letting a limit order past the capacity check means:
@@ -1633,12 +1701,19 @@ export function PerpsCard({
         </div>
       )}
 
-      {/* Protection — the stop-loss. Optional, like the take-profit above. */}
+      {/* Folded by default. The stop-loss is optional and the position opens
+          without one; the header keeps the price visible when it is set, and a
+          problem with it forces this open rather than hiding a disabled
+          button's reason. */}
+      <FormSection
+        title={<>Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span></>}
+        summary={view.slEmpty ? "None" : `$${view.slPrice}`}
+        problem={!view.slEmpty && (!view.slValid || view.slPastLiquidation)}
+        open={slOpen}
+        onToggle={() => setSlOpen((v) => !v)}
+      >
       {PROTECTION_ENABLED ? (
-        <label className="mt-4 block">
-          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-            Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span>
-          </span>
+        <label className="mt-1.5 block">
           <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
             <span className="text-white/40">$</span>
             <input id="perps-sl" inputMode="decimal" value={view.slPrice}
@@ -1691,6 +1766,7 @@ export function PerpsCard({
           </span>
         </div>
       )}
+      </FormSection>
 
       </div>
 
