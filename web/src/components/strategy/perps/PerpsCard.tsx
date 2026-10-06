@@ -170,8 +170,12 @@ type CardSnapshot = {
   trigger12: bigint;
   /** How full each side's book is, as a percentage and the raw figures. */
   openInterest: { long: OiSide; short: OiSide } | null;
-  /** Which way funding flows, and the paying side's annualised rate. */
-  funding: { annualPct: number; youPay: boolean } | null;
+  /** Which way funding flows and the paying side's annualised rate — or that
+   *  nobody is paying, which is a state and not an absence. */
+  funding:
+    | { charged: true; annualPct: number; youPay: boolean; ceilingPct: number }
+    | { charged: false; ceilingPct: number }
+    | null;
   /** No target set — a choice now, and the button and warnings reflect it. */
   tpEmpty: boolean;
   /** What this signature moves, derived from the constants. Frozen with the rest. */
@@ -500,16 +504,47 @@ export function PerpsCard({
     return long && short ? { long, short } : null;
   }, [data]);
 
+  /**
+   * Funding: who pays, how much, or that nobody does.
+   *
+   * ZERO IS A STATE, NOT MISSING DATA. This returned null on a zero factor, so
+   * a market charging no funding rendered no funding line at all — and the
+   * absence read as a missing feature rather than as "it is free here right
+   * now". BTC sat at exactly that: `saved_factor_milli_bps=0`,
+   * `saved_factor_side=0`, adaptive mode on and unramped, while ALGO showed a
+   * rate on the same screen.
+   *
+   * The direction still comes from `saved_factor_side` and is NEVER inferred
+   * from the imbalance (AUDIT.md item 16). That is why the zero branch names
+   * no side: with no paying side recorded there is nothing to read a direction
+   * from, and the one-sided book is not permission to guess which way it will
+   * fall when the controller does move.
+   *
+   * `max_factor_milli_bps` is the clamp on `saved_factor_milli_bps` — ALGO sits
+   * at exactly that value — so it is quotable as a ceiling. The RAMP, by
+   * contrast, is undocumented on our side, so this says the rate moves without
+   * claiming when or in whose favour.
+   */
   const funding = useMemo(() => {
     if (!data) return null;
     const factor = Number(data.state.adaptive.saved_factor_milli_bps);
     const payingSide = Number(data.state.adaptive.saved_factor_side);
     const interval = Number(data.state.risk.funding_interval_seconds);
-    if (factor <= 0 || interval <= 0 || (payingSide !== 1 && payingSide !== 2)) return null;
+    if (interval <= 0) return null;
     // milli-bps is 1e-7 as a fraction; annualise over the interval.
-    const annualPct = (factor / 1e7) * (31_536_000 / interval) * 100;
-    const youPay = payingSide === (side === "long" ? 1 : 2);
-    return { annualPct, youPay };
+    const annual = (f: number) => (f / 1e7) * (31_536_000 / interval) * 100;
+    const ceilingPct = annual(Number(data.state.adaptive.max_factor_milli_bps));
+    if (factor <= 0) return { charged: false as const, ceilingPct };
+    // A positive factor with no readable paying side is a state we have never
+    // seen and cannot describe without inventing a direction. Stay silent
+    // rather than guess — the one case where showing nothing is still right.
+    if (payingSide !== 1 && payingSide !== 2) return null;
+    return {
+      charged: true as const,
+      annualPct: annual(factor),
+      youPay: payingSide === (side === "long" ? 1 : 2),
+      ceilingPct,
+    };
   }, [data, side]);
 
   const trigger12 = usdToPrice12(triggerPrice) ?? BigInt(0);
@@ -1377,7 +1412,14 @@ export function PerpsCard({
         )}
         {/* Funding, as a direction and a rate — the thing that actually
             changes whether this side is worth being on. */}
-        {view.funding && (
+        {view.funding && !view.funding.charged && (
+          <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+            <span className="text-white/55">No funding is being charged here right now</span> —
+            neither side is paying the other. It moves with the market; on this market the
+            paying side&apos;s rate can reach about {view.funding.ceilingPct.toFixed(0)}% a year.
+          </p>
+        )}
+        {view.funding?.charged && (
           <p className="mt-1 text-[11px] leading-relaxed text-white/35">
             {view.funding.youPay ? (
               <>
