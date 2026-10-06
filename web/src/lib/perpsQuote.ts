@@ -14,7 +14,7 @@
 // price, then anchor the user's tolerance to that, and surface impact as its own
 // cost line rather than silently eating the tolerance with it.
 
-import { quoteV2DecreasePosition, quoteV2OpenPosition } from "@pdex/sdk";
+import { quoteV2DecreasePosition, quoteV2LiquidationPrice, quoteV2OpenPosition } from "@pdex/sdk";
 import { quoteV2DecreaseOrder } from "@pdex/sdk";
 import { V2_ORDER_KIND } from "@pdex/sdk";
 import {
@@ -508,6 +508,62 @@ export function stopLossBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice
  * the first pass is permissive purely to learn where this size would execute,
  * and the second is the real quote.
  */
+/**
+ * Where an OPEN position gets liquidated, from PEX's own solver.
+ *
+ * The chart's liquidation line used to come from the card's prospective quote —
+ * the order being composed in the form, not the position actually held. With an
+ * empty form there was no quote and the line simply vanished, which is why
+ * entry and liquidation disappeared from the chart on every page refresh and
+ * came back only once something was typed into the collateral field.
+ *
+ * A position's liquidation price is not ours to derive. `quoteV2LiquidationPrice`
+ * binary-searches `quoteV2PositionHealth` for the boundary, accounting for
+ * funding and borrowing accrued since entry — none of which a
+ * `collateral / size` approximation knows about. Two components computing a
+ * liquidation price separately is how they come to disagree, and disagreeing
+ * about a liquidation price is not a cosmetic failure.
+ *
+ * Returns null rather than a zero on any refusal: the SDK answers
+ * `non_monotonic_liquidation_boundary` when the search finds no clean crossing,
+ * and a zero drawn on a chart is a line at the bottom of the axis claiming the
+ * position is safe all the way down.
+ *
+ * NOTE the result keys differ from the open quote's. This one returns
+ * `liquidation_price` and `direction`; `quoteV2OpenPosition` returns
+ * `liquidation_price_estimate` and `liquidation_price_direction`. Reading the
+ * open quote's names here yields undefined, which `big()` turns into a
+ * confident 0n.
+ */
+export function quoteLiquidationPrice(input: {
+  state: MarketState;
+  /** From `readMarketFunding`. The health solve needs it, as the close quote does. */
+  funding: MarketFunding;
+  position: Record<string, bigint>;
+  oracle: OraclePayload;
+  side: Side;
+  collateralAssetId: number;
+}): { price12: bigint; direction: string } | null {
+  let raw: Record<string, unknown>;
+  try {
+    raw = quoteV2LiquidationPrice({
+      market: { ...marketRecord(input.state), ...input.funding },
+      pool: { ...input.state.pool },
+      position: input.position,
+      collateralAssetId: BigInt(input.collateralAssetId),
+      side: SIDE_CODE[input.side],
+      prices: priceInput(input.oracle),
+    } as never) as unknown as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!raw.ok) return null;
+  const price12 = big(raw.liquidation_price);
+  const direction = String(raw.direction ?? "");
+  if (price12 <= BigInt(0) || direction === "") return null;
+  return { price12, direction };
+}
+
 export function quoteClose(input: {
   state: MarketState;
   /** From `readMarketFunding`. Not optional — the SDK throws without it. */

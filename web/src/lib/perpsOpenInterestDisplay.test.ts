@@ -27,7 +27,9 @@ describe("it is open interest, not pool utilisation", () => {
 
   it("does not call itself pool utilisation", () => {
     expect(block.toLowerCase()).not.toMatch(/pool utilisation|pool utilization/);
-    expect(block).toContain("open interest");
+    // "OI headroom" names the constraint PEX enforces. The pool's limit is a
+    // different check and keeps its own words.
+    expect(block).toContain("OI headroom");
   });
 
   it("keeps the two constraints separately labelled", () => {
@@ -62,6 +64,7 @@ describe("zero is a state, not an absence", () => {
   });
 
   it("says so in words rather than drawing an empty bar and stopping", () => {
+    expect(block).toContain("0% used");
     expect(block).toContain("nothing open on this side yet");
     expect(block).toContain("cap is free on this side");
   });

@@ -32,7 +32,7 @@ import {
   type PositionState,
 } from "@/lib/perpsReads";
 import { getOraclePayload } from "@/lib/perpsOracle";
-import { quoteClose, type CloseQuote } from "@/lib/perpsQuote";
+import { quoteClose, quoteLiquidationPrice, type CloseQuote } from "@/lib/perpsQuote";
 
 export type OpenPosition = {
   marketId: number;
@@ -42,6 +42,17 @@ export type OpenPosition = {
   close: CloseQuote | null;
   /** Why the quote is missing, for the "couldn't price this" line. */
   quoteError: string | null;
+  /**
+   * Where PEX liquidates this position, and on which side of the price.
+   *
+   * Null when the SDK declines to answer. Carried here rather than derived by
+   * whoever draws it: the chart used to take its liquidation line from the
+   * CARD's prospective quote — the order being composed, not the position held
+   * — so with an empty form the line vanished, which is why these markings
+   * disappeared on every refresh.
+   */
+  liquidationPrice12: bigint | null;
+  liquidationDirection: string;
 };
 
 export type PositionsStatus = {
@@ -155,7 +166,17 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
               // A position that cannot be priced is still a position. Show it.
               quoteError = e instanceof Error ? e.message : String(e);
             }
-            found.push({ marketId, side, position: p!, close, quoteError });
+            // Pure computation over state already fetched — no extra round trip.
+            const liq = quoteLiquidationPrice({
+              state, funding, oracle, side,
+              position: p as unknown as Record<string, bigint>,
+              collateralAssetId: COLLATERAL_ASSET_ID,
+            });
+            found.push({
+              marketId, side, position: p!, close, quoteError,
+              liquidationPrice12: liq?.price12 ?? null,
+              liquidationDirection: liq?.direction ?? "",
+            });
           }
         }
         if (!alive) return;

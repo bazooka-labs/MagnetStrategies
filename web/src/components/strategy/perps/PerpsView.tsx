@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
+import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
@@ -64,20 +65,52 @@ export function PerpsView() {
    * `PerpsChartPanel`'s `busy` prop.
    */
   const [busy, setBusy] = useState(false);
+  /**
+   * Levels of the positions actually HELD, reported by the positions panel.
+   *
+   * Separate from `overlay`, which is the order being composed. Keeping them
+   * apart is the whole fix: the chart's entry and liquidation lines used to
+   * come from the card's prospective quote, so a page refresh — which clears
+   * the collateral field by design — left the quote null and took the lines
+   * with it. A held position's levels do not depend on anything being typed.
+   */
+  const [positionLines, setPositionLines] = useState<PositionLine[]>([]);
 
   const lines = useMemo(() => {
-    if (!overlay) return [];
     const out: { price: number; label: string; colour: string; dash: string }[] = [];
     const add = (p: bigint | null, label: string, colour: string, dash: string) => {
       if (p !== null && p > BigInt(0)) out.push({ price: Number(p) / 1e12, label, colour, dash });
     };
-    // Same colours the card uses for the same concepts.
-    add(overlay.entryPrice12, "Entry", "#e5e7eb", "5 4");
-    add(overlay.liquidationPrice12, "Liquidation", "#f87171", "2 3");
-    add(overlay.takeProfitPrice12, "Take profit", "#4ade80", "6 4");
-    add(overlay.stopLossPrice12, "Stop", "#fbbf24", "2 3");
+
+    /*
+     * HELD first, and drawn SOLID.
+     *
+     * These are positions with money in them; the composer's lines describe an
+     * order that does not exist yet. Solid versus dashed is the distinction,
+     * and it survives both being on screen at once — which happens whenever
+     * someone sizes a second order while already holding one.
+     *
+     * Named by side only when both sides are held in this market, which is
+     * possible on PEX and would otherwise produce two identical labels.
+     */
+    const held = positionLines.filter((l) => l.marketId === marketId);
+    const bothSides = held.length > 1;
+    for (const l of held) {
+      const who = bothSides ? `${l.side} ` : "";
+      add(l.entryPrice12, `Your ${who}entry`, "#e5e7eb", "");
+      add(l.liquidationPrice12, `Your ${who}liquidation`, "#f87171", "");
+    }
+
+    // The order being composed, dashed. Same colours the card uses for the
+    // same concepts.
+    if (overlay) {
+      add(overlay.entryPrice12, "Entry", "#e5e7eb", "5 4");
+      add(overlay.liquidationPrice12, "Liquidation", "#f87171", "2 3");
+      add(overlay.takeProfitPrice12, "Take profit", "#4ade80", "6 4");
+      add(overlay.stopLossPrice12, "Stop", "#fbbf24", "2 3");
+    }
     return out;
-  }, [overlay]);
+  }, [overlay, positionLines, marketId]);
   const market = Object.values(PEX_MARKETS).find((m) => m.id === marketId);
 
   return (
@@ -128,7 +161,7 @@ export function PerpsView() {
           onMarketChange={setMarketId} lines={lines} busy={busy} />
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
           onOverlayChange={setOverlay} onBusyChange={setBusy} />
-        <PositionsPanel />
+        <PositionsPanel onLinesChange={setPositionLines} />
       </Panel>
       <PerpsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
     </>

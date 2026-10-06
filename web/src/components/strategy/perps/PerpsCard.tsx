@@ -1196,9 +1196,14 @@ export function PerpsCard({
 
           The second version showed BOTH sides under one "Open interest"
           heading, and that conflated two quantities — the open interest is the
-          dollar figure, the percentage is that figure against the cap. Each now
-          says what it is, and only the traded side is shown, because that is
-          the side whose headroom caps the order being built below.
+          dollar figure, the percentage is that figure against the cap.
+
+          Now titled for the constraint rather than the quantity: "OI headroom"
+          is what PEX is actually enforcing, and capping trades on open interest
+          is PEX's own design choice, not a universal of perps. The leading
+          figure is the utilisation, because "98.9% used" is the fact a trader
+          acts on. The side is not named: it is whichever the toggle is set to,
+          and the binding note below names it in words when it actually bites.
 
           Zero is spelled out rather than drawn as an empty bar and left to be
           guessed at. Three separate things on this card have now been reported
@@ -1208,16 +1213,18 @@ export function PerpsCard({
           {/* Stacked, not side by side. Across one line the label and the
               figures each wrapped to two at phone width, which rendering caught
               and reading would not have. */}
-          <p className="text-[11px] uppercase tracking-wider text-gray-500">
-            {side === "long" ? "Long" : "Short"} open interest
-          </p>
+          <p className="text-[11px] uppercase tracking-wider text-gray-500">OI headroom</p>
           <p className="mb-1.5 mt-0.5 font-mono text-[11px] tabular-nums text-gray-300">
-            {fmtUsd(view.openInterest.usedUsd)}
-            <span className="text-white/30">
-              {view.openInterest.usedUsd <= 0
-                ? " — nothing open on this side yet"
-                : ` · ${view.openInterest.pct.toFixed(1)}% of the ${fmtUsd(view.openInterest.capUsd)} cap`}
-            </span>
+            {view.openInterest.usedUsd <= 0 ? (
+              <>0% used<span className="text-white/30"> — nothing open on this side yet</span></>
+            ) : (
+              <>
+                {view.openInterest.pct.toFixed(1)}% used
+                <span className="text-white/30">
+                  {" "}· {fmtUsd(view.openInterest.usedUsd)} of {fmtUsd(view.openInterest.capUsd)}
+                </span>
+              </>
+            )}
           </p>
           {/* Same thresholds and geometry as the Bank's utilisation bars, so a
               full book looks the same in both products. The track stays visible

@@ -16,7 +16,7 @@ import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
 import { ORDER_KIND } from "@/lib/perpsReads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import { cancelOrder, closePosition } from "@/lib/perpsClient";
@@ -87,10 +87,52 @@ const ORDER_KIND_LABEL: Record<number, string> = {
   1: "Limit entry", 2: "Take profit", 3: "Stop loss",
 };
 
-export function PositionsPanel() {
+/**
+ * What an OPEN position contributes to the chart.
+ *
+ * Reported UP rather than drawn from a second copy of the positions hook: a
+ * second instance would re-read four boxes, a market and an oracle per market
+ * on its own 30-second timer, and — worse — give the page two sources for one
+ * liquidation price. The card reports its prospective prices the same way, for
+ * the same reason.
+ */
+export type PositionLine = {
+  marketId: number;
+  side: "long" | "short";
+  entryPrice12: bigint;
+  liquidationPrice12: bigint | null;
+};
+
+export function PositionsPanel({ onLinesChange }: {
+  onLinesChange?: (lines: PositionLine[]) => void;
+} = {}) {
   const wallet = useWallet();
   const who = wallet.isConnected ? wallet.address : null;
   const { positions, loading, error, refresh } = usePerpsPositions(who);
+
+  /**
+   * Report the held positions' levels up for the chart.
+   *
+   * Keyed on a cheap signature rather than the array: `positions` is a new array
+   * on every 30-second poll, and firing the callback each time would reset the
+   * chart's lines — and with them any pan or zoom keyed off them — twice a
+   * minute for no change.
+   */
+  const notify = useRef(onLinesChange);
+  notify.current = onLinesChange;
+  const signature = positions
+    .map((p) => `${p.marketId}:${p.side}:${p.position.entry_price}:${p.liquidationPrice12 ?? "-"}`)
+    .join("|");
+  useEffect(() => {
+    notify.current?.(positions.map((p) => ({
+      marketId: p.marketId,
+      side: p.side,
+      entryPrice12: p.position.entry_price,
+      liquidationPrice12: p.liquidationPrice12,
+    })));
+    // `signature` is the real dependency; `positions` is re-created each poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
   const { orders, loading: ordersLoading, error: ordersError, refresh: refreshOrders } =
     usePerpsOrders(who);
   /** Which order is mid-cancel, and anything that went wrong doing it. */
