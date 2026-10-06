@@ -68,10 +68,29 @@ describe("governance is a section of the $U tab", () => {
     expect(musd).not.toContain("GovernanceSection");
   });
 
-  it("explains itself in the page's own informative-text style", () => {
-    // It was a 90-word paragraph under a white heading — the only thing on
-    // this page that explained itself that way.
-    expect(gov).toContain("<AboutModal triggerLabel=\"How voting works\"");
+  it("explains itself in a PERMANENT box, not a modal", () => {
+    // It was briefly an AboutModal. Those answer a question a reader may
+    // already know the answer to; this one explains a mechanism that locks
+    // their tokens for seven days, and rules you must understand before acting
+    // do not belong one click away.
+    // The docstring still NAMES AboutModal to record why it is not used, so
+    // this checks for the import and the element rather than the word.
+    expect(gov).not.toContain("<AboutModal");
+    expect(gov).not.toMatch(/^import .*AboutModal/m);
+    expect(gov).toContain('<h3 className="font-display text-base font-semibold text-amber-200">How voting works</h3>');
+    expect(gov).toContain("border-amber-400/25");
+  });
+
+  it("puts vote power inside that explanation", () => {
+    // Next to the sentence that says one whole token is one vote. As a lone
+    // pill in the header it was a figure without a unit.
+    const box = gov.slice(gov.indexOf("How voting works"), gov.indexOf("Live proposals"));
+    expect(box).toContain("Current vote power");
+    expect(box).toContain("${formatU(uBalance)} $U");
+  });
+
+  it("says something useful when no wallet is connected", () => {
+    expect(gov).toContain("Connect a wallet to see your voting power");
   });
 
   it("keeps admin behind a pill, opt in", () => {
@@ -82,6 +101,41 @@ describe("governance is a section of the $U tab", () => {
 
   it("is linkable", () => {
     expect(gov).toContain('id="governance"');
+  });
+});
+
+describe("live proposals and voting history", () => {
+  it("names the empty case rather than leaving a blank", () => {
+    // A reader who cannot tell "nothing to vote on" from "this is broken"
+    // assumes the latter.
+    expect(gov).toContain("Live proposals");
+    expect(gov).toContain("Nothing to vote on right now");
+    expect(gov).toContain("There are no live proposals.");
+  });
+
+  it("calls the closed list Voting history", () => {
+    expect(gov).toContain("Voting history");
+    expect(gov).not.toMatch(/>\s*Closed\s*</);
+  });
+
+  it("stacks full width rather than two across", () => {
+    // A proposal is a question, its choices and a tally; at half width the
+    // question wrapped before the reader reached the options.
+    expect(gov).not.toContain("lg:grid-cols-2");
+    expect(gov).toContain('<div className="space-y-4">');
+  });
+
+  it("orders each list by what that list is for", () => {
+    // Live: the nearest deadline is the one needing a decision.
+    expect(gov).toContain(".sort((a, b) => a.endTime - b.endTime)");
+    // History: newest result on top, growing downward into the past.
+    expect(gov).toContain(".sort((a, b) => b.endTime - a.endTime)");
+  });
+
+  it("hides the history heading when there is none", () => {
+    // An empty "Voting history" under an empty "Live proposals" is two
+    // statements of the same nothing.
+    expect(gov).toContain("{history.length > 0 && (");
   });
 });
 

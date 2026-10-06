@@ -14,6 +14,14 @@
  * The cost of being a section instead is that its empty state lands on the
  * page; that is paid for by keeping it at the bottom, under the pools.
  *
+ * ── Why "How voting works" is permanent and not a modal ────────────────────
+ * It was briefly an `AboutModal`, matching how the token blurbs explain
+ * themselves. Wrong call: those modals answer a question a reader may already
+ * know the answer to, while this one explains a mechanism that locks their
+ * tokens for seven days. Rules you must understand BEFORE acting do not belong
+ * one click away. It keeps the amber treatment so it still reads as the page's
+ * informative voice.
+ *
  * ── The treasury is NOT here ───────────────────────────────────────────────
  * It is the fifth metric box at the top of both tabs now. It used to be a panel
  * beside "How it works", and showing the same balance twice on one page would
@@ -21,9 +29,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Lock, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
+import { Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { AboutModal } from "@/components/tokens/AboutModal";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
 import { listProposals, getUBalance } from "@/lib/uvoteReads";
@@ -56,8 +63,13 @@ export function GovernanceSection() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const open = proposals.filter((p) => isActive(p));
-  const closed = proposals.filter((p) => !isActive(p));
+  /*
+   * Live: soonest to close first — the one with a deadline is the one that
+   * needs a decision. History: most recently ended first, so the newest result
+   * is at the top and the list grows downward into the past.
+   */
+  const live = proposals.filter((p) => isActive(p)).sort((a, b) => a.endTime - b.endTime);
+  const history = proposals.filter((p) => !isActive(p)).sort((a, b) => b.endTime - a.endTime);
 
   return (
     <section id="governance" className="mt-8 scroll-mt-24">
@@ -67,50 +79,19 @@ export function GovernanceSection() {
           <h2 className="font-display text-xl font-bold text-white">Governance</h2>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* The explanation is a modal in the page's own informative-text
-              style, not a wall of body copy. It was a 90-word paragraph under a
-              white heading, which is the only place on this page that explained
-              itself that way. */}
-          <AboutModal triggerLabel="How voting works" heading="How voting works">
-            <p>
-              The Founder posts an open question that impacts a particular outcome of Magnet
-              Strategies. Holders can then exercise their voice by utilizing held $U tokens,
-              signaling their preference on the open proposal.
-            </p>
-            <p>
-              Only whole $U tokens can be used, where one token is equal to one vote in weight.
-              Tokens are accepted as voting power by being locked within the voting contract, and
-              remain locked for the remainder of the voting window.
-            </p>
-            <p>
-              Your $U — and a small refundable box deposit — come back in full when the vote
-              closes.
-            </p>
-          </AboutModal>
-
-          {isConnected && (
-            <span className="inline-flex items-center gap-2 rounded-full border border-magnet-500/20 bg-magnet-950/40 px-3 py-1.5 text-xs">
-              <Lock className="h-3.5 w-3.5 text-magnet-400" />
-              <span className="text-gray-400">Your voting power</span>
-              <span className="font-mono font-semibold text-white">{formatU(uBalance)} $U</span>
-            </span>
-          )}
-
-          {/* Admin, as a pill — the same treatment MagnetFi gives its own, and
-              invisible to everyone else. */}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setAdminOpen((v) => !v)}
-              aria-expanded={adminOpen}
-              className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Admin
-            </button>
-          )}
-        </div>
+        {/* Admin, as a pill — the same treatment MagnetFi gives its own, and
+            invisible to everyone else. */}
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setAdminOpen((v) => !v)}
+            aria-expanded={adminOpen}
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Admin
+          </button>
+        )}
       </div>
 
       {isAdmin && adminOpen && (
@@ -119,6 +100,51 @@ export function GovernanceSection() {
         </div>
       )}
 
+      {/* ── How voting works ──────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-amber-400/25 bg-amber-500/[0.06] p-5 sm:p-6">
+        <div className="flex items-center gap-2">
+          <Info className="h-4 w-4 shrink-0 text-amber-300" />
+          <h3 className="font-display text-base font-semibold text-amber-200">How voting works</h3>
+        </div>
+        <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-400">
+          <p>
+            The Founder posts an open question that impacts a particular outcome of Magnet
+            Strategies. Holders can then exercise their voice by utilizing held $U tokens,
+            signaling their preference on the open proposal.
+          </p>
+          <p>
+            Only whole $U tokens can be used, where one token is equal to one vote in weight.
+            Tokens are accepted as voting power by being locked within the voting contract, and
+            remain locked for the remainder of the voting window.
+          </p>
+          <p>
+            Your $U — and a small refundable box deposit — come back in full when the vote closes.
+          </p>
+        </div>
+
+        {/* Vote power, full width inside the explanation.
+            It sits HERE rather than in the header row because the number only
+            means anything next to the sentence that says one whole token is one
+            vote. As a lone pill it was a figure without a unit. */}
+        <div className="mt-5 rounded-xl border border-white/10 bg-black/30 px-5 py-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+            Current vote power
+          </p>
+          <p className="mt-1.5 font-mono text-2xl font-bold text-white">
+            {isConnected ? `${formatU(uBalance)} $U` : "—"}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {isConnected
+              ? "Whole $U only — fractions do not count toward a vote"
+              : "Connect a wallet to see your voting power"}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Live proposals ────────────────────────────────────────────────── */}
+      <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-widest text-gray-500">
+        Live proposals
+      </h3>
       {!UVOTE_LIVE ? (
         <div className="rounded-2xl border border-white/10 bg-black/30 px-6 py-12 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-magnet-400" />
@@ -129,33 +155,35 @@ export function GovernanceSection() {
         </div>
       ) : loading ? (
         <p className="py-12 text-center text-sm text-gray-500">Loading proposals…</p>
-      ) : proposals.length === 0 ? (
+      ) : live.length === 0 ? (
+        /* Named, not blank. A reader who cannot tell the difference between
+           "nothing to vote on" and "this is broken" assumes the latter. */
         <div className="rounded-2xl border border-white/10 bg-black/30 px-6 py-12 text-center">
           <VoteIcon className="mx-auto h-8 w-8 text-gray-600" />
-          <p className="mt-3 text-sm font-medium text-white">No open proposals</p>
+          <p className="mt-3 text-sm font-medium text-white">Nothing to vote on right now</p>
           <p className="mt-1 text-xs text-gray-500">
-            Holding $U is what gives you a vote when the next one opens.
+            There are no live proposals. Holding $U is what gives you a vote when the next one opens.
           </p>
         </div>
       ) : (
-        <div className="space-y-8">
-          {open.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">Open votes</h3>
-              <div className="grid gap-4 lg:grid-cols-2">
-                {open.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
-              </div>
-            </div>
-          )}
-          {closed.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">Closed</h3>
-              <div className="grid gap-4 lg:grid-cols-2">
-                {closed.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
-              </div>
-            </div>
-          )}
+        /* Full width and stacked rather than two across: a proposal is a
+           question with choices and a tally, and halving its width wrapped the
+           question before the reader got to the options. */
+        <div className="space-y-4">
+          {live.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
         </div>
+      )}
+
+      {/* ── Voting history ────────────────────────────────────────────────── */}
+      {history.length > 0 && (
+        <>
+          <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            Voting history
+          </h3>
+          <div className="space-y-4">
+            {history.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
+          </div>
+        </>
       )}
     </section>
   );
