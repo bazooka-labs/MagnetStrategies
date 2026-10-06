@@ -134,6 +134,9 @@ export type CardOverlay = {
  * value means adding it here, and the compiler then requires it at the one
  * place `live` is built. See the comment on `live` for what audit 7 found.
  */
+/** One side of a market's book: how much is on it, and the most that may be. */
+type OiSide = { pct: number; usedUsd: number; capUsd: number };
+
 type CardSnapshot = {
   quote: OpenQuote | null;
   notional: number;
@@ -165,8 +168,8 @@ type CardSnapshot = {
   /** Limit mode, and the market has no room for this size today. */
   waitsForRoom: boolean;
   trigger12: bigint;
-  /** How full this side's book is, as a percentage and the raw figures. */
-  utilisation: { pct: number; usedUsd: number; capUsd: number } | null;
+  /** How full each side's book is, as a percentage and the raw figures. */
+  openInterest: { long: OiSide; short: OiSide } | null;
   /** Which way funding flows, and the paying side's annualised rate. */
   funding: { annualPct: number; youPay: boolean } | null;
   /** No target set — a choice now, and the button and warnings reflect it. */
@@ -462,31 +465,40 @@ export function PerpsCard({
    * direction is stated and the receiving figure is not invented.
    */
   /**
-   * How full THIS side of the market is.
+   * How full each side of this market's book is.
    *
    * The card showed funding direction and rate and nothing about capacity, so
    * the first a user heard about a full book was their leverage quietly
    * collapsing — 1.1x on $10, and 0.8x the day before, both reported as bugs
-   * because a correct number arrived with no context. A bar makes the condition
-   * visible before it becomes a surprise.
+   * because a correct number arrived with no context.
    *
-   * Per SIDE, not per market: the two books fill independently and only the one
-   * being traded constrains the size. ALGO was 99% full on the long side and
-   * had 60% of its short side free on the same afternoon.
+   * BOTH sides, keyed off `data` alone and not `side`: the two books fill
+   * independently, and which one is fuller is a fact about the market that
+   * holds whichever way the reader is leaning. ALGO was 98.9% full going long
+   * and 59.9% going short on the same afternoon — a reader shown only their
+   * own side cannot see that the other one is half empty.
    */
-  const utilisation = useMemo(() => {
+  const openInterest = useMemo(() => {
     if (!data) return null;
-    const cap = side === "long"
-      ? data.state.risk.max_open_interest_long
-      : data.state.risk.max_open_interest_short;
-    if (cap <= BigInt(0)) return null;
-    const used = sideOiUsd(data.state.oi, side);
-    return {
-      pct: (Number(used) / Number(cap)) * 100,
-      usedUsd: Number(used) / 1e6,
-      capUsd: Number(cap) / 1e6,
+    const one = (s: "long" | "short") => {
+      const cap = s === "long"
+        ? data.state.risk.max_open_interest_long
+        : data.state.risk.max_open_interest_short;
+      if (cap <= BigInt(0)) return null;
+      const used = sideOiUsd(data.state.oi, s);
+      return {
+        pct: (Number(used) / Number(cap)) * 100,
+        usedUsd: Number(used) / 1e6,
+        capUsd: Number(cap) / 1e6,
+      };
     };
-  }, [data, side]);
+    const long = one("long");
+    const short = one("short");
+    // A zero cap means the market publishes no limit on that side, and a bar
+    // against no limit is a lie. Both or neither, so the two bars are always
+    // comparable to each other.
+    return long && short ? { long, short } : null;
+  }, [data]);
 
   const funding = useMemo(() => {
     if (!data) return null;
@@ -877,7 +889,7 @@ export function PerpsCard({
     quoteUsable,
     slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
-    utilisation,
+    openInterest,
     waitsForRoom,
     minLeverage: bar?.open ? bar.minLeverage : null,
     binding: bar?.open ? bar.binding : null,
@@ -1141,6 +1153,63 @@ export function PerpsCard({
         </div>
       )}
 
+      {/* ── Open interest ──────────────────────────────────────────────────
+          A market fact, so it sits with the market and not inside the order.
+          The first version of this lived in the third column beside leverage
+          and funding, where it was true, live, and never found: the reader who
+          asked whether we showed open interest at all had it on screen. Named
+          "open interest" for the same reason — "side in use" is what it means,
+          but not what anyone looks for.
+
+          BOTH sides, because the books fill independently and the asymmetry is
+          itself the information: ALGO was 98.9% full going long and 59.9%
+          going short on the same afternoon. Showing only the selected side
+          hides half of that, and it answers a question about the market with
+          a number about the order.
+
+          The selected side is the brighter of the two — the contextual link to
+          what is being built below, without repeating it in prose. The sentence
+          about being capped stays where the cap is felt, next to leverage. */}
+      {view.openInterest && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-gray-500">Open interest</p>
+          <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
+            {(["long", "short"] as const).map((s) => {
+              const u = view.openInterest![s];
+              const on = s === side;
+              return (
+                <div key={s} className="min-w-0">
+                  <div className="mb-1 flex items-baseline justify-between gap-2">
+                    <p className={`text-[11px] font-semibold capitalize ${on ? "text-white/80" : "text-white/35"}`}>
+                      {s}
+                    </p>
+                    <p className={`font-mono text-[11px] tabular-nums ${on ? "text-gray-300" : "text-gray-500"}`}>
+                      {u.pct.toFixed(1)}%
+                      <span className={on ? "text-white/30" : "text-white/20"}>
+                        {" "}· {fmtUsd(u.usedUsd)} of {fmtUsd(u.capUsd)}
+                      </span>
+                    </p>
+                  </div>
+                  {/* Same thresholds and geometry as the Bank's utilisation bars
+                      so a full book looks the same in both products. The unselected
+                      side is dimmed rather than recoloured: it must stay readable,
+                      because deciding to take the OTHER side is one of the things
+                      this display is for. */}
+                  <div className={`h-1.5 w-full overflow-hidden rounded-full bg-white/10 ${on ? "" : "opacity-45"}`}>
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        u.pct > 80 ? "bg-red-500"
+                          : u.pct > 60 ? "bg-yellow-500"
+                          : "bg-magnet-500"}`}
+                      style={{ width: `${Math.min(u.pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {/* Laid out across rather than down. In a 420px column this was a long
           scroll; with the chart leading the page there is width to use, and the
           three groups below are the three decisions in order: what and how
@@ -1308,44 +1377,6 @@ export function PerpsCard({
         )}
         {/* Funding, as a direction and a rate — the thing that actually
             changes whether this side is worth being on. */}
-        {/* How full this side's book is. Same bar treatment as the Bank's
-            utilisation displays, so the two read as one product. Per side,
-            because the books fill independently and only this one caps the
-            size on screen. */}
-        {view.utilisation && (
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wider text-gray-500">
-                {side === "long" ? "Long" : "Short"} side in use
-              </p>
-              <p className="font-mono text-[11px] text-gray-400">
-                {view.utilisation.pct.toFixed(1)}%
-                <span className="text-white/25">
-                  {" "}· {fmtUsd(view.utilisation.usedUsd)} of {fmtUsd(view.utilisation.capUsd)}
-                </span>
-              </p>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  view.utilisation.pct > 80 ? "bg-red-500"
-                    : view.utilisation.pct > 60 ? "bg-yellow-500"
-                    : "bg-magnet-500"}`}
-                style={{ width: `${Math.min(view.utilisation.pct, 100)}%` }}
-              />
-            </div>
-            {view.utilisation.pct > 90 && (
-              /* The sentence that would have saved two bug reports. Shown from
-                 90% because that is where the headroom share starts visibly
-                 capping size, not at an arbitrary round number. */
-              <p className="mt-1 text-[11px] text-amber-300/80">
-                Nearly full — the most you can open on this side right now is
-                limited by what is left here, not by your collateral.
-              </p>
-            )}
-          </div>
-        )}
-
         {view.funding && (
           <p className="mt-1 text-[11px] leading-relaxed text-white/35">
             {view.funding.youPay ? (
