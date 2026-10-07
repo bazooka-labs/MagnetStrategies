@@ -850,9 +850,14 @@ Read directly from chain (`mr2:` / `mp2:` / `mo2:` on `PDexV2Markets` 3690309159
 > | Side OI | Effective initial margin | Max leverage |
 > |---|---|---|
 > | ≤ $500 | 500 bps | 20× |
-> | $913 (ALGO/USD short, live) | 913 bps | **10.95×** |
-> | $1,500 (ALGO/USD OI cap, current) | 1500 bps | 6.7× |
-> | $1,560 (BTC/USD OI cap) | 1560 bps | 6.4× |
+> | $913 | 913 bps | **10.95×** |
+> | $1,560 | 1560 bps | 6.4× |
+> | $2,000 | 2000 bps | 5.0× |
+>
+> Illustrative OI levels, not a config reference. The caps themselves are read
+> from `max_open_interest_long` / `_short` on every poll and PEX changes them
+> without notice — this table said "$1,500 (ALGO/USD OI cap, current)" while the
+> live figure was $2,000.
 >
 > **Resolved by design change, not mitigation.** Fixed leverage bands were removed entirely in favour of the [risk bar](#risk--a-continuum-not-named-tiers). A continuum has no threshold to cross, so no band can become undeliverable and no relabelling table is needed. Two requirements survive from the finding and are recorded there: resolve from `effective_max_leverage_bps` rather than `initial_margin_bps`, and **solve** the ceiling rather than look it up, because `dynamicBps` includes the user's own order size. `doi:` is now in the Availability Gating read list.
 
