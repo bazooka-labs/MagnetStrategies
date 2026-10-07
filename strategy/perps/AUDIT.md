@@ -1958,3 +1958,111 @@ LOW 7 — five limit-path findings still carry `tp_` codes and say "take-profit"
 when a stop-loss is what failed. LOW 8 — `confirmed`'s dependency array omits
 `isLimit` and is correct only by accident. LOW 10 — `algoFirstTrade` describes a
 group `openLimitOrderInner` refuses to build.
+
+---
+
+# Audit 11 — queued (2026-10-06)
+
+**Scope.** `3543724..dccf2d0`, 17 commits, 31 files, +2058 / −417 in `web/src`.
+No contract change, no SDK change, no new write path. All of it is interface —
+which is exactly the surface this product's threat model says is one of its two
+halves: *what the frontend constructs, and what the interface claims before the
+user signs.*
+
+Three of those files are on the money path: `PerpsCard.tsx` (+460),
+`perpsQuote.ts` (+58) and `usePerpsPositions.ts` (+25).
+
+## What makes this one different
+
+Audit 10 closed on the observation that **both** ship blockers were *removals*
+inside commits that added a guard, and both survived because every reviewer read
+what the commit added.
+
+This diff contains the highest-risk shape for that failure: `PerpsCard`'s three
+columns were **cut and re-inserted wholesale by script** — the liquidation block
+moved to column three, open interest and funding moved to column two, two
+sections were wrapped in a new collapsible, and 460 lines changed in one file.
+
+**Audit by set-difference, not by reading.** Enumerate every `fail()` code,
+every guard, every displayed field before and after, and diff the sets. A block
+that vanished in a cut-and-paste leaves no syntax error and no failing test.
+
+## Tier 1 — new price-bearing code
+
+1. **`quoteLiquidationPrice`** is a new function whose output is drawn as a solid
+   line a trader acts on. Evidence so far is **one short, one market, one
+   state**: BTC held at `87516.58 at_or_above`, against `87348.98` for a freshly
+   quoted open of the same shape — 0.19% apart, explained by a $30 entry
+   difference and accrued fees. That is a sanity check, not coverage. Needs: a
+   **long**; a position near its boundary; one the solver refuses
+   (`non_monotonic_liquidation_boundary` must return `null`, never `0n`); and
+   behaviour when `funding` is stale relative to the oracle.
+2. **The result-key trap is pinned only by a source-text test.** This quote
+   returns `liquidation_price` / `direction`; `quoteV2OpenPosition` returns
+   `liquidation_price_estimate` / `liquidation_price_direction`. Reading the
+   wrong pair yields `undefined`, which `big()` turns into a confident `0n` — a
+   liquidation line pinned to the bottom of the axis saying the position is safe
+   all the way down. Verify behaviourally.
+3. **Two liquidation lines can now be on screen at once** — held (solid) and
+   composed (dashed). Verify a held line cannot survive a market switch from
+   stale `positionLines`, and that the `bothSides` labelling cannot produce two
+   lines reading "Your entry" at different prices.
+
+## Tier 2 — new data flows
+
+4. **`PositionsPanel.onLinesChange`** reports upward on a hand-built signature
+   string (`marketId:side:entry:liq`). Verify it cannot miss a change — partial
+   close, collateral top-up, a position closed and reopened at the same entry —
+   nor fire spuriously on the 30s poll.
+5. **`useUVoteProposals`** is module-level mutable state shared across
+   components, with `everLoaded` and `inflight` globals that outlive remounts
+   and never reset on a wallet change. Off the money path, but it is the first
+   shared store in this codebase.
+6. **`CardOverlay.indexPrice12`** added `data` to the overlay effect's deps, so
+   it now fires on every 10s poll and `lines` takes a new identity each tick.
+   Confirmed this only recomputes the chart's geometry memo — `zoom` and
+   `priceOffset` are state and survive. Verify no other consumer treats array
+   identity as a change.
+
+## Tier 3 — the card's shape and its claims
+
+7. **The three-column move** (see above): set-difference.
+8. **Collapsing must not hide a commitment.** A folded section must not be able
+   to submit a value its header does not show. The summary reads
+   `view.tpPrice` / `view.slPrice` from the frozen snapshot; verify that is the
+   same value that reaches the group, and that `problem` forcing a section open
+   covers every state that disables submit.
+9. **`CardSnapshot` changed shape three times** — `funding` became a
+   discriminated union, `openInterest` was added, then re-shaped twice (both
+   sides → one side). The freeze contract is that *every displayed value* lives
+   in the snapshot. Re-verify nothing displayed is read live.
+10. **`NO_AUTOFILL` gives four money inputs the same `name`.** They are not
+    inside a `<form>`, but confirm no browser treats them as a group.
+
+## Carry-forward from audit 10
+
+MEDIUM 5 (the limit child's trailing tuple is still half-bound), LOW 7 (`tp_`
+codes on stop-loss failures), LOW 8 (`confirmed`'s deps omit `isLimit`), LOW 10
+(`algoFirstTrade` describes a group the limit path refuses to build). All
+unchanged.
+
+## Measurements to fold in
+
+- **`SHAPE_OPEN_STORAGE` was signed on MainNet for the first time** — round
+  65742862, 7 txns: `pay 70,900` + `fund_storage(pay)` + `axfer 7 USDC` +
+  `open_or_increase` (fee 30,000) + 3 × `noop()`. It passed `assertOpenGroup`
+  and PEX accepted it. Closes the NEXT.md item that said this shape was unsigned.
+- **The close payout is side-dependent.** Three short closes settled in **USDC
+  only**; an ALGO long on 10-04 returned `25.656776 ALGO + 5.918314 USDC`. The
+  "USDC-only payout" item therefore only has to address longs on a market whose
+  index asset is not the collateral.
+- **The 70,900 µALGO position-box MBR did not return** in either close — every
+  inner transfer was traced and no ALGO came back. Confirm PEX's intent before
+  the UI describes it as refundable storage.
+
+## Method note for whoever runs this
+
+The reflex that caught the last two ship blockers is `git diff` with the
+*deletions* read first. For a cut-and-paste refactor, `git diff` will show the
+move as a delete and an add in different hunks of the same file — read both
+halves and confirm they are the same text, not merely the same size.

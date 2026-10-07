@@ -150,25 +150,23 @@ Only live items. Everything struck through here previously has moved to
 **Closed recently** or to the audit record — a list where most entries are
 finished reads as a changelog, and the things actually waiting get buried in it.
 
-### 1. Audit 10 — the largest unaudited surface since audit 8
+### 1. Audit 11 — queued, not yet run
 
-Unaudited since `d45f0f5`. That covers the audit-9 remediation, **both stop-loss
-stages** and the limit-capacity fix. The stop-loss work is the bulk of it and it
-rewrote the most safety-critical function in the codebase:
-`assertOpenWithTakeProfit` became an N-leg `assertOpenWithAttachedOrders`, six
-measured shape constants became a derivation, and the limit child's arg gap was
-closed.
+Audit 10 ran and is recorded: two ship blockers, one HIGH, one MEDIUM, one LOW,
+all remediated. **Audit 11 is briefed in `AUDIT.md` and waiting**, covering
+`3543724..dccf2d0` — 17 commits, +2058/−417, all interface.
 
-Two things deserve naming rather than a blanket note:
+Two things in it deserve naming rather than a blanket note:
 
-- **The stop-loss direction guard was wrong once already.** The first version
-  compared against the index POINT where PEX uses the band, which review caught
-  only because it was asked for specifically. The limit version uses a different
-  rule again — entry-relative — whose soundness depends on a *second* guard
-  (the crossed-entry refusal being tighter than PEX's). That coupling is stated
-  in a comment and nowhere else.
-- **Stage two was self-reviewed.** The delegated review died on a rate limit, so
-  limit stop-loss has had no independent pass.
+- **`quoteLiquidationPrice` is a new price-bearing function.** Its output is
+  drawn as a solid line a trader acts on, and the evidence behind it is one
+  short, on one market, in one state. No long has been checked, nor a position
+  near its boundary, nor one the solver refuses.
+- **`PerpsCard`'s three columns were cut and re-inserted by script.** That is
+  precisely the shape audit 10 closed on — both of its ship blockers were
+  removals that survived because reviewers read what the commit added. The brief
+  says to audit this one by set-difference.
+
 
 ### 2. A take-profit and a stop-loss at the same time
 
@@ -181,19 +179,34 @@ a keeper fee and 99,700 µALGO in a resting order they do not know to cancel.
 executed, the sibling observed gone, receipt read back. The two-leg machinery is
 already built, asserted and tested behind the rule.
 
-### 3. `SHAPE_OPEN_STORAGE` has never been signed
+### 3. ~~`SHAPE_OPEN_STORAGE` has never been signed~~ — CLOSED 2026-10-06
 
-The one group shape with no real signature. It needs a **first-time** trader
-opening with no target — unreachable from an account that has already traded, so
-it cannot be exercised deliberately from the main wallet. Either a fresh funded
-wallet, or it gets its first run from a real user, which is the worse of the two.
+Signed on MainNet at round 65742862, and not from a fresh wallet: the main
+account had never held an **ALGO** position, so opening one created the box. The
+shape needed a first-time *market/side*, not a first-time trader — which is why
+it looked unreachable for weeks.
+
+Seven transactions: `pay 70,900` + `fund_storage(pay)` + `axfer 7 USDC` +
+`open_or_increase` (fee 30,000) + 3 × `noop()`. It passed `assertOpenGroup` and
+PEX accepted it.
+
+**One loose end for audit 11:** the 70,900 µALGO box MBR did not come back on
+close — every inner transfer was traced and no ALGO returned. The UI calls it
+storage; confirm whether PEX ever refunds it before we call it refundable.
 
 ### 4. Pay profit out in USDC — specified, unbuilt
 
 Section 3 above. One field on the take-profit we already submit
 (`output_swap_mode`) plus `min_primary_output_amount` as the slippage floor.
-Needs a measurement first: how often `checkOutputSwapReservesNotWorsened` would
-refuse it, since a payout that silently fails is worse than one in two assets.
+**The scoping measurement now exists (2026-10-06).** Payout is side-dependent:
+three short closes settled in **USDC only**, while an ALGO long returned
+`25.656776 ALGO + 5.918314 USDC`. So shorts already behave the way this item
+wants, and the work is confined to longs on a market whose index asset is not the
+collateral — a materially smaller change than the item assumed.
+
+Still needs the other measurement: how often `checkOutputSwapReservesNotWorsened`
+would refuse the swap, since a payout that silently fails is worse than one in
+two assets.
 
 ### 5. Partial close, add collateral, reclaim — unbuilt
 
