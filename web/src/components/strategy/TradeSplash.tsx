@@ -10,11 +10,16 @@
 //
 // A "MagnetTrade" wordmark would quietly claim the opposite — that there is a
 // Magnet exchange. A logo asserts that louder than any sentence can withdraw it,
-// so this uses the parent mark and sets the product name in type: Magnet's
-// surface onto someone else's venue, which is what it is. If we ever run our own
-// matching engine, it gets a brand then, when the claim is true.
+// so the product name is set in type. If we ever run our own matching engine,
+// it gets a brand then, when the claim is true.
+//
+// ── Why the parent mark left ───────────────────────────────────────────────
+// It carried the Magnet icon until /tokens took that mark for its own arrival,
+// where it stands for the organisation behind two assets rather than for one
+// product. Type alone here, so the two arrivals are not the same image with
+// different captions. The no-wordmark rule above is unchanged: what moved is a
+// mark, not the policy.
 
-import Image from "next/image";
 import { ArrivalSplash } from "@/components/ArrivalSplash";
 import { PEX_MARKETS } from "@/lib/perps";
 
@@ -24,25 +29,15 @@ const markets = Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).joi
 export function TradeSplash() {
   return (
     <ArrivalSplash
-      // 2.5s rather than the 2s default: this mark is four things to read -
-      // icon, product name, rule, subtitle - where MagnetFi is a single wordmark
-      // taken in at a glance. The same duration read as hurried here.
+      // 2.5s rather than the 2s default. It was set when this splash carried an
+      // icon too, and it stays: the product name is the longest line of type in
+      // any of the three arrivals, and 2s read as hurried against it.
       durationMs={2500}
       subtext={`Go long or short on ${markets} with leverage`}
       mark={
-        <div className="flex flex-col items-center gap-4">
-          <Image
-            src="/magnet-icon.png"
-            alt=""
-            width={320}
-            height={320}
-            priority
-            className="magnet-glow-soft h-auto w-20 sm:w-24"
-          />
-          <span className="glow-text font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Trading Terminal
-          </span>
-        </div>
+        <span className="glow-text font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
+          Trading Terminal
+        </span>
       }
     />
   );
