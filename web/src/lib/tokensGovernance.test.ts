@@ -156,3 +156,61 @@ describe("the old route is retired, not orphaned", () => {
     expect(config).not.toContain('destination: "/vote"');
   });
 });
+
+describe("the hero points down at governance", () => {
+  const pill = readFileSync("src/components/tokens/LiveProposalsPill.tsx", "utf8");
+  const store = readFileSync("src/hooks/useUVoteProposals.ts", "utf8");
+
+  it("links to the section rather than duplicating it", () => {
+    expect(pill).toContain('href="#governance"');
+    expect(magnet).toContain("<LiveProposalsPill />");
+  });
+
+  it("counts from the SAME list the section renders", () => {
+    // Two independent fetches would be two numbers that can disagree — a pill
+    // advertising a vote the list below has already closed.
+    expect(pill).toContain("useUVoteProposals");
+    expect(gov).toContain("useUVoteProposals");
+    expect(gov).not.toContain("listProposals");
+    expect(store).toContain("listProposals");
+  });
+
+  it("defines the count once", () => {
+    expect(store).toContain("export const liveCount");
+    expect(pill).toContain("liveCount(proposals)");
+  });
+
+  it("shares one request between the two consumers", () => {
+    // Both mount in the same tick on first paint.
+    expect(store).toContain("if (inflight) return inflight;");
+  });
+
+  it("keeps the last good list when a read fails", () => {
+    // A failed read is not evidence the proposals went away.
+    expect(store).toContain("set({ ...snapshot, loading: false });");
+  });
+
+  it("stays visible at zero", () => {
+    // "0" says governance exists and nothing needs you — different from, and
+    // more useful than, an absent pill, and the hero keeps its shape.
+    expect(pill).not.toMatch(/if \(n === 0\) return null|if \(!open\) return null/);
+  });
+
+  it("stacks the three pills in a fixed order", () => {
+    const head = magnet.slice(magnet.indexOf("flex shrink-0 flex-col"), magnet.indexOf("<LiveProposalsPill />"));
+    expect(head.indexOf("Live on Algorand mainnet")).toBeLessThan(head.indexOf('triggerLabel="About $U"'));
+    expect(magnet).toContain("flex shrink-0 flex-col items-start gap-2 sm:items-end");
+  });
+});
+
+describe("the metric row lines up", () => {
+  const rank = readFileSync("src/components/TvlRankStat.tsx", "utf8");
+
+  it("pins the rank cell's content to the top", () => {
+    // A <button> centres its content vertically, and this is the only cell with
+    // no `sub` line once the board loads — two lines against its neighbours'
+    // three. Centred in a row sized by the taller cells, its heading sat below
+    // every other heading.
+    expect(rank).toContain("flex w-full flex-col items-start p-5");
+  });
+});

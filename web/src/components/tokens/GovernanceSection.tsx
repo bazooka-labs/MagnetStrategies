@@ -33,35 +33,37 @@ import { Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
-import { listProposals, getUBalance } from "@/lib/uvoteReads";
-import { UVOTE_LIVE, UVOTE_ADMIN_ADDRESS, formatU, isActive, type UVoteProposal } from "@/lib/uvote";
+import { getUBalance } from "@/lib/uvoteReads";
+import { useUVoteProposals } from "@/hooks/useUVoteProposals";
+import { UVOTE_LIVE, UVOTE_ADMIN_ADDRESS, formatU, isActive } from "@/lib/uvote";
 
 export function GovernanceSection() {
   const { address, isConnected, algodClient } = useWallet();
   const isAdmin = isConnected && address === UVOTE_ADMIN_ADDRESS;
 
-  const [proposals, setProposals] = useState<UVoteProposal[]>([]);
+  /**
+   * The proposals come from the shared store, not a fetch of our own: the hero
+   * pill counts the same list, and two reads would be two numbers that can
+   * disagree about whether a vote is open.
+   */
+  const { proposals, loading, refresh } = useUVoteProposals();
+  /** The balance is per-wallet, so it stays local — nothing else on the page shows it. */
   const [uBalance, setUBalance] = useState(0);
-  const [loading, setLoading] = useState(UVOTE_LIVE);
   /** Admin tooling is opt-in even for the admin — it is not what they come here to read. */
   const [adminOpen, setAdminOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!algodClient) return;
-    setLoading(true);
-    try {
-      const [props, bal] = await Promise.all([
-        listProposals(algodClient),
-        address ? getUBalance(algodClient, address) : Promise.resolve(0),
-      ]);
-      setProposals(props);
-      setUBalance(bal);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    if (!algodClient || !address) { setUBalance(0); return; }
+    let alive = true;
+    void getUBalance(algodClient, address).then((b) => { if (alive) setUBalance(b); });
+    return () => { alive = false; };
   }, [algodClient, address]);
 
-  useEffect(() => { void load(); }, [load]);
+  /** After a vote or a claim: re-read the proposals AND this wallet's balance. */
+  const load = useCallback(() => {
+    refresh();
+    if (algodClient && address) void getUBalance(algodClient, address).then(setUBalance);
+  }, [refresh, algodClient, address]);
 
   /*
    * Live: soonest to close first — the one with a deadline is the one that

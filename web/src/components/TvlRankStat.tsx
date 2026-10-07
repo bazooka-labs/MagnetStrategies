@@ -109,7 +109,16 @@ export function TvlRankStat() {
         onClick={() => board && setOpen(true)}
         disabled={!board}
         aria-haspopup="dialog"
-        className="group relative w-full p-5 text-left transition-colors enabled:hover:bg-white/5 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-magnet-500"
+        /*
+         * `flex flex-col items-start` is load-bearing, not styling.
+         *
+         * A <button> centres its content vertically, and this cell is the only
+         * one in the row with no `sub` line once the board loads — two lines
+         * where its neighbours have three. Centred inside a row sized by the
+         * taller cells, its heading sat visibly below every other heading.
+         * Laying the content out as a column pins it to the top like a <div>.
+         */
+        className="group relative flex w-full flex-col items-start p-5 text-left transition-colors enabled:hover:bg-white/5 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-magnet-500"
       >
         <p className="text-xs font-medium uppercase tracking-wider text-gray-500">TVL Rank</p>
         <p className={`mt-2 font-mono text-2xl font-bold ${STAT_TONES.magnet}`}>{value}</p>

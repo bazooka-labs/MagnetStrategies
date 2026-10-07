@@ -8,6 +8,7 @@ import { PoolsSection } from "@/components/tokens/PoolsSection";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
 import { GovernanceSection } from "@/components/tokens/GovernanceSection";
+import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -49,7 +50,15 @@ export function MagnetTokenView({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Stacked, right-aligned: status, then what this is, then what needs
+              you. Three pills in a row crowded the mark at tablet width and
+              wrapped unpredictably; a column puts them in a fixed reading
+              order. */}
+          <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
+              Live on Algorand mainnet
+            </span>
             <AboutModal triggerLabel="About $U" heading="What is $U?">
               <p>
                 Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
@@ -65,10 +74,7 @@ export function MagnetTokenView({
                 TxnLab.
               </p>
             </AboutModal>
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-              Live on Algorand mainnet
-            </span>
+            <LiveProposalsPill />
           </div>
         </div>
       </div>
