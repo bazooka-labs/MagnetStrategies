@@ -29,7 +29,20 @@ from production: a $7 limit long offered 0.8x where another front end offered
 `quoteV2OpenPosition` and nowhere else in the SDK, so a limit submit consults
 neither — the capacity that matters is the capacity when a keeper fills it.
 
-**Audit 10 has not run.** Unaudited since `d45f0f5`.
+**Audits 10 and 11 have run** (2026-10-06). Audit 10: two ship blockers, both
+*removals* inside commits that added a guard. Audit 11, on the UI work since,
+by a fresh reviewer: one ship blocker — the card called an **empty** book
+"nearly full", because `oi_headroom` is our own availability policy and binds
+at $0 of a $1,560 cap — plus three HIGH. Six of ten findings fixed in `9f48f30`
+and `c6b1ec8`; the four left open are display-only and listed in `NEXT.md`.
+
+The refactor the audit was called for came back **clean**: `PerpsCard`'s three
+columns were cut and re-inserted by script and nothing was lost in the move.
+
+**Unaudited since `c6b1ec8`.** The one structural finding is that no React
+component in this repo can be tested behaviourally — `vitest` runs in `node`
+with a `.test.ts`-only glob — so every card guard is pinned by a string match,
+and three of them passed under the bugs they claimed to prevent.
 
 See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
 

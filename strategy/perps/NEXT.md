@@ -150,25 +150,45 @@ Only live items. Everything struck through here previously has moved to
 **Closed recently** or to the audit record — a list where most entries are
 finished reads as a changelog, and the things actually waiting get buried in it.
 
-### 1. Audit 11 — queued, not yet run
+### 1. Audit 11 ran — four findings left open
 
-Audit 10 ran and is recorded: two ship blockers, one HIGH, one MEDIUM, one LOW,
-all remediated. **Audit 11 is briefed in `AUDIT.md` and waiting**, covering
-`3543724..dccf2d0` — 17 commits, +2058/−417, all interface.
+Recorded in `AUDIT.md`. One ship blocker, three HIGH, two MEDIUM, four LOW; six
+fixed in `9f48f30` and `c6b1ec8`. The headline result is that the thing the
+audit was called for came back clean: `PerpsCard`'s three columns were cut and
+re-inserted by script and **nothing was lost in the move**.
 
-Two things in it deserve naming rather than a blanket note:
+What is still open is all display, none of it on the group:
 
-- **`quoteLiquidationPrice` is a new price-bearing function.** Its output is
-  drawn as a solid line a trader acts on, and the evidence behind it is one
-  short, on one market, in one state. No long has been checked, nor a position
-  near its boundary, nor one the solver refuses.
-- **`PerpsCard`'s three columns were cut and re-inserted by script.** That is
-  precisely the shape audit 10 closed on — both of its ship blockers were
-  removals that survived because reviewers read what the commit added. The brief
-  says to audit this one by set-difference.
+- **MEDIUM 5** — a failed FIRST proposal read renders as "no live proposals",
+  permanently for the page session. Off the money path, on `/tokens`.
+- **LOW 7** — the 24h strip mixes the PEX oracle with Coinbase candles (0.035%
+  on ALGO, 0.097% on BTC) and its window is 23-24h depending on the minute.
+- **LOW 8** — `PositionsPanel`'s signature guard fires on nearly every poll;
+  harmless, but its comment claims otherwise.
+- **LOW 10** — the freeze-contract comment says "never a live derived value"
+  and eleven bare live reads exist. The refactor added none; the comment is
+  what is wrong.
+
+### 2. No React component here can be tested behaviourally
+
+The structural finding under audit 11, and the reason three tests certified
+properties the code did not have.
+
+`vitest.config.ts` is `environment: "node"` with `include: ["src/**/*.test.ts"]`
+— no `.tsx` in the glob, no jsdom, no testing-library installed. `PerpsCard.tsx`
+is ~1,950 lines on the money path with **zero** behavioural coverage, so every
+guard on it is pinned by a string match that passes whenever the string is
+present, regardless of what the code does.
+
+`priceWindow` was extracted to `perpsChart.ts` as the first step out — a pure
+function with nine tests against the numbers that produced the bug. The rest of
+the card has no such seam. Either a jsdom harness, or keep carving pure
+functions out of the places where being wrong is visible to a trader.
+
+Worth doing before the next card refactor rather than after it.
 
 
-### 2. A take-profit and a stop-loss at the same time
+### 3. A take-profit and a stop-loss at the same time
 
 Blocked, deliberately. `PROTECTION_ENABLED` allows one leg because PEX's OCO
 sibling-cleanup is unobserved: if one leg executes, nothing confirms the other is
@@ -179,7 +199,7 @@ a keeper fee and 99,700 µALGO in a resting order they do not know to cancel.
 executed, the sibling observed gone, receipt read back. The two-leg machinery is
 already built, asserted and tested behind the rule.
 
-### 3. ~~`SHAPE_OPEN_STORAGE` has never been signed~~ — CLOSED 2026-10-06
+### 4. ~~`SHAPE_OPEN_STORAGE` has never been signed~~ — CLOSED 2026-10-06
 
 Signed on MainNet at round 65742862, and not from a fresh wallet: the main
 account had never held an **ALGO** position, so opening one created the box. The
@@ -194,7 +214,7 @@ PEX accepted it.
 close — every inner transfer was traced and no ALGO returned. The UI calls it
 storage; confirm whether PEX ever refunds it before we call it refundable.
 
-### 4. Pay profit out in USDC — specified, unbuilt
+### 5. Pay profit out in USDC — specified, unbuilt
 
 Section 3 above. One field on the take-profit we already submit
 (`output_swap_mode`) plus `min_primary_output_amount` as the slippage floor.
@@ -208,7 +228,7 @@ Still needs the other measurement: how often `checkOutputSwapReservesNotWorsened
 would refuse the swap, since a payout that silently fails is worse than one in
 two assets.
 
-### 5. Partial close, add collateral, reclaim — unbuilt
+### 6. Partial close, add collateral, reclaim — unbuilt
 
 `closePosition` closes in full only. This is one cluster, and it has two
 prerequisites already on record:
@@ -220,7 +240,7 @@ prerequisites already on record:
   partial close. It is the groundwork for exactly this and nothing else. If
   partial close is not wanted, that letter can go with it.
 
-### 6. The status blocks drift faster than they are read
+### 7. The status blocks drift faster than they are read
 
 Three times this week a status line in `SPEC.md` or `OVERVIEW.md` has been
 materially false within a day of being written — "audit 9 has not run" after it

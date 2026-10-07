@@ -1961,7 +1961,7 @@ group `openLimitOrderInner` refuses to build.
 
 ---
 
-# Audit 11 — queued (2026-10-06)
+# Audit 11 — brief (2026-10-06)
 
 **Scope.** `3543724..dccf2d0`, 17 commits, 31 files, +2058 / −417 in `web/src`.
 No contract change, no SDK change, no new write path. All of it is interface —
@@ -2066,3 +2066,196 @@ The reflex that caught the last two ship blockers is `git diff` with the
 *deletions* read first. For a cut-and-paste refactor, `git diff` will show the
 move as a delete and an add in different hunks of the same file — read both
 halves and confirm they are the same text, not merely the same size.
+
+---
+
+# Audit 11 — run (2026-10-06)
+
+Run by a fresh agent with no memory of writing the code, on the brief above.
+Method as asked: deletions read first, `PerpsCard` audited by set-difference
+(line multiset, `view.*` reads, user-visible phrase set, live-vs-frozen reads),
+and behavioural probes against live MainNet state rather than against comments.
+
+**1 ship blocker, 3 HIGH, 2 MEDIUM, 4 LOW.** Six fixed, four open.
+
+## SHIP BLOCKER — the card called an EMPTY book "nearly full" — FIXED
+
+`PerpsCard.tsx`, the amber note added in `f30ac97`. It fired on
+`binding === "oi_headroom" || "reserves"` and never looked at utilisation.
+
+`oi_headroom` is **our own policy**, not PEX's cap: `oiHeadroomUsd ×
+OI_HEADROOM_SHARE`, documented at `perps.ts:256` as "an availability control".
+At `OI_HEADROOM_SHARE = 0.5` the term is half the cap on a book with nothing in
+it, and it binds there. Measured live on market 2, which was $0 used of a $1,560
+cap:
+
+| rendered | |
+|---|---|
+| OI headroom box | `0% used — nothing open on this side yet` |
+| | `The whole $1,560.00 cap is free on this side.` |
+| binding line | `limited by how much room this side of the market has left` |
+| amber note | `the long side of this market is nearly full right now` |
+
+Three claims on one screen, two false, steering the reader to "a limit order can
+rest until room opens up" for room that was never occupied.
+
+It also spoke for `reserves`, which is `checkReservesAfterTrade` — the pool —
+and has nothing to do with how full a side is. `BINDING_LABEL` keeps the two
+apart and `perpsOpenInterestDisplay.test.ts` asserts it does, ten lines above
+the paragraph that merged them.
+
+**Fixed** in `9f48f30`: two paragraphs, one per constraint, and **no threshold
+invented** — the OI note states the share we enforce and the measured
+utilisation, which is true at 0% and at 94%.
+
+## HIGH 2 — a near-1x liquidation collapsed the chart and printed a NEGATIVE price — FIXED
+
+`PerpsChart.tsx`'s `geom` expands the scale to contain every drawn line. Right
+at a few percent; wrong at 99%. Fed by `80df5ad`'s held-position lines it became
+the **default view on load** rather than something the slider had to reach.
+
+Measured on a real 1.0x long (`J65HYZUN`, liquidation `0.000736` against an
+index of `0.120518`): the 24h series occupied **18.6px of a 264px plot**, and
+`geom.ticks[0]` rendered through `formatPriceUsd(-0.009517…)` as **`$-0.009517`**
+on the y-axis. Three of eight live positions were in that range.
+
+**Fixed** in `9f48f30`, and the window moved to `priceWindow` in
+`perpsChart.ts` — a pure function with nine tests against the measured numbers,
+because this is the one new guard where being wrong is visible to a trader and
+no `.tsx` here can be tested at all. A line may stretch the view by at most
+twice the candle range per side, so the candles keep a fifth of the plot; beyond
+that the existing render filter drops the line rather than clamping it somewhere
+it is not. Floor clamped at zero.
+
+## HIGH 3 — `current_liquidatable` was discarded — FIXED
+
+`quoteV2LiquidationPrice` flips its search direction on that flag
+(`searchUp = (side === SHORT) !== anchorLiquidatable`), so for an **already
+liquidatable** long it returns the highest price that is *still* liquidatable —
+above the index, still labelled `at_or_below`. `quoteLiquidationPrice` returned
+`{price12, direction}` and dropped it, and the chart drew the result as a solid
+red "Your liquidation" line **in the profit direction** on a position a keeper
+could close now.
+
+`OpenPosition.liquidationDirection` was carried and read nowhere — audit 10
+SB1's shape, and the one field that would have caught the inversion.
+
+Not observed live (all 8 positions returned `current_liquidatable=false`);
+reproduced by advancing the funding factors on real market state, which took the
+line to `12.209376` against an index of `0.120518` with the direction unchanged.
+
+**Fixed** in `9f48f30`: the flag is carried, and the drawer checks the direction
+against the side before drawing — which is what finally makes
+`liquidationDirection` a field that is read.
+
+## HIGH 4 — `bothLegs` disabled submit with its reason nowhere — FIXED
+
+Two references in the file, both in logic, **none in JSX**. With
+`PROTECTION_ENABLED = true` it is fully reachable: a valid take-profit and a
+valid stop-loss, both accepted, both sections folded with white summaries, and a
+grey button with no message anywhere. It is the state `FormSection`'s own
+docstring says cannot happen, and `perpsFormSections.test.ts` asserted that
+property while matching only the source text.
+
+**Fixed** in `9f48f30`: `bothLegs` is a frozen snapshot field, forces both
+sections open, and carries a sentence. The test now enumerates every term that
+can falsify `canSubmit` and requires each to be explained.
+
+## MEDIUM 6 — a cap claimed at every slider position — FIXED
+
+`binding` is a property of the bar's maximum, not of the chosen notional, so
+"$100 · limited by how much room this side of the market has left" rendered
+against a $780 cap. Structurally pre-existing; `f30ac97` turned the raw enum
+into a confident English sentence, which made the overreach legible.
+
+**Fixed** in `c6b1ec8`: all three lines that explain a cap now require the size
+to be at it (`atCeiling`, derived from two frozen values).
+
+## LOW 9 — the protection claim was unconditional — FIXED
+
+Every confirmed open rendered "Your take-profit is live and will close the
+position automatically", including the targetless opens `tpOk` allows. Audit 10
+SB2's shape; it survived that audit by predating the diff.
+
+**Fixed** in `c6b1ec8`: what the group carried is captured at the click from the
+same `tp12 > 0` / `sl12 > 0` expressions the submit paths use. With no leg it
+says the position closes only when you close it, or at liquidation.
+
+## Found while fixing — the liquidation price had no home — FIXED
+
+`PositionsPanel` never displayed it; the chart was its only renderer, and HIGH
+2's fix correctly stops the chart chasing a level 99% away. For the three live
+positions near 1x that left the number nowhere in the product.
+
+**Fixed** in `c6b1ec8`: a cell beside entry and size, with its distance —
+`$0.000747 · 99.4% away`. `liquidatableNow` renders in place of a distance, with
+a red line saying a keeper can close the position now.
+
+## Clean
+
+**The cut-and-paste refactor of `PerpsCard`'s three columns is clean** — the
+main reason this audit was run. Set-difference four ways: line multiset (22
+reductions, every one accounted for, no orphaned deletion), `view.*` reads
+(nothing lost, `openInterest` gained), user-visible phrases (only the two
+intentional retitles), and the liquidation block diffed character-for-character
+across the move. No `fail()` code changed: `perpsGroup.ts` and `perpsClient.ts`
+are not in the diff, so audit 10's carry-forwards hold by construction.
+
+**`quoteLiquidationPrice` behaves.** Both sides, both markets: direction correct,
+price on the correct side of the index, 0.37–0.79% from a freshly quoted open of
+the same shape. All 8 live positions priced sanely. A refusal returns `null`,
+never `0n` — and the reachable refusal is `liquidation_boundary_not_found`, not
+the `non_monotonic_liquidation_boundary` this brief named; both are caught.
+
+**The result-key trap is closed, verified behaviourally.** Live keys are exactly
+`ok, failure_reason, liquidation_price, direction, current_index_price,
+current_liquidatable`; the open quote's names are `undefined` there.
+
+**Two-line labelling is unreachable as a duplicate**, the held filter re-runs on
+`marketId`, `NO_AUTOFILL`'s shared `name` is safe outside a form, the funding
+display is numerically exact (`max_factor_milli_bps` confirmed as the clamp
+`saved` sits at), the OI figures match `oiHeadroomUsd` exactly, `fetchDayStats`
+is clean, and the `/vote` fold lost nothing.
+
+## Still open
+
+**MEDIUM 5 — a failed FIRST proposal read renders as "no live proposals".**
+`useUVoteProposals` has no `error` field; the catch keeps the (empty) list under
+a comment saying a failed read is not evidence the proposals went away, which is
+true of a refresh and false of the first load. Permanent for the page session —
+`everLoaded` stays false, nothing re-runs the effect. Also `isActive` is only
+re-evaluated when the store changes, so a proposal expiring while the page is
+open keeps showing as live. Off the money path.
+
+**LOW 7 — the 24h strip mixes two price sources.** `live` is the PEX oracle;
+`day.open/high/low` are Coinbase. Measured 0.035% apart on ALGO and 0.097% on
+BTC, which turns a true −2.00% into a displayed −2.09%. `live` can also print
+outside the 24h range. And the window is 23–24h depending on the minute, since
+Coinbase returns buckets whose start ≥ the requested start. The test asserts the
+URL, not the returned window.
+
+**LOW 8 — `PositionsPanel`'s signature guard does not do what its comment says.**
+It includes the full-precision liquidation price, which moves with the signed
+USDC price — measured to change within a 20-second sampling interval — so the
+callback fires on essentially every poll. Harmless (zoom and pan are state and
+survive), but the comment asserts a guarantee it does not provide.
+
+**LOW 10 — the freeze-contract comment is absolute and the code is not.** Eleven
+bare live reads in the render. The refactor introduced **no new one** — the set
+is identical before and after — and each is benign on inspection. Tighten the
+comment, not the code.
+
+## Method notes for whoever runs audit 12
+
+- **No React component in this repo can be tested behaviourally.** `vitest.config`
+  is `environment: "node"` with `include: ["src/**/*.test.ts"]` — no `.tsx`, no
+  jsdom, no testing-library. That is the structural reason every card guard is
+  pinned by a string match, and why **three tests passed under the bugs they
+  claimed to prevent**. `priceWindow` was extracted to the library as the first
+  step out; the rest of the card has no such seam yet.
+- **A source-text test is a reminder, not a check.** All three that failed here
+  matched an expression and certified a property. When a guard matters, find or
+  make a pure function for it.
+- **Measure `OI_HEADROOM_SHARE`-style policies against an EMPTY book.** The ship
+  blocker was invisible on the market everyone tests on, because ALGO's long side
+  is genuinely 94% full. Market 2 at $0 is where it showed.
