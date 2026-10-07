@@ -162,27 +162,23 @@ body {
 }
 
 /* ── Hero intro sequence ───────────────────────────────────────────────────
-   Five stages. The grammar is unchanged from the two-stage version it grew
-   from: every stage holds at full opacity for 2s, and every transition takes
-   2s.
+   Two stages. Every stage holds at full opacity for 2s and every transition
+   takes 2s, which is the grammar this has kept through every version.
 
      stage               fades in   holds     fades out
      Magnet logo         —          0–2s      2–4s
-     Attract Yield       4–6s       6–8s      8–10s
-     Attract Liquidity   10–12s     12–14s    14–16s
-     Attract Leverage    16–18s     18–20s    20–22s
-     Magnet Strategies   22–24s     stays     —
+     Magnet Strategies   4–6s       stays     —
 
-   The logo still uses `logo-fade-out` and the banner reuses
-   `headline-fade-in`, so the opening and closing transitions are literally
-   the same code that produced them before.
+   It grew to five — the mark, "Attract Yield", "Attract Liquidity", "Attract
+   Leverage", then the banner — and came back. The three middle lines said in
+   words what the banner says as a mark, and spending 18 of 24 seconds on them
+   made the page feel like it was withholding itself.
 
-   `stage-cycle` carries fade-in, hold and fade-out in ONE animation. Three
-   separate animations on one element cannot express a sequence without a
-   wrapper per phase, and would drift apart the moment a duration changed.
-   Per-keyframe `animation-timing-function` keeps ease-in-out on each fade
-   instead of stretching a single curve across all 6s, which is what makes
-   these read the same as the original two-stage pair.
+   `stage-cycle` went with them: it carried fade-in, hold and fade-out in one
+   animation so a text stage could do all three without a wrapper per phase,
+   and nothing needs that now. The logo still uses `logo-fade-out` and the
+   banner still reuses `headline-fade-in`, so both transitions are literally
+   the code that produced them when this was two stages the first time.
 
    ── Why the delays are baked in here rather than set in the markup ──
    This stylesheet is emitted AFTER `@tailwind utilities`, so an `animation`
@@ -191,24 +187,16 @@ body {
    it is why the divider and tagline below had been ignoring their 6050ms and
    6150ms delays and fading in at page load. Verified in the compiled CSS,
    where the utility lands at byte 36502 and `.animate-fade-up` at 38907. */
-@keyframes stage-cycle {
-  0%       { opacity: 0; transform: translateY(16px); animation-timing-function: ease-in-out; }
-  33.3333% { opacity: 1; transform: translateY(0);    animation-timing-function: linear; }
-  66.6667% { opacity: 1; transform: translateY(0);    animation-timing-function: ease-in-out; }
-  100%     { opacity: 0; transform: translateY(0); }
-}
-.animate-stage-1 { animation: stage-cycle 6s ease-in-out  4s both; }
-.animate-stage-2 { animation: stage-cycle 6s ease-in-out 10s both; }
-.animate-stage-3 { animation: stage-cycle 6s ease-in-out 16s both; }
 
 /* Final stage — fades in and stays, the same reveal the headline used. */
-.animate-stage-final { animation: headline-fade-in 2s ease-in-out 22s both; }
+.animate-stage-final { animation: headline-fade-in 2s ease-in-out 4s both; }
 
-/* The divider and tagline, keyed to the first headline landing — the 6050ms
-   and 6150ms the markup always asked for, now actually applied. They are
-   deliberately NOT pushed to the end of the sequence: the hero runs 24s now,
-   and leaving the page wordless that long to honour a stagger reads as a
-   stall rather than as a reveal. */
+/* The divider and tagline — the 6050ms and 6150ms the markup always asked for,
+   now actually applied. These were chosen while the hero ran 24s, deliberately
+   NOT pushed to its end, because leaving the page wordless that long to honour
+   a stagger read as a stall. At two stages the hero finishes at 6s and they
+   land just behind the banner settling, which is what they were always timed
+   against: the first thing arriving, not the last. */
 .animate-hero-outro-1 { animation: fade-up 0.6s ease-out 6.05s both; }
 .animate-hero-outro-2 { animation: fade-up 0.6s ease-out 6.15s both; }
 

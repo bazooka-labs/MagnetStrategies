@@ -30,19 +30,26 @@ export function TokensSplash() {
       subtext="Attract Yield, Attract Liquidity"
       mark={
         <Image
-          src="/magnet-icon.png"
+          // The TIGHT crop, not /magnet-icon.png.
+          //
+          // That file is a 500-square canvas holding a 316x222 glyph — 139px of
+          // transparent padding above and below, 56% of its height invisible.
+          // Scaling it to 14rem scaled the padding too, leaving ~62px of nothing
+          // between the mark and the rule where MagnetFi's wordmark, which is
+          // 91% glyph, leaves none. The gap was in the asset, not the layout.
+          //
+          // A separate file rather than a recrop of the original: the navbar and
+          // the footer use the square one, where the padding is what keeps the
+          // mark off its own edges.
+          src="/magnet-mark.png"
           alt=""
-          // The asset's real pixels. It was declared at 320 while the file is
-          // 500 square, which capped the variants Next generates — invisible at
-          // the old size and soft at this one on a 2x display.
-          width={500}
-          height={500}
+          width={316}
+          height={222}
           priority
-          // Double the first pass, which read as a favicon dropped into the
-          // middle of a full-screen blur. A square mark needs more width than a
-          // wordmark to carry the same weight: MagnetFi's runs to 28rem, and at
-          // 7rem this was a quarter of that against the same 36rem glow.
-          className="magnet-glow-soft h-auto w-48 sm:w-56"
+          // Sized so the GLYPH lands where it did before — the previous w-48 /
+          // sm:w-56 square rendered it 121px and 142px wide. Only the dead space
+          // is gone.
+          className="magnet-glow-soft h-auto w-32 sm:w-36"
         />
       }
     />

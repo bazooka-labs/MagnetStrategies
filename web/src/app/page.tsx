@@ -2,10 +2,6 @@ import Image from "next/image";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
-/** Shared type treatment for every text stage, so they are visually identical. */
-const STAGE_TEXT =
-  "glow-text font-display text-6xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight text-white";
-
 /** Each stage fills the hero box and centres itself inside it.
  *
  * Centring with flex rather than `left-1/2 … -translate-x-1/2`: the stage
@@ -43,72 +39,37 @@ export default function LandingPage() {
         {/* Content */}
         <div className="relative mx-auto max-w-5xl px-6 py-32 flex flex-col items-center text-center">
 
-          {/* Hero intro sequence — logo → Yield → Liquidity → Leverage →
-              banner. The full timeline lives in globals.css next to the
+          {/* Hero intro sequence — the mark, then the Magnet Strategies
+              banner. Nothing between them: the three "Attract …" lines were
+              removed, and the full timeline lives in globals.css next to the
               keyframes, because the delays are what sequence it.
 
-              Every stage is absolutely positioned, so no stage's size can
-              affect this wrapper's box and nothing shifts as they swap. The
-              box is instead sized by the invisible sizer below, which carries
-              the longest line — stages can then be scaled freely, exactly as
-              the logo could before. */}
-          <div className="relative mb-8">
-            {/* Sizer: reserves the box, shows nothing, announces nothing.
-                It has to be a real text node rather than a fixed height so the
-                box keeps tracking the responsive type scale. */}
-            <div
-              aria-hidden="true"
-              className={`${STAGE_TEXT} select-none opacity-0`}
-            >
-              Attract Liquidity
-            </div>
-
+              The box is now given an explicit height rather than being
+              reserved by an invisible line of text. That sizer existed to make
+              the box track the TYPE scale, which mattered only while stages
+              were words; with two images left, a height that matches the taller
+              of them says what it means and does not keep a removed sentence
+              alive in the DOM. Both stages stay absolutely positioned inside
+              it, so neither can shift the other. */}
+          <div className="relative mb-8 h-40 w-full sm:h-56 lg:h-72">
             {/* Stage 0 — the Magnet mark. Unchanged animation. */}
             <div className={STAGE_BOX}>
               <Image
                 src="/magnet-icon.png"
                 alt=""
-                width={320}
-                height={320}
+                width={500}
+                height={500}
                 className="magnet-glow-soft w-40 sm:w-56 lg:w-72 h-auto shrink-0 animate-logo-fade-out"
                 priority
               />
             </div>
 
-            {/* Stage 1 */}
-            <div className={STAGE_BOX}>
-              <span
-                aria-hidden="true"
-                className={`${STAGE_TEXT} whitespace-nowrap animate-stage-1`}
-              >
-                Attract Yield
-              </span>
-            </div>
-
-            {/* Stage 2 — the real heading. One h1 on the page: the other
-                stages are decorative repetitions of the same idea, so they are
-                spans and hidden from assistive tech rather than competing
-                headings. */}
-            <div className={STAGE_BOX}>
-              <h1 className={`${STAGE_TEXT} whitespace-nowrap animate-stage-2`}>
-                Attract Liquidity
-              </h1>
-            </div>
-
-            {/* Stage 3 */}
-            <div className={STAGE_BOX}>
-              <span
-                aria-hidden="true"
-                className={`${STAGE_TEXT} whitespace-nowrap animate-stage-3`}
-              >
-                Attract Leverage
-              </span>
-            </div>
-
-            {/* Stage 4 — the Magnet Strategies banner, which stays. Carries
-                the alt text the mark used to, since this is the one branded
-                image left on screen once the sequence settles. */}
-            <div className={STAGE_BOX}>
+            {/* Stage 1 — the Magnet Strategies banner, which stays.
+                It is the H1. "Attract Liquidity" used to be, and removing it
+                would have left the landing page with no heading at all; the
+                banner is the one branded thing on screen once the sequence
+                settles, and its alt text is the page's name. */}
+            <h1 className={STAGE_BOX}>
               <Image
                 src="/magnet-wordmark.png"
                 alt="Magnet Strategies"
@@ -117,7 +78,7 @@ export default function LandingPage() {
                 className="magnet-glow-soft w-[17rem] sm:w-[26rem] lg:w-[34rem] h-auto shrink-0 animate-stage-final"
                 priority
               />
-            </div>
+            </h1>
           </div>
 
           <div className="w-32 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent mb-8 animate-hero-outro-1" />

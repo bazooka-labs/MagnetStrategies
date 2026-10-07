@@ -12,8 +12,19 @@ const magnetfi = readFileSync("src/components/magnetfi/MagnetFiSplash.tsx", "utf
 
 describe("each arrival is its own image", () => {
   it("gives the Magnet mark to /tokens and the wordmark to MagnetFi", () => {
-    expect(tokens).toContain('src="/magnet-icon.png"');
+    expect(tokens).toContain('src="/magnet-mark.png"');
     expect(magnetfi).toContain('src="/magnetfi-logo.png"');
+  });
+
+  it("uses the TIGHT crop on the splash and leaves the square one alone", () => {
+    // /magnet-icon.png is 56% transparent by height. At splash scale that
+    // padding became a visible gap between the mark and the rule; the navbar
+    // and footer still want the padded square.
+    // The comment NAMES the square file to record why it is not used, so this
+    // checks the src attribute rather than the path.
+    expect(tokens).not.toContain('src="/magnet-icon.png"');
+    expect(tokens).toContain("width={316}");
+    expect(tokens).toContain("height={222}");
   });
 
   it("leaves the Trading Terminal as type alone", () => {
