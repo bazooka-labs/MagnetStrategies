@@ -32,10 +32,17 @@ export function TokensSplash() {
         <Image
           src="/magnet-icon.png"
           alt=""
-          width={320}
-          height={320}
+          // The asset's real pixels. It was declared at 320 while the file is
+          // 500 square, which capped the variants Next generates — invisible at
+          // the old size and soft at this one on a 2x display.
+          width={500}
+          height={500}
           priority
-          className="magnet-glow-soft h-auto w-24 sm:w-28"
+          // Double the first pass, which read as a favicon dropped into the
+          // middle of a full-screen blur. A square mark needs more width than a
+          // wordmark to carry the same weight: MagnetFi's runs to 28rem, and at
+          // 7rem this was a quarter of that against the same 36rem glow.
+          className="magnet-glow-soft h-auto w-48 sm:w-56"
         />
       }
     />
