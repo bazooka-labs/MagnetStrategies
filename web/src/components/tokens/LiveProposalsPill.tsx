@@ -16,6 +16,12 @@
  * governance exists and nothing needs you right now, which is a different and
  * more useful message than an absent pill, and it means the hero does not
  * change shape when a vote opens.
+ *
+ * One colour — Magnet purple — whatever the count. An earlier version went grey
+ * at zero, which made the pill read as disabled rather than as a live figure
+ * that currently says none. The pulsing dot, present only when something is
+ * actually open, carries that difference instead: a dot that always blinks
+ * stops meaning anything, and a pill that changes colour reads as two controls.
  */
 
 import { Vote as VoteIcon } from "lucide-react";
@@ -33,11 +39,7 @@ export function LiveProposalsPill() {
   return (
     <a
       href="#governance"
-      className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-        open
-          ? "border-magnet-500/40 bg-magnet-500/10 text-magnet-200 hover:border-magnet-400/60 hover:bg-magnet-500/15 hover:text-magnet-100"
-          : "border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70"
-      }`}
+      className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/40 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200 transition-colors hover:border-magnet-400/60 hover:bg-magnet-500/15 hover:text-magnet-100"
     >
       <VoteIcon className="h-3.5 w-3.5" />
       Live proposals:{" "}

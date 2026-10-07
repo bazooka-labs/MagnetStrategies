@@ -129,10 +129,14 @@ export function GovernanceSection() {
             means anything next to the sentence that says one whole token is one
             vote. As a lone pill it was a figure without a unit. */}
         <div className="mt-5 rounded-xl border border-white/10 bg-black/30 px-5 py-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+          {/* White label, Magnet-purple figure — the inverse of the metric row
+              above, where the label is grey and the colour carries the number.
+              Here the box sits inside an amber panel, so a grey label would
+              read as disabled against it. */}
+          <p className="text-xs font-medium uppercase tracking-wider text-white">
             Current vote power
           </p>
-          <p className="mt-1.5 font-mono text-2xl font-bold text-white">
+          <p className="mt-1.5 font-mono text-2xl font-bold text-magnet-400">
             {isConnected ? `${formatU(uBalance)} $U` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
