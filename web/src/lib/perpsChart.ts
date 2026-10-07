@@ -222,6 +222,55 @@ export async function fetchDayStats(
 }
 
 /**
+ * The visible price range, before zoom and panning.
+ *
+ * Extracted from `PerpsChart`'s `geom` so it can be tested: the component lives
+ * in a `.tsx` the vitest glob does not include, and this is the one piece of
+ * that memo where being wrong is visible to a trader rather than merely untidy.
+ *
+ * Drawn lines stretch the range, but only so far. Including every line is right
+ * for a liquidation a few percent away — that distance is what a trader reads
+ * the chart for. It is wrong for a position near 1x, whose liquidation sits
+ * 97-99% below the index: the candles then compress into a flat band and the
+ * axis runs NEGATIVE. Measured on live state: a real 1.0x long put a 24h series
+ * into 18.6px of a 264px plot and printed "$-0.009517" on the axis, and three of
+ * eight live PEX positions were in that range.
+ *
+ * The bound is readability, not a price. A line may push the window out by at
+ * most twice the candle range on each side, so the candles keep at least a fifth
+ * of the plot. Lines outside the result are not clamped to the edge — the chart
+ * drops them, because a liquidation line drawn somewhere it is not is worse than
+ * one not drawn.
+ */
+export function priceWindow(input: {
+  /** Lowest low and highest high of the visible candles. */
+  lo: number;
+  hi: number;
+  /** Fallback anchor when the range is degenerate. */
+  lastClose: number;
+  indexUsd: number | null;
+  /** Finite prices of the lines being drawn. */
+  drawn: number[];
+}): { min: number; max: number } {
+  const { lo, hi, lastClose, indexUsd, drawn } = input;
+  const room = (hi - lo) * 2;
+  const inScale = drawn.filter((v) => v >= lo - room && v <= hi + room);
+  let min = Math.min(lo, indexUsd ?? Infinity, ...inScale);
+  let max = Math.max(hi, indexUsd ?? -Infinity, ...inScale);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
+    min = lastClose * 0.995;
+    max = lastClose * 1.005;
+  }
+  const padY = (max - min) * 0.08;
+  min -= padY;
+  max += padY;
+  // A price is never negative. Padding can push a low `min` under zero even
+  // with the bound above, and the axis would render the tick as "$-0.0095".
+  if (min < 0) min = 0;
+  return { min, max };
+}
+
+/**
  * Combine `n` candles into one, for intervals the exchange does not serve.
  *
  * Buckets are aligned to absolute time rather than to the start of the array,

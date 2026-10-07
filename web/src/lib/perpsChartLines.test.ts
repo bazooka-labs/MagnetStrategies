@@ -67,4 +67,25 @@ describe("the liquidation price is PEX's, not ours", () => {
   it("is carried on the position rather than recomputed by the drawer", () => {
     expect(hookSrc).toContain("liquidationPrice12: liq?.price12 ?? null");
   });
+
+  it("carries current_liquidatable instead of discarding it", () => {
+    // The SDK flips its search direction on this flag, so for an ALREADY
+    // liquidatable long it returns the highest price that is STILL
+    // liquidatable — above the index, still labelled `at_or_below`. Dropped,
+    // the chart drew a solid red "Your liquidation" line in the profit
+    // direction on a position a keeper could close out now. Audit 11 HIGH 3.
+    expect(quoteSrc).toContain("liquidatableNow: Boolean(raw.current_liquidatable)");
+    expect(hookSrc).toContain("liquidatableNow: liq?.liquidatableNow ?? false");
+  });
+
+  it("draws the level only when it is a boundary AHEAD of the price", () => {
+    expect(viewSrc).toContain('const ahead = l.side === "long" ? "at_or_below" : "at_or_above";');
+    expect(viewSrc).toContain("if (!l.liquidatableNow && l.liquidationDirection === ahead) {");
+  });
+
+  it("makes liquidationDirection a field that is actually read", () => {
+    // It was carried and never read — the shape of audit 10's first ship
+    // blocker, where a deleted guard left a dead import behind.
+    expect(viewSrc).toContain("l.liquidationDirection");
+  });
 });

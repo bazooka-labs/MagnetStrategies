@@ -52,7 +52,16 @@ export type OpenPosition = {
    * disappeared on every refresh.
    */
   liquidationPrice12: bigint | null;
+  /** `at_or_below` for a long, `at_or_above` for a short — checked before drawing. */
   liquidationDirection: string;
+  /**
+   * PEX says this position can be liquidated RIGHT NOW.
+   *
+   * When set, `liquidationPrice12` is not a boundary ahead of the price: it is
+   * the far edge of the region the position is already inside. Nothing may draw
+   * it as a level to watch.
+   */
+  liquidatableNow: boolean;
 };
 
 export type PositionsStatus = {
@@ -176,6 +185,7 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
               marketId, side, position: p!, close, quoteError,
               liquidationPrice12: liq?.price12 ?? null,
               liquidationDirection: liq?.direction ?? "",
+              liquidatableNow: liq?.liquidatableNow ?? false,
             });
           }
         }

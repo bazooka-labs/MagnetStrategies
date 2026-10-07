@@ -98,7 +98,25 @@ export function PerpsView() {
     for (const l of held) {
       const who = bothSides ? `${l.side} ` : "";
       add(l.entryPrice12, `Your ${who}entry`, "#e5e7eb", "");
-      add(l.liquidationPrice12, `Your ${who}liquidation`, "#f87171", "");
+      /*
+       * The liquidation level is drawn only when it is a BOUNDARY AHEAD of the
+       * price — two conditions, both from PEX rather than inferred here.
+       *
+       * `liquidatableNow` means the position is already inside the liquidatable
+       * region, and the figure returned is then that region's far edge: on a
+       * long it sits ABOVE the index while still labelled `at_or_below`. Drawn,
+       * it is a solid red "Your liquidation" line in the PROFIT direction on a
+       * position a keeper can close out now.
+       *
+       * The direction check is the belt: a long liquidates at or below, a short
+       * at or above. It is also what finally makes `liquidationDirection` a
+       * read field — it was carried and never read, which is the shape of audit
+       * 10's first ship blocker.
+       */
+      const ahead = l.side === "long" ? "at_or_below" : "at_or_above";
+      if (!l.liquidatableNow && l.liquidationDirection === ahead) {
+        add(l.liquidationPrice12, `Your ${who}liquidation`, "#f87171", "");
+      }
     }
 
     // The order being composed, dashed. Same colours the card uses for the

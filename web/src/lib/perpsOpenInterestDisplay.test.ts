@@ -38,6 +38,33 @@ describe("it is open interest, not pool utilisation", () => {
     expect(cardSrc).toContain('oi_headroom: "how much room this side of the market has left"');
     expect(cardSrc).toContain('reserves: "this market\'s available liquidity"');
   });
+
+  it("gives them separate explanations, not one merged paragraph", () => {
+    // They had distinct LABELS and one shared paragraph that called both of
+    // them "this side of the market is nearly full" — which is not what
+    // `reserves` is at all. This test passed throughout, ten lines above the
+    // paragraph that collapsed them. Audit 11 ship blocker.
+    expect(cardSrc).toContain('{view.tradable && view.binding === "oi_headroom" && (');
+    expect(cardSrc).toContain('{view.tradable && view.binding === "reserves" && (');
+    expect(cardSrc).not.toContain(
+      '(view.binding === "oi_headroom" || view.binding === "reserves")');
+  });
+
+  it("never claims the book is full without saying how full it is", () => {
+    // `oi_headroom` is OUR policy — OI_HEADROOM_SHARE of the room left — and it
+    // binds on an EMPTY book: market 2 was measured at $0 of a $1,560 cap while
+    // the card said the side was "nearly full", directly under a bar reading
+    // "0% used".
+    expect(cardSrc).not.toContain("side of this market is nearly full right");
+    const note = cardSrc.slice(
+      cardSrc.indexOf('{view.tradable && view.binding === "oi_headroom" && ('),
+      cardSrc.indexOf('{view.tradable && view.binding === "reserves" && ('));
+    // It states the share it enforces and the measured utilisation, so the
+    // sentence is true at 0% and at 94% without inventing a threshold.
+    expect(note).toContain("OI_HEADROOM_SHARE");
+    expect(note).toContain("view.openInterest");
+    expect(note).not.toMatch(/nearly full/);
+  });
 });
 
 describe("one side — the one being traded", () => {

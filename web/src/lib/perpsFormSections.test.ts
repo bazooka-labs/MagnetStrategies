@@ -34,8 +34,42 @@ describe("a problem forces the body open", () => {
   });
 
   it("treats an out-of-bounds target and a stop past liquidation as problems", () => {
-    expect(cardSrc).toContain("problem={!view.tpEmpty && !view.tpValid}");
-    expect(cardSrc).toContain("problem={!view.slEmpty && (!view.slValid || view.slPastLiquidation)}");
+    expect(cardSrc).toContain("problem={!view.tpEmpty && (!view.tpValid || view.bothLegs)}");
+    expect(cardSrc).toContain(
+      "problem={!view.slEmpty && (!view.slValid || view.slPastLiquidation || view.bothLegs)}");
+  });
+
+  it("covers EVERY state that disables submit", () => {
+    // This is the property the describe above claims, and the old version of
+    // this test did not check it — it matched two expressions and passed while
+    // `bothLegs` disabled the button with its reason nowhere on the card.
+    //
+    // `canSubmit` requires `tpOk && slOk`. Enumerate what can falsify them:
+    //   tpOk  = tpEmpty || tpValid              -> !tpEmpty && !tpValid
+    //   slOk  = (slEmpty || slValid) && !bothLegs -> !slEmpty && !slValid
+    //                                            -> bothLegs
+    // Each must appear in a `problem` expression, or be explained some other
+    // way on the card. The first two are in the two sections; the third is
+    // both — and carries its own sentence, asserted below.
+    expect(cardSrc).toContain("const slOk = (slEmpty || slValid) && !bothLegs;");
+    expect(cardSrc).toContain("const tpOk = tpEmpty || tpValid;");
+    const tp = cardSrc.slice(cardSrc.indexOf("problem={!view.tpEmpty"));
+    const sl = cardSrc.slice(cardSrc.indexOf("problem={!view.slEmpty"));
+    expect(tp.slice(0, 120)).toContain("view.bothLegs");
+    expect(sl.slice(0, 160)).toContain("view.bothLegs");
+  });
+
+  it("says why, in words, when both exits are set", () => {
+    // The state had two references in the whole file, both in logic and none
+    // in JSX: both sections folded, white summaries, every input accepted, and
+    // a grey button. Audit 11 HIGH 4.
+    expect(cardSrc).toContain("{view.bothLegs && (");
+    expect(cardSrc).toContain("A take-profit and a stop-loss cannot be set on the same order yet");
+  });
+
+  it("freezes it, like every other displayed value", () => {
+    expect(cardSrc).toContain("  bothLegs: boolean;");
+    expect(cardSrc).toMatch(/const live: CardSnapshot = \{[\s\S]*?bothLegs,/);
   });
 
   it("colours the summary amber when there is one", () => {

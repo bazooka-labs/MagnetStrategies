@@ -28,7 +28,7 @@ import { formatPriceUsd } from "@/lib/perpsQuote";
 import { PEX_APPS } from "@/lib/perps";
 import {
   CHART_RANGES, ChartUnavailableError, candleInterval, changePct, defaultVisible,
-  fetchCandles, rangeGranularity, rangeLabel,
+  fetchCandles, priceWindow, rangeGranularity, rangeLabel,
   type Candle, type ChartRange,
 } from "@/lib/perpsChart";
 
@@ -261,18 +261,18 @@ export function PerpsChart({ marketId, label, range, lines = [] }: Props) {
   const geom = useMemo(() => {
     const candles = visible?.rows;
     if (!candles || candles.length < 2 || width <= 0) return null;
-    // Every drawn line is included in the scale, or a liquidation far below the
-    // visible range would silently fall outside the plot — which is the one
-    // line a user most needs to see the distance to.
+    // The window itself lives in `perpsChart.ts` so it can be tested — see the
+    // note there for why a drawn line may only stretch it so far.
     const drawn = lines.map((l) => l.price).filter((v) => Number.isFinite(v));
-    let min = Math.min(...candles.map((c) => c.l), indexUsd ?? Infinity, ...drawn);
-    let max = Math.max(...candles.map((c) => c.h), indexUsd ?? -Infinity, ...drawn);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
-      const base = candles[candles.length - 1].c;
-      min = base * 0.995; max = base * 1.005;
-    }
-    const padY = (max - min) * 0.08;
-    min -= padY; max += padY;
+    const win = priceWindow({
+      lo: Math.min(...candles.map((c) => c.l)),
+      hi: Math.max(...candles.map((c) => c.h)),
+      lastClose: candles[candles.length - 1].c,
+      indexUsd: indexUsd ?? null,
+      drawn,
+    });
+    let min = win.min;
+    let max = win.max;
 
     // Zoom around the LAST CLOSE rather than the midpoint: the current price is
     // what a trader is reading against, and anchoring there keeps it on screen
@@ -567,9 +567,15 @@ export function PerpsChart({ marketId, label, range, lines = [] }: Props) {
                 each is readable at a glance rather than inferred from numbers
                 in a panel below. */}
             {lines.filter((l) => {
-              // Zooming can push a price out of view. Drawing it clamped at the
-              // edge would put a liquidation line somewhere it is not, which is
-              // worse than not drawing it — the panel still states the number.
+              // Zooming, or a level far outside the candle range, can push a
+              // price out of view. Drawing it clamped at the edge would put a
+              // liquidation line somewhere it is not, which is worse than not
+              // drawing it.
+              //
+              // This used to add "the panel still states the number". It does
+              // not: PositionsPanel shows no liquidation price for a held
+              // position, so a dropped line is currently the only place that
+              // number appears. Audit 11.
               const y = geom.y(l.price);
               return y >= PAD.top && y <= H - PAD.bottom;
             }).map((l) => (

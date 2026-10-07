@@ -101,6 +101,10 @@ export type PositionLine = {
   side: "long" | "short";
   entryPrice12: bigint;
   liquidationPrice12: bigint | null;
+  /** Checked against the side before the level is drawn — see PerpsView. */
+  liquidationDirection: string;
+  /** When true the level is not a boundary ahead of the price. Do not draw it. */
+  liquidatableNow: boolean;
 };
 
 export function PositionsPanel({ onLinesChange }: {
@@ -121,7 +125,8 @@ export function PositionsPanel({ onLinesChange }: {
   const notify = useRef(onLinesChange);
   notify.current = onLinesChange;
   const signature = positions
-    .map((p) => `${p.marketId}:${p.side}:${p.position.entry_price}:${p.liquidationPrice12 ?? "-"}`)
+    .map((p) => `${p.marketId}:${p.side}:${p.position.entry_price}:${p.liquidationPrice12 ?? "-"}`
+      + `:${p.liquidationDirection}:${p.liquidatableNow}`)
     .join("|");
   useEffect(() => {
     notify.current?.(positions.map((p) => ({
@@ -129,6 +134,8 @@ export function PositionsPanel({ onLinesChange }: {
       side: p.side,
       entryPrice12: p.position.entry_price,
       liquidationPrice12: p.liquidationPrice12,
+      liquidationDirection: p.liquidationDirection,
+      liquidatableNow: p.liquidatableNow,
     })));
     // `signature` is the real dependency; `positions` is re-created each poll.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -529,6 +529,14 @@ export function stopLossBounds(quote: OpenQuote): { minPrice12: bigint; maxPrice
  * and a zero drawn on a chart is a line at the bottom of the axis claiming the
  * position is safe all the way down.
  *
+ * `current_liquidatable` is carried, NOT discarded. The SDK flips its search
+ * direction on it (`searchUp = (side === SHORT) !== anchorLiquidatable`), so for
+ * a position that is ALREADY liquidatable this returns the highest price that is
+ * still liquidatable — a level ABOVE the index on a long, still labelled
+ * `at_or_below`. Drawn unconditionally that is a solid red "Your liquidation"
+ * line sitting in the profit direction while the position can be closed out now.
+ * Audit 11 HIGH 3.
+ *
  * NOTE the result keys differ from the open quote's. This one returns
  * `liquidation_price` and `direction`; `quoteV2OpenPosition` returns
  * `liquidation_price_estimate` and `liquidation_price_direction`. Reading the
@@ -543,7 +551,7 @@ export function quoteLiquidationPrice(input: {
   oracle: OraclePayload;
   side: Side;
   collateralAssetId: number;
-}): { price12: bigint; direction: string } | null {
+}): { price12: bigint; direction: string; liquidatableNow: boolean } | null {
   let raw: Record<string, unknown>;
   try {
     raw = quoteV2LiquidationPrice({
@@ -561,7 +569,7 @@ export function quoteLiquidationPrice(input: {
   const price12 = big(raw.liquidation_price);
   const direction = String(raw.direction ?? "");
   if (price12 <= BigInt(0) || direction === "") return null;
-  return { price12, direction };
+  return { price12, direction, liquidatableNow: Boolean(raw.current_liquidatable) };
 }
 
 export function quoteClose(input: {

@@ -22,6 +22,7 @@ import {
   DEFAULT_SLIPPAGE_BPS,
   ENABLED_MARKET_IDS,
   MAX_TAKE_PROFIT_MULTIPLE,
+  OI_HEADROOM_SHARE,
   PEX_MARKETS,
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
@@ -191,6 +192,15 @@ type CardSnapshot = {
     | null;
   /** No target set — a choice now, and the button and warnings reflect it. */
   tpEmpty: boolean;
+  /**
+   * Both exits typed, both valid, and therefore unsubmittable.
+   *
+   * In the snapshot because it is DISPLAYED: it forces both sections open and
+   * renders the sentence that says why. It was previously a bare local that
+   * only ever reached `canSubmit`, so the button went grey with its reason
+   * nowhere on the card — audit 11 HIGH 4.
+   */
+  bothLegs: boolean;
   /** What this signature moves, derived from the constants. Frozen with the rest. */
   moves: { keeperUsd: number; algo: number; algoFirstTrade: number };
 };
@@ -806,6 +816,13 @@ export function PerpsCard({
     && (side === "long"
       ? sl12 <= quote.liquidationPrice12
       : sl12 >= quote.liquidationPrice12));
+  /**
+   * Both exits typed and both valid — unsubmittable, by the one-leg rule.
+   *
+   * Hoisted above `CardSnapshot`'s assembly because it is a DISPLAYED value
+   * now: it forces both sections open and renders the sentence saying why.
+   */
+  const bothLegs = !tpEmpty && !slEmpty;
 
   /**
    * Whether a liquidation price exists at all.
@@ -1027,6 +1044,7 @@ export function PerpsCard({
     quoteUsable,
     slPrice, slEmpty, slValid, slTooNear, slPastLiquidation,
     ceilingUsd, indexUsd, quickPick, chipPicks, isLimit, trigger12, funding, tpEmpty, moves,
+    bothLegs,
     openInterest,
     waitsForRoom,
     minLeverage: bar?.open ? bar.minLeverage : null,
@@ -1074,7 +1092,8 @@ export function PerpsCard({
    * sibling, so the question does not arise and the precondition is satisfied
    * rather than waived.
    */
-  const bothLegs = !tpEmpty && !slEmpty;
+  // `bothLegs` is hoisted to sit with the other leg flags — the snapshot is
+  // assembled above this point and now carries it. `slOk` stays here.
   const slOk = (slEmpty || slValid) && !bothLegs;
 
   const canSubmit = !!(
@@ -1441,19 +1460,38 @@ export function PerpsCard({
             {BINDING_LABEL[view.binding] ?? view.binding.replace(/_/g, " ")}
           </p>
         )}
-        {/* When the MARKET is the cap, say so and say what to do about it.
-            A squeezed-but-open book previously showed only the raw enum: the
-            plain-English "at its size limit" line fires when the bar is CLOSED,
-            which is not the case that confused anyone. A long capped at 1.1x
-            looks broken; a long capped at 1.1x BECAUSE the book is nearly full
-            is information. Two separate reports read a correct number as a bug
-            before this line existed. */}
-        {view.tradable && (view.binding === "oi_headroom" || view.binding === "reserves") && (
+        {/* When the MARKET is the cap, say so and say WHICH cap — they are two
+            different constraints and they were merged into one sentence.
+
+            `oi_headroom` is OUR policy: `OI_HEADROOM_SHARE` of the room left on
+            this side, so one position cannot take the whole book. It binds on a
+            book with NOTHING in it — market 2 was measured at $0 of a $1,560 cap
+            while this line claimed the side was "nearly full", three lines under
+            a bar reading "0% used" and a sentence reading "the whole $1,560.00
+            cap is free on this side". Audit 11's ship blocker.
+
+            `reserves` is PEX's pool check (`checkReservesAfterTrade`) and has
+            nothing to do with how full the side is. `BINDING_LABEL` keeps the
+            two apart and a test asserts it; this paragraph collapsed them anyway.
+
+            No "nearly full" threshold is invented here. The utilisation is
+            stated as the number it is, which is true at 0% and at 94%. */}
+        {view.tradable && view.binding === "oi_headroom" && (
           <p className="mt-1 text-[11px] text-amber-300/80">
-            Not your limit — the {side} side of this market is nearly full right
-            now, so this is the largest position it can take. The other side and
-            the other market are usually unaffected, and a limit order can rest
-            until room opens up.
+            Not your limit — one position may take at most{" "}
+            {Math.round(OI_HEADROOM_SHARE * 100)}% of the room left on the {side} side,
+            and this is that much.
+            {view.openInterest && ` ${view.openInterest.pct.toFixed(1)}% of that side's cap is in use right now.`}
+            {" "}The other side and the other market are usually unaffected, and a
+            limit order can rest until more room opens.
+          </p>
+        )}
+        {view.tradable && view.binding === "reserves" && (
+          <p className="mt-1 text-[11px] text-amber-300/80">
+            Not your limit — this market&apos;s available liquidity caps the size
+            right now. That is the pool behind the market rather than how full
+            this side is. The other market is usually unaffected, and a limit
+            order can rest until it recovers.
           </p>
         )}
       </div>
@@ -1559,7 +1597,7 @@ export function PerpsCard({
       <FormSection
         title={<>Take profit <span className="normal-case tracking-normal text-white/30">· optional</span></>}
         summary={view.tpEmpty ? "None" : `$${view.tpPrice}`}
-        problem={!view.tpEmpty && !view.tpValid}
+        problem={!view.tpEmpty && (!view.tpValid || view.bothLegs)}
         open={tpOpen}
         onToggle={() => setTpOpen((v) => !v)}
       >
@@ -1704,7 +1742,7 @@ export function PerpsCard({
       <FormSection
         title={<>Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span></>}
         summary={view.slEmpty ? "None" : `$${view.slPrice}`}
-        problem={!view.slEmpty && (!view.slValid || view.slPastLiquidation)}
+        problem={!view.slEmpty && (!view.slValid || view.slPastLiquidation || view.bothLegs)}
         open={slOpen}
         onToggle={() => setSlOpen((v) => !v)}
       >
@@ -1763,6 +1801,23 @@ export function PerpsCard({
         </div>
       )}
       </FormSection>
+
+      {/* The one state that disabled submit with its reason nowhere on the
+          card. `bothLegs` reached `canSubmit` and nothing else: both sections
+          stayed folded with white summaries, every input looked accepted, and
+          the button was simply grey. Audit 11 HIGH 4 — and the exact thing
+          FormSection's own docstring claims cannot happen.
+
+          Rendered once rather than in each section, because it is a fact about
+          the PAIR. Both sections force open alongside it, so the two values it
+          refers to are on screen when it is read. */}
+      {view.bothLegs && (
+        <p className="mt-3 text-[11px] leading-relaxed text-amber-300/90">
+          A take-profit and a stop-loss cannot be set on the same order yet —
+          clear one to continue. PEX&apos;s cleanup of the surviving leg is
+          unobserved, so this interface attaches one at a time.
+        </p>
+      )}
 
       </div>
 
