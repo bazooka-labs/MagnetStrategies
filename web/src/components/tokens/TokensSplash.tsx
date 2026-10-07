@@ -46,10 +46,16 @@ export function TokensSplash() {
           width={316}
           height={222}
           priority
-          // Sized so the GLYPH lands where it did before — the previous w-48 /
-          // sm:w-56 square rendered it 121px and 142px wide. Only the dead space
-          // is gone.
-          className="magnet-glow-soft h-auto w-32 sm:w-36"
+          // 15% down from the 8rem / 9rem that matched the old square's glyph.
+          // Arbitrary values rather than the nearest step because w-28 and w-32
+          // are a 12.5% and an 11% cut, not the 15% asked for.
+          //
+          // The gap to the rule needs no matching adjustment: the asset is
+          // cropped to the glyph, so height falls with width and the rule's own
+          // margin is all that sits between them. That is the whole point of
+          // the crop — on the square original this change would have shrunk
+          // 56% worth of invisible padding along with it.
+          className="magnet-glow-soft h-auto w-[6.8rem] sm:w-[7.65rem]"
         />
       }
     />

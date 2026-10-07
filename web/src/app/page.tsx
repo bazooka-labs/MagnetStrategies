@@ -44,15 +44,49 @@ export default function LandingPage() {
               removed, and the full timeline lives in globals.css next to the
               keyframes, because the delays are what sequence it.
 
-              The box is now given an explicit height rather than being
-              reserved by an invisible line of text. That sizer existed to make
-              the box track the TYPE scale, which mattered only while stages
-              were words; with two images left, a height that matches the taller
-              of them says what it means and does not keep a removed sentence
-              alive in the DOM. Both stages stay absolutely positioned inside
-              it, so neither can shift the other. */}
-          <div className="relative mb-8 h-40 w-full sm:h-56 lg:h-72">
-            {/* Stage 0 — the Magnet mark. Unchanged animation. */}
+              THE BANNER IS IN FLOW and the mark is absolute over it, so the box
+              is exactly as tall as what is left on screen when the sequence
+              settles — and the divider and tagline below sit against the banner
+              rather than against whatever happens to be the tallest frame.
+
+              This has been wrong twice in opposite directions. An invisible
+              line of text reserved the box while the stages were words, so both
+              images overflowed it and the banner's foot ran into the divider.
+              Replacing that with a height matching the MARK — the taller of the
+              two — pushed the divider and tagline some 90px further down than
+              they had ever been, because the mark is gone by the time anyone
+              reads them. Measuring the thing that stays removes the magic
+              number in either direction. */}
+          <div className="relative mb-8">
+            {/* Stage 1 — the Magnet Strategies banner, which stays.
+                It is the H1. "Attract Liquidity" used to be, and removing it
+                would have left the landing page with no heading at all; the
+                banner is the one branded thing on screen once the sequence
+                settles, and its alt text is the page's name. */}
+            <h1 className="flex items-center justify-center">
+              <Image
+                // The TIGHT crop. /magnet-wordmark.png is an 877x284 canvas
+                // holding an 815x226 wordmark, padded 19px at the top and 39 at
+                // the bottom — so it is not even optically centred, and at lg
+                // some 24px of nothing sat between the letters and the divider
+                // below. The navbar keeps the padded original, where the margin
+                // is what holds the mark off its own edges.
+                src="/magnet-wordmark-tight.png"
+                alt="Magnet Strategies"
+                width={815}
+                height={226}
+                // Scaled by 815/877 from 17/26/34rem, so the LETTERS land at
+                // exactly the width they did on the padded canvas. Only the
+                // dead space is gone.
+                className="magnet-glow-soft w-[15.8rem] sm:w-[24.16rem] lg:w-[31.6rem] h-auto shrink-0 animate-stage-final"
+                priority
+              />
+            </h1>
+
+            {/* Stage 0 — the Magnet mark. Absolute, so it cannot resize the box
+                it shares; it is taller than the banner and overflows it, which
+                is invisible because it has faded out before anything below is
+                drawn. */}
             <div className={STAGE_BOX}>
               <Image
                 src="/magnet-icon.png"
@@ -63,22 +97,6 @@ export default function LandingPage() {
                 priority
               />
             </div>
-
-            {/* Stage 1 — the Magnet Strategies banner, which stays.
-                It is the H1. "Attract Liquidity" used to be, and removing it
-                would have left the landing page with no heading at all; the
-                banner is the one branded thing on screen once the sequence
-                settles, and its alt text is the page's name. */}
-            <h1 className={STAGE_BOX}>
-              <Image
-                src="/magnet-wordmark.png"
-                alt="Magnet Strategies"
-                width={877}
-                height={284}
-                className="magnet-glow-soft w-[17rem] sm:w-[26rem] lg:w-[34rem] h-auto shrink-0 animate-stage-final"
-                priority
-              />
-            </h1>
           </div>
 
           <div className="w-32 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent mb-8 animate-hero-outro-1" />
