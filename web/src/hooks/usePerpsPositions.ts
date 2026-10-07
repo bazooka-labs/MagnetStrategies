@@ -62,6 +62,14 @@ export type OpenPosition = {
    * it as a level to watch.
    */
   liquidatableNow: boolean;
+  /**
+   * The index this position was last priced against.
+   *
+   * Carried so the panel can state the DISTANCE to liquidation without reading
+   * the oracle a second time — the price a position is marked against has one
+   * owner, and two reads on two timers disagree.
+   */
+  indexPrice12: bigint;
 };
 
 export type PositionsStatus = {
@@ -186,6 +194,7 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
               liquidationPrice12: liq?.price12 ?? null,
               liquidationDirection: liq?.direction ?? "",
               liquidatableNow: liq?.liquidatableNow ?? false,
+              indexPrice12: oracle.indexPrice12,
             });
           }
         }

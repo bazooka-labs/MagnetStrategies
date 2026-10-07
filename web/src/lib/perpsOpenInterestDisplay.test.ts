@@ -44,10 +44,20 @@ describe("it is open interest, not pool utilisation", () => {
     // them "this side of the market is nearly full" — which is not what
     // `reserves` is at all. This test passed throughout, ten lines above the
     // paragraph that collapsed them. Audit 11 ship blocker.
-    expect(cardSrc).toContain('{view.tradable && view.binding === "oi_headroom" && (');
-    expect(cardSrc).toContain('{view.tradable && view.binding === "reserves" && (');
+    expect(cardSrc).toContain('view.binding === "oi_headroom" && (');
+    expect(cardSrc).toContain('view.binding === "reserves" && (');
     expect(cardSrc).not.toContain(
       '(view.binding === "oi_headroom" || view.binding === "reserves")');
+  });
+
+  it("explains a cap only when the size is AT it", () => {
+    // `binding` describes the bar's maximum, not the chosen size, so these
+    // rendered at every slider position — "$100 · limited by how much room this
+    // side has left" against a $780 cap. Audit 11 MEDIUM 6.
+    expect(cardSrc).toContain("const atCeiling = view.ceilingUsd > 0 && view.notional >= view.ceilingUsd * 0.995;");
+    expect(cardSrc).toContain('{view.tradable && atCeiling && view.binding === "oi_headroom" && (');
+    expect(cardSrc).toContain('{view.tradable && atCeiling && view.binding === "reserves" && (');
+    expect(cardSrc).toContain("{atCeiling && view.binding && (");
   });
 
   it("never claims the book is full without saying how full it is", () => {
@@ -57,8 +67,8 @@ describe("it is open interest, not pool utilisation", () => {
     // "0% used".
     expect(cardSrc).not.toContain("side of this market is nearly full right");
     const note = cardSrc.slice(
-      cardSrc.indexOf('{view.tradable && view.binding === "oi_headroom" && ('),
-      cardSrc.indexOf('{view.tradable && view.binding === "reserves" && ('));
+      cardSrc.indexOf('view.binding === "oi_headroom" && ('),
+      cardSrc.indexOf('view.binding === "reserves" && ('));
     // It states the share it enforces and the measured utilisation, so the
     // sentence is true at 0% and at 94% without inventing a threshold.
     expect(note).toContain("OI_HEADROOM_SHARE");

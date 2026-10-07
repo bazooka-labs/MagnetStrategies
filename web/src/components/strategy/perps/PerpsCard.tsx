@@ -391,6 +391,17 @@ export function PerpsCard({
   /** Declared with `stage` so effects above the render can read it too. */
   const submitting = stage !== null;
   const [result, setResult] = useState<OpenPositionResult | null>(null);
+  /**
+   * Which protective leg the SUBMITTED group carried.
+   *
+   * Captured at the click, not read back at render: by the time the banner
+   * shows, the inputs have been cleared and `frozen` released. The banner said
+   * "Your take-profit is live and will close the position automatically" after
+   * EVERY confirmed open, including the targetless ones `tpOk` explicitly
+   * allows — a protective order claimed over a group that carries none, which
+   * is audit 10 SB2's shape. Audit 11 LOW 9.
+   */
+  const [sentLegs, setSentLegs] = useState<{ tp: boolean; sl: boolean }>({ tp: false, sl: false });
   const [submitError, setSubmitError] = useState<string | null>(null);
   const market = MARKETS.find((m) => m.id === marketId)!;
   /**
@@ -1052,6 +1063,19 @@ export function PerpsCard({
   };
   /** What the card renders. The live values keep updating underneath. */
   const view = frozen ?? live;
+
+  /**
+   * Is the size the user has chosen actually AT the cap?
+   *
+   * `binding` is a property of the bar's MAXIMUM, not of the current notional,
+   * so every line explaining it was rendering at every slider position — "$100
+   * · limited by how much room this side of the market has left" against a $780
+   * cap. The constraint was real and the claim that it limited *this* size was
+   * not. Audit 11 MEDIUM 6.
+   *
+   * Derived from two frozen values, so it is not a live read.
+   */
+  const atCeiling = view.ceilingUsd > 0 && view.notional >= view.ceilingUsd * 0.995;
   /**
    * Everything required to sign, all of it already true for `tradable`, plus a
    * connected wallet and a valid target.
@@ -1134,6 +1158,10 @@ export function PerpsCard({
     // rather than by whichever input happened to change.
     setSubmitError(null);
     setResult(null);
+    // The same expressions the two submit paths use to decide whether to attach
+    // a leg (`tp12 > 0` / `sl12 > 0`), read from this render's closure — so the
+    // banner describes the group that was built, not the form afterwards.
+    setSentLegs({ tp: tp12 > BigInt(0), sl: sl12 > BigInt(0) });
     setFrozen(live);
     try {
       const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
@@ -1454,10 +1482,12 @@ export function PerpsCard({
             No size on this side currently clears the exchange&apos;s checks. Try a different amount.
           </p>
         )}
-        {view.tradable && view.binding && (
+        {view.tradable && (
           <p className="mt-1 text-[11px] text-white/35">
-            Position size {fmtUsd(view.notional)} · limited by{" "}
-            {BINDING_LABEL[view.binding] ?? view.binding.replace(/_/g, " ")}
+            Position size {fmtUsd(view.notional)}
+            {atCeiling && view.binding && (
+              <> · limited by {BINDING_LABEL[view.binding] ?? view.binding.replace(/_/g, " ")}</>
+            )}
           </p>
         )}
         {/* When the MARKET is the cap, say so and say WHICH cap — they are two
@@ -1476,7 +1506,7 @@ export function PerpsCard({
 
             No "nearly full" threshold is invented here. The utilisation is
             stated as the number it is, which is true at 0% and at 94%. */}
-        {view.tradable && view.binding === "oi_headroom" && (
+        {view.tradable && atCeiling && view.binding === "oi_headroom" && (
           <p className="mt-1 text-[11px] text-amber-300/80">
             Not your limit — one position may take at most{" "}
             {Math.round(OI_HEADROOM_SHARE * 100)}% of the room left on the {side} side,
@@ -1486,7 +1516,7 @@ export function PerpsCard({
             limit order can rest until more room opens.
           </p>
         )}
-        {view.tradable && view.binding === "reserves" && (
+        {view.tradable && atCeiling && view.binding === "reserves" && (
           <p className="mt-1 text-[11px] text-amber-300/80">
             Not your limit — this market&apos;s available liquidity caps the size
             right now. That is the pool behind the market rather than how full
@@ -1975,7 +2005,11 @@ export function PerpsCard({
           </p>
           <p className="mt-1 text-[11px] opacity-80">
             {result.outcome === "confirmed"
-              ? "Your take-profit is live and will close the position automatically."
+              ? sentLegs.tp
+                ? "Your take-profit is live and will close the position automatically."
+                : sentLegs.sl
+                  ? "Your stop-loss is live and will close the position automatically."
+                  : "No exit order was attached, so this position closes only when you close it — or at liquidation."
               : result.outcome === "rejected"
                 ? `Nothing left your wallet and no position exists. You can safely try again.${result.reason ? ` Reason: ${result.reason}` : ""}`
                 : "This is not a failure. The transaction is still valid and will most likely confirm. Check the link before trying again — opening a second time would add to the position."}

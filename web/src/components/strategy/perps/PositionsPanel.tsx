@@ -341,6 +341,23 @@ export function PositionsPanel({ onLinesChange }: {
           /** Price movement alone. Not wrong, and not the same thing. */
           const priceMove = p.close?.pnlUsd ?? null;
           const leverage = collateralUsd > 0 ? sizeUsd / collateralUsd : 0;
+          /**
+           * Where this position liquidates, and how far that is.
+           *
+           * It had no home at all: the chart drew it and nothing else did, so
+           * for a low-leverage position — whose liquidation sits far outside
+           * the candle range and is correctly dropped from the plot — the
+           * number appeared NOWHERE in the product. Three of eight live
+           * MainNet positions were in that state. Audit 11.
+           *
+           * `liquidatableNow` is shown instead of a distance, because in that
+           * state the figure is not a level ahead of the price — see
+           * `quoteLiquidationPrice`.
+           */
+          const liqUsd = p.liquidationPrice12 !== null ? price12ToUsd(p.liquidationPrice12) : null;
+          const indexUsd = price12ToUsd(p.indexPrice12);
+          const liqAwayPct = liqUsd !== null && indexUsd > 0
+            ? Math.abs(liqUsd - indexUsd) / indexUsd * 100 : null;
 
           return (
             <div key={`${p.marketId}-${p.side}`}
@@ -378,6 +395,10 @@ export function PositionsPanel({ onLinesChange }: {
                     ? (p.close.payoutUsd !== null ? fmtUsd(p.close.payoutUsd) : "see below")
                     : "—"],
                   ["Price move", priceMove !== null ? fmtSigned(priceMove) : "—"],
+                  ["Liquidation", p.liquidatableNow ? "liquidatable now"
+                    : liqUsd !== null
+                      ? `${fmtPrice(liqUsd)}${liqAwayPct !== null ? ` · ${liqAwayPct.toFixed(1)}% away` : ""}`
+                      : "—"],
                 ] as const).map(([k, v]) => (
                   <div key={k}>
                     <dt className="text-white/35">{k}</dt>
@@ -385,6 +406,20 @@ export function PositionsPanel({ onLinesChange }: {
                   </div>
                 ))}
               </dl>
+
+              {/* A position past its maintenance margin is not a warning about
+                  the future. A keeper can close it now, and the grid cell above
+                  says "liquidatable now" where a distance would otherwise be —
+                  this says what that means. */}
+              {p.liquidatableNow && (
+                <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-200">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    PEX reports this position can be liquidated right now. Closing it
+                    yourself returns whatever is left; a liquidation does not.
+                  </span>
+                </p>
+              )}
 
               {/* Why the net figure differs from the price move.
 
