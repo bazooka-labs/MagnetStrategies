@@ -131,6 +131,28 @@ export const VAULT_TYPES: VaultType[] = [
     blurb: "The blue-chip Algorand pair.",
   },
   {
+    // The first NON-U collateral. Every vault above is U-denominated, so the
+    // whole book rides on one thin token; this is a risk fix before it is a
+    // growth one. It is also the only collateral deep enough to actually
+    // liquidate — $1.72M of Tinyman TVL against U/tALGO's, where unwinding a
+    // large seizure would move the price against the liquidator.
+    //
+    // 65/78 is deliberately conservative for what this is. An ALGO/USDC LP is
+    // roughly HALF as volatile as a volatile/volatile pair, because half the
+    // position is a stablecoin and LP value tracks sqrt(P_ALGO): ALGO -50%
+    // moves the LP only -29%. The tighter threshold buys room while liquidation
+    // is still manual; both are admin-adjustable and should rise to ~70/80 once
+    // the liquidation bot is proven.
+    id: "algo-usdc",
+    pair: "ALGO / USDC",
+    tokens: ["ALGO", "USDC"],
+    ltvBps: 6500,
+    liqThresholdBps: 7800,
+    rateBps: 500,
+    status: "soon",
+    blurb: "The deepest pool on Algorand, half of it a stablecoin — the safest collateral here, and the first that is not $U.",
+  },
+  {
     id: "u-wbtc",
     pair: "U / wBTC",
     tokens: ["$U", "wBTC"],
