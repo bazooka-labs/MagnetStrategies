@@ -751,3 +751,98 @@ def test_critical_and_warning_are_visually_distinct(monkeypatch):
     ob.notify("x")
     warn = json.loads(seen["body"])["content"]
     assert crit != warn and "CRITICAL" in crit and "WARNING" in warn
+
+
+# ── PEX second source for ALGO (alert-only) ──────────────────────────────────────
+#
+# CompX carries $U but not ALGO, and ALGO is the ROOT of the price graph — tALGO
+# derives from it, U derives from tALGO — so the one asset every pool depends on
+# had no second opinion. PEX publishes a signed exchange-median ALGO/USD.
+#
+# The constraint these pin: it must NEVER gate a post. strategy/perps/SPEC.md
+# forbids PEX state becoming an input to a MagnetFi solvency decision, and
+# `compx_cross_check` shows what gating looks like — "diverged" is a hard refuse.
+
+def test_pex_price_is_never_allowed_to_block_a_post():
+    # The guard rail for the whole feature: the comparison lives on FeedWatch,
+    # not in get_lp_price/update_pool, and returns nothing a caller can act on.
+    import inspect
+    src = inspect.getsource(ob.FeedWatch.check_algo_against_pex)
+    assert "return None" not in src.replace("-> None", "")
+    assert inspect.signature(ob.FeedWatch.check_algo_against_pex).return_annotation in (None, "None")
+    # And nothing in the posting path consults it.
+    for fn in (ob.get_lp_price, ob.update_pool, ob.post_price):
+        assert "pex" not in inspect.getsource(fn).lower()
+
+
+def test_pex_reader_verifies_against_the_PINNED_key(monkeypatch):
+    # The payload carries its own pubkey_hex; trusting that only proves the
+    # message signed itself.
+    # The comment names pubkey_hex to record why it is NOT used, so this checks
+    # the verify call rather than the word — the third time tonight a test has
+    # tripped on a comment describing the thing it avoids.
+    import inspect, re
+    src = inspect.getsource(ob.read_pex_algo_price)
+    verify = re.search(r"VerifyKey\(([^)]*)\)", src)
+    assert verify and "PEX_ORACLE_PUBKEY_HEX" in verify.group(1)
+    assert "pubkey_hex" not in verify.group(1)
+
+
+def test_pex_reader_reads_prices_from_the_SIGNED_bytes(monkeypatch):
+    # Not from the JSON envelope, which is unauthenticated — an attacker serving
+    # the bundle could pair a valid signature with any JSON they liked.
+    import inspect
+    src = inspect.getsource(ob.read_pex_algo_price)
+    assert 'struct.unpack(">12Q"' in src
+    for json_field in ('pl["index_price_min"]', 'pl["index_price_max"]', 'pl["timestamp"]'):
+        assert json_field not in src
+
+
+def test_pex_divergence_alerts_once_and_recovers(monkeypatch):
+    sent = []
+    monkeypatch.setattr(ob, "notify", lambda t, critical=False: sent.append((t, critical)))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 0.130000)
+    monkeypatch.setattr(ob, "read_pex_algo_price", lambda: 0.118909)   # ~9.3% apart
+    w = ob.FeedWatch()
+    for _ in range(5):
+        w.check_algo_against_pex(object(), make_cfg())
+    assert len(sent) == 1 and sent[0][1] is False      # warning, not critical
+    assert "root of every pool" in sent[0][0]
+
+    monkeypatch.setattr(ob, "read_pex_algo_price", lambda: 0.129900)   # back in line
+    w.check_algo_against_pex(object(), make_cfg())
+    assert len(sent) == 2 and "agrees with PEX again" in sent[1][0]
+
+
+def test_pex_silence_is_not_a_disagreement(monkeypatch):
+    # PEX being unreachable must not alert and must not change state — otherwise
+    # their downtime becomes our noise, which is the coupling in miniature.
+    sent = []
+    monkeypatch.setattr(ob, "notify", lambda t, critical=False: sent.append(t))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 0.118800)
+    monkeypatch.setattr(ob, "read_pex_algo_price", lambda: None)
+    w = ob.FeedWatch()
+    w.check_algo_against_pex(object(), make_cfg())
+    assert sent == [] and w.pex_level == "ok"
+
+
+def test_pex_tolerates_our_own_derivation_failing(monkeypatch):
+    sent = []
+    monkeypatch.setattr(ob, "notify", lambda t, critical=False: sent.append(t))
+    def boom(*a, **k): raise RuntimeError("no reference pool")
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", boom)
+    monkeypatch.setattr(ob, "read_pex_algo_price", lambda: 0.118909)
+    w = ob.FeedWatch()
+    w.check_algo_against_pex(object(), make_cfg())     # must not raise
+    assert sent == []
+
+
+def test_small_divergence_stays_quiet(monkeypatch):
+    # Measured live at 0.096%. If this alerts, the channel gets muted.
+    sent = []
+    monkeypatch.setattr(ob, "notify", lambda t, critical=False: sent.append(t))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 0.118795)
+    monkeypatch.setattr(ob, "read_pex_algo_price", lambda: 0.118909)
+    w = ob.FeedWatch()
+    w.check_algo_against_pex(object(), make_cfg())
+    assert sent == []

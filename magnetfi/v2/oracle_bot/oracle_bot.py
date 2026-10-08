@@ -17,6 +17,13 @@ Price pipeline per pool (fully on-chain — no external HTTP price API):
   8. Run asymmetric divergence check (block upward spikes; let drops through)
   9. Post to oracle contract if all checks pass
 
+Separately, and ALERT-ONLY, each cycle compares our derived ALGO price against
+PEX's signed exchange-median feed. ALGO is the root of the price graph — tALGO
+derives from it and U from tALGO — and CompX does not carry ALGO, so the one
+asset every pool depends on previously had no second opinion. It can never
+block a post: letting PEX's oracle freeze ours is the dependency
+strategy/perps/SPEC.md exists to forbid.
+
 After every cycle a watchdog reads each pool's `lp_ts_` back OUT of the oracle
 contract and alerts on what the chain says, not on what this loop believes it
 did. Any guard above can skip a pool silently, and a post that is built and
@@ -60,6 +67,7 @@ import base64
 import json
 import logging
 import os
+import struct
 import sys
 import time
 import urllib.error
@@ -114,6 +122,36 @@ ALERT_WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "")
 # Pinged after every cycle in which EVERY pool posted. The watchdog below cannot
 # fire if the bot is dead; this is the half that covers that.
 HEARTBEAT_URL = os.environ.get("HEARTBEAT_URL", "")
+
+# ── PEX second source for ALGO (alert-only) ──────────────────────────────────
+# CompX prices $U but NOT ALGO or tALGO, so ALGO — the ROOT of the whole price
+# graph, since tALGO and U both derive through it — had no second opinion at all.
+# PEX publishes a signed, exchange-median ALGO/USD every few seconds, free.
+#
+# ⚠️ STRICTLY ALERT-ONLY. It must never gate a post. `compx_cross_check` can
+# return "diverged", which is a hard refuse — wiring PEX in that way would let a
+# PEX oracle glitch freeze MagnetFi's price feed, which is the coupling
+# strategy/perps/SPEC.md exists to forbid ("no Perps code path makes PEX state an
+# input to a MagnetFi solvency decision"). Telemetry carries the diagnostic value
+# with none of the dependency.
+PEX_BUNDLE_URL = (
+    "https://pub-1e72beea87f04ebfafce248132310425.r2.dev"
+    "/mainnet/v2/oracle-payloads/mainnet/current.json"
+)
+# PINNED. The payload carries its own `pubkey_hex`, and verifying against that
+# only proves the message signed itself. Same key the Trading Terminal pins.
+PEX_ORACLE_PUBKEY_HEX = "4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb"
+PEX_TRADING_APP_ID = 3_690_309_160
+PEX_ALGO_MARKET_ID = 1
+PEX_MSG_LEN = 133
+PEX_MSG_MAGIC = b"PDX2"
+PEX_MSG_VERSION = 3
+PEX_PRICE_SCALE = 1_000_000_000_000
+# PEX's own window is 20s. We allow more because a slightly old second opinion is
+# still a useful one when it is only ever going to raise an alert.
+PEX_MAX_AGE_SEC = 120
+# Divergence that warrants waking someone. Measured live at 0.096%.
+PEX_DIVERGENCE_ALERT = 0.02
 
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
@@ -654,6 +692,57 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
         log.error(f"[{pool.label}] price post failed")
 
 
+def read_pex_algo_price() -> float | None:
+    """
+    ALGO/USD from PEX's signed oracle bundle, or None. NEVER raises.
+
+    Every field is read from the SIGNED bytes, never from the JSON envelope: the
+    envelope is unauthenticated and an attacker who can serve the bundle could
+    pair a valid signature with whatever JSON they liked.
+
+    Layout (133 bytes): "PDX2" | version | 32-byte genesis | 12 big-endian u64 —
+    targetAppId, marketId, indexAssetId, longAssetId, shortAssetId,
+    indexMin, indexMax, longMin, longMax, shortMin, shortMax, publishedAt.
+    """
+    try:
+        import nacl.signing  # ships with py-algorand-sdk
+        req = urllib.request.Request(
+            PEX_BUNDLE_URL,
+            headers={"accept": "application/json", "user-agent": "magnetfi-oracle-bot/1.0"},
+        )
+        body = json.loads(urllib.request.urlopen(req, timeout=10).read())
+        pl = body["payloads"][f"app-{PEX_TRADING_APP_ID}/market-{PEX_ALGO_MARKET_ID}"]
+        msg = bytes.fromhex(pl["message_hex"])
+        sig = bytes.fromhex(pl["signature_hex"])
+
+        if len(msg) != PEX_MSG_LEN or msg[:4] != PEX_MSG_MAGIC or msg[4] != PEX_MSG_VERSION:
+            log.warning("PEX cross-check: unexpected message shape")
+            return None
+        # Against the PINNED key, not pl["pubkey_hex"].
+        nacl.signing.VerifyKey(bytes.fromhex(PEX_ORACLE_PUBKEY_HEX)).verify(msg, sig)
+
+        w = struct.unpack(">12Q", msg[37:PEX_MSG_LEN])
+        target_app, market_id, index_asset = w[0], w[1], w[2]
+        index_min, index_max, published_at = w[5], w[6], w[11]
+
+        # Bindings, from the signed bytes — a payload for another market or
+        # another app is not an ALGO price.
+        if target_app != PEX_TRADING_APP_ID or market_id != PEX_ALGO_MARKET_ID or index_asset != 0:
+            log.warning("PEX cross-check: payload is bound elsewhere")
+            return None
+
+        age = int(time.time()) - published_at
+        if age > PEX_MAX_AGE_SEC or age < -60:
+            log.warning(f"PEX cross-check: price is {age}s old")
+            return None
+        if index_min <= 0 or index_max <= 0:
+            return None
+        return ((index_min + index_max) / 2) / PEX_PRICE_SCALE
+    except Exception as e:  # noqa: BLE001 — a second opinion must never be fatal
+        log.warning(f"PEX cross-check unavailable: {e}")
+        return None
+
+
 # ── feed watchdog ─────────────────────────────────────────────────────────────
 
 def notify(text: str, *, critical: bool = False) -> None:
@@ -739,11 +828,13 @@ class FeedWatch:
     learn to mute the channel.
     """
 
-    __slots__ = ("level",)
+    __slots__ = ("level", "pex_level")
 
     def __init__(self) -> None:
         # pool_id -> "ok" | "warn" | "critical"
         self.level: dict[int, str] = {}
+        # Separate, because it is about the price being WRONG rather than OLD.
+        self.pex_level: str = "ok"
 
     @staticmethod
     def _ts_key(pool_id: int) -> bytes:
@@ -795,6 +886,43 @@ class FeedWatch:
                 notify(f"[{pool.label}] oracle price is posting again ({mins}m old).")
                 self.level[pool.pool_id] = "ok"
 
+
+    def check_algo_against_pex(self, client: algod.AlgodClient, cfg: "BotConfig") -> None:
+        """
+        Compare our derived ALGO price against PEX's signed one and alert on
+        disagreement.
+
+        ALGO is the ROOT of the price graph — tALGO derives from ALGO, U derives
+        from tALGO — so every pool's LP price depends on getting this one right,
+        and until now nothing checked it. CompX does not carry ALGO.
+
+        ⚠️ ALERT-ONLY by design. This function returns None and influences no
+        post. Making a PEX disagreement block a write would let their oracle
+        freeze ours, which is exactly the dependency the perps spec forbids.
+        """
+        ours = None
+        try:
+            ours = derive_asset_price_usdc(client, 0, cfg, {})
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"PEX cross-check: could not derive our ALGO price: {e}")
+        theirs = read_pex_algo_price()
+        if ours is None or theirs is None or theirs <= 0:
+            return                      # no opinion is not a disagreement
+
+        div = abs(ours - theirs) / theirs
+        level = "warn" if div > PEX_DIVERGENCE_ALERT else "ok"
+        if level == self.pex_level:
+            return
+        was, self.pex_level = self.pex_level, level
+        if level == "warn":
+            notify(
+                f"ALGO price disagrees with PEX by {div * 100:.2f}% "
+                f"(ours ${ours:.6f}, PEX ${theirs:.6f}). ALGO is the root of every "
+                f"pool's price, so this affects all of them. Nothing is blocked — "
+                f"check for a manipulated reference pool."
+            )
+        elif was != "ok":
+            notify(f"ALGO price agrees with PEX again ({div * 100:.2f}%).")
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 
@@ -865,6 +993,7 @@ def main() -> None:
         # feed would age into a false alarm.
         if not args.dry_run:
             watch.check(client, cfg)
+            watch.check_algo_against_pex(client, cfg)
             if all(lvl == "ok" for lvl in watch.level.values()):
                 heartbeat()
 
