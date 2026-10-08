@@ -722,16 +722,25 @@ def test_ntfy_warning_is_not_urgent(monkeypatch):
     assert seen["headers"]["priority"] == "default"
 
 
-def test_discord_and_slack_get_json_with_both_keys(monkeypatch):
-    # Discord reads "content", Slack reads "text". Sending both means one URL
-    # works either way with no config switch.
+def test_discord_gets_only_the_field_its_api_documents(monkeypatch):
+    # Discord validates its webhook body. Sending an extra "text" key rests on a
+    # guess about how it treats unknown fields, and this is the path most likely
+    # to be used in practice.
     monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
     seen = _capture(monkeypatch)
     ob.notify("feed is stale", critical=True)
     payload = json.loads(seen["body"])
     assert "feed is stale" in payload["content"]
-    assert payload["content"] == payload["text"]
+    assert set(payload) == {"content"}
     assert seen["headers"]["content-type"] == "application/json"
+
+
+def test_slack_shaped_urls_get_text(monkeypatch):
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://hooks.slack.com/services/x/y/z")
+    seen = _capture(monkeypatch)
+    ob.notify("feed is stale")
+    payload = json.loads(seen["body"])
+    assert "feed is stale" in payload["text"]
 
 
 def test_critical_and_warning_are_visually_distinct(monkeypatch):

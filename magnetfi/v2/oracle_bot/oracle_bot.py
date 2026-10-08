@@ -662,13 +662,13 @@ def notify(text: str, *, critical: bool = False) -> None:
 
     Three destinations work with no config switch beyond the URL:
 
-      Discord   https://discord.com/api/webhooks/<id>/<token>   reads "content"
-      Slack     https://hooks.slack.com/services/...            reads "text"
+      Discord   https://discord.com/api/webhooks/<id>/<token>   {"content": ...}
+      Slack     https://hooks.slack.com/services/...            {"text": ...}
       ntfy      https://ntfy.sh/<your-topic>                    plain body
 
-    Discord and Slack both get JSON carrying both keys. ntfy wants the message
-    as the raw body — posting JSON there publishes the literal braces — so it
-    gets a plain-text body and the priority/title in headers instead.
+    Each gets only what its API documents. ntfy wants the message as the raw
+    body — posting JSON there publishes the literal braces — so it gets plain
+    text with the priority and title in headers.
 
     ntfy is the one that needs no account and pushes to a phone, which is the
     case this exists for: the 2026-10-07 outage ran for nine hours while nobody
@@ -688,8 +688,16 @@ def notify(text: str, *, critical: bool = False) -> None:
             "Priority": "urgent" if critical else "default",
             "Tags": "rotating_light" if critical else "warning",
         }
+    elif "discord" in urllib.parse.urlparse(ALERT_WEBHOOK_URL).netloc:
+        # Discord's execute-webhook endpoint validates its body. Sending only the
+        # field it documents removes an assumption about how it treats unknown
+        # keys — this is the path most likely to be used, so it should not rest
+        # on a guess.
+        data = json.dumps({"content": msg}).encode()
+        headers = {"Content-Type": "application/json"}
     else:
-        data = json.dumps({"content": msg, "text": msg}).encode()
+        # Slack and anything Slack-shaped.
+        data = json.dumps({"text": msg, "content": msg}).encode()
         headers = {"Content-Type": "application/json"}
 
     req = urllib.request.Request(ALERT_WEBHOOK_URL, data=data, headers=headers, method="POST")
