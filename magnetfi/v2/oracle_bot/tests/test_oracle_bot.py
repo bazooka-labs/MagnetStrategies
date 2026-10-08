@@ -547,3 +547,133 @@ def test_load_config_warns_on_missing_price_bound(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         ob.load_config(p)
     assert any("asset_price_bounds" in r.message and "2537013734" in r.message for r in caplog.records)
+
+
+# ── feed watchdog ────────────────────────────────────────────────────────────────
+#
+# Written after 2026-10-07, when the bot ran for six and a half hours with one of
+# its two feeds dead: every cycle fired, the process was healthy, the wallet was
+# funded, the other pool updated normally, and U/tALGO had not been written since
+# 16:04Z because its price had crossed a max_price ceiling. Nothing told anyone.
+
+class _FakeAlgod:
+    """Returns a canned oracle global state; records nothing else."""
+
+    def __init__(self, state: dict[bytes, int] | None = None, raises: bool = False):
+        self._state = state or {}
+        self._raises = raises
+
+    def application_info(self, app_id: int):
+        if self._raises:
+            raise RuntimeError("algod down")
+        return {"params": {"global-state": [
+            {"key": base64.b64encode(k).decode(), "value": {"type": 2, "uint": v}}
+            for k, v in self._state.items()
+        ]}}
+
+
+def _ts_key(pool_id: int) -> bytes:
+    return b"lp_ts_" + pool_id.to_bytes(8, "big")
+
+
+def _watch_with(monkeypatch, now: int, ages: dict[int, int], raises: bool = False):
+    """A FeedWatch, a fake chain where pool p last posted `ages[p]` seconds ago,
+    and a list that collects every alert raised."""
+    sent: list[tuple[str, bool]] = []
+    monkeypatch.setattr(ob, "notify",
+                        lambda text, critical=False: sent.append((text, critical)))
+    monkeypatch.setattr(ob.time, "time", lambda: now)
+    state = {_ts_key(pid): (0 if age is None else now - age) for pid, age in ages.items()}
+    cfg = make_cfg(pools=[{"pool_id": pid, "pool_address": "X", "asset_a_id": 1,
+                           "asset_a_decimals": 6, "asset_b_id": 2, "asset_b_decimals": 6,
+                           "label": f"P{pid}"} for pid in ages])
+    return ob.FeedWatch(), _FakeAlgod(state, raises), cfg, sent
+
+
+def test_watchdog_silent_when_fresh(monkeypatch):
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: 120})
+    w.check(client, cfg)
+    assert sent == []
+
+
+def test_watchdog_warns_before_the_vault_freezes(monkeypatch):
+    # The whole point of warning at half the window: there is still time to act.
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: ob.STALE_WARN_SECONDS + 1})
+    w.check(client, cfg)
+    assert len(sent) == 1 and sent[0][1] is False
+
+
+def test_watchdog_escalates_when_the_vault_is_actually_refusing(monkeypatch):
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000,
+                                       {1: ob.ORACLE_FRESHNESS_SECONDS + 1})
+    w.check(client, cfg)
+    assert len(sent) == 1 and sent[0][1] is True
+    # The operator needs to know liquidations are down, not just that a number is old.
+    assert "LIQUIDATIONS" in sent[0][0]
+
+
+def test_watchdog_alerts_once_not_every_cycle(monkeypatch):
+    # Six hours at a 5-minute cadence is 72 identical messages, which is how a
+    # channel gets muted before the one that matters arrives.
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: 1_000})
+    for _ in range(10):
+        w.check(client, cfg)
+    assert len(sent) == 1
+
+
+def test_watchdog_escalates_warn_to_critical(monkeypatch):
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: ob.STALE_WARN_SECONDS + 1})
+    w.check(client, cfg)
+    w2, client2, cfg2, sent2 = _watch_with(monkeypatch, 10_000,
+                                           {1: ob.ORACLE_FRESHNESS_SECONDS + 1})
+    w2.level = w.level            # carry the warn state forward
+    w2.check(client2, cfg2)
+    assert len(sent2) == 1 and sent2[0][1] is True
+
+
+def test_watchdog_says_when_it_recovers(monkeypatch):
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: 1_000})
+    w.check(client, cfg)
+    w2, client2, cfg2, sent2 = _watch_with(monkeypatch, 10_000, {1: 60})
+    w2.level = w.level
+    w2.check(client2, cfg2)
+    assert len(sent2) == 1 and "again" in sent2[0][0]
+    assert w2.level[1] == "ok"    # and it can alert again next time
+
+
+def test_watchdog_catches_ONE_dead_feed_beside_a_healthy_one(monkeypatch):
+    # Exactly 2026-10-07: pool 2 posting every five minutes, pool 1 untouched for
+    # six hours. A heartbeat on the process, or on "did the cycle run", sees
+    # nothing wrong here.
+    w, client, cfg, sent = _watch_with(monkeypatch, 100_000, {1: 23_000, 2: 180})
+    w.check(client, cfg)
+    assert len(sent) == 1
+    assert "P1" in sent[0][0] and sent[0][1] is True
+
+
+def test_watchdog_ignores_a_pool_that_has_never_posted(monkeypatch):
+    # ts == 0 means add_pool has not run, not that a feed died.
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: None})
+    w.check(client, cfg)
+    assert sent == []
+
+
+def test_watchdog_does_not_invent_staleness_when_algod_is_down(monkeypatch):
+    # A failed read is not evidence the feed is stale, and crying wolf on every
+    # node blip is how the alert stops being believed.
+    w, client, cfg, sent = _watch_with(monkeypatch, 10_000, {1: 60}, raises=True)
+    w.check(client, cfg)
+    assert sent == []
+
+
+def test_watchdog_threshold_matches_the_vault_contract():
+    # vault/contract.py: ORACLE_FRESHNESS = 1_800. If that constant moves and
+    # this one does not, the alert arrives after the freeze instead of before.
+    assert ob.ORACLE_FRESHNESS_SECONDS == 1_800
+    assert ob.STALE_WARN_SECONDS < ob.ORACLE_FRESHNESS_SECONDS
+
+
+def test_notify_never_raises_even_when_the_webhook_is_broken(monkeypatch):
+    # Alerting is not allowed to take the price feed down with it.
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "http://127.0.0.1:1/nope")
+    ob.notify("test")             # must not raise

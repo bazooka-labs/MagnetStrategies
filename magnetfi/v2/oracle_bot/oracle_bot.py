@@ -17,6 +17,12 @@ Price pipeline per pool (fully on-chain — no external HTTP price API):
   8. Run asymmetric divergence check (block upward spikes; let drops through)
   9. Post to oracle contract if all checks pass
 
+After every cycle a watchdog reads each pool's `lp_ts_` back OUT of the oracle
+contract and alerts on what the chain says, not on what this loop believes it
+did. Any guard above can skip a pool silently, and a post that is built and
+sent can still revert; the on-chain timestamp is the one fact that covers every
+such case, and it is the exact value the vault tests for freshness.
+
 Usage:
   python oracle_bot.py [--dry-run] [--once] [--config config.json]
 
@@ -25,6 +31,14 @@ Environment variables:
   ALGOD_URL      — algod node URL (default: https://mainnet-api.algonode.cloud)
   ALGOD_TOKEN    — algod API token (default: empty for public nodes)
   ORACLE_APP_ID  — LP Oracle contract app ID (can also be in config.json)
+  ALERT_WEBHOOK_URL — optional. Discord or Slack incoming webhook. Receives a
+                   message when a pool's price goes stale (15m), when the vault
+                   actually starts refusing on it (30m), and when it recovers.
+                   Unset means failures are silent — which is how one feed sat
+                   dead for six and a half hours on 2026-10-07.
+  HEARTBEAT_URL  — optional. Pinged after every cycle in which all pools are
+                   fresh (healthchecks.io and similar). The watchdog cannot fire
+                   if the bot is dead; this is the half that covers that.
 """
 
 import argparse
@@ -34,6 +48,8 @@ import logging
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import algosdk
@@ -64,6 +80,25 @@ LP_DECIMALS       = 6       # Tinyman LP tokens have 6 decimal places
 PRICE_SCALE       = 1_000_000   # on-chain price representation: 1.00 = 1_000_000
 MAX_TWAP_AGE        = 1_800 # discard TWAP readings older than this (s) — never average across a downtime gap (F7)
 UNVERIFIED_MAX_DROP = 0.10  # when CompX can't verify, only post flat / declines up to this fraction (F1/F5)
+
+# ── Feed watchdog ─────────────────────────────────────────────────────────────
+# The vault refuses every priced operation — INCLUDING ALL THREE LIQUIDATION
+# PATHS — once a pool's `lp_ts_` is older than ORACLE_FRESHNESS (1800s). These
+# thresholds are set against that number, not against POLL_INTERVAL, because the
+# thing that matters is the contract's opinion of freshness and not ours.
+#
+# WARN at half the window: two missed cycles at a 5-minute cadence, still 15
+# minutes of room to fix it. CRITICAL when the vault has actually started
+# refusing.
+ORACLE_FRESHNESS_SECONDS = 1_800   # MUST match vault/contract.py ORACLE_FRESHNESS
+STALE_WARN_SECONDS       = 900
+# Post to this and you get told. Discord and Slack webhooks both accept {"text"}
+# / {"content"}; both keys are sent so either works unmodified.
+ALERT_WEBHOOK_URL = os.environ.get("ALERT_WEBHOOK_URL", "")
+# Optional dead-man's switch (healthchecks.io, Better Stack, cron-monitor, …).
+# Pinged after every cycle in which EVERY pool posted. The watchdog below cannot
+# fire if the bot is dead; this is the half that covers that.
+HEARTBEAT_URL = os.environ.get("HEARTBEAT_URL", "")
 
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
@@ -604,6 +639,119 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
         log.error(f"[{pool.label}] price post failed")
 
 
+# ── feed watchdog ─────────────────────────────────────────────────────────────
+
+def notify(text: str, *, critical: bool = False) -> None:
+    """
+    Send an alert. NEVER raises — a broken webhook must not stop price posting.
+
+    Both `content` (Discord) and `text` (Slack) are sent so one URL works either
+    way without a config switch.
+    """
+    log.error(text) if critical else log.warning(text)
+    if not ALERT_WEBHOOK_URL:
+        return
+    prefix = "\U0001F6A8 CRITICAL" if critical else "\u26A0\uFE0F WARNING"
+    body = json.dumps({"content": f"{prefix} — {text}", "text": f"{prefix} — {text}"}).encode()
+    req = urllib.request.Request(
+        ALERT_WEBHOOK_URL, data=body,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10).close()
+    except Exception as e:  # noqa: BLE001 — alerting must never be fatal
+        log.error(f"alert webhook failed: {e}")
+
+
+def heartbeat() -> None:
+    """Ping the dead-man's switch. Never raises."""
+    if not HEARTBEAT_URL:
+        return
+    try:
+        urllib.request.urlopen(HEARTBEAT_URL, timeout=10).close()
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"heartbeat ping failed: {e}")
+
+
+class FeedWatch:
+    """
+    Watches what the CHAIN says, not what the bot thinks it did.
+
+    ── Why it reads `lp_ts_` instead of instrumenting the guard paths ────────
+    On 2026-10-07 the bot ran uninterrupted for six and a half hours while one
+    of its two feeds was dead. Every cycle fired, the process was healthy, the
+    wallet was funded, the other pool updated normally — and U/tALGO had not
+    been written since 16:04Z because its price had crossed a `max_price`
+    ceiling and each cycle was skipping it with a logged warning nobody read.
+
+    Instrumenting the refusal sites would have caught that one. It would not
+    catch a post that is built, sent, and REVERTED on chain (the bot's bounds
+    sit outside the contract's anchor band on both pools, so that is reachable
+    today), nor a signing failure, nor a node that accepts and drops. The
+    timestamp in the oracle's own global state is the single fact that covers
+    every one of those, and it is the exact value the vault tests against.
+
+    State transitions only — a 5-minute alarm clock for six hours is how people
+    learn to mute the channel.
+    """
+
+    __slots__ = ("level",)
+
+    def __init__(self) -> None:
+        # pool_id -> "ok" | "warn" | "critical"
+        self.level: dict[int, str] = {}
+
+    @staticmethod
+    def _ts_key(pool_id: int) -> bytes:
+        return b"lp_ts_" + pool_id.to_bytes(8, "big")
+
+    def check(self, client: algod.AlgodClient, cfg: "BotConfig") -> None:
+        """Read every pool's on-chain timestamp and alert on level changes."""
+        try:
+            info = client.application_info(cfg.oracle_app_id)
+            raw = info.get("params", {}).get("global-state", [])
+            state = {base64.b64decode(kv["key"]): kv["value"].get("uint", 0) for kv in raw}
+        except Exception as e:  # noqa: BLE001 — a failed read is not a stale feed
+            log.warning(f"watchdog: could not read oracle state: {e}")
+            return
+
+        now = int(time.time())
+        for pool in cfg.pools:
+            ts = state.get(self._ts_key(pool.pool_id), 0)
+            if ts == 0:
+                continue                      # never posted; add_pool has not run
+            age = now - ts
+            if age >= ORACLE_FRESHNESS_SECONDS:
+                level = "critical"
+            elif age >= STALE_WARN_SECONDS:
+                level = "warn"
+            else:
+                level = "ok"
+
+            if level == self.level.get(pool.pool_id, "ok"):
+                continue                      # no change — stay quiet
+            was = self.level.get(pool.pool_id, "ok")
+            self.level[pool.pool_id] = level
+
+            mins = age // 60
+            if level == "critical":
+                notify(
+                    f"[{pool.label}] oracle price is {mins}m old — past the vault's "
+                    f"{ORACLE_FRESHNESS_SECONDS // 60}m freshness window. Borrowing AND ALL "
+                    f"LIQUIDATIONS are now reverting on this pool. Check the bot log for "
+                    f"'refusing to post' / 'skipping'.",
+                    critical=True,
+                )
+            elif level == "warn":
+                notify(
+                    f"[{pool.label}] oracle price is {mins}m old and has not updated. The vault "
+                    f"freezes at {ORACLE_FRESHNESS_SECONDS // 60}m.",
+                )
+            elif was != "ok":
+                notify(f"[{pool.label}] oracle price is posting again ({mins}m old).")
+                self.level[pool.pool_id] = "ok"
+
+
 # ── main loop ─────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -616,6 +764,7 @@ def main() -> None:
     cfg = load_config(Path(args.config))
     client = make_algod_client()
     twap = TwapState(STATE_FILE)
+    watch = FeedWatch()
 
     if cfg.oracle_app_id == 0 and not args.dry_run:
         log.error("oracle_app_id must be set in config.json or ORACLE_APP_ID env var (unless --dry-run)")
@@ -635,6 +784,8 @@ def main() -> None:
     log.info(f"AMM validator app: {cfg.amm_app_id}")
     log.info(f"CompX oracle app:  {cfg.compx_oracle_app_id}")
     log.info(f"Pools configured:  {[p.label for p in cfg.pools]}")
+    log.info(f"Alert webhook:     {'configured' if ALERT_WEBHOOK_URL else 'NOT SET — failures will be silent'}")
+    log.info(f"Heartbeat:         {'configured' if HEARTBEAT_URL else 'NOT SET — a dead bot will not be noticed'}")
     if args.dry_run:
         log.info("DRY-RUN mode — no transactions will be submitted")
 
@@ -644,6 +795,13 @@ def main() -> None:
                 update_pool(client, cfg, pool, twap, bot_sk, bot_address, args.dry_run)
             except Exception as e:
                 log.exception(f"[{pool.label}] unhandled error: {e}")
+        # AFTER the pools, and against the chain rather than against what the
+        # loop above believes it did. In --dry-run nothing is posted, so every
+        # feed would age into a false alarm.
+        if not args.dry_run:
+            watch.check(client, cfg)
+            if all(lvl == "ok" for lvl in watch.level.values()):
+                heartbeat()
 
     if args.once:
         run_once()
