@@ -2,9 +2,14 @@
 // Kept separate from magnetfiClient so the default (Overview) view stays lightweight.
 
 import algosdk from "algosdk";
-import { ACTIVE, PSM_REDEEM_FEE_BPS } from "./magnetfi";
+import { ACTIVE, ACTIVE_POOL_WIRING, PSM_REDEEM_FEE_BPS } from "./magnetfi";
 
-const ORACLE_FRESHNESS = 1_800; // 30 min
+const ORACLE_FRESHNESS = 1_800; // 30 min — MUST match vault/contract.py ORACLE_FRESHNESS
+/** Half the window: two missed 5-minute cycles, with time left to act. */
+const ORACLE_WARN_AGE = 900;
+/** lp_oracle/contract.py ANCHOR_BAND_LOW / _HIGH. A post outside this reverts. */
+const ANCHOR_BAND_LOW = 75;
+const ANCHOR_BAND_HIGH = 125;
 
 export const MUSD_ID = ACTIVE.musd;
 export const USDC_ID = ACTIVE.usdc;
@@ -38,6 +43,62 @@ export async function getOracle(algod: algosdk.Algodv2, poolId: number = ACTIVE.
   const ts = globalUint(app, poolKey("lp_ts_", poolId)) ?? 0;
   const now = Math.floor(Date.now() / 1000);
   return { price: price / 1_000_000, ts, fresh: ts > 0 && now - ts <= ORACLE_FRESHNESS };
+}
+
+/**
+ * Everything the admin needs to see a freeze coming, per pool.
+ *
+ * ── Why the band matters as much as the age ───────────────────────────────
+ * Staleness is the symptom; the band is the cause. On 2026-10-07 the U/tALGO
+ * feed stopped because its price reached the bot's ceiling — the last posted
+ * value was 0.13% under it — and the first anyone knew was six and a half hours
+ * of a frozen lending market. The distance to the band edge is a LEADING
+ * indicator: it shrinks for hours before anything breaks, and nothing in the
+ * product showed it.
+ *
+ * The bot's own min/max live in its config.json and cannot be read from chain.
+ * This reports the CONTRACT's anchor band, which is the limit that survives a
+ * bot restart and the one a re-anchor moves.
+ */
+export type PoolOracleHealth = {
+  id: string;
+  poolId: number;
+  price: number;
+  anchor: number;
+  ts: number;
+  ageSec: number;
+  /** Null when the pool has no anchor set, in which case the band is not enforced. */
+  bandLow: number | null;
+  bandHigh: number | null;
+  /** Percent the price may still rise / fall before a post reverts. Null without an anchor. */
+  roomUpPct: number | null;
+  roomDownPct: number | null;
+  level: "ok" | "warn" | "critical";
+  /** Within 5% of either edge — the state that precedes a freeze. */
+  nearBand: boolean;
+};
+
+export async function getOracleHealth(algod: algosdk.Algodv2): Promise<PoolOracleHealth[]> {
+  const app = await algod.getApplicationByID(ACTIVE.oracle).do();
+  const now = Math.floor(Date.now() / 1000);
+  return Object.entries(ACTIVE_POOL_WIRING).map(([id, w]) => {
+    const price = (globalUint(app, poolKey("lp_price_", w.poolId)) ?? 0) / 1_000_000;
+    const anchor = (globalUint(app, poolKey("lp_anchor_", w.poolId)) ?? 0) / 1_000_000;
+    const ts = globalUint(app, poolKey("lp_ts_", w.poolId)) ?? 0;
+    const ageSec = ts > 0 ? now - ts : 0;
+    const bandLow = anchor > 0 ? (anchor * ANCHOR_BAND_LOW) / 100 : null;
+    const bandHigh = anchor > 0 ? (anchor * ANCHOR_BAND_HIGH) / 100 : null;
+    const roomUpPct = bandHigh !== null && price > 0 ? (bandHigh / price - 1) * 100 : null;
+    const roomDownPct = bandLow !== null && price > 0 ? (1 - bandLow / price) * 100 : null;
+    // A pool that has never posted is not stale — add_pool has not run.
+    const level: PoolOracleHealth["level"] =
+      ts === 0 ? "ok"
+        : ageSec >= ORACLE_FRESHNESS ? "critical"
+        : ageSec >= ORACLE_WARN_AGE ? "warn"
+        : "ok";
+    const nearBand = (roomUpPct !== null && roomUpPct < 5) || (roomDownPct !== null && roomDownPct < 5);
+    return { id, poolId: w.poolId, price, anchor, ts, ageSec, bandLow, bandHigh, roomUpPct, roomDownPct, level, nearBand };
+  });
 }
 
 export type ProtocolStats = { circulating: number; ceiling: number; psmUsdc: number; oracle: OracleInfo };

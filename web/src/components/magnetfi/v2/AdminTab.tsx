@@ -7,6 +7,7 @@ import { Panel } from "./shared";
 import { CreateMusd } from "./admin/CreateMusd";
 import { CreateTestAssets } from "./admin/CreateTestAssets";
 import { OperationsPanel } from "./admin/OperationsPanel";
+import { OracleHealthPanel } from "./admin/OracleHealthPanel";
 import { PositionsPanel } from "./admin/PositionsPanel";
 import { StrategyPanel } from "./admin/StrategyPanel";
 import { VaultRedeployPanel } from "./admin/VaultRedeployPanel";
@@ -80,6 +81,16 @@ export function AdminTab() {
           Active Loans
         </h3>
         <PositionsPanel />
+      </section>
+
+      {/* Oracle health — ABOVE Operations, because the remedy for everything it
+          reports ("Re-anchor price", "Rotate bot key") lives in the panel
+          directly below it. Diagnosis then fix, in reading order. */}
+      <section>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Oracle Health
+        </h3>
+        <OracleHealthPanel />
       </section>
 
       {/* Operations */}
