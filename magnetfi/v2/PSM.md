@@ -371,3 +371,63 @@ v3 modifies the **PSM only**; the **Vault / LP Oracle / Liquidation contracts ar
 
 ### Build + audit sequencing
 v3 (Folks adapter + the redefined invariant + buffer/caps + recall path + adapter-whitelist timelock) is **meaningful new attack surface on the contract that holds the reserve** and requires its own **dedicated fresh audit** — not a re-run of the v2 passes. The redefined invariant is the highest-risk change (it changes what backs the dollar), so it gets the most scrutiny. Launch posture is otherwise unchanged: small ceiling, conservative deployment fraction, Folks-only.
+
+---
+
+## Public deposits — pinned
+
+**Decided 2026-10-07: not now, and the condition for revisiting is written down
+rather than left to judgement.**
+
+The constraint is real and immediate. `vault_ceiling = psm_usdc − circulating`
+stood at **$50** on 2026-10-07 — $151.40 of USDC against $101.40 circulating.
+A founder-funded reserve is a hard ceiling on how much mUSD can ever exist, and
+opening the PSM to third-party deposits is the natural way to raise it.
+
+### Why it is parked anyway
+
+**There is nothing to pay depositors with yet.** Three vaults, $950 of debt at
+5–8% — about **$66/year** of gross interest, and $0.02 of accumulated fees to
+date. A deposit product launched now would add a risk class, a regulatory
+question and new contract surface in exchange for distributing roughly nothing.
+**Borrow demand has to come first**, which is why ALGO/USDC collateral is ahead
+of this in [TODO.md](./TODO.md#-path-forward--agreed-2026-10-07).
+
+**It transfers risk that is currently the founder's alone.** Today a bad debt
+event costs one person. With public deposits it costs depositors — and the
+protocol presently cannot liquidate in the scenario where liquidation matters
+(the oracle band locks at −25%; live borrowers become liquidatable at −53%),
+has no liquidation bot, and gates all three liquidation paths on a single admin
+key.
+
+**Depositors cannot be given what they would ask for.** A PSM is one fungible
+pool backing one fungible token; there is no "my USDC", only a pro-rata claim.
+Per-depositor opt-out of a venue is not offerable without separate share classes
+and a fractured backing invariant. The honest substitute already exists: the
+**48-hour timelock on adapter changes** is an exit window. Publish the
+whitelist, timelock every change, let anyone who dislikes a new venue redeem
+before it takes effect. That is what that timelock is *for* once the money is
+not the founder's, and it should be documented as such at launch.
+
+### Design decisions to make before building, not during
+
+- **Subordination.** Depositors must rank behind mUSD holders and be unable to
+  withdraw if it would break `circulating mUSD ≤ backing`. Correct, standard,
+  and it has to be designed in and disclosed rather than discovered.
+- **Share accounting.** Exchange-rate shares. Well-trodden; not where the risk is.
+- **Impairment.** How an impaired adapter socialises across shares, explicitly.
+  v3 already counts `min(principal, recoverable)` and an impaired venue as zero;
+  what changes is who absorbs it.
+- **Venue selection becomes fiduciary.** Admin still chooses adapters behind the
+  timelock. That is the same trust surface Aave has — it needs naming, not
+  eliminating.
+
+### The condition
+
+Public deposits require, first: **ALGO/USDC collateral live and borrow demand
+demonstrated**, **liquidation proven working**, and the key-compromise question
+re-answered per the tripwires in [TODO.md](./TODO.md#-tripwires--conditions-not-intentions).
+
+This is a **v4 contract shape**, not a change to the live v3 PSM — and it should
+ship in the same migration as the signed-payload oracle, since both touch the
+vault and the vault has no repointing path.

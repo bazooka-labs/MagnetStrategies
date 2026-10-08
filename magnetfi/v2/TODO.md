@@ -51,6 +51,78 @@ _Last updated: 2026-08-19. Live on mainnet with U/tALGO **and U/USDC** collatera
 
 ---
 
+## 🧭 Path forward — agreed 2026-10-07
+
+Ordered. Each item is cheap only while the book is small; the window closes as
+positions and lenders accumulate.
+
+### Now — no contract changes
+
+1. **Restart the oracle bot** with the committed bounds fix (`23784e5`) plus
+   `ALERT_WEBHOOK_URL` and `HEARTBEAT_URL`. ~15 min to first post (TWAP warm-up).
+   No re-anchor needed; the contract band was never the blocker.
+2. **Derive the bot's `min_price`/`max_price` from the on-chain anchor** at
+   startup instead of hardcoding, and do the same for `asset_price_bounds`.
+   Interim measure — both disappear entirely at v4 — but it ends the recurring
+   outage class in the meantime.
+3. **Add ALGO/USDC collateral.** Live contracts, no migration: the oracle has 8
+   free pool slots and the vault registers a pool through admin setters
+   (`add_pool`, `set_ltv`, `set_liq_threshold`, `set_rate`, `set_lp_asa_id`).
+   Tinyman ALGO/USDC TVL is $1.72M; capturing 10% is ~$172k collateral, ~$103k
+   of borrow demand, ~$6.7k/yr at 6.5%.
+
+   This is the highest-value item on the list and it is a **risk** fix before it
+   is a growth one. The entire collateral book is currently U-denominated, and
+   U/tALGO is thin enough that seizing a large position would move the price
+   against the liquidator. ALGO/USDC is deep enough to actually unwind.
+
+### Next — the rebuild
+
+4. **v4 oracle: signed payloads.** Full rationale and what survives in
+   [LP_ORACLE.md](./LP_ORACLE.md#v4--signed-payloads-decided-2026-10-07-not-yet-built).
+   Ships with 6 below, in one migration.
+5. **Liquidation bot — after 4, not before.** Built against today's band it
+   would be frozen out in most of the cases it exists for: all three live vaults
+   become liquidatable only *after* the oracle locks.
+6. **Lender-side contract shape** — decided now, built with 4. Subordination of
+   depositors to mUSD holders, share accounting, how an impaired adapter
+   socialises, whether liquidation becomes permissionless.
+
+   **Borrower growth is migration-cheap; lender shares are the weld.** A
+   borrower can repay and reopen. A lender owed accrued interest cannot be
+   casually moved.
+
+### Pinned — not now
+
+7. **Public PSM deposits.** See [PSM.md](./PSM.md#public-deposits--pinned).
+   Deliberately parked until ALGO/USDC proves borrow demand exists. The PSM
+   ceiling is real — `vault_ceiling = psm_usdc − circulating` was **$50** on
+   2026-10-07 — but the fix for a supply constraint is demand you can safely
+   serve, and the safety half is not built.
+8. **Smart Stake.** Standalone yield aggregator if built at all. It does **not**
+   create mUSD demand: staked mUSD is redeemed to USDC on arrival, so the float
+   round-trips to zero and the PSM ceiling is unchanged. The product that would
+   grow the float is a savings rate paid from borrower interest, which needs 3
+   and 6 first.
+
+## 🚨 Tripwires — conditions, not intentions
+
+Written down because decisions made at $950 have a habit of still being in force
+at $100k.
+
+- **Before the PSM accepts a single third-party deposit:** re-answer the
+  key-compromise question. v4 accepts that risk on the basis that loss is capped
+  at the PSM reserve and the reserve is the founder's own money. Both halves of
+  that stop being true with outside deposits, and *"I accept the risk"* stops
+  being one person's sentence to say. The upward rate limit in
+  [LP_ORACLE.md](./LP_ORACLE.md#designs-considered-and-rejected) is the design
+  to reach for first.
+- **Before any public deposit:** liquidation must be proven working, and
+  permissionless-vs-admin decided deliberately rather than by default. One hot
+  key operated by one person is not a solvency plan at scale.
+- **When the oracle health panel shows band room under 5%:** act then, not after
+  the freeze. (Moot once v4 ships — there is no band.)
+
 ## 🔴 Blocking — must be done before mainnet launch
 
 ### Keys & assets

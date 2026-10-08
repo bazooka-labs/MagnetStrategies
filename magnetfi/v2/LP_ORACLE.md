@@ -283,3 +283,121 @@ Three-key model:
 | Guardian wallet (cold) | admin recovery (`propose_admin`), guardian rotation — cold multisig |
 
 **Bot-compromise blast radius (corrected — P19-03):** a compromised bot key can post bad prices only within ±50% of the prior post **and** ±25% of the admin anchor. Worst case is therefore *bounded* mispricing plus staleness — not arbitrary drift, and not unbounded fund loss. The earlier claim that bot compromise carries "no fund risk" was too strong: within the ±25% band a bad price can still enable some over-borrow, which is why the band is tight and the admin holds the re-anchor key. To move price beyond the band an attacker needs the admin key (to re-anchor), not just the bot key.
+
+---
+
+# v4 — Signed Payloads (decided 2026-10-07, not yet built)
+
+**Status: agreed direction, pre-build.** Everything above describes the live
+posted-price oracle and remains accurate until v4 ships.
+
+## The decision
+
+Stop posting prices on chain. The signer publishes a signed, TWAP-smoothed
+payload off chain; the **user carries it in their own transaction**; the vault
+verifies the signature and uses it. Same pattern PEX uses, which this
+organisation already integrates against and has read the verification path for.
+
+## Why — the evidence, not the theory
+
+Three oracle freezes to date. Zero key compromises.
+
+The protocol had been heavily defended against a stolen bot key and barely at
+all against the oracle simply stopping — and the second is the failure that has
+actually happened, repeatedly. On 2026-10-07 one feed sat dead for over nine
+hours; the vault fails closed, so borrowing and **all three liquidation paths**
+were reverting on that pool for the whole window.
+
+The two risks are not comparable in size:
+
+| | bound |
+|---|---|
+| **key compromise** | capped at the PSM USDC reserve — `circulating mUSD ≤ psm_usdc` caps minting and redemption is the only exit. $151 at the time of writing; $5–10k projected for the next few years |
+| **oracle freeze during a drawdown** | the entire loan book, because liquidations cannot run |
+
+Worse, the freeze is guaranteed to coincide with the need: the band locked at
+−25% while live borrowers only become liquidatable at −53%.
+
+## What is removed, and why each one goes
+
+| removed | reason |
+|---|---|
+| on-chain posted price | nothing standing means nothing to go stale |
+| `lp_ts_` freshness window | same |
+| anchor, anchor band (±25%) | anti-key-compromise only — risk accepted at this scale |
+| ±50%-vs-prior guard | same |
+| `set_price_anchor` + the re-anchor chore | no anchor to move |
+| per-pool `min_price` / `max_price` | absolute constants that rot; caused every outage so far |
+| `asset_price_bounds` | same failure with a longer fuse — ALGO's $0.50 ceiling against a $0.119 price |
+| posting fees (~$2/mo) | no posts. Never the point, but it goes |
+
+## What stays, and why it is not optional
+
+**Off chain, in the signer — these catch BUGS, which key custody does not:**
+
+- **TWAP smoothing.** Signing a *spot* price on a pool as thin as U/tALGO means
+  anyone who can move it for one block can make us sign anything. This is the
+  one genuinely catastrophic thing that could be dropped here, and it must not
+  be.
+- **CompX cross-check.** Independent second source against our own derivation.
+
+A bug cannot bypass these, because a bug still runs our code. Only a stolen key
+does, and that is the accepted risk.
+
+**On chain — these are not defences, they are what makes a signature mean
+anything:**
+
+| | why |
+|---|---|
+| verify the signature | how the contract knows the price is ours |
+| payload expiry (~20s) | **replay protection** — see below |
+| `price > 0` | a zero permanently bricks the pool (AUD-042) |
+| pool whitelist | so a payload for one pool cannot price another |
+
+**The expiry is not about our key at all.** A signed payload is public the moment
+it is used. Anyone — no key required — can keep a copy of one signed during a
+price spike and replay it later. That is arithmetic on public data, not a
+compromise, and it is why PEX validates for 20 seconds.
+
+## The trade, stated plainly
+
+A **staleness** problem becomes an **availability** problem.
+
+- Posted: long fuse, slow recovery. 2026-10-07 took nine hours to notice, then a
+  config edit, a restart, and a 15-minute TWAP warm-up.
+- Signed: short fuse, instant recovery. Signer down means immediate failure;
+  signer back means working on the next block.
+
+For a protocol where liquidation is the thing that must work, the short fuse
+with instant recovery is the better failure mode. It does convert the signer
+from "a bot that should run" into "a service with real uptime requirements" —
+which is the actual argument for the VPS, not the $2 of fees.
+
+## Deployment shape
+
+Copy PEX's, not just its verification model: the signer **pushes to object
+storage** (they use a Cloudflare R2 bucket) and users fetch from the CDN. The
+signing box accepts no inbound connections at all. Single-purpose host,
+outbound only, signer key separate from the cold admin key and holding only fee
+ALGO.
+
+## Designs considered and rejected
+
+- **Auto-recentering anchor (12h).** Still freezes if the price moves >25%
+  inside a period — the same failure with more machinery.
+- **Upward rate limit** (price may rise at most ~10%/hour, downward free).
+  Strictly better than the band: tighter against an atomic attack (0.83% in
+  normal operation vs 25%) and looser against the market. Rejected only because
+  it defends solely against key compromise, which is accepted — but **this is
+  the design to reach for first** if that acceptance is ever withdrawn.
+- **Wide absolute sanity bound** (0.25×–4×). Same reasoning. It would raise an
+  attacker's capital requirement rather than cap the loss, which the PSM reserve
+  already does.
+
+## Migration note
+
+This is a **vault** contract change, and the vault is the one piece with no
+repointing path (the oracle is swappable via `propose_lp_oracle`; the vault is
+not). It should therefore ship in the **same migration** as the public-lending
+contract shape — see [TODO.md](./TODO.md). Two expensive migrations become one,
+and the window is open while the book is 3 vaults and $950.
