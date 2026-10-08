@@ -31,14 +31,28 @@ Environment variables:
   ALGOD_URL      — algod node URL (default: https://mainnet-api.algonode.cloud)
   ALGOD_TOKEN    — algod API token (default: empty for public nodes)
   ORACLE_APP_ID  — LP Oracle contract app ID (can also be in config.json)
-  ALERT_WEBHOOK_URL — optional. Discord or Slack incoming webhook. Receives a
-                   message when a pool's price goes stale (15m), when the vault
-                   actually starts refusing on it (30m), and when it recovers.
-                   Unset means failures are silent — which is how one feed sat
-                   dead for six and a half hours on 2026-10-07.
+  ALERT_WEBHOOK_URL — optional, but set it. Receives a message when a pool's
+                   price goes stale (15m), when the vault actually starts
+                   refusing on it (30m), and when it recovers. Unset means
+                   failures are silent, which is how one feed sat dead for over
+                   nine hours on 2026-10-07. Three services work as-is:
+
+                     ntfy    https://ntfy.sh/<pick-any-topic-name>
+                             No account. Install the ntfy app, subscribe to the
+                             same topic, done. Anyone who guesses the topic can
+                             read it, so use something unguessable.
+                     Discord https://discord.com/api/webhooks/<id>/<token>
+                             Server Settings -> Integrations -> Webhooks -> New.
+                     Slack   https://hooks.slack.com/services/...
+                             Incoming Webhooks app -> Add to Workspace.
+
+                   Verify it with:  python oracle_bot.py --test-alert
   HEARTBEAT_URL  — optional. Pinged after every cycle in which all pools are
-                   fresh (healthchecks.io and similar). The watchdog cannot fire
-                   if the bot is dead; this is the half that covers that.
+                   fresh. The watchdog cannot fire if the bot is DEAD; this is
+                   the half that covers that. Sign up at healthchecks.io (free),
+                   create a check with a 15-minute period and a 5-minute grace,
+                   and paste its ping URL — it emails/pushes you when the pings
+                   stop. Also covered by --test-alert.
 """
 
 import argparse
@@ -49,6 +63,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -645,18 +660,39 @@ def notify(text: str, *, critical: bool = False) -> None:
     """
     Send an alert. NEVER raises — a broken webhook must not stop price posting.
 
-    Both `content` (Discord) and `text` (Slack) are sent so one URL works either
-    way without a config switch.
+    Three destinations work with no config switch beyond the URL:
+
+      Discord   https://discord.com/api/webhooks/<id>/<token>   reads "content"
+      Slack     https://hooks.slack.com/services/...            reads "text"
+      ntfy      https://ntfy.sh/<your-topic>                    plain body
+
+    Discord and Slack both get JSON carrying both keys. ntfy wants the message
+    as the raw body — posting JSON there publishes the literal braces — so it
+    gets a plain-text body and the priority/title in headers instead.
+
+    ntfy is the one that needs no account and pushes to a phone, which is the
+    case this exists for: the 2026-10-07 outage ran for nine hours while nobody
+    was at the machine.
     """
     log.error(text) if critical else log.warning(text)
     if not ALERT_WEBHOOK_URL:
         return
     prefix = "\U0001F6A8 CRITICAL" if critical else "\u26A0\uFE0F WARNING"
-    body = json.dumps({"content": f"{prefix} — {text}", "text": f"{prefix} — {text}"}).encode()
-    req = urllib.request.Request(
-        ALERT_WEBHOOK_URL, data=body,
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
+    msg = f"{prefix} — {text}"
+
+    if "ntfy" in urllib.parse.urlparse(ALERT_WEBHOOK_URL).netloc:
+        data = msg.encode()
+        headers = {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Title": "MagnetFi oracle",
+            "Priority": "urgent" if critical else "default",
+            "Tags": "rotating_light" if critical else "warning",
+        }
+    else:
+        data = json.dumps({"content": msg, "text": msg}).encode()
+        headers = {"Content-Type": "application/json"}
+
+    req = urllib.request.Request(ALERT_WEBHOOK_URL, data=data, headers=headers, method="POST")
     try:
         urllib.request.urlopen(req, timeout=10).close()
     except Exception as e:  # noqa: BLE001 — alerting must never be fatal
@@ -759,7 +795,28 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="compute prices but do not post")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="config.json path")
     parser.add_argument("--once", action="store_true", help="run once then exit (for cron use)")
+    parser.add_argument("--test-alert", action="store_true",
+                        help="send one test alert + heartbeat ping and exit — proves the "
+                             "plumbing before you need it")
     args = parser.parse_args()
+
+    if args.test_alert:
+        # Deliberately before any config or network work: this must be runnable
+        # on a fresh box with nothing but the two environment variables set.
+        if not ALERT_WEBHOOK_URL and not HEARTBEAT_URL:
+            log.error("neither ALERT_WEBHOOK_URL nor HEARTBEAT_URL is set — nothing to test")
+            sys.exit(1)
+        if ALERT_WEBHOOK_URL:
+            log.info("sending test WARNING ...")
+            notify("test alert — if you can read this, oracle alerting works.")
+            log.info("sending test CRITICAL ...")
+            notify("test alert (critical) — this is what a frozen feed looks like.", critical=True)
+        if HEARTBEAT_URL:
+            log.info("pinging heartbeat ...")
+            heartbeat()
+        log.info("done — check your phone/channel. Nothing above guarantees DELIVERY, only that "
+                 "the request was accepted; if nothing arrived, the URL is wrong.")
+        return
 
     cfg = load_config(Path(args.config))
     client = make_algod_client()

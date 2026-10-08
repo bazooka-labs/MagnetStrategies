@@ -677,3 +677,68 @@ def test_notify_never_raises_even_when_the_webhook_is_broken(monkeypatch):
     # Alerting is not allowed to take the price feed down with it.
     monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "http://127.0.0.1:1/nope")
     ob.notify("test")             # must not raise
+
+
+# ── alert delivery ───────────────────────────────────────────────────────────────
+#
+# The watchdog above was tested thoroughly and the DELIVERY was not, which is how
+# you end up with an alerting system that has never sent a message. ntfy was
+# verified end to end against the live service; these cover the format branch,
+# which cannot be live-tested without a real Discord/Slack webhook.
+
+def _capture(monkeypatch):
+    """Capture the urllib Request notify() builds, without sending it."""
+    seen = {}
+
+    def fake_urlopen(req, timeout=None):
+        seen["url"] = req.full_url
+        seen["body"] = req.data.decode()
+        seen["headers"] = {k.lower(): v for k, v in req.headers.items()}
+        class _R:
+            def close(self): pass
+        return _R()
+
+    monkeypatch.setattr(ob.urllib.request, "urlopen", fake_urlopen)
+    return seen
+
+
+def test_ntfy_gets_plain_text_not_json(monkeypatch):
+    # Posting JSON to ntfy publishes the literal braces as the message body.
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://ntfy.sh/my-topic")
+    seen = _capture(monkeypatch)
+    ob.notify("feed is stale", critical=True)
+    assert not seen["body"].startswith("{")
+    assert "feed is stale" in seen["body"]
+    assert seen["headers"]["content-type"].startswith("text/plain")
+    assert seen["headers"]["priority"] == "urgent"
+    assert seen["headers"]["title"] == "MagnetFi oracle"
+
+
+def test_ntfy_warning_is_not_urgent(monkeypatch):
+    # A 15-minute warning should not buzz like a frozen market does.
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://ntfy.sh/my-topic")
+    seen = _capture(monkeypatch)
+    ob.notify("getting old")
+    assert seen["headers"]["priority"] == "default"
+
+
+def test_discord_and_slack_get_json_with_both_keys(monkeypatch):
+    # Discord reads "content", Slack reads "text". Sending both means one URL
+    # works either way with no config switch.
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
+    seen = _capture(monkeypatch)
+    ob.notify("feed is stale", critical=True)
+    payload = json.loads(seen["body"])
+    assert "feed is stale" in payload["content"]
+    assert payload["content"] == payload["text"]
+    assert seen["headers"]["content-type"] == "application/json"
+
+
+def test_critical_and_warning_are_visually_distinct(monkeypatch):
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
+    seen = _capture(monkeypatch)
+    ob.notify("x", critical=True)
+    crit = json.loads(seen["body"])["content"]
+    ob.notify("x")
+    warn = json.loads(seen["body"])["content"]
+    assert crit != warn and "CRITICAL" in crit and "WARNING" in warn
