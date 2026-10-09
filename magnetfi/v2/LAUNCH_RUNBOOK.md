@@ -91,7 +91,7 @@ set from it.
 
 ## Risk parameters, and why
 
-**LTV 6500 / liq threshold 7800 / rate 500.**
+**LTV 6500 / liq threshold 7800 / rate 800.**
 
 An ALGO/USDC LP is roughly **half as volatile** as a volatile/volatile pair:
 half the position is a stablecoin, so LP value tracks `sqrt(P_ALGO)`.
@@ -122,7 +122,7 @@ oracle 3644230020   add_pool(1002590888, <fresh LP price ×1e6>)
 vault  3671287267   set_lp_asa_id(1002590888, 1002590888)
 vault  3671287267   set_ltv(1002590888, 6500)
 vault  3671287267   set_liq_threshold(1002590888, 7800)
-vault  3671287267   set_rate(1002590888, 500)
+vault  3671287267   set_rate(1002590888, 800)
 ```
 
 `add_pool` sets the price **and** the anchor, so no separate re-anchor.
@@ -177,3 +177,69 @@ diverges only while the pool is away from market, which arbitrage closes quickly
 at this depth. The error is also **conservative**: a manipulation that moves the
 pool understates the LP value, causing over-liquidation rather than
 under-collateralisation. Acceptable here; it would not be on a thin pool.
+
+---
+
+# Adding U/ALGO collateral (pool seeded 2026-10-09)
+
+## Measured values
+
+| | |
+|---|---|
+| LP ASA / `pool_id` | **3617313492** |
+| pool address | `35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4` |
+| `asset_1_id` | 3081853135 ($U, **5dp**) |
+| `asset_2_id` | 0 (ALGO, 6dp) |
+| reserves | 7,183.21 U / 10,023.53 ALGO |
+| TVL | $2,330 |
+| LP supply | 2,683.2816 |
+| **LP price** | **$0.868475** → **868475** |
+
+Note the LP ASA named `TinymanPool2.0 U-ALGO` with asset id **3073502995** is a
+DIFFERENT token also ticking "U" (asset 2801897156), and its pool is empty. The
+Magnet pool is 3617313492. Check `asset_1_id == 3081853135` before wiring
+anything.
+
+## Admin calls
+
+```
+oracle 3644230020   add_pool(3617313492, <fresh LP price ×1e6>)
+vault  3671287267   set_lp_asa_id(3617313492, 3617313492)
+vault  3671287267   set_ltv(3617313492, 6000)
+vault  3671287267   set_liq_threshold(3617313492, 7500)
+vault  3671287267   set_rate(3617313492, 800)
+```
+
+## Oracle bot config (add AFTER `add_pool`)
+
+```json
+{
+  "pool_id": 3617313492,
+  "pool_address": "35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4",
+  "asset_a_id": 3081853135, "asset_a_decimals": 5,
+  "asset_b_id": 0,          "asset_b_decimals": 6,
+  "min_price": 660000, "max_price": 1078000,
+  "compx_check_asset_id": 3081853135,
+  "label": "U/ALGO"
+}
+```
+
+Bounds sit just inside the ±25% anchor band (651,356 … 1,085,594). Unlike
+ALGO/USDC this pool **can** use the CompX cross-check, because CompX carries $U.
+
+## Frontend
+
+`POOL_WIRING.mainnet`: `"u-algo": { poolId: 3617313492, lpAsaId: 3617313492 },`
+— last, after the chain and the bot.
+
+## Two notes
+
+**$U prices 2.4% higher here** than in U/tALGO ($0.164117 vs $0.160301) because
+the pool is newly seeded and not yet arbitraged. The bot derives $U from the
+U/tALGO pool, so this pool's LP is valued with an external $U price rather than
+its own ratio — a ~1.2% difference in LP price today. It closes as arbitrage
+does. Worth re-checking the gap before `add_pool`, since the anchor is set from
+whatever the LP price is at that moment.
+
+**Current rates (2026-10-09):** U/tALGO 10%, ALGO/USDC 8%, U/ALGO 8%,
+U/USDC 6%.

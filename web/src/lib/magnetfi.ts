@@ -106,7 +106,7 @@ export const VAULT_TYPES: VaultType[] = [
     tokens: ["$U", "tALGO"],
     ltvBps: 6000,
     liqThresholdBps: 7500,
-    rateBps: 800,
+    rateBps: 1000,
     status: "launching",
     blurb: "Double yield-bearing collateral with the deepest liquidity — the first vault at launch.",
   },
@@ -116,11 +116,13 @@ export const VAULT_TYPES: VaultType[] = [
     tokens: ["$U", "USDC"],
     ltvBps: 6500,
     liqThresholdBps: 7500,
-    rateBps: 500,
+    rateBps: 600,
     status: "soon",
     blurb: "USDC stabilizes half the position, so it earns the highest LTV and lowest rate.",
   },
   {
+    // Seeded 2026-10-09. LP ASA 3617313492; pool
+    // 35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4.
     id: "u-algo",
     pair: "U / ALGO",
     tokens: ["$U", "ALGO"],
@@ -148,7 +150,7 @@ export const VAULT_TYPES: VaultType[] = [
     tokens: ["ALGO", "USDC"],
     ltvBps: 6500,
     liqThresholdBps: 7800,
-    rateBps: 500,
+    rateBps: 800,
     status: "soon",
     blurb: "The deepest pool on Algorand, half of it a stablecoin — the safest collateral here, and the first that is not $U.",
   },
