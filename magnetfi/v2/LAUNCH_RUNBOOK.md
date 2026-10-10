@@ -114,27 +114,24 @@ admin-adjustable; raise toward 70/80 once the liquidation bot is proven.
 
 ## ⚠️ Order matters
 
-> ### Deriving `min_price` / `max_price` — do NOT copy the numbers below
+> ### `min_price` / `max_price` are now DERIVED — leave them out
 >
-> `add_pool` sets the anchor from the price you pass, and the contract band is
-> anchor ×0.75 … ×1.25. The bot's own bounds must sit **inside** that band, so
-> it refuses a bad reading before paying a fee rather than posting into a revert.
+> The bot reads `lp_anchor_<pool_id>` off the oracle **every cycle** and enforces
+> `ceil(anchor × 0.76) … floor(anchor × 1.24)`, rounding inward so it can never
+> accept a price the contract would revert. Config values are a fallback used
+> only if the anchor is unreadable, and a re-anchor now takes effect on the next
+> pass with no restart.
 >
-> Compute them from the anchor you actually passed:
->
-> ```
-> min_price = round(anchor * 0.76)
-> max_price = round(anchor * 1.24)
-> ```
->
-> The literal values in the blocks below were computed at 2026-10-10T01:36Z and
-> **go stale as the price moves**. Two concrete misses found that day:
+> So omit both fields for a new pool. They are kept in the schema only for that
+> fallback. The history below is why this is derived rather than written down:
 >
 > - ALGO/USDC's `max_price` of 1,440,000 was **2,858 above** the band ceiling of
 >   1,437,142. The bot would have accepted a price the contract rejects — a
 >   reverted post and a wasted fee every five minutes.
 > - U/ALGO's bounds were copied from U/tALGO and cleared the ceiling by **293
 >   units** (0.03%), which is margin only by coincidence.
+>
+> Both are now impossible by construction.
 >
 > This is the same failure class that froze U/tALGO on 2026-10-09, where a
 > `max_price` of 900,000 blocked a legitimate rise while the contract band still
@@ -189,16 +186,19 @@ Threshold was 7800 in an earlier revision of this file. That exceeds the firm
   "pool_address": "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM",
   "asset_a_id": 31566704, "asset_a_decimals": 6,
   "asset_b_id": 0,        "asset_b_decimals": 6,
-  "min_price": 873000, "max_price": 1425000,
-  "compx_check_asset_id": 0,
   "label": "ALGO/USDC"
 }
 ```
 
 `asset_a` must be the pool's `asset_1_id` (USDC here, since Tinyman orders the
 higher asset id first) — the bot verifies this against chain to catch a wrong
-`pool_address`. Bounds above assume an anchor of 1,149,714 (band 862,285 …
-1,437,142); recompute them from the anchor you pass. No new `asset_decimals`, `reference_pools` or
+`pool_address`.
+
+No `compx_check_asset_id`: **CompX publishes no ALGO price** (its box set has no
+asset-id-0 entry), so a check here could only ever return "unverified" and
+needlessly restrict posts. ALGO is covered by the PEX cross-check, which is
+alert-only by design. Note the sentinel for "no check" is an **absent** field —
+not `0`, which is ALGO. No new `asset_decimals`, `reference_pools` or
 `asset_price_bounds` entries are needed — ALGO and USDC already have all three.
 
 Expect ~15 minutes of `only 1/3 readings — holding prior on-chain price` before
@@ -219,8 +219,13 @@ live on-chain interaction.
 ## Two things to know going in
 
 **No CompX cross-check on this pool.** CompX prices $U but **not ALGO** (nor
-tALGO) — verified against the live oracle. `compx_check_asset_id: 0` disables
-it, so this pool runs on TWAP alone. Mitigated by the pool being ~10× deeper
+tALGO) — verified against the live oracle. **Omit `compx_check_asset_id`
+entirely**; do NOT set it to `0`. An earlier revision of this line said `0`
+disables the check, which was true then and is now actively harmful: `0` is
+ALGO's asset id, so the bot would attempt a check CompX cannot answer, return
+`unverified` every cycle, and `update_pool` would then refuse every price
+*increase*. On a rising market that stalls the feed past the 1800s freshness
+window and fail-closes the vault. So this pool runs on TWAP alone. Mitigated by the pool being ~10× deeper
 than the U pools and by LP tokens being inherently manipulation-resistant: a
 swap moves both reserves in opposite directions, leaving the token's value
 roughly intact.
@@ -274,7 +279,6 @@ vault  3671287267   opt_in_asset(3617313492)                   # vault must hold
   "pool_address": "35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4",
   "asset_a_id": 3081853135, "asset_a_decimals": 5,
   "asset_b_id": 0,          "asset_b_decimals": 6,
-  "min_price": 655000, "max_price": 1069000,
   "compx_check_asset_id": 3081853135,
   "label": "U/ALGO"
 }

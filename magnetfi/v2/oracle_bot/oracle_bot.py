@@ -155,6 +155,24 @@ PEX_MAX_AGE_SEC = 120
 # Divergence that warrants waking someone. Measured live at 0.096%.
 PEX_DIVERGENCE_ALERT = 0.02
 
+# Bot price bounds, as a fraction of the oracle's on-chain anchor.
+#
+# The contract enforces anchor x0.75 .. x1.25 (lp_oracle/contract.py
+# ANCHOR_BAND_LOW/HIGH). The bot's own bounds sit just INSIDE that, so a bad
+# reading is refused here — before paying a fee — rather than posting into a
+# revert. Deriving them from the anchor is the whole point: every halt to date
+# came from hardcoded bounds disagreeing with the band.
+#
+#   2026-10-09  U/tALGO  max_price 900,000 blocked a legitimate rise to 929,805
+#               while the band still had 21% of room. Nine-hour outage.
+#   2026-10-10  ALGO/USDC max_price 1,440,000 sat 2,858 ABOVE the band ceiling,
+#               so the bot would have accepted a price the contract rejects.
+#
+# Same bug, opposite directions. One number now feeds both.
+# Percent, as integers, because the arithmetic below must stay exact.
+BOUND_INNER_LOW_PCT = 76
+BOUND_INNER_HIGH_PCT = 124
+
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
 MAX_RETRIES   = 3
@@ -301,9 +319,14 @@ class PoolConfig:
         self.asset_b_decimals = int(d["asset_b_decimals"])
         self.min_price = int(d.get("min_price", 0))
         self.max_price = int(d.get("max_price", 0))
-        # Asset id to cross-check against the CompX oracle (the volatile underlying);
-        # 0/absent disables the cross-check for this pool.
-        self.compx_check_asset_id = int(d.get("compx_check_asset_id", 0))
+        # Asset id to cross-check against the CompX oracle (the volatile
+        # underlying). ABSENT/null disables it; the sentinel is deliberately not
+        # 0, because 0 is ALGO. With a falsy sentinel the ALGO/USDC config read
+        # as "cross-check ALGO" and silently meant "do not check", while the log
+        # printed compx_verified=True — which reads as verified and means
+        # unchecked. (CompX has no ALGO price anyway; PEX covers ALGO, alert-only.)
+        raw_cx = d.get("compx_check_asset_id")
+        self.compx_check_asset_id = None if raw_cx is None else int(raw_cx)
         self.label = d.get("label", f"pool_{self.pool_id}")
 
 
@@ -347,7 +370,7 @@ def load_config(path: Path) -> BotConfig:
         sys.exit(1)
     # Low-1 (Pass 27): every on-chain-priced asset should carry a plausibility bound —
     # warn loudly if one is missing so a future pool can't silently ship fail-open.
-    priced = set(cfg.reference_pools) | {p.compx_check_asset_id for p in cfg.pools if p.compx_check_asset_id}
+    priced = set(cfg.reference_pools) | {p.compx_check_asset_id for p in cfg.pools if p.compx_check_asset_id is not None}
     for aid in sorted(priced):
         if aid != cfg.usdc_asa_id and aid not in cfg.asset_price_bounds:
             log.warning(f"asset {aid} is priced on-chain but has no asset_price_bounds entry "
@@ -531,7 +554,7 @@ def compx_cross_check(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfi
     only allow flat / small-decline posts (the strong guard is off — see update_pool).
     A pool with no CompX check configured returns "ok" (relies on TWAP + anchor only).
     """
-    if not pool.compx_check_asset_id or not cfg.compx_oracle_app_id:
+    if pool.compx_check_asset_id is None or not cfg.compx_oracle_app_id:
         return "ok"
     cx = read_compx_price(client, cfg.compx_oracle_app_id, pool.compx_check_asset_id)
     if cx is None:
@@ -594,16 +617,30 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) ->
 
     # Absolute sanity bound — catches catastrophically wrong inputs the relative
     # on-chain deviation guard cannot (it only bounds movement vs prior).
-    if pool.min_price > 0 and price < pool.min_price:
-        log.error(f"[{pool.label}] price {price} below sanity floor {pool.min_price}; refusing to post")
+    #
+    # Derived from the on-chain anchor, so the bound tracks the band instead of
+    # rotting away from it. NOTE it gates the SPOT price computed here, while
+    # update_pool posts the TWAP: after an admin re-anchor that follows a large
+    # move, pre-anchor readings inside the 1800s TWAP window can still carry the
+    # posted value outside the new band for up to that long. Pre-existing, and
+    # not fixed here — see REVAMP_PLAN.md Phase 0.6.
+    min_price, max_price = effective_bounds(client, cfg, pool)
+    if min_price > 0 and price < min_price:
+        log.error(f"[{pool.label}] price {price} below sanity floor {min_price}; refusing to post")
         return None
-    if pool.max_price > 0 and price > pool.max_price:
-        log.error(f"[{pool.label}] price {price} above sanity ceiling {pool.max_price}; refusing to post")
+    if max_price > 0 and price > max_price:
+        log.error(f"[{pool.label}] price {price} above sanity ceiling {max_price}; refusing to post")
         return None
 
     # Second source: cross-check the volatile underlying against CompX's oracle.
+    #
+    # compx_verified=True covers two different situations — confirmed, and no
+    # check configured — and only the first is verification. They behave the
+    # same (neither restricts the post), but the log must not call them the
+    # same thing, so the state is logged separately from the flag.
     compx_verified = True
-    if pool.compx_check_asset_id and cfg.compx_oracle_app_id:
+    compx_state = "skipped"
+    if pool.compx_check_asset_id is not None and cfg.compx_oracle_app_id:
         check_price = memo.get(pool.compx_check_asset_id)
         if check_price is None:
             try:
@@ -612,17 +649,19 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) ->
                 check_price = None
         if check_price is None:
             compx_verified = False
+            compx_state = "underived"
         else:
             status = compx_cross_check(client, cfg, pool, check_price)
             if status == "diverged":
                 return None
             compx_verified = (status == "ok")
+            compx_state = status
 
     log.info(
         f"[{pool.label}] reserve_a={pool_state.get('asset_1_reserves')} "
         f"reserve_b={pool_state.get('asset_2_reserves')} "
         f"issued_lp={pool_state.get('issued_pool_tokens')} "
-        f"price_a={price_a:.6f} price_b={price_b:.6f} raw_price={price} compx_verified={compx_verified}"
+        f"price_a={price_a:.6f} price_b={price_b:.6f} raw_price={price} compx={compx_state}"
     )
     return price, compx_verified
 
@@ -640,6 +679,69 @@ def read_onchain_price(client: algod.AlgodClient, oracle_app_id: int, pool_id: i
     except Exception as e:
         log.debug(f"Failed to read on-chain price for pool {pool_id}: {e}")
     return 0
+
+
+def read_onchain_anchor(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int:
+    """Read the admin-set anchor for pool_id. 0 when absent or unreadable."""
+    try:
+        key_b64 = base64.b64encode(b"lp_anchor_" + pool_id.to_bytes(8, "big")).decode()
+        info = client.application_info(oracle_app_id)
+        for item in info.get("params", {}).get("global-state", []):
+            if item["key"] == key_b64:
+                return item["value"].get("uint", 0)
+    except Exception as e:
+        log.debug(f"Failed to read anchor for pool {pool_id}: {e}")
+    return 0
+
+
+def anchor_bounds(anchor: int) -> tuple[int, int]:
+    """
+    Bot price bounds just inside the contract's anchor band. (0, 0) = no bound.
+
+    Pure, so the arithmetic is tested without a network. The result must stay
+    strictly inside anchor x0.75 .. x1.25 or the bot would accept prices the
+    contract rejects, which is the 2026-10-10 ALGO/USDC defect.
+    """
+    if anchor <= 0:
+        return (0, 0)
+    # Round INWARD on both ends, with integers.
+    #
+    # Direction is the whole game. The contract rejects below anchor x0.75 and
+    # above x1.25, so the bot's floor must be >= 0.75*anchor and its ceiling
+    # <= 1.25*anchor — otherwise the bot accepts a price the contract reverts,
+    # which is the 2026-10-10 ALGO/USDC defect restated.
+    #
+    # Truncating toward zero on the FLOOR moves it down, i.e. outward, and for
+    # small anchors it crosses the band: anchor=2 gives int(1.52)=1, which is
+    # below 0.75*2=1.5. So the floor is a ceiling-division and the ceiling is a
+    # floor-division. Both collapse to the anchor itself for tiny anchors, which
+    # is degenerate but never unsafe.
+    lo = -(-anchor * BOUND_INNER_LOW_PCT // 100)   # ceil
+    hi = anchor * BOUND_INNER_HIGH_PCT // 100      # floor
+    return (lo, hi)
+
+
+def effective_bounds(client: algod.AlgodClient, cfg: "BotConfig", pool: PoolConfig) -> tuple[int, int]:
+    """
+    The bounds to enforce this cycle: anchor-derived when the anchor is readable,
+    otherwise whatever the config carries.
+
+    Read EVERY cycle, not once at startup, so an admin re-anchor takes effect on
+    the next pass with no restart. Config was read once at startup and that cost
+    nine hours on 2026-10-09.
+
+    Falling back to config can never block MORE than the old behaviour did, and
+    a pool with neither an anchor nor configured bounds runs unbounded here — the
+    TWAP, the second-source check and the contract band all still apply.
+    """
+    lo, hi = anchor_bounds(read_onchain_anchor(client, cfg.oracle_app_id, pool.pool_id))
+    if lo > 0:
+        return lo, hi
+    if pool.min_price or pool.max_price:
+        log.warning(f"[{pool.label}] anchor unreadable — falling back to configured bounds")
+        return pool.min_price, pool.max_price
+    log.warning(f"[{pool.label}] no anchor and no configured bounds — absolute bound disabled")
+    return 0, 0
 
 
 # ── transaction builder ───────────────────────────────────────────────────────
@@ -818,7 +920,17 @@ def notify(text: str, *, critical: bool = False) -> None:
     prefix = "\U0001F6A8 CRITICAL" if critical else "\u26A0\uFE0F WARNING"
     msg = f"{prefix} — {text}"
 
-    if "ntfy" in urllib.parse.urlparse(ALERT_WEBHOOK_URL).netloc:
+    # urlparse raises on some malformed URLs ("https://[oops" -> Invalid IPv6
+    # URL), so the routing decision is made inside a guard too. The run_once
+    # handler would catch it, but --test-alert should print the reason rather
+    # than traceback, and this function's docstring promises it never raises.
+    try:
+        netloc = urllib.parse.urlparse(ALERT_WEBHOOK_URL).netloc
+    except Exception as e:  # noqa: BLE001
+        log.error(f"alert webhook URL is unparseable, not sending: {e}")
+        return
+
+    if "ntfy" in netloc:
         data = msg.encode()
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
@@ -826,7 +938,7 @@ def notify(text: str, *, critical: bool = False) -> None:
             "Priority": "urgent" if critical else "default",
             "Tags": "rotating_light" if critical else "warning",
         }
-    elif "discord" in urllib.parse.urlparse(ALERT_WEBHOOK_URL).netloc:
+    elif "discord" in netloc:
         # Discord's execute-webhook endpoint validates its body. Sending only the
         # field it documents removes an assumption about how it treats unknown
         # keys — this is the path most likely to be used, so it should not rest
@@ -838,8 +950,12 @@ def notify(text: str, *, critical: bool = False) -> None:
         data = json.dumps({"text": msg, "content": msg}).encode()
         headers = {"Content-Type": "application/json"}
 
-    req = urllib.request.Request(ALERT_WEBHOOK_URL, data=data, headers=headers, method="POST")
+    # Request() is built INSIDE the try: it parses the URL, so a webhook missing
+    # its scheme ("ntfy.sh/topic") raises ValueError rather than failing to send.
+    # notify() is called from the staleness watchdog, so that turned the FIRST
+    # alert — the moment the feed is already in trouble — into a crash.
     try:
+        req = urllib.request.Request(ALERT_WEBHOOK_URL, data=data, headers=headers, method="POST")
         urllib.request.urlopen(req, timeout=10, context=_TLS).close()
     except Exception as e:  # noqa: BLE001 — alerting must never be fatal
         log.error(f"alert webhook failed: {e}")
@@ -1043,10 +1159,16 @@ def main() -> None:
         # loop above believes it did. In --dry-run nothing is posted, so every
         # feed would age into a false alarm.
         if not args.dry_run:
-            watch.check(client, cfg)
-            watch.check_algo_against_pex(client, cfg)
-            if all(lvl == "ok" for lvl in watch.level.values()):
-                heartbeat()
+            # Guarded for the same reason update_pool is: nothing in the
+            # watchdog or alert path may stop the next price post. notify() is
+            # hardened too, but the handler is what makes that structural.
+            try:
+                watch.check(client, cfg)
+                watch.check_algo_against_pex(client, cfg)
+                if all(lvl == "ok" for lvl in watch.level.values()):
+                    heartbeat()
+            except Exception as e:  # noqa: BLE001
+                log.exception(f"watchdog/alerting error (price posting unaffected): {e}")
 
     if args.once:
         run_once()

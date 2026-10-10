@@ -66,7 +66,8 @@ def test_poolconfig_parses_and_defaults():
     p2 = ob.PoolConfig({"pool_id": 2, "pool_address": "X", "asset_a_id": 1,
                         "asset_a_decimals": 6, "asset_b_id": 0, "asset_b_decimals": 6})
     assert p2.min_price == 0 and p2.max_price == 0 and p2.label == "pool_2"
-    assert p2.compx_check_asset_id == 0
+    # Absent is None, not 0 — 0 is ALGO. See test_asset_zero_is_algo_... below.
+    assert p2.compx_check_asset_id is None
 
 
 # ── TWAP math ────────────────────────────────────────────────────────────────────
@@ -954,3 +955,165 @@ def test_notify_sends_through_the_shared_tls_context():
         assert seen["context"] is ob._TLS
     finally:
         mp.undo()
+
+
+# ── anchor-derived price bounds ───────────────────────────────────────────────
+#
+# Every halt to date came from hardcoded bounds disagreeing with the band the
+# contract enforces: 2026-10-09 U/tALGO (max 900,000 blocking a legitimate rise
+# with 21% of band room left) and 2026-10-10 ALGO/USDC (max 1,440,000 sitting
+# ABOVE the ceiling, so the bot would accept what the contract rejects). These
+# pin the invariant that one number feeds both.
+
+def test_anchor_bounds_sit_strictly_inside_the_contract_band():
+    """The invariant that matters: never accept what the contract would reject."""
+    for anchor in (1, 2, 3, 100, 1000, 870_000, 1_149_714, 2_400_000, 10**12):
+        lo, hi = ob.anchor_bounds(anchor)
+        # The invariant: the bot must never accept what the contract rejects.
+        assert lo >= anchor * 0.75, f"floor {lo} below band low for anchor {anchor}"
+        assert hi <= anchor * 1.25, f"ceiling {hi} above band high for anchor {anchor}"
+        assert lo <= anchor <= hi, f"anchor {anchor} outside its own bounds"
+        assert lo >= 1, f"floor collapsed to 0 (= unbounded) for anchor {anchor}"
+
+
+def test_anchor_bounds_leave_real_headroom_at_realistic_anchors():
+    """Degeneracy is confined to absurdly small anchors; live ones get ±24%."""
+    for anchor in (870_000, 1_149_714, 2_400_000):
+        lo, hi = ob.anchor_bounds(anchor)
+        assert lo == pytest.approx(anchor * 0.76, rel=1e-6)
+        assert hi == pytest.approx(anchor * 1.24, rel=1e-6)
+
+
+def test_anchor_bounds_zero_means_unbounded():
+    assert ob.anchor_bounds(0) == (0, 0)
+    assert ob.anchor_bounds(-5) == (0, 0)
+
+
+def test_anchor_bounds_would_have_caught_both_real_outages():
+    # 2026-10-09: anchor 870,000, price 929,805 was blocked by a hardcoded
+    # 900,000 ceiling. Derived bounds admit it.
+    lo, hi = ob.anchor_bounds(870_000)
+    assert lo <= 929_805 <= hi
+    # 2026-10-10: anchor 1,149,714. The runbook's 1,440,000 ceiling exceeded the
+    # band high of 1,437,142; the derived ceiling does not.
+    lo, hi = ob.anchor_bounds(1_149_714)
+    assert hi < 1_437_142 < 1_440_000
+
+
+def test_effective_bounds_prefers_the_anchor(monkeypatch):
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 1_000_000)
+    pool = make_pool(min_price=1, max_price=2)
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (760_000, 1_240_000)
+
+
+def test_effective_bounds_falls_back_to_config_when_anchor_unreadable(monkeypatch):
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    pool = make_pool(min_price=111, max_price=222)
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (111, 222)
+
+
+def test_effective_bounds_unbounded_when_neither_available(monkeypatch):
+    """Must not block posting — TWAP, second source and the band still apply."""
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    pool = make_pool()
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (0, 0)
+
+
+def test_read_onchain_anchor_returns_zero_on_error():
+    class Boom:
+        def application_info(self, *a, **k): raise RuntimeError("algod down")
+    assert ob.read_onchain_anchor(Boom(), 1, 2) == 0
+
+
+# ── the CompX sentinel is no longer falsy ─────────────────────────────────────
+
+def test_absent_compx_asset_disables_the_check():
+    assert make_pool().compx_check_asset_id is None
+    assert ob.compx_cross_check(object(), make_cfg(), make_pool(), 1.0) == "ok"
+
+
+def test_asset_zero_is_algo_not_a_disable_sentinel():
+    """
+    0 is ALGO. With the old falsy sentinel the ALGO/USDC config read as
+    "cross-check ALGO" and silently meant "do not check", while the log printed
+    compx_verified=True — which reads as verified and means unchecked.
+    """
+    pool = make_pool(compx_check_asset_id=0)
+    assert pool.compx_check_asset_id == 0
+    # It must now actually attempt the check rather than short-circuit to "ok".
+    attempted = []
+    class C:
+        def application_box_by_name(self, *a, **k):
+            attempted.append(True); raise RuntimeError("no ALGO box")
+    cfg = make_cfg(compx_oracle_app_id=3307588794)
+    assert ob.compx_cross_check(C(), cfg, pool, 1.0) == "unverified"
+    assert attempted, "asset 0 short-circuited instead of being checked"
+
+
+# ── alerting cannot stop price posting ────────────────────────────────────────
+
+def test_notify_survives_a_schemeless_webhook_url(monkeypatch):
+    """
+    A URL missing its scheme is a plausible paste. Request() parses the URL, so
+    building it outside the try made the FIRST staleness alert raise — exactly
+    when the feed is already in trouble.
+    """
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "ntfy.sh/mytopic")
+    ob.notify("feed is stale", critical=True)          # must not raise
+
+
+def test_notify_survives_a_garbage_webhook_url(monkeypatch):
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "::::not a url::::")
+    ob.notify("feed is stale")                          # must not raise
+
+
+def test_notify_survives_an_unparseable_webhook_url(monkeypatch):
+    """
+    urlparse itself raises on some malformed URLs, and it used to sit outside
+    the try — so notify() could still raise despite its docstring. The run_once
+    handler would catch it, but --test-alert should report the reason.
+    """
+    monkeypatch.setattr(ob, "ALERT_WEBHOOK_URL", "https://[oops")
+    ob.notify("feed is stale", critical=True)          # must not raise
+
+
+def test_bound_percentages_are_integers():
+    """
+    The constants were previously floats and unreferenced, leaving two sources
+    of truth for the one number whose single-sourcing is the point of the change.
+    Integers because the bound arithmetic must stay exact.
+    """
+    assert isinstance(ob.BOUND_INNER_LOW_PCT, int)
+    assert isinstance(ob.BOUND_INNER_HIGH_PCT, int)
+    lo, hi = ob.anchor_bounds(1_000_000)
+    assert (lo, hi) == (ob.BOUND_INNER_LOW_PCT * 10_000, ob.BOUND_INNER_HIGH_PCT * 10_000)
+
+
+def test_shipped_config_never_uses_zero_as_a_compx_sentinel():
+    """
+    0 is ALGO, not "disabled". A pool carrying 0 would attempt a check CompX
+    cannot answer, come back "unverified" every cycle, and have every price
+    INCREASE refused — stalling the feed on a rising market. Guards the real
+    config, which is what actually ships.
+    """
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(ob.__file__).parent / "config.json").read_text())
+    for pool in cfg["pools"]:
+        assert pool.get("compx_check_asset_id") != 0, (
+            f"{pool['label']} uses 0 as a disable sentinel — omit the field instead"
+        )
+
+
+def test_every_configured_pool_has_a_fallback_bound():
+    """
+    Bounds are normally derived from the on-chain anchor, but a transient anchor
+    read failure drops to config — and a pool with neither runs with the
+    absolute bound disabled, which is fail-OPEN in a bot that otherwise fails
+    stale. Every pool should carry a fallback.
+    """
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(ob.__file__).parent / "config.json").read_text())
+    for pool in cfg["pools"]:
+        assert pool.get("min_price") and pool.get("max_price"), (
+            f"{pool['label']} has no fallback bound"
+        )

@@ -85,6 +85,19 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       so only new vaults are affected. Free either way; do it if a vault might
       be opened before the migration.
 
+- [ ] **0.6 — Re-check the POSTED price against the bounds.** Found by the
+      pre-push review of 0.1 and deliberately not fixed there, because it
+      changes the posting decision and deserves its own review. `get_lp_price`
+      bounds the **spot** price it computes, but `update_pool` posts the
+      **TWAP**. After an admin re-anchor following a large move, pre-anchor
+      readings still inside the 1800s TWAP window can carry the posted value
+      outside the new band — demonstrated: spot 700,000 passes a `[532000,
+      868000]` bound while the posted TWAP is 910,000, which the contract
+      rejects. So the remedy path for an outage can be partly defeated for up to
+      ~30 minutes. Pre-existing; 0.1 improves on it but does not close it.
+      Two candidate fixes: re-check `final_price` against the same bounds in
+      `update_pool`, and/or drop TWAP history when the anchor changes.
+
 **Gate out of Phase 0:** two full weeks with no halt that the bot caused.
 
 ---
