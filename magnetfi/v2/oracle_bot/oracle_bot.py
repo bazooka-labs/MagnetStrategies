@@ -38,11 +38,11 @@ Environment variables:
   ALGOD_URL      — algod node URL (default: https://mainnet-api.algonode.cloud)
   ALGOD_TOKEN    — algod API token (default: empty for public nodes)
   ORACLE_APP_ID  — LP Oracle contract app ID (can also be in config.json)
-  ALERT_WEBHOOK_URL — optional, but set it. Receives a message when a pool's
-                   price goes stale (15m), when the vault actually starts
-                   refusing on it (30m), and when it recovers. Unset means
-                   failures are silent, which is how one feed sat dead for over
-                   nine hours on 2026-10-07. Three services work as-is:
+  ALERT_WEBHOOK_URL — OPTIONAL, and unset is fine. Leave it blank and the
+                   watchdog still runs and still reports staleness — it just
+                   writes to the log instead of pushing anywhere, and no network
+                   call is made. Set it only when you want to be told without
+                   reading logs. Three services work as-is:
 
                      ntfy    https://ntfy.sh/<pick-any-topic-name>
                              No account. Install the ntfy app, subscribe to the
@@ -54,9 +54,10 @@ Environment variables:
                              Incoming Webhooks app -> Add to Workspace.
 
                    Verify it with:  python oracle_bot.py --test-alert
-  HEARTBEAT_URL  — optional. Pinged after every cycle in which all pools are
-                   fresh. The watchdog cannot fire if the bot is DEAD; this is
-                   the half that covers that. Sign up at healthchecks.io (free),
+  HEARTBEAT_URL  — OPTIONAL, unset is fine. Pinged after every cycle in which
+                   all pools are fresh. The watchdog cannot fire if the bot is
+                   DEAD; this is the half that would cover that, whenever you
+                   want it. Sign up at healthchecks.io (free),
                    create a check with a 15-minute period and a 5-minute grace,
                    and paste its ping URL — it emails/pushes you when the pings
                    stop. Also covered by --test-alert.
@@ -977,8 +978,10 @@ def main() -> None:
     log.info(f"AMM validator app: {cfg.amm_app_id}")
     log.info(f"CompX oracle app:  {cfg.compx_oracle_app_id}")
     log.info(f"Pools configured:  {[p.label for p in cfg.pools]}")
-    log.info(f"Alert webhook:     {'configured' if ALERT_WEBHOOK_URL else 'NOT SET — failures will be silent'}")
-    log.info(f"Heartbeat:         {'configured' if HEARTBEAT_URL else 'NOT SET — a dead bot will not be noticed'}")
+    # Both optional. Unset is a supported configuration, not a misconfiguration:
+    # the watchdog still runs and still reports, it just reports to the log.
+    log.info(f"Alert webhook:     {'configured' if ALERT_WEBHOOK_URL else 'not set (staleness logs only)'}")
+    log.info(f"Heartbeat:         {'configured' if HEARTBEAT_URL else 'not set'}")
     if args.dry_run:
         log.info("DRY-RUN mode — no transactions will be submitted")
 
