@@ -394,14 +394,25 @@ anything:**
 | | why |
 |---|---|
 | verify the signature | how the contract knows the price is ours |
-| payload expiry (~20s) | **replay protection** — see below |
+| payload age limit (30s) | **replay protection** — see below |
 | `price > 0` | a zero permanently bricks the pool (AUD-042) |
 | pool whitelist | so a payload for one pool cannot price another |
 
 **The expiry is not about our key at all.** A signed payload is public the moment
 it is used. Anyone — no key required — can keep a copy of one signed during a
 price spike and replay it later. That is arithmetic on public data, not a
-compromise, and it is why PEX validates for 20 seconds.
+compromise, and it is why PEX validates for **30 seconds** — measured from
+their live bundle (`max_age_seconds: 30`, `max_future_skew_seconds: 0`).
+
+An earlier revision of this line said 20 seconds. It was this design's only
+cited precedent and it was wrong by a third, which matters because the number
+becomes a contract constant changeable only by a vault migration.
+
+Note also which way the chain clock errs: `Global.latest_timestamp` is the
+PREVIOUS block's timestamp, measured ~4s behind wall clock against a ~2.7s mean
+block interval. So an age limit of N seconds is an **N + lag** real replay
+window — longer than it reads, not shorter. Full detail in
+[SIGNED_PAYLOAD.md](./SIGNED_PAYLOAD.md).
 
 ## The trade, stated plainly
 

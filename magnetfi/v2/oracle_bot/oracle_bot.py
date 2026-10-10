@@ -158,7 +158,8 @@ PEX_MSG_LEN = 133
 PEX_MSG_MAGIC = b"PDX2"
 PEX_MSG_VERSION = 3
 PEX_PRICE_SCALE = 1_000_000_000_000
-# PEX's own window is 20s. We allow more because a slightly old second opinion is
+# PEX's own window is 30s (max_age_seconds in their live bundle; an earlier
+# comment here said 20s). We allow more because a slightly old second opinion is
 # still a useful one when it is only ever going to raise an alert.
 PEX_MAX_AGE_SEC = 120
 # Divergence that warrants waking someone. Measured live at 0.096%.

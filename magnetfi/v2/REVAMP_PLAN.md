@@ -191,6 +191,34 @@ Build order puts the signer first so the vault has something real to verify.
       Pact's API for $U if CompX goes dark. Also fix the
       `compx_check_asset_id: 0` sentinel, which silently disables the check
       because asset 0 is falsy *and* is ALGO.
+- [x] **2.1b — Wire format + opcode budget.** DONE 2026-10-10.
+      `signer/payload.py`, 59 tests, spec in
+      [SIGNED_PAYLOAD.md](./SIGNED_PAYLOAD.md). 85 bytes. Review measured the
+      budget question shut: `ed25519verify_bare` is **exactly 1900** against
+      **700** per app call, the full verifier is **1953** and the bindings alone
+      **49** — so three app calls leaves 147 units for the entire rest of the
+      vault call and **four is the floor**. Chosen shape is **inner-call OpUp**:
+      the vault issues its own inner no-op calls (+683 each), so the published
+      group stays one transaction and the frontend builds one app call.
+
+      Three findings worth carrying forward: the chain clock runs ~4s behind, so
+      an age limit is **longer** than it reads, not shorter (an earlier doc had
+      this backwards, and it is the only replay defence in v4); PEX's real
+      window is **30s with zero future skew**, not the 20s this design had been
+      citing; and `price > 0` would have been the only guard left against a
+      ×1e6 scaling slip, so `encode()` now enforces a wide, maintenance-free
+      sanity band.
+
+- [ ] **2.1c — Publisher.** Storage upload, scheduling, and PEX's cache headers
+      (`no-cache, must-revalidate` — a CDN TTL would silently eat the window).
+      **Needs a bucket**; PEX use Cloudflare R2.
+
+- [ ] **2.1d — Band policy.** `price_min`/`price_max` exist and are equal. Decide
+      how wide, and from what evidence. The reason the capacity was reserved:
+      with no "freshest available" rule, every user holds a free ~33s lookback
+      option — borrowers take the highest collateral price, liquidators the
+      lowest — and valuing collateral at `min` and debt at `max` absorbs it.
+
 - [ ] **2.2 — Vault contract.** Add: verify signature; payload expiry (~20s);
       `price > 0` (a zero permanently bricks a pool, AUD-042); pool whitelist.
       Remove: posted-price read, `lp_ts_` freshness, anchor band, ±50%-vs-prior,
