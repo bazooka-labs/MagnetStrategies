@@ -7,6 +7,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+// What remains here is PerpsCard's WIRING — which expressions it passes to
+// FormSection, and whether the state reaches the frozen snapshot. FormSection's
+// own behaviour (what folds, what a problem forces open, how the summary is
+// coloured, what aria-expanded reports) moved to FormSection.test.tsx, where it
+// is tested by MOUNTING the component rather than matching its source.
+//
+// PerpsCard itself is not mountable yet — it needs a wallet, live market data
+// and an oracle — so these stay string matches. That limitation is exactly why
+// FormSection was extracted first.
 const cardSrc = readFileSync("src/components/strategy/perps/PerpsCard.tsx", "utf8");
 
 describe("folding hides controls, never commitments", () => {
@@ -26,13 +35,6 @@ describe("folding hides controls, never commitments", () => {
 });
 
 describe("a problem forces the body open", () => {
-  it("ors the problem into the shown state", () => {
-    // Otherwise a disabled submit button has its explanation folded out of
-    // sight, which is worse than the busy card this replaces.
-    expect(cardSrc).toContain("const shown = open || !!problem;");
-    expect(cardSrc).toContain("{shown && children}");
-  });
-
   it("treats an out-of-bounds target and a stop past liquidation as problems", () => {
     expect(cardSrc).toContain("problem={!view.tpEmpty && (!view.tpValid || view.bothLegs)}");
     expect(cardSrc).toContain(
@@ -72,9 +74,6 @@ describe("a problem forces the body open", () => {
     expect(cardSrc).toMatch(/const live: CardSnapshot = \{[\s\S]*?bothLegs,/);
   });
 
-  it("colours the summary amber when there is one", () => {
-    expect(cardSrc).toContain('problem ? "text-amber-300/90" : "text-white/45"');
-  });
 });
 
 describe("both start folded", () => {
@@ -83,7 +82,4 @@ describe("both start folded", () => {
     expect(cardSrc).toContain("const [slOpen, setSlOpen] = useState(false);");
   });
 
-  it("keeps the toggle accessible", () => {
-    expect(cardSrc).toContain("aria-expanded={shown}");
-  });
 });
