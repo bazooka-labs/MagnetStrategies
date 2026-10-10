@@ -90,7 +90,16 @@ from algosdk.atomic_transaction_composer import (
 # ── configuration ─────────────────────────────────────────────────────────────
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "config.json"
-STATE_FILE = Path(__file__).parent / "twap_state.json"
+# Overridable so a dry run can be pointed at a scratch file.
+#
+# It was not, until 2026-10-10, and that cost something: both the author and a
+# reviewer ran `TWAP_STATE_PATH=... --once --dry-run` believing it contained
+# them, and it silently wrote the real file instead. update_pool calls twap.add
+# BEFORE post_price checks dry_run, so a dry run against a MODIFIED config
+# injects prices from that config into the production window — and TwapState
+# keeps only the last 5 readings, so a few runs dominate it and DIVERGENCE_LIMIT
+# then refuses real posts. A dry run must not be able to stop a real one.
+STATE_FILE = Path(os.environ.get("TWAP_STATE_PATH") or (Path(__file__).parent / "twap_state.json"))
 
 # Tinyman v2 AMM validator app — ONE shared app for all pools on mainnet.
 # Each pool is a separate ACCOUNT opted into this app; the pool's reserves and
@@ -169,9 +178,35 @@ PEX_DIVERGENCE_ALERT = 0.02
 #               so the bot would have accepted a price the contract rejects.
 #
 # Same bug, opposite directions. One number now feeds both.
+#
 # Percent, as integers, because the arithmetic below must stay exact.
 BOUND_INNER_LOW_PCT = 76
 BOUND_INNER_HIGH_PCT = 124
+
+# Divergence between the pricing route and a cross-check route that warrants a
+# look.
+#
+# 5%, not the 2% first shipped, and the reason is structural rather than a
+# tolerance guess. Route 0 for $U runs U->tALGO->ALGO->USDC and is therefore
+# ALGO-denominated; the U/USDC cross-check is USDC-denominated. Different
+# numéraires, so EVERY ALGO/USD move appears as route divergence until someone
+# arbitrages the U/USDC pool — and nobody does: seven days of that pool's
+# history is 23 swap legs, median $0, p90 $1, max $2. Divergence opens and
+# stays open. The U/ALGO route shares route 0's numéraire and sits at a steady
+# 0.18% no matter what ALGO does, which is what isolates the cause.
+#
+# At 2% this fired on a 1.02% ALGO move, i.e. most days, at log.error — the
+# same level as "refusing to post", the line that went unread for nine hours on
+# 2026-10-07. Burying that under ~576 advisory lines a day is a regression in
+# the only signal that has ever mattered here. 5% needs a genuinely un-arbed
+# move; below that the divergence is telling us about ALGO, not about a bug.
+ROUTE_DIVERGENCE_ALERT = 0.05
+
+# Per (asset, route) divergence state, so a standing divergence is reported on
+# TRANSITION rather than every cycle. Same discipline as FeedWatch and
+# check_algo_against_pex: "a 5-minute alarm clock for six hours is how people
+# learn to mute the channel".
+_route_level: dict[tuple[int, str], str] = {}
 
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
@@ -348,12 +383,33 @@ class BotConfig:
         self.asset_price_bounds = {
             int(k): (float(v[0]), float(v[1])) for k, v in raw.get("asset_price_bounds", {}).items()
         }
-        # asset_id → {"pool_address": str, "quote_asset_id": int}
-        self.reference_pools = {
-            int(k): {"pool_address": str(v["pool_address"]),
-                     "quote_asset_id": int(v["quote_asset_id"])}
-            for k, v in raw.get("reference_pools", {}).items()
-        }
+        # asset_id → [ {"pool_address": str, "quote_asset_id": int}, ... ]
+        #
+        # ORDER IS SIGNIFICANT. Route 0 prices the asset; every later route is a
+        # CROSS-CHECK that can only raise a warning. Put the DEEPEST pool first.
+        #
+        # Why not a median of all routes — the obvious design, and the one this
+        # file's own LP_ORACLE.md notes first recommended. Measured 2026-10-10,
+        # the three $U routes are wildly unequal in depth:
+        #
+        #   U/tALGO  $21,213   ~$518 to move its implied $U price 10%
+        #   U/USDC   $ 2,943   ~$ 72
+        #   U/ALGO   $ 2,555   ~$ 62
+        #
+        # A median of three only moves if two routes move, and the two cheap
+        # ones together cost ~$134 against ~$518 for the deep one alone. So a
+        # median would have made manipulation about 4x CHEAPER than pricing
+        # through the deepest pool, which is what we already do. Depth beat
+        # redundancy here, so redundancy went to detection instead.
+        #
+        # A single dict is still accepted and means "one route".
+        self.reference_pools = {}
+        for k, v in raw.get("reference_pools", {}).items():
+            routes = v if isinstance(v, list) else [v]
+            self.reference_pools[int(k)] = [
+                {"pool_address": str(r["pool_address"]), "quote_asset_id": int(r["quote_asset_id"])}
+                for r in routes
+            ]
         self.compx_oracle_app_id = int(raw.get("compx_oracle_app_id", 0))
         self.compx_divergence_limit = float(raw.get("compx_divergence_limit", 0.05))
         self.compx_max_age = int(raw.get("compx_max_age_seconds", 3600))
@@ -371,6 +427,25 @@ def load_config(path: Path) -> BotConfig:
     # Low-1 (Pass 27): every on-chain-priced asset should carry a plausibility bound —
     # warn loudly if one is missing so a future pool can't silently ship fail-open.
     priced = set(cfg.reference_pools) | {p.compx_check_asset_id for p in cfg.pools if p.compx_check_asset_id is not None}
+    # Validate EVERY route, not just the one that prices today. The point of an
+    # ordered route list is that a cross-check gets promoted to route 0 when a
+    # pool deepens — and at route 0 a missing asset_decimals entry is a hard
+    # KeyError, which halts that pool. Warn only: refusing to start would turn a
+    # config nit into the outage this whole phase exists to prevent.
+    for aid, routes in cfg.reference_pools.items():
+        if aid not in cfg.asset_decimals:
+            log.warning(f"asset {aid} is priced but has no asset_decimals entry — "
+                        f"promoting any of its routes to route 0 would halt that pool")
+        for i, r in enumerate(routes):
+            q = r["quote_asset_id"]
+            role = "pricing route" if i == 0 else f"cross-check route {i}"
+            if q not in cfg.asset_decimals:
+                log.warning(f"asset {aid} {role} quotes against asset {q}, which has no "
+                            f"asset_decimals entry — this route cannot price")
+            if q != cfg.usdc_asa_id and q not in cfg.reference_pools:
+                log.warning(f"asset {aid} {role} quotes against asset {q}, which has no "
+                            f"reference pool and is not USDC — this route cannot reach USD")
+
     for aid in sorted(priced):
         if aid != cfg.usdc_asa_id and aid not in cfg.asset_price_bounds:
             log.warning(f"asset {aid} is priced on-chain but has no asset_price_bounds entry "
@@ -442,14 +517,16 @@ def _pool_reserves(state: dict[str, int], asset_id: int, quote_id: int) -> tuple
 # ── on-chain price derivation (reference-pool graph rooted at USDC) ──────────────
 
 def derive_asset_price_usdc(
-    client: algod.AlgodClient, asset_id: int, cfg: BotConfig, memo: dict[int, float] | None = None
+    client: algod.AlgodClient, asset_id: int, cfg: BotConfig,
+    memo: dict[int, float] | None = None, _visiting: frozenset[int] = frozenset(),
 ) -> float:
     """
     Price an asset in USDC purely from on-chain Tinyman pool reserves, walking a
     reference-pool graph until it reaches USDC. Recursive + memoized.
 
-    Each reference_pools[asset] entry names a pool and the quote asset to price
-    against; the asset's price = (quote_reserve/asset_reserve) × price(quote).
+    `reference_pools[asset]` is an ordered list. **Route 0 sets the price**; the
+    rest are advisory cross-checks that log a divergence and change nothing. See
+    BotConfig for why the deepest pool prices rather than a median of all routes.
     """
     if memo is None:
         memo = {}
@@ -458,27 +535,77 @@ def derive_asset_price_usdc(
     if asset_id in memo:
         return memo[asset_id]
 
-    ref = cfg.reference_pools.get(asset_id)
-    if ref is None:
+    routes = cfg.reference_pools.get(asset_id)
+    if not routes:
         raise ValueError(f"no reference pool configured for asset {asset_id}")
 
-    state = fetch_pool_state(client, ref["pool_address"], cfg.amm_app_id)
-    quote_id = ref["quote_asset_id"]
-    asset_res, quote_res = _pool_reserves(state, asset_id, quote_id)
-    if asset_res == 0 or quote_res == 0:
-        raise ValueError(f"zero reserve in reference pool for asset {asset_id}")
+    # Cycle guard. Harmless with one route per asset, but the moment an asset can
+    # be priced several ways a config mistake (A quoted in B, B quoted in A)
+    # becomes a plausible way to recurse until the stack dies — which on this bot
+    # means the feed stops, which fail-closes the vault.
+    if asset_id in _visiting:
+        raise ValueError(f"reference-pool cycle reached asset {asset_id}")
+    _visiting = _visiting | {asset_id}
 
-    a_dec = cfg.asset_decimals[asset_id]
-    q_dec = cfg.asset_decimals[quote_id]
-    ratio = (quote_res / 10 ** q_dec) / (asset_res / 10 ** a_dec)   # price in quote units
-    price = ratio * derive_asset_price_usdc(client, quote_id, cfg, memo)
+    price = _price_via_route(client, asset_id, routes[0], cfg, memo, _visiting)
+
     # Per-asset absolute plausibility bound (F3): a distorted reference-pool read
     # is rejected here instead of silently propagating into the composite LP price.
     bounds = cfg.asset_price_bounds.get(asset_id)
     if bounds and not (bounds[0] <= price <= bounds[1]):
         raise ValueError(f"derived price for asset {asset_id} = {price:.6f} outside sanity bounds {bounds}")
+
+    # Cross-check routes. ADVISORY ONLY — they never change the price and never
+    # raise, because a thin pool being broken or empty must not stop the feed.
+    # This is what replaces the CompX dependency for assets with several routes:
+    # independent arithmetic over independent pools, catching the derivation bugs
+    # an absolute bound cannot.
+    for ref in routes[1:]:
+        try:
+            alt = _price_via_route(client, asset_id, ref, cfg, memo, _visiting)
+        except Exception as e:  # noqa: BLE001
+            # !r so a KeyError prints KeyError(2) rather than a bare "2".
+            log.warning(f"asset {asset_id}: cross-check route via {ref['pool_address'][:8]}… "
+                        f"unavailable: {e!r}")
+            continue
+        div = abs(alt - price) / price if price else 0.0
+        key = (asset_id, ref["pool_address"])
+        now_level = "diverged" if div > ROUTE_DIVERGENCE_ALERT else "ok"
+        was = _route_level.get(key)
+        detail = (f"asset {asset_id}: pricing route ${price:.6f} vs route via "
+                  f"{ref['pool_address'][:8]}… ${alt:.6f} (Δ{div:.2%})")
+        if now_level != was:
+            if now_level == "diverged":
+                log.error(f"ROUTE DIVERGENCE above {ROUTE_DIVERGENCE_ALERT:.0%} — {detail}; "
+                          f"price NOT changed")
+            elif was is not None:
+                log.info(f"routes agree again — {detail}")
+            else:
+                log.info(f"route cross-check OK — {detail}")
+            _route_level[key] = now_level
+        else:
+            # Unchanged state: keep it available without spending a log line a
+            # cycle on it. 2 lines a day instead of 576.
+            log.debug(detail)
+
     memo[asset_id] = price
     return price
+
+
+def _price_via_route(
+    client: algod.AlgodClient, asset_id: int, ref: dict, cfg: BotConfig,
+    memo: dict[int, float], _visiting: frozenset[int],
+) -> float:
+    """One reference-pool hop: price(asset) = (quote_reserve/asset_reserve) × price(quote)."""
+    state = fetch_pool_state(client, ref["pool_address"], cfg.amm_app_id)
+    quote_id = ref["quote_asset_id"]
+    asset_res, quote_res = _pool_reserves(state, asset_id, quote_id)
+    if asset_res == 0 or quote_res == 0:
+        raise ValueError(f"zero reserve in reference pool for asset {asset_id}")
+    a_dec = cfg.asset_decimals[asset_id]
+    q_dec = cfg.asset_decimals[quote_id]
+    ratio = (quote_res / 10 ** q_dec) / (asset_res / 10 ** a_dec)   # price in quote units
+    return ratio * derive_asset_price_usdc(client, quote_id, cfg, memo, _visiting)
 
 
 def compute_lp_price(pool: PoolConfig, pool_state: dict[str, int], price_a: float, price_b: float) -> int | None:

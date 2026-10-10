@@ -62,10 +62,27 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       blocking a legitimate rise while the band had 21% of room) and the
       ALGO/USDC bounds defect found 2026-10-10 (`max_price` 2,858 *above* the
       band ceiling) were this bug in opposite directions.
-- [ ] **0.2 — Derive or drop `asset_price_bounds`.** Same failure with a longer
-      fuse: ALGO carried a $0.50 ceiling against a $0.119 price. Either derive
-      from the CompX reading or delete and lean on the CompX divergence check,
-      which is the real protection.
+- [x] **0.2 — Multi-route cross-check, replacing the CompX dependency.** DONE
+      2026-10-10. `reference_pools[asset]` is now an ordered list: the **deepest**
+      pool prices, later routes are compared and logged at 2% divergence, and
+      they never change the price or stop the feed. $U has three routes; live
+      agreement 0.26% and 0.31%.
+
+      **Not a median** — the plan and LP_ORACLE.md both said median first, and
+      measuring depth overturned it. U/tALGO is $21,213 (~$518 to move its
+      implied $U price 10%) against U/USDC $2,943 (~$72) and U/ALGO $2,555
+      (~$62). A median only moves when two routes move, and the two cheap ones
+      cost ~$134 together — so a median would have made manipulation ~4x cheaper
+      than pricing through the deepest pool, which the bot already did.
+
+      **`asset_price_bounds` was NOT dropped.** The cross-check only covers
+      assets with several routes, and ALGO and tALGO have one each, so dropping
+      their bound removes a layer with nothing behind it. The natural
+      replacement for ALGO is PEX — but `strategy/perps/SPEC.md` forbids PEX
+      state from gating a MagnetFi solvency decision, and breaking that should
+      be an explicit decision, not a side effect of a cleanup. The bounds are
+      also not yet rotten (ALGO `[0.02, 0.50]` vs $0.1155 is 0.17x-4.3x). They
+      go at v4 with the rest of the posted-price machinery.
 - [ ] **0.3 — Fix the `notify()` crash path.** Found in the 2026-10-10 pre-push
       review and confirmed by running it: `Request(...)` is built outside the
       `try`, so a schemeless `ALERT_WEBHOOK_URL` raises `ValueError` instead of
@@ -97,6 +114,33 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       ~30 minutes. Pre-existing; 0.1 improves on it but does not close it.
       Two candidate fixes: re-check `final_price` against the same bounds in
       `update_pool`, and/or drop TWAP history when the anchor changes.
+
+- [ ] **0.7 — The U/tALGO posted price has a lever no route choice touches.**
+      Found by the Phase 0.2 review. The posted LP price for pool `3163770927`
+      is **algebraically independent of the $U price**, because route 0 for $U
+      *is* that pool and the $U reserve cancels:
+      `lp_price = 2 × (tALGO_res/1e6) × P_tALGO / (LP_supply/1e6)`. Verified to
+      1 part in 1e6 against a live post, and by simulation: dumping $2,000 of
+      $U into route 0 moved the posted price −15.88%, exactly the drop in the
+      **tALGO** reserve, with no contribution from the $U price.
+
+      So the real cheap lever on that pool is the tALGO reserve — roughly $1.6k
+      of tALGO reaches the +15% `DIVERGENCE_LIMIT` ceiling, while the attacker
+      *holds* $U rather than spending it. Neither pricing design addresses this
+      and Phase 0.2 did not make it worse. Decide whether it wants a
+      tALGO-specific guard (tALGO/ALGO is a liquid-staking pair with a known
+      floor, so a redemption-ratio sanity bound is plausible) or whether the
+      TWAP plus the ±25% band is considered sufficient.
+
+- [ ] **0.8 — A false cycle report can silently lose a cross-check.** Also from
+      the 0.2 review, severity LOW, **not reachable in the live config**.
+      `_visiting` carries the route-0 ancestor chain, so if a cross-check
+      route's quote asset is itself priced *through* the asset being
+      cross-checked, the guard reports a cycle the pricing graph does not have.
+      The cross-check is lost with a misleading message; the price is unaffected
+      and nothing halts. Moving `memo[asset_id] = price` to just before the
+      cross-check loop fixes it and saves fetches — unverified, so it needs its
+      own review.
 
 **Gate out of Phase 0:** two full weeks with no halt that the bot caused.
 

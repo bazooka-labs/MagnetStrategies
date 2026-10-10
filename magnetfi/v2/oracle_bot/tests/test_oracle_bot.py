@@ -531,7 +531,8 @@ def test_load_config_happy(tmp_path):
     assert cfg.usdc_asa_id == 31566704 and cfg.compx_oracle_app_id == 3307588794
     assert cfg.asset_decimals == {0: 6, 3081853135: 5}
     assert cfg.asset_price_bounds == {3081853135: (0.02, 1.0)}
-    assert cfg.reference_pools[0] == {"pool_address": "X", "quote_asset_id": 31566704}
+    # A bare dict still means "one route" — reference_pools is a LIST now.
+    assert cfg.reference_pools[0] == [{"pool_address": "X", "quote_asset_id": 31566704}]
     assert len(cfg.pools) == 1 and cfg.pools[0].pool_id == 1
 
 
@@ -1117,3 +1118,242 @@ def test_every_configured_pool_has_a_fallback_bound():
         assert pool.get("min_price") and pool.get("max_price"), (
             f"{pool['label']} has no fallback bound"
         )
+
+# ── multi-route pricing: deepest route prices, the rest only warn ─────────────
+#
+# Measured 2026-10-10, the three $U routes are very unequal:
+#   U/tALGO $21,213 (~$518 to move its implied $U price 10%)
+#   U/USDC  $ 2,943 (~$ 72)
+#   U/ALGO  $ 2,555 (~$ 62)
+# A median of three only moves when two routes move, and the two cheap ones
+# together cost ~$134 against ~$518 for the deep one alone — so a median would
+# have made manipulation ~4x cheaper than pricing through the deepest pool.
+# These pin the choice that came out of that measurement.
+
+def _route(addr, quote):
+    return {"pool_address": addr, "quote_asset_id": quote}
+
+
+def _cfg_two_routes():
+    return make_cfg(
+        asset_decimals={"7": 6, "31566704": 6},
+        reference_pools={"7": [_route("DEEP", 31566704), _route("THIN", 31566704)]},
+    )
+
+
+def _state_for(px):
+    return {"app-local-state": {"key-value": [
+        _kv_uint("asset_1_id", 7), _kv_uint("asset_2_id", 31566704),
+        _kv_uint("asset_1_reserves", 1_000_000),
+        _kv_uint("asset_2_reserves", int(1_000_000 * px)),
+        _kv_uint("issued_pool_tokens", 1_000_000),
+    ]}}
+
+
+def _client_for(prices):
+    """Fake algod where each pool address implies a given $-price for asset 7."""
+    class C:
+        def account_application_info(self, addr, _app):
+            return _state_for(prices[addr])
+    return C()
+
+
+def test_route_zero_sets_the_price_not_the_median():
+    """The deepest pool is route 0. A disagreeing thin route must NOT move it."""
+    c = _client_for({"DEEP": 1.00, "THIN": 1.50})
+    assert ob.derive_asset_price_usdc(c, 7, _cfg_two_routes()) == pytest.approx(1.00)
+
+
+def test_route_divergence_is_logged_not_fatal(caplog):
+    import logging
+    c = _client_for({"DEEP": 1.00, "THIN": 1.50})
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        price = ob.derive_asset_price_usdc(c, 7, _cfg_two_routes())
+    assert price == pytest.approx(1.00)
+    assert any("ROUTE DIVERGENCE" in r.message for r in caplog.records)
+
+
+def test_agreeing_routes_stay_quiet(caplog):
+    import logging
+    c = _client_for({"DEEP": 1.00, "THIN": 1.005})      # 0.5%, under the 2% threshold
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        ob.derive_asset_price_usdc(c, 7, _cfg_two_routes())
+    assert not any("ROUTE DIVERGENCE" in r.message for r in caplog.records)
+
+
+def test_a_broken_cross_check_route_cannot_stop_pricing(caplog, monkeypatch):
+    """A thin pool going empty must never stop the feed — it only warns."""
+    import logging
+    monkeypatch.setattr(ob, "RETRY_DELAY", 0)   # don't sleep through the retries
+    class C:
+        def account_application_info(self, addr, _app):
+            if addr == "THIN":
+                raise RuntimeError("pool account closed")
+            return _state_for(1.00)
+    with caplog.at_level(logging.WARNING, logger="oracle_bot"):
+        price = ob.derive_asset_price_usdc(C(), 7, _cfg_two_routes())
+    assert price == pytest.approx(1.00)
+    assert any("cross-check route" in r.message for r in caplog.records)
+
+
+def test_pricing_route_failure_still_raises(monkeypatch):
+    """Route 0 is not advisory. If it fails there is no price."""
+    monkeypatch.setattr(ob, "RETRY_DELAY", 0)
+    class C:
+        def account_application_info(self, *a, **k):
+            raise RuntimeError("algod down")
+    with pytest.raises(Exception):
+        ob.derive_asset_price_usdc(C(), 7, _cfg_two_routes())
+
+
+def test_reference_pool_cycle_raises_instead_of_recursing_forever():
+    """
+    A quoted in B and B quoted in A used to recurse until the stack died, which
+    on this bot means the feed stops and the vault fails closed. Only reachable
+    once an asset can be priced several ways, so it arrives with this change.
+    """
+    cfg = make_cfg(
+        asset_decimals={"7": 6, "8": 6},
+        reference_pools={"7": [_route("P78", 8)], "8": [_route("P87", 7)]},
+    )
+    class C:
+        def account_application_info(self, addr, _app):
+            a, b = (7, 8) if addr == "P78" else (8, 7)
+            return {"app-local-state": {"key-value": [
+                _kv_uint("asset_1_id", a), _kv_uint("asset_2_id", b),
+                _kv_uint("asset_1_reserves", 1_000_000),
+                _kv_uint("asset_2_reserves", 1_000_000),
+                _kv_uint("issued_pool_tokens", 1_000_000),
+            ]}}
+    with pytest.raises(ValueError, match="cycle"):
+        ob.derive_asset_price_usdc(C(), 7, cfg)
+
+
+def test_shipped_config_lists_the_deepest_u_route_first():
+    """Order is load-bearing: route 0 prices. U/tALGO is ~7x the others' depth."""
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(ob.__file__).parent / "config.json").read_text())
+    routes = cfg["reference_pools"]["3081853135"]
+    assert isinstance(routes, list) and len(routes) == 3
+    assert routes[0]["pool_address"].startswith("AIR4CSC5"), "U/tALGO must price $U"
+    assert routes[0]["quote_asset_id"] == 2537013734
+
+
+# ── divergence reporting is transition-gated ──────────────────────────────────
+#
+# Route 0 for $U is ALGO-denominated (U->tALGO->ALGO->USDC); the U/USDC
+# cross-check is USDC-denominated. Different numéraires, so every ALGO move
+# shows as divergence until someone arbitrages U/USDC — and seven days of that
+# pool is 23 swap legs, median $0, max $2. Divergence opens and stays open. At
+# 2% ungated that was ~576 log.error lines/day at the SAME level as "refusing to
+# post", the line that went unread for nine hours on 2026-10-07.
+
+@pytest.fixture(autouse=True)
+def _clear_route_levels():
+    ob._route_level.clear()
+    yield
+    ob._route_level.clear()
+
+
+def test_standing_divergence_is_reported_once_not_every_cycle(caplog):
+    import logging
+    c = _client_for({"DEEP": 1.00, "THIN": 1.30})        # 30%, over the 5% threshold
+    cfg = _cfg_two_routes()
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        for _ in range(5):
+            ob.derive_asset_price_usdc(c, 7, cfg, {})
+    errs = [r for r in caplog.records if "ROUTE DIVERGENCE" in r.message]
+    assert len(errs) == 1, f"{len(errs)} error lines for one standing divergence"
+
+
+def test_recovery_is_reported(caplog):
+    import logging
+    cfg = _cfg_two_routes()
+    ob.derive_asset_price_usdc(_client_for({"DEEP": 1.00, "THIN": 1.30}), 7, cfg, {})
+    with caplog.at_level(logging.INFO, logger="oracle_bot"):
+        ob.derive_asset_price_usdc(_client_for({"DEEP": 1.00, "THIN": 1.01}), 7, cfg, {})
+    assert any("agree again" in r.message for r in caplog.records)
+
+
+def test_a_one_percent_algo_style_move_stays_quiet(caplog):
+    """
+    The measured artifact: at the old 2% threshold a 1.02% ALGO move fired an
+    ERROR. Routine market movement must not look like a bug.
+    """
+    import logging
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        ob.derive_asset_price_usdc(_client_for({"DEEP": 1.00, "THIN": 1.02}), 7,
+                                   _cfg_two_routes(), {})
+    assert not any("ROUTE DIVERGENCE" in r.message for r in caplog.records)
+
+
+def test_threshold_is_five_percent():
+    assert ob.ROUTE_DIVERGENCE_ALERT == 0.05
+
+
+# ── a dry run must not be able to stop a real post ────────────────────────────
+
+def test_twap_state_path_is_overridable(monkeypatch, tmp_path):
+    """
+    update_pool calls twap.add BEFORE post_price checks dry_run, so a dry run
+    against a modified config injects that config's prices into the production
+    TWAP window — and only the last 5 readings survive, so a few runs dominate
+    it and DIVERGENCE_LIMIT then refuses real posts.
+
+    This was unimplemented until 2026-10-10 despite being used in good faith by
+    two people, each of whom silently wrote the live file instead.
+    """
+    import importlib
+    scratch = tmp_path / "scratch_twap.json"
+    monkeypatch.setenv("TWAP_STATE_PATH", str(scratch))
+    mod = importlib.reload(ob)
+    try:
+        assert mod.STATE_FILE == scratch
+    finally:
+        monkeypatch.delenv("TWAP_STATE_PATH", raising=False)
+        importlib.reload(ob)
+
+
+def test_twap_state_path_defaults_beside_the_bot(monkeypatch):
+    import importlib, pathlib
+    monkeypatch.delenv("TWAP_STATE_PATH", raising=False)
+    mod = importlib.reload(ob)
+    assert mod.STATE_FILE == pathlib.Path(mod.__file__).parent / "twap_state.json"
+
+
+# ── route preflight ───────────────────────────────────────────────────────────
+
+def test_preflight_warns_when_a_cross_check_route_cannot_price(tmp_path, caplog):
+    """
+    Cross-check routes get PROMOTED to route 0 as pools deepen, and at route 0 a
+    missing asset_decimals entry is a hard KeyError that halts the pool. Warn
+    early — but never refuse to start, which would make a config nit into the
+    outage this phase exists to prevent.
+    """
+    import json, logging
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({
+        "oracle_app_id": 555, "usdc_asa_id": 31566704,
+        "asset_decimals": {"7": 6, "31566704": 6},
+        "asset_price_bounds": {"7": [0.1, 10]},
+        "reference_pools": {"7": [{"pool_address": "A", "quote_asset_id": 31566704},
+                                  {"pool_address": "B", "quote_asset_id": 999}]},
+        "pools": [{"pool_id": 1, "pool_address": "X", "asset_a_id": 7,
+                   "asset_a_decimals": 6, "asset_b_id": 31566704, "asset_b_decimals": 6,
+                   "min_price": 1, "max_price": 2}],
+    }))
+    with caplog.at_level(logging.WARNING, logger="oracle_bot"):
+        cfg = ob.load_config(p)          # must NOT raise
+    assert cfg is not None
+    msgs = " ".join(r.message for r in caplog.records)
+    assert "cross-check route 1" in msgs and "999" in msgs
+
+
+def test_preflight_passes_the_shipped_config(caplog):
+    """The real config must produce no route warnings."""
+    import logging, pathlib
+    with caplog.at_level(logging.WARNING, logger="oracle_bot"):
+        ob.load_config(pathlib.Path(ob.__file__).parent / "config.json")
+    bad = [r.message for r in caplog.records
+           if "cannot price" in r.message or "cannot reach USD" in r.message]
+    assert not bad, bad

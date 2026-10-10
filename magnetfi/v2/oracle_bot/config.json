@@ -20,10 +20,20 @@
    "pool_address": "LIHQGEOPOTMQKAJMXUJP2BT4R4AX4FPUC2SLBLYT27K536CA3XUQJVXE3Y",
    "quote_asset_id": 0
   },
-  "3081853135": {
-   "pool_address": "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
-   "quote_asset_id": 2537013734
-  }
+  "3081853135": [
+   {
+    "pool_address": "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
+    "quote_asset_id": 2537013734
+   },
+   {
+    "pool_address": "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
+    "quote_asset_id": 31566704
+   },
+   {
+    "pool_address": "35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4",
+    "quote_asset_id": 0
+   }
+  ]
  },
  "asset_price_bounds": {
   "0": [

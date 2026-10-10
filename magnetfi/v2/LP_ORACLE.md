@@ -491,8 +491,9 @@ memecoin}` — there is no asset-id-0 box.
 | Vestige | off-chain HTTP | yes | cannot see Pact's MW pools (`pools.ts:193`) |
 | PEX | signed payload | yes | **cannot price $U** |
 
-**Tinyman multi-route is the recommended primary.** $U can be priced three ways
-through pools we already read, and they agree (2026-10-10):
+**Tinyman multi-route is the recommended primary — as a CROSS-CHECK, not a
+median.** $U can be priced three ways through pools we already read, and they
+agree (2026-10-10):
 
 | route | $U |
 |---|---|
@@ -501,9 +502,56 @@ through pools we already read, and they agree (2026-10-10):
 | U/ALGO → ALGO | $0.161640 |
 | **median** | **$0.161135** |
 
-Max spread vs median **0.681%**; median vs CompX **0.269%**. Take the median of
-three and alert on spread. Costs nothing — all three pools are already fetched,
-and U/ALGO joins the set once it is registered.
+Max spread vs median **0.681%**; median vs CompX **0.269%**.
+
+> **Caveat on what this table measures.** "Cost to move the implied $U price"
+> load-bears on the **U/USDC** posted price. It does **not** describe U/tALGO,
+> whose posted LP price is algebraically *independent* of the $U price: route 0
+> for $U is that same pool, so substituting `P_U = (tALGO_res/1e6)/(U_res/1e5) ×
+> P_tALGO` into the TVL cancels the $U reserve exactly, leaving
+> `lp_price = 2 × (tALGO_res/1e6) × P_tALGO / (LP_supply/1e6)`. Verified to 1
+> part in 1e6 against a live post. The cheap lever on *that* price is the
+> **tALGO** reserve, which no route choice addresses — see REVAMP_PLAN Phase
+> 0.7.
+
+> ### Correction, same day: a median would have been WORSE
+>
+> The first version of this section said "take the median of three". That was
+> written before the routes' depth was measured, and the measurement overturns
+> it:
+>
+> | $U route | pool TVL | cost to move its implied $U price 10% |
+> |---|---|---|
+> | U/tALGO | $21,213 | **~$518** |
+> | U/USDC | $2,943 | ~$72 |
+> | U/ALGO | $2,555 | ~$62 |
+>
+> A median of three only moves when **two** routes move — and the two cheap ones
+> together cost **~$134**, against **~$518** for the deep one alone. So a median
+> would have made manipulation roughly **4× cheaper** than what the bot already
+> does, which is to price through the deepest pool. Redundancy loses to depth
+> when the pools are this unequal.
+
+**So: route 0 prices, the rest cross-check.** `reference_pools[asset]` is an
+ordered list whose first entry is the deepest pool; later entries are computed,
+compared, and logged. They never change the price and never stop the feed — a
+thin pool going empty must not halt pricing. Divergence over **2%** logs at
+ERROR (0.68% observed, so 1% would be noisy).
+
+This keeps manipulation cost exactly where it is today while adding the bug
+detection CompX was providing, and it costs nothing — the pools are already
+being fetched. It also gets stronger with each pool added, since a new $U pool
+is another cross-check.
+
+**It is a trade, not a clean win.** A median is genuinely more *tolerant* of a
+broken route — median{good, good, garbage} is still good, whereas route-0
+pricing is fully determined by one pool and can only *detect* a bad route via an
+advisory log. Since the motivating threat was losing CompX, i.e. losing bug
+detection, the median was the stronger design on that axis. It loses on two
+others that were judged to matter more: manipulation cost (3.86x, simulated
+end-to-end on live reserves), and the constraint that a cross-check must never
+silently change the posted price. Recorded so the next reader does not have to
+re-derive it.
 
 **Why losing CompX costs less than it appears.** Pact's $U pools are all
 `MANAGED_WEIGHTED` and, per `pools.ts:193`, invisible to the usual aggregators;
@@ -548,8 +596,10 @@ Three tiers, none load-bearing on a single vendor:
 
 1. **TWAP** on our own derivation — unchanged, and still the one thing that must
    not be dropped.
-2. **Multi-route median** for every asset with more than one path ($U has three).
-   Alert when the spread exceeds ~1%. On-chain, free, no vendor.
+2. **Multi-route cross-check** for every asset with more than one path ($U has
+   three). The DEEPEST route prices; the others are compared and logged at 2%
+   divergence. Not a median — see the correction above. On-chain, free, no
+   vendor, and advisory so it can never halt the feed.
 3. **One external number, alert-only** — PEX for ALGO (already built, pinned
    key), and CompX for $U while it lives, falling back to Pact's API. Never
    gates a post.
@@ -557,3 +607,30 @@ Three tiers, none load-bearing on a single vendor:
 Tier 2 is the work: it replaces a vendor dependency with arithmetic over pools
 already being read, and it is the only option here that gets *stronger* as
 collateral is added, since each new $U pool is another route.
+
+**Shipped 2026-10-10** for $U (three routes, U/tALGO pricing). `asset_price_bounds`
+was NOT removed alongside it — see the note below.
+
+### Why `asset_price_bounds` stays until v4
+
+The plan had this replaced by the cross-check. It isn't, for a reason worth
+recording: the cross-check only exists for assets with more than one route, and
+**ALGO and tALGO have exactly one each**. Dropping their absolute bound would
+remove a layer with nothing behind it.
+
+The natural replacement for ALGO is PEX, which is already integrated and pinned.
+`strategy/perps/SPEC.md` invariant 5 is the coupling rule here: *"no Perps code
+path makes PEX state an input to a MagnetFi solvency decision."*
+
+Stated precisely, because an earlier revision of this paragraph said SPEC.md
+"forbids" it and that is stronger than the spec claims. Its own parenthetical
+says so: *"Stated as a constraint on Perps, which is what Perps can enforce.
+Whether MagnetFi ever accepts PEX-derived collateral is a MagnetFi policy
+decision, not something this codebase can assert."* So the Perps side is
+closed, and the MagnetFi side is **an open decision this document is not
+entitled to make by default**. Taking it should be deliberate, not a side
+effect of a cleanup.
+
+The bounds are also not yet rotten: ALGO's `[0.02, 0.50]` against a $0.1155
+price is 0.17×–4.3×, which is in the usual sanity-bound range. They go at v4
+with the rest of the posted-price machinery.
