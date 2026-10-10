@@ -259,6 +259,46 @@ As with v1, oracle uptime is an operational safety requirement. Stale LP prices 
 
 Bot uptime monitoring, alerting, and redundancy (multiple bot instances, multiple price sources) are operational requirements before mainnet launch.
 
+### Host requirement: a current TLS trust store
+
+The bot host must be able to validate **Let's Encrypt** certificates. This is not
+incidental housekeeping — it decides whether alerting works at all.
+
+The bot makes outbound HTTPS calls to three places, and they do not share a CA:
+
+| call | host | CA |
+|---|---|---|
+| post price | `mainnet-api.algonode.cloud` | Google Trust Services |
+| PEX cross-check | `…r2.dev` oracle payloads | **Let's Encrypt** |
+| alert delivery | `ntfy.sh` (or chosen webhook) | **Let's Encrypt** |
+
+On 2026-10-09 the Windows host rejected the PEX bundle with `certificate verify
+failed: certificate has expired` while posting prices normally. The PEX leaf was
+valid (Sep 7 – Dec 6 2026), so the expired anchor was in the host's own store.
+
+The failure therefore split by CA, not by host: **every** Let's Encrypt endpoint
+was unreachable, including the alert channel. A trust store too old to read the
+PEX feed is also too old to deliver the page about the outage, and `notify()`
+logs that failure to the unattended machine nobody is reading — so the only
+visible symptom was a cross-check warning that looks like a minor telemetry gap.
+
+Two mitigations, both in place:
+
+- `_tls_context()` builds the context from **certifi's** bundle, which takes the
+  OS store out of the path. `certifi` is a declared dependency; the function
+  falls back to the OS store if it is absent, so this is a preference, not a
+  hard requirement. All three call sites share the one context — an AST test
+  asserts no `urlopen` call can be added without it.
+- Keep `certifi` updated on the host (`pip install -U certifi`) alongside the
+  bot's other dependencies.
+
+**Related:** bot logs are stamped UTC via `logging.Formatter.converter =
+time.gmtime`. The `datefmt` ends in `Z`, and Python's default converter is
+`localtime` — the same 2026-10-09 log stamped `20:46:46Z` on an event at
+`00:46Z`. The age figures in those lines were correct (`lp_ts_` is an epoch),
+which is what made the mislabelled stamp worse than an obviously wrong one: it
+reads as directly comparable to on-chain timestamps during an incident.
+
 ---
 
 ## Per-Pool Price Key Design

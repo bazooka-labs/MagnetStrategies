@@ -68,6 +68,7 @@ import base64
 import json
 import logging
 import os
+import ssl
 import struct
 import sys
 import time
@@ -165,12 +166,56 @@ UPDATE_LP_PRICE_SIG = "update_lp_price(uint64,uint64)void"
 
 # ── logging ───────────────────────────────────────────────────────────────────
 
+# The datefmt below ends in "Z", so the clock behind it has to be UTC. Python's
+# default converter is time.localtime, which on 2026-10-09 stamped a line
+# "20:46:46Z" for something that happened at 00:46Z — four hours out, and
+# labelled as if it were not. Everything else we reason about during an outage is
+# genuinely UTC (lp_ts_ is an epoch, so the "276m old" figures were always
+# right), which is exactly what makes a mislabelled log line dangerous: it reads
+# as comparable to the chain and is not.
+logging.Formatter.converter = time.gmtime
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
 log = logging.getLogger("oracle_bot")
+
+
+# ── TLS ───────────────────────────────────────────────────────────────────────
+
+def _tls_context() -> ssl.SSLContext:
+    """
+    Trust anchors from certifi, falling back to the OS store.
+
+    Why not just the default context: Python builds it from the operating
+    system's store, and on 2026-10-09 the production box (Windows) rejected the
+    PEX bundle with "certificate has expired" while algod kept posting happily.
+    The PEX leaf was valid — Sep 7 to Dec 6 2026 — so the expired certificate was
+    an anchor in the OS store, not anything the server sent.
+
+    What made it worth fixing rather than noting: the split is by CA, not by
+    host. algod is Google Trust Services, which that box trusted. The PEX bundle
+    and ntfy.sh are both Let's Encrypt, which it did not. ntfy is the alert
+    channel, so a store too old to read the PEX feed is also too old to deliver
+    the page about the outage — and notify() logs that failure to the unattended
+    machine nobody is reading. The cross-check warning was the only visible
+    symptom of a mute alerting path.
+
+    Passing cafile makes certifi's bundle the only anchor set, which takes the OS
+    store out of the path entirely. The fallback keeps a box without certifi
+    working exactly as before.
+    """
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception as e:  # noqa: BLE001 — never block startup over trust setup
+        log.warning(f"certifi unavailable, using OS trust store: {e}")
+        return ssl.create_default_context()
+
+
+_TLS = _tls_context()
 
 
 # ── TWAP state ────────────────────────────────────────────────────────────────
@@ -711,7 +756,7 @@ def read_pex_algo_price() -> float | None:
             PEX_BUNDLE_URL,
             headers={"accept": "application/json", "user-agent": "magnetfi-oracle-bot/1.0"},
         )
-        body = json.loads(urllib.request.urlopen(req, timeout=10).read())
+        body = json.loads(urllib.request.urlopen(req, timeout=10, context=_TLS).read())
         pl = body["payloads"][f"app-{PEX_TRADING_APP_ID}/market-{PEX_ALGO_MARKET_ID}"]
         msg = bytes.fromhex(pl["message_hex"])
         sig = bytes.fromhex(pl["signature_hex"])
@@ -792,7 +837,7 @@ def notify(text: str, *, critical: bool = False) -> None:
 
     req = urllib.request.Request(ALERT_WEBHOOK_URL, data=data, headers=headers, method="POST")
     try:
-        urllib.request.urlopen(req, timeout=10).close()
+        urllib.request.urlopen(req, timeout=10, context=_TLS).close()
     except Exception as e:  # noqa: BLE001 — alerting must never be fatal
         log.error(f"alert webhook failed: {e}")
 
@@ -802,7 +847,7 @@ def heartbeat() -> None:
     if not HEARTBEAT_URL:
         return
     try:
-        urllib.request.urlopen(HEARTBEAT_URL, timeout=10).close()
+        urllib.request.urlopen(HEARTBEAT_URL, timeout=10, context=_TLS).close()
     except Exception as e:  # noqa: BLE001
         log.warning(f"heartbeat ping failed: {e}")
 

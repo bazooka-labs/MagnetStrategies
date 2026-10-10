@@ -690,9 +690,10 @@ def _capture(monkeypatch):
     """Capture the urllib Request notify() builds, without sending it."""
     seen = {}
 
-    def fake_urlopen(req, timeout=None):
+    def fake_urlopen(req, timeout=None, context=None):
         seen["url"] = req.full_url
         seen["body"] = req.data.decode()
+        seen["context"] = context
         seen["headers"] = {k.lower(): v for k, v in req.headers.items()}
         class _R:
             def close(self): pass
@@ -846,3 +847,104 @@ def test_small_divergence_stays_quiet(monkeypatch):
     w = ob.FeedWatch()
     w.check_algo_against_pex(object(), make_cfg())
     assert sent == []
+
+
+# ── TLS trust anchors ─────────────────────────────────────────────────────────
+#
+# The 2026-10-09 outage log carried "certificate verify failed: certificate has
+# expired" against the PEX bundle while algod posted normally. The leaf was
+# valid, so the expired anchor was in the Windows trust store — and the same
+# store serves ntfy.sh, the alert channel. These pin the fix so a later edit
+# cannot quietly put the OS store back in the path.
+
+def test_tls_context_is_an_ssl_context():
+    import ssl
+    assert isinstance(ob._tls_context(), ssl.SSLContext)
+
+
+def test_tls_context_prefers_certifi():
+    """The anchor set must come from certifi, not the OS store."""
+    certifi = pytest.importorskip("certifi")
+    import ssl
+    ctx = ob._tls_context()
+    # A context built from certifi's bundle loads that bundle's anchors. Compare
+    # the count against a context built the same way explicitly: an OS-store
+    # context on this machine has a different number.
+    expected = ssl.create_default_context(cafile=certifi.where())
+    assert len(ctx.get_ca_certs()) == len(expected.get_ca_certs())
+
+
+def test_tls_context_falls_back_when_certifi_missing(monkeypatch):
+    """A box without certifi keeps working — it must not fail startup."""
+    import builtins, ssl
+    real_import = builtins.__import__
+    def no_certifi(name, *a, **k):
+        if name == "certifi":
+            raise ImportError("no certifi")
+        return real_import(name, *a, **k)
+    monkeypatch.setattr(builtins, "__import__", no_certifi)
+    assert isinstance(ob._tls_context(), ssl.SSLContext)
+
+
+def test_every_urlopen_passes_the_shared_context():
+    """
+    Asserted over the AST, not the source text.
+
+    A regex for "urlopen" matches the prose in _tls_context's docstring that
+    explains why the context exists, so a text search would pass on the comment
+    alone. The AST sees calls only.
+    """
+    import ast
+    tree = ast.parse(open(ob.__file__).read())
+    calls = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        if isinstance(f, ast.Attribute) and f.attr == "urlopen":
+            calls.append(node)
+    assert len(calls) >= 3, f"expected the PEX, webhook and heartbeat calls, saw {len(calls)}"
+    for c in calls:
+        kw = {k.arg for k in c.keywords}
+        assert "context" in kw, f"urlopen on line {c.lineno} does not pass context=_TLS"
+        ctx_arg = next(k.value for k in c.keywords if k.arg == "context")
+        assert isinstance(ctx_arg, ast.Name) and ctx_arg.id == "_TLS", (
+            f"urlopen on line {c.lineno} passes a context other than _TLS"
+        )
+
+
+# ── log timestamps ────────────────────────────────────────────────────────────
+
+def test_log_timestamps_are_utc():
+    """
+    datefmt ends in "Z", so the clock behind it must be UTC.
+
+    The production log stamped "20:46:46Z" on an event at 00:46Z. The age
+    figures in the same lines were right (lp_ts_ is an epoch), which is what
+    made the mislabelled stamp worse than an obviously wrong one: it reads as
+    directly comparable to the chain.
+    """
+    import logging, time
+    assert logging.Formatter.converter is time.gmtime
+    fmt = logging.Formatter("%(asctime)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+    rec = logging.LogRecord("t", logging.INFO, __file__, 1, "m", None, None)
+    rec.created = 1791593506          # 2026-10-10T00:51:46Z
+    assert fmt.format(rec) == "2026-10-10T00:51:46Z"
+
+
+def test_notify_sends_through_the_shared_tls_context():
+    """
+    Behavioural counterpart to the AST test: delivery really uses _TLS.
+
+    ntfy.sh is Let's Encrypt, the same CA as the PEX bundle that failed on the
+    production box. This is the call that has to survive a stale OS store.
+    """
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    try:
+        mp.setattr(ob, "ALERT_WEBHOOK_URL", "https://ntfy.sh/some-topic")
+        seen = _capture(mp)
+        ob.notify("x")
+        assert seen["context"] is ob._TLS
+    finally:
+        mp.undo()
