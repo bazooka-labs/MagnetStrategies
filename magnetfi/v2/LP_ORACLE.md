@@ -379,7 +379,11 @@ Worse, the freeze is guaranteed to coincide with the need: the band locked at
   anyone who can move it for one block can make us sign anything. This is the
   one genuinely catastrophic thing that could be dropped here, and it must not
   be.
-- **CompX cross-check.** Independent second source against our own derivation.
+- **A second opinion on the derived asset price.** Today that is CompX's Flux
+  oracle. CompX may be closing its single-token lending markets, which puts the
+  Flux oracle at risk, so the replacement is specified in
+  "[Second-source options](#second-source-options-if-compx-goes-away)" below.
+  What is not optional is *having* one — not CompX specifically.
 
 A bug cannot bypass these, because a bug still runs our code. Only a stolen key
 does, and that is the accepted risk.
@@ -441,3 +445,115 @@ repointing path (the oracle is swappable via `propose_lp_oracle`; the vault is
 not). It should therefore ship in the **same migration** as the public-lending
 contract shape — see [TODO.md](./TODO.md). Two expensive migrations become one,
 and the window is open while the book is 3 vaults and $950.
+
+
+---
+
+# Second-source options if CompX goes away
+
+_Measured 2026-10-10, prompted by word that CompX may close its single-token
+lending markets. The Flux oracle (app `3307588794`) is CompX infrastructure, so
+treat it as at-risk._
+
+## The question splits in two, and the halves have very different answers
+
+### The ALGO leg — solved, and better than what it replaces
+
+ALGO is the root of the whole reference graph (`U ← U/tALGO × tALGO ← tALGO/ALGO
+× ALGO ← ALGO/USDC`) and the volatile side of the new ALGO/USDC collateral.
+
+**Use PEX's signed payloads.** Already built and working in
+`read_pex_algo_price()`: 133-byte `PDX2` message, ed25519 against a pinned
+pubkey, every field read from the signed bytes rather than the JSON envelope.
+Measured 2026-10-10: PEX `$0.116598` vs our derivation `$0.116120` — **0.41%**.
+
+This is a strict upgrade, because **CompX does not price ALGO at all.** Its box
+set is `{$U, mUSD, goBTC, ETH, two BTC-ish, USDC (211 days stale), one
+memecoin}` — there is no asset-id-0 box.
+
+> ### Latent defect found while checking this
+> `compx_check_asset_id: 0` **silently disables** the cross-check, because
+> `compx_cross_check` opens with `if not pool.compx_check_asset_id: return "ok"`
+> and asset id 0 is falsy. Asset 0 is *also* ALGO, so the ALGO/USDC config block
+> reads as "cross-check ALGO" and means "do not cross-check" — and the log then
+> prints `compx_verified=True`, which reads as verified but means unchecked.
+> Nothing was lost (CompX has no ALGO price), but the sentinel needs to be `None`
+> or `-1` before anyone relies on that field for ALGO.
+
+### The $U leg — no clean replacement exists, and that is a liquidity fact
+
+| source | kind | independent of Tinyman? | verdict |
+|---|---|---|---|
+| CompX Flux oracle | on-chain box read | **probably not** — see below | at risk |
+| **Tinyman multi-route** | on-chain reserves | no (same venue) | **primary replacement** |
+| Pact API asset price | off-chain HTTP | yes | useful third opinion |
+| Pact on-chain pools | on-chain reserves | yes | weak primitive — see below |
+| Vestige | off-chain HTTP | yes | cannot see Pact's MW pools (`pools.ts:193`) |
+| PEX | signed payload | yes | **cannot price $U** |
+
+**Tinyman multi-route is the recommended primary.** $U can be priced three ways
+through pools we already read, and they agree (2026-10-10):
+
+| route | $U |
+|---|---|
+| U/USDC direct | $0.160037 |
+| U/tALGO → tALGO → ALGO | $0.161135 |
+| U/ALGO → ALGO | $0.161640 |
+| **median** | **$0.161135** |
+
+Max spread vs median **0.681%**; median vs CompX **0.269%**. Take the median of
+three and alert on spread. Costs nothing — all three pools are already fetched,
+and U/ALGO joins the set once it is registered.
+
+**Why losing CompX costs less than it appears.** Pact's $U pools are all
+`MANAGED_WEIGHTED` and, per `pools.ts:193`, invisible to the usual aggregators;
+Tinyman is where $U depth and all stable/ALGO-paired $U liquidity sits. So
+CompX's $U price is almost certainly derived from the same Tinyman pools we read.
+Its independence was in the **implementation**, not the venue — and three
+independent routes through our own arithmetic recover most of that. *(Inference:
+CompX's internals are not public.)*
+
+What multi-route does **not** catch is a systematic error in the shared
+primitives — `_pool_reserves`, decimals handling, the `sqrt` LP formula. Only an
+externally-computed number catches those, which is the one real argument for
+keeping an outside source in the loop.
+
+**Pact is real liquidity but a poor pricing route.** ~$22k of $U across four
+pools, comparable to Tinyman's ~$26k:
+
+| Pact pool | TVL |
+|---|---|
+| U/FOLKS | $9,738 |
+| U/ALPHA | $6,244 |
+| U/COMPX | $5,022 |
+| U/HAY | $987 |
+
+Two problems. First, **every pair is $U against a small token** — never ALGO or
+a stable — so each route needs ALPHA/COMPX/HAY/FOLKS priced first, through
+assets thinner than $U itself. Second, they are `MANAGED_WEIGHTED`: price is
+`(reserve_b/weight_b) / (reserve_a/weight_a)`, and **the manager can reweight**,
+moving the implied spot price with no trade at all. That is a materially weaker
+oracle primitive than Tinyman's constant product.
+
+Pact's **API** is the usable part: it publishes an aggregate $U price
+(`primary_asset.price`), reading **$0.15915** on 2026-10-10 — 1.2% below our
+median. Genuinely venue-independent, and the natural CompX replacement for the
+external tier. The cost is an HTTP dependency, which P19-02 deliberately
+removed; acceptable for an **alert-only** check, and not acceptable as anything
+a post depends on.
+
+## Recommendation
+
+Three tiers, none load-bearing on a single vendor:
+
+1. **TWAP** on our own derivation — unchanged, and still the one thing that must
+   not be dropped.
+2. **Multi-route median** for every asset with more than one path ($U has three).
+   Alert when the spread exceeds ~1%. On-chain, free, no vendor.
+3. **One external number, alert-only** — PEX for ALGO (already built, pinned
+   key), and CompX for $U while it lives, falling back to Pact's API. Never
+   gates a post.
+
+Tier 2 is the work: it replaces a vendor dependency with arithmetic over pools
+already being read, and it is the only option here that gets *stronger* as
+collateral is added, since each new $U pool is another route.

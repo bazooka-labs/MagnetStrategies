@@ -33,7 +33,7 @@ to leave.
 | PSM USDC reserve | **$151.40** | caps everything below |
 | circulating mUSD | **$100.04** | |
 | `vault_ceiling` = reserve − circulating | **$51.37** | total *additional* borrow capacity, all pools |
-| open positions | **3**, across **2 borrower addresses** (neither is the admin key) | migration is a 2-person conversation today |
+| open positions | **3**, across **2 borrower addresses**, both the founder's own dogfood wallets | migration is self-service today — the cheapest it will ever be |
 | vault collateral held | 2,000 U/tALGO LP + 400 U/USDC LP | |
 
 **The $51 ceiling is the hinge.** Listing ALGO/USDC today opens it to fifty-one
@@ -114,13 +114,26 @@ Design is settled in
 [LP_ORACLE.md → v4](./LP_ORACLE.md#v4--signed-payloads-decided-2026-10-07-not-yet-built).
 Build order puts the signer first so the vault has something real to verify.
 
-- [ ] **2.1 — Signer service.** TWAP smoothing and the CompX cross-check **stay**
-      — they catch bugs, which key custody does not, and signing a *spot* price
-      on a pool as thin as U/tALGO is the one genuinely catastrophic thing that
-      could be dropped. Signs `{pool_id, price, expiry}`, pushes to object
-      storage, no inbound connections. Signer key separate from the cold admin
-      key, holding only fee ALGO. Model: PEX's own R2 bucket, whose verification
-      path this org already reads in `oracle_bot.py:read_pex_algo_price`.
+- [ ] **2.1 — Signer service.** TWAP smoothing and a second-source check
+      **stay** — they catch bugs, which key custody does not, and signing a
+      *spot* price on a pool as thin as U/tALGO is the one genuinely
+      catastrophic thing that could be dropped. Signs `{pool_id, price,
+      expiry}`, pushes to object storage, no inbound connections. Signer key
+      separate from the cold admin key, holding only fee ALGO. Model: PEX's own
+      R2 bucket, whose verification path this org already reads in
+      `oracle_bot.py:read_pex_algo_price`.
+- [ ] **2.1a — Replace the CompX dependency.** CompX may be closing its
+      single-token lending markets, which puts the Flux oracle at risk. Full
+      analysis and measurements in
+      [LP_ORACLE.md → Second-source options](./LP_ORACLE.md#second-source-options-if-compx-goes-away).
+      Three tiers: TWAP (unchanged); **multi-route median** — $U prices three
+      ways through pools already fetched, agreeing to 0.681% on 2026-10-10, which
+      is the real work here and the only option that gets *stronger* as
+      collateral is added; and one external alert-only number — PEX for ALGO
+      (already built, 0.41% agreement, and CompX never priced ALGO at all),
+      Pact's API for $U if CompX goes dark. Also fix the
+      `compx_check_asset_id: 0` sentinel, which silently disables the check
+      because asset 0 is falsy *and* is ALGO.
 - [ ] **2.2 — Vault contract.** Add: verify signature; payload expiry (~20s);
       `price > 0` (a zero permanently bricks a pool, AUD-042); pool whitelist.
       Remove: posted-price read, `lp_ts_` freshness, anchor band, ±50%-vs-prior,
@@ -148,10 +161,13 @@ vault is the same work as registering two, and the rate changes are just the
 - [ ] **3.1** Deploy the new vault (reproducible build verified).
 - [ ] **3.2** `propose_vault_contract(<new vault>)` on the PSM. **Start the 48h
       clock early** and do the rest of the work inside the window.
-- [ ] **3.3** Wind down the 3 open positions. Two borrower addresses —
-      `DINKXOOJ…` (2 positions) and `WTG2WWFY…` (1) — neither is the admin key,
-      so this needs contacting them. Each repays via `pay_interest` and closes;
-      LP and the refundable `46,500 µALGO` MBR return to them.
+- [ ] **3.3** Wind down the 3 open positions. Both borrower addresses —
+      `DINKXOOJ…` (2 positions) and `WTG2WWFY…` (1) — are the **founder's own
+      dogfood wallets**, confirmed 2026-10-10. No third-party coordination: just
+      `pay_interest` and close on each, LP and the refundable `46,500 µALGO` MBR
+      returning to the same hands. **This is the cheapest this step will ever
+      be**, and it is the strongest argument for migrating before any outside
+      borrower arrives.
 - [ ] **3.4** `confirm_vault_contract()` after the timelock.
 - [ ] **3.5** Register all four pools. **Threshold before LTV** — `set_ltv`
       asserts `liq != 0` (`vault/contract.py:936`). Threshold is capped at
