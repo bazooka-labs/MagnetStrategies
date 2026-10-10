@@ -114,6 +114,33 @@ admin-adjustable; raise toward 70/80 once the liquidation bot is proven.
 
 ## ⚠️ Order matters
 
+> ### Deriving `min_price` / `max_price` — do NOT copy the numbers below
+>
+> `add_pool` sets the anchor from the price you pass, and the contract band is
+> anchor ×0.75 … ×1.25. The bot's own bounds must sit **inside** that band, so
+> it refuses a bad reading before paying a fee rather than posting into a revert.
+>
+> Compute them from the anchor you actually passed:
+>
+> ```
+> min_price = round(anchor * 0.76)
+> max_price = round(anchor * 1.24)
+> ```
+>
+> The literal values in the blocks below were computed at 2026-10-10T01:36Z and
+> **go stale as the price moves**. Two concrete misses found that day:
+>
+> - ALGO/USDC's `max_price` of 1,440,000 was **2,858 above** the band ceiling of
+>   1,437,142. The bot would have accepted a price the contract rejects — a
+>   reverted post and a wasted fee every five minutes.
+> - U/ALGO's bounds were copied from U/tALGO and cleared the ceiling by **293
+>   units** (0.03%), which is margin only by coincidence.
+>
+> This is the same failure class that froze U/tALGO on 2026-10-09, where a
+> `max_price` of 900,000 blocked a legitimate rise while the contract band still
+> had 21% of room. Bot bounds and contract band must be derived from one number.
+
+
 > ⚠️ **Read before running either list.** Verified against `vault/contract.py`
 > and the live chain on 2026-10-10:
 >
@@ -162,15 +189,16 @@ Threshold was 7800 in an earlier revision of this file. That exceeds the firm
   "pool_address": "2PIFZW53RHCSFSYMCFUBW4XOCXOMB7XOYQSQ6KGT3KVGJTL4HM6COZRNMM",
   "asset_a_id": 31566704, "asset_a_decimals": 6,
   "asset_b_id": 0,        "asset_b_decimals": 6,
-  "min_price": 880000, "max_price": 1440000,
+  "min_price": 873000, "max_price": 1425000,
   "compx_check_asset_id": 0,
   "label": "ALGO/USDC"
 }
 ```
 
-`asset_a` must be the pool's `asset_1_id` — the bot verifies this against chain
-to catch a wrong `pool_address`. Bounds sit just inside the ±25% anchor band
-(871,882 … 1,453,136). No new `asset_decimals`, `reference_pools` or
+`asset_a` must be the pool's `asset_1_id` (USDC here, since Tinyman orders the
+higher asset id first) — the bot verifies this against chain to catch a wrong
+`pool_address`. Bounds above assume an anchor of 1,149,714 (band 862,285 …
+1,437,142); recompute them from the anchor you pass. No new `asset_decimals`, `reference_pools` or
 `asset_price_bounds` entries are needed — ALGO and USDC already have all three.
 
 Expect ~15 minutes of `only 1/3 readings — holding prior on-chain price` before
@@ -246,7 +274,7 @@ vault  3671287267   opt_in_asset(3617313492)                   # vault must hold
   "pool_address": "35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4",
   "asset_a_id": 3081853135, "asset_a_decimals": 5,
   "asset_b_id": 0,          "asset_b_decimals": 6,
-  "min_price": 660000, "max_price": 1078000,
+  "min_price": 655000, "max_price": 1069000,
   "compx_check_asset_id": 3081853135,
   "label": "U/ALGO"
 }
