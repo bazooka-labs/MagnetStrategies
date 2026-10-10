@@ -91,7 +91,10 @@ set from it.
 
 ## Risk parameters, and why
 
-**LTV 6500 / liq threshold 7800 / rate 800.**
+**LTV 6500 / liq threshold 7500 / rate 800.**
+
+(Threshold was 7800 here originally. 7500 is a firm cap — see the note under
+"Order matters" below. The LTV is unaffected: 6500 is still comfortably below.)
 
 An ALGO/USDC LP is roughly **half as volatile** as a volatile/volatile pair:
 half the position is a stablecoin, so LP value tracks `sqrt(P_ALGO)`.
@@ -111,6 +114,26 @@ admin-adjustable; raise toward 70/80 once the liquidation bot is proven.
 
 ## ⚠️ Order matters
 
+> ⚠️ **Read before running either list.** Verified against `vault/contract.py`
+> and the live chain on 2026-10-10:
+>
+> - **Price is entered in HUMAN units in the Admin UI**, not ×1e6. The form
+>   multiplies by 1e6 itself (`OperationsPanel.tsx:142`), so a U/tALGO-style
+>   price of `929793` raw is typed as **`0.929793`**. `add_pool` sets the price
+>   AND the anchor, so a 1e6 slip puts the anchor beyond reach of every
+>   subsequent bot post and the pool is unusable until re-anchored.
+> - **`set_liq_threshold` MUST precede `set_ltv`.** `set_ltv` asserts
+>   `liq != 0` ("set liq threshold before ltv", `contract.py:936`). The order
+>   below reflects this; an earlier revision had it backwards.
+> - **Threshold cap is 7500, firmly.** The on-chain assert permits 9000 for
+>   backward compatibility, but seize percentages and penalties are calibrated
+>   only for 75% — above it, partial-liquidation health restoration breaks
+>   SILENTLY (M1, `contract.py:945-948`). Both live pools are at 7500.
+> - **`opt_in_asset` is required and is easy to miss.** `open_vault` requires
+>   the LP transfer to land on the vault's app address (`contract.py:350`),
+>   which fails unless the vault has opted into that LP ASA. Once per pool.
+
+
 **Register on chain FIRST.** `update_lp_price` asserts the pool is whitelisted,
 so adding it to the bot config before `add_pool` means a reverted post and a
 wasted fee every five minutes.
@@ -118,12 +141,16 @@ wasted fee every five minutes.
 ### 1. Admin calls (hardware wallet)
 
 ```
-oracle 3644230020   add_pool(1002590888, <fresh LP price ×1e6>)
+oracle 3644230020   add_pool(1002590888, <fresh LP price>)      # UI: human units
 vault  3671287267   set_lp_asa_id(1002590888, 1002590888)
+vault  3671287267   set_liq_threshold(1002590888, 7500)        # BEFORE set_ltv
 vault  3671287267   set_ltv(1002590888, 6500)
-vault  3671287267   set_liq_threshold(1002590888, 7800)
 vault  3671287267   set_rate(1002590888, 800)
+vault  3671287267   opt_in_asset(1002590888)                   # vault must hold the LP ASA
 ```
+
+Threshold was 7800 in an earlier revision of this file. That exceeds the firm
+7500 cap and would have broken partial liquidation silently.
 
 `add_pool` sets the price **and** the anchor, so no separate re-anchor.
 
@@ -203,11 +230,12 @@ anything.
 ## Admin calls
 
 ```
-oracle 3644230020   add_pool(3617313492, <fresh LP price ×1e6>)
+oracle 3644230020   add_pool(3617313492, <fresh LP price>)      # UI: human units
 vault  3671287267   set_lp_asa_id(3617313492, 3617313492)
+vault  3671287267   set_liq_threshold(3617313492, 7500)        # BEFORE set_ltv
 vault  3671287267   set_ltv(3617313492, 6000)
-vault  3671287267   set_liq_threshold(3617313492, 7500)
 vault  3671287267   set_rate(3617313492, 800)
+vault  3671287267   opt_in_asset(3617313492)                   # vault must hold the LP ASA
 ```
 
 ## Oracle bot config (add AFTER `add_pool`)
