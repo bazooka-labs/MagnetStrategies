@@ -51,7 +51,18 @@ _Last updated: 2026-08-19. Live on mainnet with U/tALGO **and U/USDC** collatera
 
 ---
 
-## 🧭 Path forward — agreed 2026-10-07
+## 🧭 Path forward
+
+> **Superseded 2026-10-10 by [REVAMP_PLAN.md](./REVAMP_PLAN.md).** The ordering
+> below put ALGO/USDC (item 3) *before* the rebuild. Two measurements taken on
+> 2026-10-10 reversed that: `vault_ceiling` is **$51.37** (PSM reserve $151.40
+> less $100.04 circulating), so listing new collateral cannot produce the borrow
+> demand item 7 waits on; and v4 is a vault redeploy, so any pool registered
+> first gets registered twice and any borrower attracted first has to migrate.
+> Goals 2 and 3 now ride inside the single migration. The reasoning below is
+> otherwise unchanged and still accurate.
+
+### Original ordering — agreed 2026-10-07
 
 Ordered. Each item is cheap only while the book is small; the window closes as
 positions and lenders accumulate.
