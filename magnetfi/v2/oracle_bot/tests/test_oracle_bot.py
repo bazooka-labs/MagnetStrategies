@@ -895,7 +895,13 @@ def test_every_urlopen_passes_the_shared_context():
     alone. The AST sees calls only.
     """
     import ast
-    tree = ast.parse(open(ob.__file__).read())
+    # encoding is explicit: the production host is Windows, where the locale
+    # default is cp1252 until PEP 686 lands in 3.15, and this file does not
+    # decode as cp1252 (there is a 0x90 byte at offset 546). Without this the
+    # test errors out on the one machine the operator runs it on to confirm a
+    # fix. `with` because -W error turns the leaked handle into a failure.
+    with open(ob.__file__, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
     calls = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):

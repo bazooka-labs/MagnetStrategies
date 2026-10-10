@@ -173,6 +173,9 @@ UPDATE_LP_PRICE_SIG = "update_lp_price(uint64,uint64)void"
 # genuinely UTC (lp_ts_ is an epoch, so the "276m old" figures were always
 # right), which is exactly what makes a mislabelled log line dangerous: it reads
 # as comparable to the chain and is not.
+# Must stay a C builtin (or a staticmethod). Assigning a lambda or a plain
+# Python function here binds it as a method, so logging calls it with (self,
+# secs) and every log line in the process raises.
 logging.Formatter.converter = time.gmtime
 
 logging.basicConfig(
