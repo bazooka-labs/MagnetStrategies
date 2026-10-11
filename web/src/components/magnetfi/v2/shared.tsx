@@ -8,9 +8,6 @@ import Image from "next/image";
 const TOKEN_ICONS: Record<string, string> = {
   U: "/tokens/u.png",
   MUSD: "/musd-icon.png",
-  // Drawn in-house to Algorand's mark, not an official asset — swap in the
-  // real one if it ever lands. Sized to clear the rounded-full crop: an
-  // earlier pass had the feet of the "A" clipped by the circle edge.
   ALGO: "/tokens/algo.png",
   TALGO: "/tokens/talgo.png",
   USDC: "/tokens/usdc.png",
