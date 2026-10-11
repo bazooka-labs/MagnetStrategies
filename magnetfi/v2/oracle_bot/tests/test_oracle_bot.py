@@ -1357,3 +1357,181 @@ def test_preflight_passes_the_shipped_config(caplog):
     bad = [r.message for r in caplog.records
            if "cannot price" in r.message or "cannot reach USD" in r.message]
     assert not bad, bad
+
+
+# ── never post to a pool the oracle has not whitelisted ───────────────────────
+#
+# update_lp_price asserts the pool is registered, so posting to an unknown one
+# reverts and burns a fee every cycle until somebody notices. The runbook's
+# "register on chain FIRST" is now structural rather than an instruction.
+
+def _active_client(value):
+    """Fake algod whose oracle global state carries lp_active_<pool> = value."""
+    import base64 as _b64
+    key = _b64.b64encode(b"lp_active_" + (1).to_bytes(8, "big")).decode()
+    state = [] if value is None else [{"key": key, "value": {"type": 2, "uint": value}}]
+    class C:
+        def application_info(self, _app):
+            return {"params": {"global-state": state}}
+    return C()
+
+
+def test_active_flag_reads_one_and_zero():
+    assert ob.read_onchain_active(_active_client(1), 555, 1) == 1
+    assert ob.read_onchain_active(_active_client(0), 555, 1) == 0
+
+
+def test_an_empty_state_list_is_unknown_not_unregistered():
+    """
+    This test used to assert 0, reading an EMPTY global state as "key absent,
+    therefore not registered". That was wrong: an empty list is also what a
+    degraded reply looks like, and this oracle always carries state. Concluding
+    "unregistered" from it would skip a price post on a bad reply.
+
+    The genuine absent-key case is covered by
+    test_absent_key_in_a_POPULATED_state_is_a_definite_no.
+    """
+    assert ob.read_onchain_active(_active_client(None), 555, 1) is None
+
+
+def test_a_failed_read_is_None_not_zero():
+    """
+    The distinction the guard rests on. Returning 0 here would turn an algod
+    hiccup into a skipped price post, which is the outage this whole phase
+    exists to prevent.
+    """
+    class Boom:
+        def application_info(self, *a, **k): raise RuntimeError("algod down")
+    assert ob.read_onchain_active(Boom(), 555, 1) is None
+
+
+def test_update_pool_skips_an_unregistered_pool(monkeypatch):
+    monkeypatch.setattr(ob, "read_onchain_active", lambda *a, **k: 0)
+    called = []
+    monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: called.append(1) or (1, True))
+    ob.update_pool(object(), make_cfg(), make_pool(), None, "sk", "addr", dry_run=True)
+    assert not called, "priced a pool the oracle does not know"
+
+
+def test_update_pool_proceeds_when_the_active_read_fails(monkeypatch):
+    """Unknown must not mean skip — that would be a self-inflicted outage."""
+    monkeypatch.setattr(ob, "read_onchain_active", lambda *a, **k: None)
+    called = []
+    monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: called.append(1) or None)
+    ob.update_pool(object(), make_cfg(), make_pool(), None, "sk", "addr", dry_run=True)
+    assert called, "a failed read stopped a legitimate pool"
+
+
+def test_update_pool_proceeds_for_a_registered_pool(monkeypatch):
+    monkeypatch.setattr(ob, "read_onchain_active", lambda *a, **k: 1)
+    called = []
+    monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: called.append(1) or None)
+    ob.update_pool(object(), make_cfg(), make_pool(), None, "sk", "addr", dry_run=True)
+    assert called
+
+
+def test_shipped_config_carries_u_algo():
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(ob.__file__).parent / "config.json").read_text())
+    ua = [p for p in cfg["pools"] if p["pool_id"] == 3617313492]
+    assert len(ua) == 1, "U/ALGO missing from the shipped config"
+    p = ua[0]
+    # 3073502995 is a DIFFERENT token also ticking "U" with an empty pool.
+    assert p["pool_address"].startswith("35I7TSPB")
+    assert (p["asset_a_id"], p["asset_a_decimals"]) == (3081853135, 5)
+    assert (p["asset_b_id"], p["asset_b_decimals"]) == (0, 6)
+
+
+# ── the pool_id we post under must be the pool's own LP token ────────────────
+#
+# ASA 3073502995 and 3617313492 are BOTH "TinymanPool2.0 U-ALGO", both unit
+# TMPOOL2, both created by the same Tinyman address. Only the reserve account
+# tells them apart, and the runbook already warns about confusing them. The
+# asset_1/asset_2 check catches a wrong pool_address; this catches a wrong
+# pool_id, where every other check passes and the price is simply labelled as
+# another pool's.
+
+def _state_with(**over):
+    st = {"asset_1_id": 111, "asset_2_id": 222,
+          "asset_1_reserves": 1_000_000, "asset_2_reserves": 1_000_000,
+          "issued_pool_tokens": 1_000_000, "pool_token_asset_id": 1}
+    st.update(over)
+    return st
+
+
+def test_refuses_when_pool_id_is_not_the_pools_lp_token(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: _state_with(
+        pool_token_asset_id=3_073_502_995))          # the decoy U-ALGO LP ASA
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        out = ob.get_lp_price(object(), make_pool(pool_id=3_617_313_492), make_cfg())
+    assert out is None
+    assert any("pool_id mismatch" in r.message for r in caplog.records)
+
+
+def test_accepts_when_pool_id_matches_the_lp_token(monkeypatch):
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: _state_with(
+        pool_token_asset_id=1))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 1.0)
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    assert ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg()) is not None
+
+
+def test_a_pool_not_publishing_its_lp_token_is_not_refused(monkeypatch):
+    """Absent field means an older layout, not a mismatch."""
+    st = _state_with(); del st["pool_token_asset_id"]
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: st)
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 1.0)
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    assert ob.get_lp_price(object(), make_pool(pool_id=999), make_cfg()) is not None
+
+
+# ── the hardened active-flag reader ──────────────────────────────────────────
+
+def _active_resp(state):
+    class C:
+        def application_info(self, _app): return state
+    return C()
+
+
+@pytest.mark.parametrize("state,want,why", [
+    ({"params": {"global-state": []}}, None, "empty state is indistinguishable from a degraded reply"),
+    ({"params": {}}, None, "truncated reply"),
+    ({}, None, "truncated reply"),
+    ({"params": {"global-state": None}}, None, "malformed"),
+    ({"params": {"global-state": {"k": "v"}}}, None, "malformed"),
+])
+def test_unreadable_state_is_unknown_not_inactive(state, want, why):
+    """
+    Returning 0 from an ABSENCE would turn a degraded algod reply into a skipped
+    price post. This oracle always carries state, so an empty list is anomalous,
+    never a legitimate "no pools registered".
+    """
+    assert ob.read_onchain_active(_active_resp(state), 555, 1) is want, why
+
+
+def test_a_non_uint_active_flag_is_unknown():
+    """The contract writes a uint. Anything else is not understood, not 'off'."""
+    import base64 as _b
+    key = _b.b64encode(b"lp_active_" + (1).to_bytes(8, "big")).decode()
+    c = _active_resp({"params": {"global-state": [
+        {"key": key, "value": {"type": 1, "bytes": "AA=="}}]}})
+    assert ob.read_onchain_active(c, 555, 1) is None
+
+
+def test_absent_key_in_a_POPULATED_state_is_a_definite_no():
+    import base64 as _b
+    other = _b.b64encode(b"lp_active_" + (9).to_bytes(8, "big")).decode()
+    c = _active_resp({"params": {"global-state": [
+        {"key": other, "value": {"type": 2, "uint": 1}}]}})
+    assert ob.read_onchain_active(c, 555, 1) == 0
+
+
+def test_shipped_config_pool_ids_are_distinct():
+    """Two pools sharing a pool_id would overwrite each other on the oracle."""
+    import json, pathlib
+    cfg = json.loads((pathlib.Path(ob.__file__).parent / "config.json").read_text())
+    ids = [p["pool_id"] for p in cfg["pools"]]
+    assert len(set(ids)) == len(ids)
+    assert 3_073_502_995 not in ids, "that is the decoy U-ALGO LP ASA"

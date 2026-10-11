@@ -730,6 +730,26 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) ->
         )
         return None
 
+    # The pool_id we post under MUST be this pool's own LP token.
+    #
+    # The existing asset check above catches a wrong pool_address. This catches
+    # the opposite mistake: right pool, wrong pool_id — which would price pool X
+    # from pool Y's reserves and post it under X, with every other check
+    # passing. Not hypothetical: ASA 3073502995 and 3617313492 are BOTH named
+    # "TinymanPool2.0 U-ALGO", both unit TMPOOL2, both created by the same
+    # Tinyman address, and only their reserve account distinguishes them.
+    #
+    # Checked only when the field is present, so an older pool layout that does
+    # not publish it is not refused on a field it never had.
+    lp_token = pool_state.get("pool_token_asset_id")
+    if lp_token is not None and lp_token != pool.pool_id:
+        log.error(
+            f"[{pool.label}] pool_id mismatch: configured {pool.pool_id} but the pool at "
+            f"{pool.pool_address[:12]}… issues LP token {lp_token}; refusing. "
+            f"Posting would price one pool and label it another."
+        )
+        return None
+
     # Derive both underlyings' USD price purely on-chain.
     memo: dict[int, float] = {}
     try:
@@ -820,6 +840,42 @@ def read_onchain_anchor(client: algod.AlgodClient, oracle_app_id: int, pool_id: 
     except Exception as e:
         log.debug(f"Failed to read anchor for pool {pool_id}: {e}")
     return 0
+
+
+def read_onchain_active(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int | None:
+    """
+    1 / 0 from the oracle's `lp_active_<pool_id>`, or None if the read FAILED.
+
+    The None is the point. A key that is genuinely absent means the pool was
+    never registered; a network error means we do not know. Those must not be
+    confused, because acting on the second would turn an algod hiccup into a
+    skipped price post.
+    """
+    try:
+        key_b64 = base64.b64encode(b"lp_active_" + pool_id.to_bytes(8, "big")).decode()
+        info = client.application_info(oracle_app_id)
+        state = info.get("params", {}).get("global-state")
+        # An empty or missing state list is indistinguishable from a degraded
+        # response, and this oracle ALWAYS carries state (admin, guardian, every
+        # pool's keys). So absence of the whole list is "unknown", not "absent".
+        # Only a populated list lets us conclude the key genuinely is not there.
+        if not isinstance(state, list) or not state:
+            log.debug(f"Oracle {oracle_app_id} returned no global state; treating as unknown")
+            return None
+        for item in state:
+            if item.get("key") == key_b64:
+                v = item.get("value") or {}
+                if v.get("type") != 2 or "uint" not in v:
+                    # The contract writes a uint here. Anything else means we do
+                    # not understand the state, which is not the same as "off".
+                    log.warning(f"Oracle active flag for pool {pool_id} is not a uint; "
+                                f"treating as unknown")
+                    return None
+                return v["uint"]
+        return 0                      # populated state, key genuinely absent
+    except Exception as e:
+        log.debug(f"Failed to read active flag for pool {pool_id}: {e}")
+        return None                   # unknown -> caller must not skip
 
 
 def anchor_bounds(anchor: int) -> tuple[int, int]:
@@ -914,6 +970,21 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
                 twap: TwapState, bot_sk: str, bot_address: str, dry_run: bool) -> None:
     """Run the full price pipeline for one pool and post to oracle if valid."""
     log.info(f"[{pool.label}] computing price ...")
+
+    # `update_lp_price` asserts the pool is whitelisted, so posting to one the
+    # oracle has never seen is a guaranteed revert — a wasted fee every cycle,
+    # for as long as nobody notices. The runbook says "register on chain FIRST",
+    # and this is that instruction made structural: the ordering now cannot be
+    # got wrong, only delayed.
+    #
+    # Skips ONLY on a definite negative. read_onchain_active returns None when
+    # the read itself failed, and in that case we proceed exactly as before —
+    # an algod hiccup must never cost a price post.
+    if read_onchain_active(client, cfg.oracle_app_id, pool.pool_id) == 0:
+        log.warning(f"[{pool.label}] pool {pool.pool_id} is not registered on oracle "
+                    f"{cfg.oracle_app_id} — skipping. Run add_pool first; posting now "
+                    f"would revert and burn a fee every cycle.")
+        return
 
     result = get_lp_price(client, pool, cfg)
     if result is None:
