@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { POOLS, DUST_POOLS } from "./pools";
+import { ALL_VENUES } from "./pools";
 import { fetchAggregateTvlUsd } from "./tvlAggregate";
 
 const U = 3081853135;
-const TINYMAN_POOLS = [...POOLS, ...DUST_POOLS].filter((p) => p.dex === "tinyman");
-const PACT_POOLS = [...POOLS, ...DUST_POOLS].filter((p) => p.dex === "pact");
+// ALL_VENUES, not POOLS: a pair on two DEXes is two pools, and counting it once
+// would understate Total TVL by whichever venue came second.
+const TINYMAN_POOLS = ALL_VENUES.filter((p) => p.dex === "tinyman");
+const PACT_POOLS = ALL_VENUES.filter((p) => p.dex === "pact");
 
 /** Synthetic LP asset id per hardcoded Tinyman pool — this is the canonical dedupe key. */
 const lpIdFor = (addr: string) => 900_000_000 + TINYMAN_POOLS.findIndex((p) => p.ref === addr);

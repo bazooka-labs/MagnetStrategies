@@ -4,13 +4,25 @@
 
 export type PoolDex = "tinyman" | "pact";
 
+/** One pool on one DEX. A pair can live on several. */
+export type Venue = {
+  dex: PoolDex;
+  ref: string;     // tinyman → pool account address; pact → pool id
+  addLiquidityUrl: string;
+};
+
 export type Pool = {
   id: string;      // internal key
   pair: string;    // display, e.g. "U / tALGO"
   partner: string; // the non-U token unit name
-  dex: PoolDex;
-  ref: string;     // tinyman → pool account address; pact → pool id
-  addLiquidityUrl: string;
+  /**
+   * Every DEX this pair trades on. Usually one.
+   *
+   * U/ALGO is the reason this is a list: the pair runs on Tinyman AND on a Pact
+   * managed-weighted pool, and showing it twice would imply two different
+   * products rather than one pair with two places to supply it.
+   */
+  venues: Venue[];
 };
 
 /**
@@ -35,47 +47,66 @@ const DEX_POOL_URL: Record<PoolDex, (ref: string) => string> = {
   pact: (ref) => `https://app.pact.fi/pool/${ref}`,
 };
 
-type PoolDef = Omit<Pool, "addLiquidityUrl">;
+type VenueDef = Omit<Venue, "addLiquidityUrl">;
+type PoolDef = Omit<Pool, "venues"> & { venues: VenueDef[] };
 const withUrl = (p: PoolDef): Pool => ({
   ...p,
-  addLiquidityUrl: DEX_POOL_URL[p.dex](p.ref),
+  venues: p.venues.map((v) => ({ ...v, addLiquidityUrl: DEX_POOL_URL[v.dex](v.ref) })),
 });
 
-/** Live-fetched numbers merged onto an Pool. APRs are percentages (e.g. 36.78). */
-export type PoolData = Pool & {
-  tvlUsd: number | null;
-  feeApr: number | null;
-  farmApr: number | null;   // null when no active farm
-  totalApr: number | null;
+/** Live-fetched numbers merged onto a Pool. APRs are percentages (e.g. 36.78). */
+export type PoolData = Pool & PoolMetrics & {
+  /**
+   * Per-venue figures behind the combined headline.
+   *
+   * Kept rather than collapsed, because combining can hide the number a
+   * supplier actually needs. Measured 2026-10-10, U/ALGO paid 3.69% on Tinyman
+   * and 0.42% on Pact — a card showing only the blended 2.22% would quietly
+   * send liquidity to the worse venue.
+   */
+  venueData: (Venue & PoolMetrics)[];
 };
 
 export const POOLS: Pool[] = ([
+  // ── Both DEXes ──
+  {
+    // The only multi-venue pair. Tinyman and a Pact MANAGED_WEIGHTED pool, both
+    // 50/50 and both real: $2,573 and $2,112 on 2026-10-10. The Pact one is
+    // invisible to the /api/pools listing (weighted pools are only reachable by
+    // id, or via the factory creator — see leaderboard.ts), which is why it had
+    // to be found through the factory rather than a search.
+    id: "u-algo", pair: "U / ALGO", partner: "ALGO",
+    venues: [
+      { dex: "tinyman", ref: "35I7TSPBSYCEP276DHLZDTOP3W77GY76VOLBCAKWICVFJUOTQAMRR6QZA4" },
+      { dex: "pact", ref: "3734973475" },
+    ],
+  },
   // ── Tinyman ──
   {
-    id: "u-talgo", pair: "U / tALGO", partner: "tALGO", dex: "tinyman",
-    ref: "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI",
+    id: "u-talgo", pair: "U / tALGO", partner: "tALGO",
+    venues: [{ dex: "tinyman", ref: "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI" }],
   },
   {
-    id: "u-mooj", pair: "U / MOOJ", partner: "MOOJ", dex: "tinyman",
-    ref: "YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I",
+    id: "u-mooj", pair: "U / MOOJ", partner: "MOOJ",
+    venues: [{ dex: "tinyman", ref: "YLJXI33PTPUPCPVDEW77QCBCZAZY7LFEO3MYNL4OAG7T6JJAVMVSKCV52I" }],
   },
   {
-    id: "u-usdc", pair: "U / USDC", partner: "USDC", dex: "tinyman",
-    ref: "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI",
+    id: "u-usdc", pair: "U / USDC", partner: "USDC",
+    venues: [{ dex: "tinyman", ref: "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI" }],
   },
   // ── Pact ──
-  { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", dex: "pact", ref: "3693600164" },
-  { id: "u-compx", pair: "U / COMPX", partner: "COMPX", dex: "pact", ref: "3692558822" },
-  { id: "u-hay",   pair: "U / HAY",   partner: "HAY",   dex: "pact", ref: "3692640639" },
-  { id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", dex: "pact", ref: "3693574268" },
+  { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", venues: [{ dex: "pact", ref: "3693600164" }] },
+  { id: "u-compx", pair: "U / COMPX", partner: "COMPX", venues: [{ dex: "pact", ref: "3692558822" }] },
+  { id: "u-hay",   pair: "U / HAY",   partner: "HAY",   venues: [{ dex: "pact", ref: "3692640639" }] },
+  { id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", venues: [{ dex: "pact", ref: "3693574268" }] },
 ] satisfies PoolDef[]).map(withUrl);
 
 // mUSD liquidity pools showcased on the mUSD token page. Same live fee/farm APR fetch as
 // POOLS above (shared fetchPoolMetrics) via /api/musd-pools.
 export const MUSD_POOLS: Pool[] = ([
   {
-    id: "musd-usdc", pair: "mUSD / USDC", partner: "USDC", dex: "tinyman",
-    ref: "QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4",
+    id: "musd-usdc", pair: "mUSD / USDC", partner: "USDC",
+    venues: [{ dex: "tinyman", ref: "QSV4G3BGTOWLXXF6XDUI35VAQZGHZIQH3ASIJLLSSPQNWYHG2UFBYTDXE4" }],
   },
 ] satisfies PoolDef[]).map(withUrl);
 
@@ -85,7 +116,12 @@ export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "P
 // stat. Summing these (rather than trusting a third-party asset-level aggregate) is what
 // keeps Total TVL correct the moment a pool migrates to a new pool id — e.g. the Pact pools
 // above, which moved to Pact's new platform and got new pool ids.
-export type PoolMetrics = Pick<PoolData, "tvlUsd" | "feeApr" | "farmApr" | "totalApr">;
+export type PoolMetrics = {
+  tvlUsd: number | null;
+  feeApr: number | null;
+  farmApr: number | null;   // null when no active farm
+  totalApr: number | null;
+};
 const EMPTY_METRICS: PoolMetrics = { tvlUsd: null, feeApr: null, farmApr: null, totalApr: null };
 
 const TINYMAN_POOLS_API = "https://mainnet.analytics.tinyman.org/api/v1/pools";
@@ -117,19 +153,69 @@ async function fetchPactMetrics(id: string): Promise<PoolMetrics> {
   return { tvlUsd: Number(p.tvl_usd) || 0, feeApr, farmApr, totalApr };
 }
 
-export async function fetchPoolMetrics(pool: Pick<Pool, "dex" | "ref">): Promise<PoolMetrics> {
+export async function fetchPoolMetrics(venue: Pick<Venue, "dex" | "ref">): Promise<PoolMetrics> {
   try {
-    return pool.dex === "tinyman" ? await fetchTinymanMetrics(pool.ref) : await fetchPactMetrics(pool.ref);
+    return venue.dex === "tinyman" ? await fetchTinymanMetrics(venue.ref) : await fetchPactMetrics(venue.ref);
   } catch {
     return EMPTY_METRICS;
   }
+}
+
+/**
+ * Blend several venues of one pair into a single headline.
+ *
+ * APRs are weighted by TVL, NOT averaged. A plain mean answers "what do these
+ * pools advertise"; the weighted figure answers "what does a dollar of
+ * liquidity in this pair actually earn", which is the only one a supplier can
+ * act on. Measured 2026-10-10 the two differed by just 0.16pp because the two
+ * U/ALGO pools happen to be similar in size — the gap grows with every dollar
+ * that lands on one side, so the weighting is not decoration.
+ *
+ * A venue with null or zero TVL carries no weight: an empty pool advertising
+ * 400% should not move the number. If no venue has TVL, fall back to a plain
+ * mean so a pair of brand-new pools still shows their advertised rate rather
+ * than nothing.
+ */
+export function combineMetrics(parts: PoolMetrics[]): PoolMetrics {
+  if (parts.length === 1) return parts[0];
+
+  const tvls = parts.map((m) => m.tvlUsd).filter((v): v is number => v != null);
+  const tvlUsd = tvls.length ? tvls.reduce((a, b) => a + b, 0) : null;
+
+  const blend = (key: "feeApr" | "farmApr" | "totalApr"): number | null => {
+    const rows = parts
+      .map((m) => ({ apr: m[key], w: m.tvlUsd ?? 0 }))
+      .filter((r): r is { apr: number; w: number } => r.apr != null);
+    if (!rows.length) return null;
+    const weight = rows.reduce((a, r) => a + r.w, 0);
+    if (weight <= 0) return rows.reduce((a, r) => a + r.apr, 0) / rows.length;
+    return rows.reduce((a, r) => a + r.apr * r.w, 0) / weight;
+  };
+
+  // farmApr stays null unless some venue actually farms, so the Farming badge
+  // does not light up on a blended zero.
+  const farm = blend("farmApr");
+  return {
+    tvlUsd,
+    feeApr: blend("feeApr"),
+    farmApr: farm != null && farm > 0 ? farm : null,
+    totalApr: blend("totalApr"),
+  };
+}
+
+/** Everything the UI needs for one pair: the blend, plus the venues behind it. */
+export async function fetchPoolData(pool: Pool): Promise<PoolData> {
+  const venueData = await Promise.all(
+    pool.venues.map(async (v) => ({ ...v, ...(await fetchPoolMetrics(v)) })),
+  );
+  return { ...pool, ...combineMetrics(venueData), venueData };
 }
 
 // Real but dust-sized $U pools (each under $150 as of 2026-09-05) — found by querying
 // Vestige's full pool index for every pool pairing $U (asset_1_id/asset_2_id = 3081853135)
 // and filtering out empty pools (0 or the ~1000-unit locked-minimum LP supply). Folded into
 // Total TVL for accuracy but deliberately left off /pools — not worth a card.
-export const DUST_POOLS: Pick<Pool, "dex" | "ref">[] = [
+export const DUST_POOLS: Pick<Venue, "dex" | "ref">[] = [
   { dex: "tinyman", ref: "337NDU6Z65P2MYHMLFEXIFAACENAN2Q6PW2PDAS3QHNUR6YN7OLBOBIRNY" }, // U/WBTC
   { dex: "tinyman", ref: "32IGIQSVVKUTBNII2QVGXI4QMSCGI6HOI44KDLSFF6VFEJ45ANSWHPCQOU" }, // U/Finite
   { dex: "tinyman", ref: "642N7PH6LA7SHU4TH6WFABDXFBQCBURJMOPRYP2UG3ESOQDTIAG3C5RO4Q" }, // GAAL/U
@@ -140,9 +226,24 @@ export const DUST_POOLS: Pick<Pool, "dex" | "ref">[] = [
   { dex: "pact", ref: "3188310827" }, // U/HOG
 ];
 
+/**
+ * Every individual pool we track, flattened across pairs and including dust.
+ *
+ * The canonical list for anything that counts or values POOLS: a multi-venue
+ * pair contributes one entry per DEX, so iterating `POOLS` instead would count
+ * only whichever venue happened to be first.
+ */
+export const ALL_VENUES: Pick<Venue, "dex" | "ref">[] = [
+  ...POOLS.flatMap((p) => p.venues),
+  ...DUST_POOLS,
+];
+
 /** Sum of live per-pool TVL across every tracked Tinyman + Pact pool, including dust pools not shown on /pools. Null only if every pool fetch failed. */
 export async function fetchTotalTvlUsd(): Promise<number | null> {
-  const metrics = await Promise.all([...POOLS, ...DUST_POOLS].map(fetchPoolMetrics));
+  // Flattened to VENUES: a multi-venue pair has one entry per pool, so U/ALGO
+  // contributes both its Tinyman and its Pact liquidity. Iterating POOLS here
+  // would have counted only whichever venue happened to be first.
+  const metrics = await Promise.all(ALL_VENUES.map(fetchPoolMetrics));
   const values = metrics.map((m) => m.tvlUsd).filter((v): v is number => v != null);
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0);

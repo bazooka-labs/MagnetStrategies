@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Wheat, ArrowUpRight, Info } from "lucide-react";
-import { DEX_LABEL, type PoolData } from "@/lib/pools";
+import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
 import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
 const fmtApr = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)}%`);
 
-function DexBadge({ dex }: { dex: PoolData["dex"] }) {
+function DexBadge({ dex }: { dex: PoolDex }) {
   return (
     <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-medium text-gray-300">
       {DEX_LABEL[dex]}
@@ -26,7 +26,9 @@ function PoolCard({ p }: { p: PoolData }) {
           <PairGlyph tokens={["$U", p.partner]} />
           <div>
             <p className="font-display text-base font-semibold text-white">{p.pair}</p>
-            <p className="mt-0.5"><DexBadge dex={p.dex} /></p>
+            <p className="mt-0.5 flex flex-wrap gap-1.5">
+              {p.venues.map((v) => <DexBadge key={v.dex} dex={v.dex} />)}
+            </p>
           </div>
         </div>
         {farming && (
@@ -51,10 +53,33 @@ function PoolCard({ p }: { p: PoolData }) {
         <span className="font-mono text-white">{fmtUsd(p.tvlUsd)}</span>
       </div>
 
-      <a href={p.addLiquidityUrl} target="_blank" rel="noopener noreferrer"
-        className="mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-magnet-300 transition-colors hover:text-magnet-200">
-        Add liquidity on {DEX_LABEL[p.dex]} <ArrowUpRight className="h-3.5 w-3.5" />
-      </a>
+      {/* Per-venue split, only when the pair runs in more than one place.
+          The blended headline above is what a dollar earns across the pair; this
+          is where it earns it, which is the number someone choosing a venue
+          needs. Measured 2026-10-10 the two U/ALGO pools paid 3.69% and 0.42% —
+          an 8.8x gap that a single averaged figure would have hidden. */}
+      {p.venues.length > 1 && (
+        <div className="mt-4 space-y-1.5 border-t border-white/5 pt-3">
+          {p.venueData.map((v) => (
+            <div key={v.dex} className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">{DEX_LABEL[v.dex]}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="font-mono text-gray-400">{fmtUsd(v.tvlUsd)}</span>
+                <span className="font-mono text-green-400/80">{fmtApr(v.totalApr)}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-col gap-2">
+        {p.venues.map((v) => (
+          <a key={v.dex} href={v.addLiquidityUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-magnet-300 transition-colors hover:text-magnet-200">
+            Add liquidity on {DEX_LABEL[v.dex]} <ArrowUpRight className="h-3.5 w-3.5" />
+          </a>
+        ))}
+      </div>
     </Panel>
   );
 }

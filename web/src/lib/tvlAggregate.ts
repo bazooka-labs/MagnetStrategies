@@ -13,7 +13,7 @@
 // reachable from any MagnetFi code path.
 
 import algosdk from "algosdk";
-import { POOLS, DUST_POOLS, type Pool } from "@/lib/pools";
+import { ALL_VENUES, type Venue } from "@/lib/pools";
 
 /** Off = shadow mode: aggregate is computed and logged, but the displayed TVL is unchanged.
  *  A module constant, not an env var, so flipping it is a reviewable code change and cannot
@@ -115,7 +115,7 @@ async function directPact(ref: string): Promise<Direct | null> {
   return { key: pactKey(id), usd: d ? money(d.tvl_usd) : null };
 }
 
-const directFor = (p: Pick<Pool, "dex" | "ref">): Promise<Direct | null> =>
+const directFor = (p: Pick<Venue, "dex" | "ref">): Promise<Direct | null> =>
   p.dex === "tinyman" ? directTinyman(p.ref) : directPact(p.ref);
 
 // ── source B: LiquiHog discovery + backstop values ──────────────────────────────
@@ -220,7 +220,7 @@ async function discoverPactWeightedIds(): Promise<number[]> {
 export async function fetchAggregateTvlUsd(): Promise<AggregateResult | null> {
   try {
     const guardsFired: string[] = [];
-    const floorPools: Pick<Pool, "dex" | "ref">[] = [...POOLS, ...DUST_POOLS];
+    const floorPools: Pick<Venue, "dex" | "ref">[] = ALL_VENUES;
 
     // 1. Hardcoded floor via our own direct fetches — authoritative.
     const directs = await Promise.all(floorPools.map((p) => directFor(p).catch(() => null)));

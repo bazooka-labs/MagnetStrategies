@@ -18,48 +18,107 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { tokenIcon } from "@/components/magnetfi/v2/shared";
-import { MUSD_POOLS, POOLS, type Pool } from "./pools";
+import { MUSD_POOLS, POOLS, combineMetrics, type Pool, type PoolMetrics } from "./pools";
 
 const all: Pool[] = [...POOLS, ...MUSD_POOLS];
+/** Every (pair, venue) pair — a pair on two DEXes yields two rows. */
+const venues = all.flatMap((p) => p.venues.map((v) => ({ ...v, id: p.id })));
 
 describe("pool deep links", () => {
-  it("every pool has a link built from its own ref", () => {
-    for (const p of all) {
-      expect(p.addLiquidityUrl, p.id).toContain(p.ref);
-      expect(p.addLiquidityUrl, p.id).toMatch(/^https:\/\//);
+  it("every venue has a link built from its own ref", () => {
+    for (const v of venues) {
+      expect(v.addLiquidityUrl, v.id).toContain(v.ref);
+      expect(v.addLiquidityUrl, v.id).toMatch(/^https:\/\//);
     }
   });
 
   it("uses the current Pact path, not the retired add-liquidity one", () => {
-    const pact = all.filter((p) => p.dex === "pact");
+    const pact = venues.filter((v) => v.dex === "pact");
     expect(pact.length).toBeGreaterThan(0);
-    for (const p of pact) {
-      expect(p.addLiquidityUrl, p.id).toBe(`https://app.pact.fi/pool/${p.ref}`);
+    for (const v of pact) {
+      expect(v.addLiquidityUrl, v.id).toBe(`https://app.pact.fi/pool/${v.ref}`);
       // The specific shape that 404s. Named so a revert is loud.
-      expect(p.addLiquidityUrl, p.id).not.toContain("add-liquidity");
+      expect(v.addLiquidityUrl, v.id).not.toContain("add-liquidity");
     }
   });
 
   it("uses the Tinyman pool path", () => {
-    const tinyman = all.filter((p) => p.dex === "tinyman");
+    const tinyman = venues.filter((v) => v.dex === "tinyman");
     expect(tinyman.length).toBeGreaterThan(0);
-    for (const p of tinyman) {
-      expect(p.addLiquidityUrl, p.id).toBe(`https://app.tinyman.org/pool/${p.ref}`);
+    for (const v of tinyman) {
+      expect(v.addLiquidityUrl, v.id).toBe(`https://app.tinyman.org/pool/${v.ref}`);
     }
   });
 
   it("keys a Pact pool by numeric id and a Tinyman pool by address", () => {
     // Crossing these would produce a plausible-looking URL that resolves to
     // nothing, which is exactly the failure this file exists to catch.
-    for (const p of all) {
-      if (p.dex === "pact") expect(p.ref, p.id).toMatch(/^\d+$/);
-      else expect(p.ref, p.id).toMatch(/^[A-Z2-7]{58}$/);
+    for (const v of venues) {
+      if (v.dex === "pact") expect(v.ref, v.id).toMatch(/^\d+$/);
+      else expect(v.ref, v.id).toMatch(/^[A-Z2-7]{58}$/);
     }
   });
 
-  it("has no duplicate ids or refs", () => {
+  it("has no duplicate pair ids or venue refs", () => {
     expect(new Set(all.map((p) => p.id)).size).toBe(all.length);
-    expect(new Set(all.map((p) => p.ref)).size).toBe(all.length);
+    // Across venues, not pairs: the same pool must never be listed twice, or
+    // its liquidity is double counted in Total TVL.
+    expect(new Set(venues.map((v) => v.ref)).size).toBe(venues.length);
+  });
+
+  it("gives a multi-venue pair one card with a link per DEX", () => {
+    const multi = all.filter((p) => p.venues.length > 1);
+    expect(multi.map((p) => p.id)).toContain("u-algo");
+    for (const p of multi) {
+      // One entry per DEX, so the breakdown cannot show the same venue twice.
+      expect(new Set(p.venues.map((v) => v.dex)).size, p.id).toBe(p.venues.length);
+    }
+  });
+});
+
+describe("combining venues", () => {
+  const m = (tvlUsd: number | null, totalApr: number | null): PoolMetrics =>
+    ({ tvlUsd, feeApr: totalApr, farmApr: null, totalApr });
+
+  it("passes a single venue through untouched", () => {
+    const one = m(100, 5);
+    expect(combineMetrics([one])).toBe(one);
+  });
+
+  it("weights APR by TVL rather than averaging", () => {
+    // The live case on 2026-10-10: Tinyman $2,573 at 3.69%, Pact $2,112 at
+    // 0.42%. A plain mean says 2.06%; what a dollar earns is 2.22%.
+    const c = combineMetrics([m(2573, 3.69), m(2112, 0.42)]);
+    expect(c.tvlUsd).toBe(4685);
+    expect(c.totalApr).toBeCloseTo(2.22, 2);
+    expect(c.totalApr).not.toBeCloseTo(2.06, 2);
+  });
+
+  it("gives an empty pool no vote on the headline APR", () => {
+    // Otherwise a drained pool advertising 400% would dominate the pair.
+    const c = combineMetrics([m(10_000, 5), m(0, 400)]);
+    expect(c.totalApr).toBeCloseTo(5, 6);
+  });
+
+  it("falls back to a plain mean when no venue reports TVL", () => {
+    // Two brand-new pools should still show their advertised rate, not nothing.
+    const c = combineMetrics([m(null, 4), m(null, 6)]);
+    expect(c.totalApr).toBeCloseTo(5, 6);
+    expect(c.tvlUsd).toBeNull();
+  });
+
+  it("sums TVL even when one venue fails to report", () => {
+    expect(combineMetrics([m(100, 5), m(null, null)]).tvlUsd).toBe(100);
+  });
+
+  it("leaves farmApr null unless a venue actually farms", () => {
+    // A blended zero must not light up the Farming badge.
+    expect(combineMetrics([m(100, 5), m(100, 5)]).farmApr).toBeNull();
+    const farming = combineMetrics([
+      { tvlUsd: 100, feeApr: 5, farmApr: 10, totalApr: 15 },
+      { tvlUsd: 100, feeApr: 5, farmApr: null, totalApr: 5 },
+    ]);
+    expect(farming.farmApr).toBeCloseTo(10, 6);
   });
 });
 
