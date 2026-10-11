@@ -54,7 +54,7 @@ cheap migration window on state that gets rebuilt.
 Every halt to date came from the bot's own absolute constants, not from the
 chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
 
-- [ ] **0.1 — Derive `min_price`/`max_price` from the on-chain anchor at startup.**
+- [x] **0.1 — Derive `min_price`/`max_price` from the on-chain anchor at startup.** DONE 2026-10-10 (`30c4594`), **not yet deployed**.
       Read `lp_anchor_<pool_id>` from the oracle; set bounds to `anchor × 0.76`
       and `× 1.24`. This is TODO item 2, and it is the single highest-value
       change in Phase 0: it ends the failure class where bot bounds and the
@@ -83,7 +83,7 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       be an explicit decision, not a side effect of a cleanup. The bounds are
       also not yet rotten (ALGO `[0.02, 0.50]` vs $0.1155 is 0.17x-4.3x). They
       go at v4 with the rest of the posted-price machinery.
-- [ ] **0.3 — Fix the `notify()` crash path.** Found in the 2026-10-10 pre-push
+- [x] **0.3 — Fix the `notify()` crash path.** DONE 2026-10-10 (`30c4594`), **not yet deployed**. Found in the 2026-10-10 pre-push
       review and confirmed by running it: `Request(...)` is built outside the
       `try`, so a schemeless `ALERT_WEBHOOK_URL` raises `ValueError` instead of
       logging. The `notify()` call sites in `run_once` sit *outside* the
@@ -92,7 +92,7 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       while the URL is unset; arms the moment one is pasted. Two lines: move the
       `Request` inside the `try`, and bring `watch.check` /
       `check_algo_against_pex` / `heartbeat` under the existing handler.
-- [ ] **0.4 — Add ALGO/USDC to the bot config.** Already registered in the
+- [x] **0.4 — Add ALGO/USDC to the bot config.** DONE 2026-10-10 (`30c4594`), **not yet deployed**. Already registered in the
       oracle (anchor `1149714`, set 2026-10-10). Costs ~$0.03/day and proves
       sustained operation on the largest pool ($1.72M TVL) — the plumbing v4
       must keep working. **No vault-side calls**, so no borrowing is possible.
@@ -142,7 +142,23 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       cross-check loop fixes it and saves fetches — unverified, so it needs its
       own review.
 
-**Gate out of Phase 0:** two full weeks with no halt that the bot caused.
+### ⚠️ Written is not running
+
+Everything ticked in Phase 0 is committed and pushed; **none of it is live.** The
+bot host has not pulled. Confirmed on chain 2026-10-10: U/tALGO and U/USDC are
+posting normally (age 0m, so the bot is up), while ALGO/USDC sits at **1379m
+with `price == anchor`** — it has never been posted to, which is exactly what a
+bot running the two-pool config looks like.
+
+Nothing is at risk from this. ALGO/USDC has no vault-side registration, so no
+borrowing depends on it, and the two live pools are inside both the old
+hardcoded bounds and the new derived ones. But the halt class is only fixed on
+`main`, not on the machine.
+
+**One `git pull` and a restart deploys 0.1 through 0.4 together.**
+
+**Gate out of Phase 0:** two full weeks with no halt that the bot caused —
+counted from deployment, not from the commit.
 
 ---
 
