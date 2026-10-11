@@ -1,5 +1,6 @@
 """Unit tests for the MagnetFi v2 LP oracle bot (no network — pure logic + orchestration)."""
 import base64
+import time
 import json
 
 import pytest
@@ -1535,3 +1536,130 @@ def test_shipped_config_pool_ids_are_distinct():
     ids = [p["pool_id"] for p in cfg["pools"]]
     assert len(set(ids)) == len(ids)
     assert 3_073_502_995 not in ids, "that is the decoy U-ALGO LP ASA"
+
+
+# ── re-anchor recovery (Phase 0.6) ───────────────────────────────────────────
+#
+# The bounds gate the SPOT price, but update_pool posts the TWAP. After an admin
+# re-anchors to follow a large move, readings taken BEFORE it can drag the
+# posted value outside the NEW band for up to MAX_TWAP_AGE — so the remedy for
+# an outage was defeated by the outage's own data, for half an hour, at the
+# moment it was most needed.
+
+@pytest.fixture(autouse=True)
+def _clear_anchor_memory():
+    ob._last_anchor.clear()
+    yield
+    ob._last_anchor.clear()
+
+
+def test_twap_clear_drops_readings_and_persists(tmp_path):
+    s = ob.TwapState(tmp_path / "t.json")
+    base = int(time.time()) - 900
+    for i in range(3):
+        s.add(7, base + i * 300, 1_000_000, 5)
+    assert s.count(7) == 3
+    assert s.clear(7) == 3
+    assert s.count(7) == 0
+    assert ob.TwapState(tmp_path / "t.json").count(7) == 0, "clear did not persist"
+    assert s.clear(7) == 0, "clearing an empty pool must be a no-op"
+
+
+def _posting_harness(monkeypatch, tmp_path, *, anchor, spot, prior_readings=()):
+    """update_pool with everything but the TWAP/bounds logic stubbed out."""
+    posted = []
+    monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: (spot, True))
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: anchor)
+    monkeypatch.setattr(ob, "read_onchain_price", lambda *a, **k: 0)
+    monkeypatch.setattr(ob, "post_price",
+                        lambda c, o, sk, ad, pid, price, dry: posted.append(price) or True)
+    twap = ob.TwapState(tmp_path / "t.json")
+    base = int(time.time()) - len(prior_readings) * 300
+    for i, p in enumerate(prior_readings):
+        twap.add(1, base + i * 300, p, 5)
+    return twap, posted
+
+
+def test_the_review_scenario_a_stale_twap_no_longer_reaches_the_chain(monkeypatch, tmp_path, caplog):
+    """
+    The exact case the pre-push review constructed: three pre-anchor readings of
+    1,000,000 still inside the window, the admin re-anchors to 700,000, spot is
+    now 700,000. The TWAP would be ~910,000 — which the contract REJECTS, since
+    the new band tops out at 875,000.
+    """
+    import logging
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=700_000, spot=700_000,
+                                    prior_readings=(1_000_000, 1_000_000, 1_000_000))
+    ob._last_anchor[1] = 1_000_000                     # the anchor before the move
+    with caplog.at_level(logging.WARNING, logger="oracle_bot"):
+        ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert posted == [], "posted a TWAP built from pre-re-anchor readings"
+    assert any("anchor moved" in r.message for r in caplog.records)
+    assert twap.count(1) == 1, "history should be the single post-anchor reading"
+
+
+def test_an_unchanged_anchor_keeps_its_history(monkeypatch, tmp_path):
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=1_000_000, spot=1_000_000,
+                                    prior_readings=(1_000_000, 1_000_000))
+    ob._last_anchor[1] = 1_000_000
+    ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert twap.count(1) == 3, "dropped history for an anchor that never moved"
+    assert posted == [1_000_000]
+
+
+def test_first_sight_of_a_pool_records_the_anchor_without_clearing(monkeypatch, tmp_path):
+    """
+    On restart there is no remembered anchor. Clearing then would cost 15
+    minutes of posting for nothing — so the first cycle only records.
+    """
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=1_000_000, spot=1_000_000,
+                                    prior_readings=(1_000_000, 1_000_000))
+    ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert twap.count(1) == 3
+    assert ob._last_anchor[1] == 1_000_000
+    assert posted == [1_000_000]
+
+
+def test_an_unreadable_anchor_never_drops_history(monkeypatch, tmp_path):
+    """
+    anchor 0 means the read failed. Treating that as "the anchor moved" would
+    turn an algod hiccup into a 15-minute outage.
+    """
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=0, spot=1_000_000,
+                                    prior_readings=(1_000_000, 1_000_000))
+    ob._last_anchor[1] = 1_000_000
+    ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert twap.count(1) == 3, "dropped history on a failed anchor read"
+    assert ob._last_anchor[1] == 1_000_000, "overwrote a good anchor with a failed read"
+
+
+def test_a_twap_above_the_ceiling_is_refused(monkeypatch, tmp_path, caplog):
+    import logging
+    # anchor 1,000,000 -> ceiling 1,240,000. Readings average well above it.
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=1_000_000, spot=1_300_000,
+                                    prior_readings=(1_300_000, 1_300_000))
+    ob._last_anchor[1] = 1_000_000
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert posted == []
+    assert any("above ceiling" in r.message for r in caplog.records)
+
+
+def test_a_twap_below_the_floor_is_refused(monkeypatch, tmp_path, caplog):
+    import logging
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=1_000_000, spot=500_000,
+                                    prior_readings=(500_000, 500_000))
+    ob._last_anchor[1] = 1_000_000
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert posted == []
+    assert any("below floor" in r.message for r in caplog.records)
+
+
+def test_a_twap_inside_the_band_still_posts(monkeypatch, tmp_path):
+    """The guard must not block what the chain would accept."""
+    twap, posted = _posting_harness(monkeypatch, tmp_path, anchor=1_000_000, spot=1_100_000,
+                                    prior_readings=(1_100_000, 1_100_000))
+    ob._last_anchor[1] = 1_000_000
+    ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
+    assert posted and 760_000 <= posted[0] <= 1_240_000

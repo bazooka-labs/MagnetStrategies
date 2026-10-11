@@ -209,6 +209,11 @@ ROUTE_DIVERGENCE_ALERT = 0.05
 # learn to mute the channel".
 _route_level: dict[tuple[int, str], str] = {}
 
+# Last anchor seen per pool, so a re-anchor can be noticed. In memory only: on a
+# restart the first cycle simply records what it finds and clears nothing, which
+# is the safe direction — a false clear would cost 15 minutes of posting.
+_last_anchor: dict[int, int] = {}
+
 # Algod timeout / retry settings
 ALGOD_TIMEOUT = 10
 MAX_RETRIES   = 3
@@ -314,6 +319,13 @@ class TwapState:
             history = history[-window:]
         self.history[pool_id] = history
         self._save()
+
+    def clear(self, pool_id: int) -> int:
+        """Drop a pool's history. Returns how many readings went. Persists."""
+        n = len(self.history.pop(pool_id, []))
+        if n:
+            self._save()
+        return n
 
     def count(self, pool_id: int) -> int:
         """Number of readings currently held for pool_id."""
@@ -905,6 +917,21 @@ def anchor_bounds(anchor: int) -> tuple[int, int]:
     return (lo, hi)
 
 
+def effective_bounds_with_anchor(
+    client: algod.AlgodClient, cfg: "BotConfig", pool: PoolConfig
+) -> tuple[int, int, int]:
+    """(anchor, min, max). The anchor is returned so a caller can notice it MOVED."""
+    anchor = read_onchain_anchor(client, cfg.oracle_app_id, pool.pool_id)
+    lo, hi = anchor_bounds(anchor)
+    if lo > 0:
+        return anchor, lo, hi
+    if pool.min_price or pool.max_price:
+        log.warning(f"[{pool.label}] anchor unreadable — falling back to configured bounds")
+        return anchor, pool.min_price, pool.max_price
+    log.warning(f"[{pool.label}] no anchor and no configured bounds — absolute bound disabled")
+    return anchor, 0, 0
+
+
 def effective_bounds(client: algod.AlgodClient, cfg: "BotConfig", pool: PoolConfig) -> tuple[int, int]:
     """
     The bounds to enforce this cycle: anchor-derived when the anchor is readable,
@@ -918,14 +945,8 @@ def effective_bounds(client: algod.AlgodClient, cfg: "BotConfig", pool: PoolConf
     a pool with neither an anchor nor configured bounds runs unbounded here — the
     TWAP, the second-source check and the contract band all still apply.
     """
-    lo, hi = anchor_bounds(read_onchain_anchor(client, cfg.oracle_app_id, pool.pool_id))
-    if lo > 0:
-        return lo, hi
-    if pool.min_price or pool.max_price:
-        log.warning(f"[{pool.label}] anchor unreadable — falling back to configured bounds")
-        return pool.min_price, pool.max_price
-    log.warning(f"[{pool.label}] no anchor and no configured bounds — absolute bound disabled")
-    return 0, 0
+    _, lo, hi = effective_bounds_with_anchor(client, cfg, pool)
+    return lo, hi
 
 
 # ── transaction builder ───────────────────────────────────────────────────────
@@ -992,6 +1013,29 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
         return
     spot_price, compx_verified = result
 
+    anchor, min_price, max_price = effective_bounds_with_anchor(client, cfg, pool)
+
+    # A re-anchor is the admin following a genuine large move — and it is the
+    # remedy for exactly the outage this bot has had three times. Readings taken
+    # BEFORE it describe a world that no longer exists, and because the posted
+    # value is the TWAP rather than the spot, they can drag it outside the new
+    # band for up to MAX_TWAP_AGE. That makes the recovery path fail for half an
+    # hour at the moment it is most needed.
+    #
+    # So the stale history goes. The bot then holds for MIN_TWAP_READINGS
+    # cycles (~15 min) and resumes with a TWAP built entirely from the new
+    # reality — half the wait, and deterministic rather than "until the old
+    # readings age out". Nothing unsmoothed is posted in the meantime: the
+    # fail-stale gate below refuses to post on thin history.
+    prev = _last_anchor.get(pool.pool_id)
+    if prev is not None and anchor > 0 and anchor != prev:
+        dropped = twap.clear(pool.pool_id)
+        log.warning(f"[{pool.label}] anchor moved {prev} → {anchor}; dropped {dropped} TWAP "
+                    f"reading(s) taken before it. Holding ~{MIN_TWAP_READINGS * POLL_INTERVAL // 60}min "
+                    f"while the window refills.")
+    if anchor > 0:
+        _last_anchor[pool.pool_id] = anchor
+
     now = int(time.time())
     twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW)
 
@@ -1017,6 +1061,20 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
         if downward_spread > DIVERGENCE_LIMIT:
             log.info(f"[{pool.label}] spot {downward_spread:.2%} below TWAP — "
                      f"posting TWAP ({final_price}) to reflect drop gradually")
+
+    # Bound the value we are ABOUT TO POST. get_lp_price bounded the spot, but
+    # the TWAP is what goes on chain and the two differ — most of all right
+    # after a re-anchor. Outside the band the contract would revert anyway, so
+    # this converts a wasted fee into a clear log line. It cannot block a post
+    # the chain would have accepted: these bounds sit strictly inside the band.
+    if min_price > 0 and final_price < min_price:
+        log.error(f"[{pool.label}] TWAP {final_price} below floor {min_price} "
+                  f"(spot was {spot_price}); refusing to post")
+        return
+    if max_price > 0 and final_price > max_price:
+        log.error(f"[{pool.label}] TWAP {final_price} above ceiling {max_price} "
+                  f"(spot was {spot_price}); refusing to post")
+        return
 
     onchain = read_onchain_price(client, cfg.oracle_app_id, pool.pool_id)
     if onchain > 0:

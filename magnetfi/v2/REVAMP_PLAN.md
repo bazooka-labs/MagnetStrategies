@@ -102,7 +102,7 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
       so only new vaults are affected. Free either way; do it if a vault might
       be opened before the migration.
 
-- [ ] **0.6 — Re-check the POSTED price against the bounds.** Found by the
+- [x] **0.6 — Re-check the POSTED price against the bounds.** DONE 2026-10-11. Found by the
       pre-push review of 0.1 and deliberately not fixed there, because it
       changes the posting decision and deserves its own review. `get_lp_price`
       bounds the **spot** price it computes, but `update_pool` posts the
