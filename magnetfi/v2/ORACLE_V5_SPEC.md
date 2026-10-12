@@ -1,6 +1,10 @@
 # MagnetFi — Relay Oracle (v5)
 
-**Status: specification, pre-build.** Nothing here is implemented.
+**Status: contracts BUILT and green on LocalNet; publisher and frontend not
+started.** `contracts/smart_contracts/relay_oracle/` and `.../opup/` compile
+with the pinned puyapy 5.9.0 and pass 16 integration tests driven by the
+production `signer/payload.py`. What remains is §1's off-chain surface, the
+signing service, and the §6 migration.
 
 _Revised 2026-10-11 after an independent design review (verdict:
 SOUND-WITH-CHANGES, no blocker). The central claim — drop-in oracle, no vault

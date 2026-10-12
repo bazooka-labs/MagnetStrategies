@@ -273,7 +273,8 @@ a good signature.
 | wire format + sign/verify/bundle | **done**, `signer/payload.py`, 59 tests |
 | opcode-budget measurement | **done** — inner-call OpUp, 4 calls' worth of budget |
 | publisher (storage upload, scheduling, cache headers) | not started; needs a bucket |
-| vault verifier | not started |
+| **verifier** | **built as the RelayOracle** (`contracts/smart_contracts/relay_oracle/`), 16 LocalNet tests green — note it is the ORACLE that verifies, not the vault; see [ORACLE_V5_SPEC.md](./ORACLE_V5_SPEC.md) |
+| **OpUp app** | **built** (`contracts/smart_contracts/opup/`), non-updatable and non-deletable |
 | frontend payload fetch + group assembly | not started |
 | band policy (how wide, when) | deferred; capacity reserved |
 
