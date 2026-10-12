@@ -183,6 +183,16 @@ second migration later — but decide that explicitly, here, not by drift.
 
 ## Phase 2 — Build v4
 
+> **Re-scoped 2026-10-11.** v4 was welded to the lender contract because it
+> needed a vault redeploy. It does not: the vault reads the oracle by
+> global-state key and the oracle is swappable behind a 48h timelock with a
+> guardian veto. A **relay oracle** — [ORACLE_V5_SPEC.md](./ORACLE_V5_SPEC.md) —
+> delivers the thing that matters (a liquidator can always make the price fresh,
+> atomically, in their own group) with no position unwinding, no PSM repoint and
+> no re-registration. The decoupling question dissolves rather than being
+> answered: nothing needs welding, because the urgent half never touches the
+> vault. 2.2–2.6 below are the v4 end state and move behind the lender work.
+
 Design is settled in
 [LP_ORACLE.md → v4](./LP_ORACLE.md#v4--signed-payloads-decided-2026-10-07-not-yet-built).
 Build order puts the signer first so the vault has something real to verify.

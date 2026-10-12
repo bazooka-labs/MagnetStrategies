@@ -328,6 +328,14 @@ Three-key model:
 
 # v4 — Signed Payloads (decided 2026-10-07, not yet built)
 
+> **Superseded as the NEXT step, 2026-10-11.** The premise below — that signed
+> payloads require a vault change — holds only for the pure design where no
+> price is stored. The vault reads the oracle by global-state KEY and the oracle
+> is swappable, so a relay oracle gets the liveness that matters with no vault
+> migration at all. See **[ORACLE_V5_SPEC.md](./ORACLE_V5_SPEC.md)**. v4 stays
+> the better end state and should ride the lender-contract migration, which
+> needs a vault redeploy regardless.
+
 **Status: agreed direction, pre-build.** Everything above describes the live
 posted-price oracle and remains accurate until v4 ships.
 
