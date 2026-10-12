@@ -1,0 +1,32 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    // smart_contracts/opup/contract.py:33
+    // class OpUp(ARC4Contract):
+    txn NumAppArgs
+    bz main_noop@5
+    pushbytes 0x739b0889 // method "deploy()void"
+    txna ApplicationArgs 0
+    match main_deploy_route@3
+    err
+
+main_deploy_route@3:
+    // smart_contracts/opup/contract.py:36
+    // @arc4.abimethod(create="require")
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+main_noop@5:
+    // smart_contracts/opup/contract.py:40
+    // @arc4.baremethod(allow_actions=["NoOp"])
+    txn OnCompletion
+    !
+    txn ApplicationID
+    &&
+    return

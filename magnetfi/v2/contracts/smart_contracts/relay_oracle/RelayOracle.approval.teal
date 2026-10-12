@@ -1,0 +1,981 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 8 32
+    bytecblock "pending_signer" "pending_signer_eta" "admin" "guardian" 0x6c705f70726963655f 0x6c705f74735f "pending_admin" "pending_guardian" "signer_pubkey" 0x6c705f6163746976655f "opup_app_id"
+    // smart_contracts/relay_oracle/contract.py:84-91
+    // class RelayOracle(
+    //     ARC4Contract,
+    //     # 57 + 7 = 64, exactly the measured AVM cap, declared at the ceiling on
+    //     # purpose: the schema is frozen at creation and under-declaring would cost a
+    //     # redeploy PLUS another 48h repoint — the very cost this design avoids.
+    //     # 3 uints per pool x 18 pools + pending_signer_eta + opup_app_id = 56.
+    //     state_totals=StateTotals(global_uints=57, global_bytes=7),
+    // ):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@18
+    pushbytess 0x685246b0 0xdf22ddfa 0x45aab8b8 0xf11c047e 0x64a2c0ca 0x471cf4d8 0x23385cec 0xc50d6333 0x969a0da3 0x3c30bfe1 0xfe5892d6 0xccdc7a17 // method "post_signed_price(byte[],byte[])void", method "add_pool(uint64,uint64)void", method "remove_pool(uint64)void", method "admin_set_price(uint64,uint64)void", method "propose_signer(byte[])void", method "confirm_signer()void", method "cancel_pending_signer()void", method "propose_admin(address)void", method "accept_admin()void", method "propose_guardian(address)void", method "accept_guardian()void", method "get_lp_price(uint64)(uint64,uint64)"
+    txna ApplicationArgs 0
+    match post_signed_price add_pool remove_pool admin_set_price propose_signer confirm_signer cancel_pending_signer propose_admin accept_admin propose_guardian accept_guardian get_lp_price
+    err
+
+main_create_NoOp@18:
+    // smart_contracts/relay_oracle/contract.py:84-91
+    // class RelayOracle(
+    //     ARC4Contract,
+    //     # 57 + 7 = 64, exactly the measured AVM cap, declared at the ceiling on
+    //     # purpose: the schema is frozen at creation and under-declaring would cost a
+    //     # redeploy PLUS another 48h repoint — the very cost this design avoids.
+    //     # 3 uints per pool x 18 pools + pending_signer_eta + opup_app_id = 56.
+    //     state_totals=StateTotals(global_uints=57, global_bytes=7),
+    // ):
+    pushbytes 0x62cc64d1 // method "deploy(address,byte[],uint64)void"
+    txna ApplicationArgs 0
+    match deploy
+    err
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.deploy[routing]() -> void:
+deploy:
+    // smart_contracts/relay_oracle/contract.py:113
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/relay_oracle/contract.py:123
+    // assert guardian != Global.zero_address, "guardian required"
+    dig 2
+    global ZeroAddress
+    !=
+    assert // guardian required
+    // smart_contracts/relay_oracle/contract.py:124
+    // assert guardian != Txn.sender, "guardian must differ from admin"
+    dig 2
+    txn Sender
+    !=
+    assert // guardian must differ from admin
+    // smart_contracts/relay_oracle/contract.py:125
+    // assert signer_pubkey.length == 32, "signer pubkey must be 32 bytes"
+    dig 1
+    len
+    intc_3 // 32
+    ==
+    assert // signer pubkey must be 32 bytes
+    // smart_contracts/relay_oracle/contract.py:126
+    // assert opup_app_id != UInt64(0), "opup app id required"
+    dup
+    assert // opup app id required
+    // smart_contracts/relay_oracle/contract.py:127
+    // self.admin.value = Txn.sender
+    bytec_2 // "admin"
+    txn Sender
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:128
+    // self.guardian.value = guardian
+    bytec_3 // "guardian"
+    uncover 3
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:129
+    // self.signer_pubkey.value = signer_pubkey
+    bytec 8 // "signer_pubkey"
+    uncover 2
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:130
+    // self.opup_app_id.value = opup_app_id
+    bytec 10 // "opup_app_id"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:131
+    // self.pending_signer.value = Bytes(b"")
+    bytec_0 // "pending_signer"
+    pushbytes 0x
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:132
+    // self.pending_signer_eta.value = UInt64(0)
+    bytec_1 // "pending_signer_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:133
+    // self.pending_admin.value = Global.zero_address
+    bytec 6 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:134
+    // self.pending_guardian.value = Global.zero_address
+    bytec 7 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:113
+    // @arc4.abimethod(allow_actions=["NoOp"], create="require")
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.post_signed_price[routing]() -> void:
+post_signed_price:
+    // smart_contracts/relay_oracle/contract.py:173
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    dup
+    extract 2 0
+    dup
+    cover 2
+    txna ApplicationArgs 2
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    dup
+    cover 3
+    // smart_contracts/relay_oracle/contract.py:193-194
+    // # 1. shape
+    // assert message.length == UInt64(MSG_LEN), "bad message length"
+    dig 1
+    len
+    pushint 85
+    ==
+    assert // bad message length
+    // smart_contracts/relay_oracle/contract.py:195
+    // assert signature.length == UInt64(SIG_LEN), "bad signature length"
+    len
+    pushint 64
+    ==
+    assert // bad signature length
+    // smart_contracts/relay_oracle/contract.py:202
+    // op.extract(message, 0, 37) == Bytes(_MAGIC_VERSION) + Global.genesis_hash
+    swap
+    extract 2 37
+    pushbytes 0x4d464c5001
+    global GenesisHash
+    concat
+    ==
+    // smart_contracts/relay_oracle/contract.py:197-203
+    // # 2. magic + version + network, in one slice. Genesis comes from the
+    // #    CHAIN rather than a constant or a deploy parameter, so a payload
+    // #    for another network cannot verify here and the binding cannot be
+    // #    misconfigured.
+    // assert (
+    //     op.extract(message, 0, 37) == Bytes(_MAGIC_VERSION) + Global.genesis_hash
+    // ), "bad magic, version or network"
+    assert // bad magic, version or network
+    // smart_contracts/relay_oracle/contract.py:207
+    // op.extract_uint64(message, _OFF_TARGET_APP) == Global.current_application_id.id
+    dup
+    pushint 37
+    extract_uint64
+    global CurrentApplicationID
+    ==
+    // smart_contracts/relay_oracle/contract.py:205-208
+    // # 3. bound to THIS app — a payload for another deployment is not ours
+    // assert (
+    //     op.extract_uint64(message, _OFF_TARGET_APP) == Global.current_application_id.id
+    // ), "payload targets another app"
+    assert // payload targets another app
+    // smart_contracts/relay_oracle/contract.py:210-211
+    // # 4. pool must be whitelisted
+    // pool_id = op.extract_uint64(message, _OFF_LP_ASA)
+    dup
+    pushint 45
+    extract_uint64
+    dup
+    cover 2
+    // smart_contracts/relay_oracle/contract.py:212
+    // self._assert_registered(pool_id)
+    callsub _assert_registered
+    // smart_contracts/relay_oracle/contract.py:214-217
+    // # 5. a zero permanently bricks a pool (AUD-042); an inverted band is
+    // #    nonsense. The signer refuses to sign either, but the contract must
+    // #    not depend on the signer being correct.
+    // price_min = op.extract_uint64(message, _OFF_PRICE_MIN)
+    dup
+    pushint 53
+    extract_uint64
+    dup
+    uncover 2
+    // smart_contracts/relay_oracle/contract.py:218
+    // price_max = op.extract_uint64(message, _OFF_PRICE_MAX)
+    dup
+    pushint 61
+    extract_uint64
+    // smart_contracts/relay_oracle/contract.py:219
+    // assert price_min > UInt64(0), "price must be > 0"
+    dig 2
+    assert // price must be > 0
+    // smart_contracts/relay_oracle/contract.py:220
+    // assert price_max >= price_min, "inverted price band"
+    uncover 2
+    >=
+    assert // inverted price band
+    // smart_contracts/relay_oracle/contract.py:222-223
+    // # 6. not from the future
+    // issued_at = op.extract_uint64(message, _OFF_ISSUED_AT)
+    dup
+    pushint 69
+    extract_uint64
+    dup
+    cover 2
+    // smart_contracts/relay_oracle/contract.py:224
+    // assert issued_at <= Global.latest_timestamp + UInt64(CLOCK_SKEW), "payload from the future"
+    global LatestTimestamp
+    <=
+    assert // payload from the future
+    // smart_contracts/relay_oracle/contract.py:226-231
+    // # 7. not stale. The signer may ask for a SHORTER life than the ceiling,
+    // #    never a longer one — so a compromised key cannot extend its own
+    // #    payloads. Written as an addition: the subtraction form underflows
+    // #    if CLOCK_SKEW ever becomes non-zero, since step 6 then admits
+    // #    issued_at > latest_timestamp.
+    // max_age = op.extract_uint64(message, _OFF_MAX_AGE)
+    pushint 77
+    extract_uint64
+    dup
+    // smart_contracts/relay_oracle/contract.py:233
+    // if effective > UInt64(PAYLOAD_MAX_AGE):
+    pushint 30
+    >
+    bnz post_signed_price_if_body@2
+
+post_signed_price_after_if_else@3:
+    // smart_contracts/relay_oracle/contract.py:235
+    // assert issued_at + effective >= Global.latest_timestamp, "payload expired"
+    dig 1
+    +
+    global LatestTimestamp
+    >=
+    assert // payload expired
+    // smart_contracts/relay_oracle/contract.py:237-240
+    // # 8. buy the budget, then verify. 1900 units against the 700 this call
+    // #    carries. Inner calls are fee=0 and the CALLER covers them by
+    // #    pooling; the app account must never pay, or spamming drains it.
+    // for _i in urange(OPUP_CALLS):
+    intc_0 // 0
+
+post_signed_price_for_header@4:
+    // smart_contracts/relay_oracle/contract.py:237-240
+    // # 8. buy the budget, then verify. 1900 units against the 700 this call
+    // #    carries. Inner calls are fee=0 and the CALLER covers them by
+    // #    pooling; the app account must never pay, or spamming drains it.
+    // for _i in urange(OPUP_CALLS):
+    dup
+    pushint 3
+    <
+    bz post_signed_price_after_for@8
+    // smart_contracts/relay_oracle/contract.py:241
+    // itxn.ApplicationCall(app_id=self.opup_app_id.value, fee=0).submit()
+    itxn_begin
+    intc_0 // 0
+    bytec 10 // "opup_app_id"
+    app_global_get_ex
+    assert // check self.opup_app_id exists
+    itxn_field ApplicationID
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/relay_oracle/contract.py:237-240
+    // # 8. buy the budget, then verify. 1900 units against the 700 this call
+    // #    carries. Inner calls are fee=0 and the CALLER covers them by
+    // #    pooling; the app account must never pay, or spamming drains it.
+    // for _i in urange(OPUP_CALLS):
+    intc_1 // 1
+    +
+    b post_signed_price_for_header@4
+
+post_signed_price_after_for@8:
+    pop
+    // smart_contracts/relay_oracle/contract.py:244
+    // message, signature, self.signer_pubkey.value
+    intc_0 // 0
+    bytec 8 // "signer_pubkey"
+    app_global_get_ex
+    assert // check self.signer_pubkey exists
+    // smart_contracts/relay_oracle/contract.py:243-245
+    // assert op.ed25519verify_bare(
+    //     message, signature, self.signer_pubkey.value
+    // ), "bad signature"
+    dig 5
+    dig 5
+    uncover 2
+    ed25519verify_bare
+    assert // bad signature
+    // smart_contracts/relay_oracle/contract.py:154
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    dig 2
+    itob
+    bytec 4 // 0x6c705f70726963655f
+    dig 1
+    concat
+    // smart_contracts/relay_oracle/contract.py:247-252
+    // # lp_ts_ carries the payload's OWN timestamp, not the block's. Writing
+    // # the block time would report every post as zero seconds old, including
+    // # a replayed 30s-old payload, making the age signal meaningless exactly
+    // # when it matters. Step 7 bounds it to ~35s of now, far inside the
+    // # vault's 1800s window, so liveness is unaffected.
+    // op.AppGlobal.put(self._price_key(pool_id), price_min)
+    dig 3
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:158
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f74735f
+    swap
+    concat
+    // smart_contracts/relay_oracle/contract.py:253
+    // op.AppGlobal.put(self._ts_key(pool_id), issued_at)
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:173
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+post_signed_price_if_body@2:
+    pop
+    // smart_contracts/relay_oracle/contract.py:234
+    // effective = UInt64(PAYLOAD_MAX_AGE)
+    pushint 30
+    b post_signed_price_after_if_else@3
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.add_pool[routing]() -> void:
+add_pool:
+    // smart_contracts/relay_oracle/contract.py:257
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    swap
+    // smart_contracts/relay_oracle/contract.py:263
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/relay_oracle/contract.py:265
+    // Global.current_application_id, self._active_key(pool_id)
+    global CurrentApplicationID
+    // smart_contracts/relay_oracle/contract.py:162
+    // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
+    swap
+    itob
+    dup
+    cover 3
+    bytec 9 // 0x6c705f6163746976655f
+    swap
+    concat
+    dup
+    cover 2
+    // smart_contracts/relay_oracle/contract.py:264-266
+    // active, exists = op.AppGlobal.get_ex_uint64(
+    //     Global.current_application_id, self._active_key(pool_id)
+    // )
+    app_global_get_ex
+    swap
+    cover 4
+    // smart_contracts/relay_oracle/contract.py:267
+    // assert not (exists and active != UInt64(0)), "pool already registered"
+    bz add_pool_bool_false@4
+    dig 3
+    bz add_pool_bool_false@4
+    intc_1 // 1
+
+add_pool_bool_merge@5:
+    // smart_contracts/relay_oracle/contract.py:267
+    // assert not (exists and active != UInt64(0)), "pool already registered"
+    !
+    assert // pool already registered
+    // smart_contracts/relay_oracle/contract.py:268
+    // assert initial_price > UInt64(0), "initial price must be > 0"
+    swap
+    dup
+    assert // initial price must be > 0
+    // smart_contracts/relay_oracle/contract.py:269
+    // op.AppGlobal.put(self._active_key(pool_id), UInt64(1))
+    swap
+    intc_1 // 1
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:154
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    bytec 4 // 0x6c705f70726963655f
+    uncover 2
+    dup
+    cover 2
+    concat
+    // smart_contracts/relay_oracle/contract.py:270
+    // op.AppGlobal.put(self._price_key(pool_id), initial_price)
+    uncover 2
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:158
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f74735f
+    swap
+    concat
+    // smart_contracts/relay_oracle/contract.py:271
+    // op.AppGlobal.put(self._ts_key(pool_id), Global.latest_timestamp)
+    global LatestTimestamp
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:257
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+add_pool_bool_false@4:
+    intc_0 // 0
+    b add_pool_bool_merge@5
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.remove_pool[routing]() -> void:
+remove_pool:
+    // smart_contracts/relay_oracle/contract.py:273
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/relay_oracle/contract.py:281
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/relay_oracle/contract.py:162
+    // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
+    itob
+    bytec 9 // 0x6c705f6163746976655f
+    dig 1
+    concat
+    // smart_contracts/relay_oracle/contract.py:282
+    // op.AppGlobal.delete(self._active_key(pool_id))
+    app_global_del
+    // smart_contracts/relay_oracle/contract.py:154
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    bytec 4 // 0x6c705f70726963655f
+    dig 1
+    concat
+    // smart_contracts/relay_oracle/contract.py:283
+    // op.AppGlobal.delete(self._price_key(pool_id))
+    app_global_del
+    // smart_contracts/relay_oracle/contract.py:158
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f74735f
+    swap
+    concat
+    // smart_contracts/relay_oracle/contract.py:284
+    // op.AppGlobal.delete(self._ts_key(pool_id))
+    app_global_del
+    // smart_contracts/relay_oracle/contract.py:273
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.admin_set_price[routing]() -> void:
+admin_set_price:
+    // smart_contracts/relay_oracle/contract.py:286
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/relay_oracle/contract.py:304
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/relay_oracle/contract.py:305
+    // assert price > UInt64(0), "price must be > 0"
+    dup
+    assert // price must be > 0
+    // smart_contracts/relay_oracle/contract.py:306
+    // self._assert_registered(pool_id)
+    dig 1
+    callsub _assert_registered
+    // smart_contracts/relay_oracle/contract.py:154
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    swap
+    itob
+    bytec 4 // 0x6c705f70726963655f
+    dig 1
+    concat
+    // smart_contracts/relay_oracle/contract.py:307
+    // op.AppGlobal.put(self._price_key(pool_id), price)
+    uncover 2
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:158
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f74735f
+    swap
+    concat
+    // smart_contracts/relay_oracle/contract.py:308
+    // op.AppGlobal.put(self._ts_key(pool_id), Global.latest_timestamp)
+    global LatestTimestamp
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:286
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.propose_signer[routing]() -> void:
+propose_signer:
+    // smart_contracts/relay_oracle/contract.py:312
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    extract 2 0
+    // smart_contracts/relay_oracle/contract.py:319
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/relay_oracle/contract.py:320
+    // assert new_pubkey.length == 32, "signer pubkey must be 32 bytes"
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // signer pubkey must be 32 bytes
+    // smart_contracts/relay_oracle/contract.py:321
+    // self.pending_signer.value = new_pubkey
+    bytec_0 // "pending_signer"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:322
+    // self.pending_signer_eta.value = Global.latest_timestamp + UInt64(TIMELOCK_DELAY)
+    global LatestTimestamp
+    pushint 172800
+    +
+    bytec_1 // "pending_signer_eta"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:312
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.confirm_signer[routing]() -> void:
+confirm_signer:
+    // smart_contracts/relay_oracle/contract.py:327
+    // self._assert_admin()
+    callsub _assert_admin
+    // smart_contracts/relay_oracle/contract.py:328
+    // assert self.pending_signer.value.length == 32, "no pending signer"
+    intc_0 // 0
+    bytec_0 // "pending_signer"
+    app_global_get_ex
+    assert // check self.pending_signer exists
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // no pending signer
+    // smart_contracts/relay_oracle/contract.py:329
+    // assert Global.latest_timestamp >= self.pending_signer_eta.value, "timelock not elapsed"
+    global LatestTimestamp
+    intc_0 // 0
+    bytec_1 // "pending_signer_eta"
+    app_global_get_ex
+    assert // check self.pending_signer_eta exists
+    >=
+    assert // timelock not elapsed
+    // smart_contracts/relay_oracle/contract.py:330
+    // self.signer_pubkey.value = self.pending_signer.value
+    bytec 8 // "signer_pubkey"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:331
+    // self.pending_signer.value = Bytes(b"")
+    bytec_0 // "pending_signer"
+    pushbytes 0x
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:332
+    // self.pending_signer_eta.value = UInt64(0)
+    bytec_1 // "pending_signer_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:324
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.cancel_pending_signer[routing]() -> void:
+cancel_pending_signer:
+    // smart_contracts/relay_oracle/contract.py:337
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/relay_oracle/contract.py:338
+    // self.pending_signer.value = Bytes(b"")
+    bytec_0 // "pending_signer"
+    pushbytes 0x
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:339
+    // self.pending_signer_eta.value = UInt64(0)
+    bytec_1 // "pending_signer_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:334
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.propose_admin[routing]() -> void:
+propose_admin:
+    // smart_contracts/relay_oracle/contract.py:343
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/relay_oracle/contract.py:346
+    // self._assert_admin_or_guardian()
+    callsub _assert_admin_or_guardian
+    // smart_contracts/relay_oracle/contract.py:347
+    // assert new_admin != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/relay_oracle/contract.py:348
+    // assert new_admin != self.guardian.value, "admin must differ from guardian"
+    intc_0 // 0
+    bytec_3 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    dig 1
+    !=
+    assert // admin must differ from guardian
+    // smart_contracts/relay_oracle/contract.py:349
+    // self.pending_admin.value = new_admin
+    bytec 6 // "pending_admin"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:343
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.accept_admin[routing]() -> void:
+accept_admin:
+    // smart_contracts/relay_oracle/contract.py:354
+    // assert self.pending_admin.value != Global.zero_address, "no pending admin"
+    intc_0 // 0
+    bytec 6 // "pending_admin"
+    app_global_get_ex
+    assert // check self.pending_admin exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending admin
+    // smart_contracts/relay_oracle/contract.py:355
+    // assert Txn.sender == self.pending_admin.value, "not pending admin"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending admin
+    // smart_contracts/relay_oracle/contract.py:356
+    // self.admin.value = self.pending_admin.value
+    bytec_2 // "admin"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:357
+    // self.pending_admin.value = Global.zero_address
+    bytec 6 // "pending_admin"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:358-360
+    // # Clear any queued signer rotation, so one proposed by the prior admin
+    // # cannot be confirmed by a successor unaware of its provenance (P21-04).
+    // self.pending_signer.value = Bytes(b"")
+    bytec_0 // "pending_signer"
+    pushbytes 0x
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:361
+    // self.pending_signer_eta.value = UInt64(0)
+    bytec_1 // "pending_signer_eta"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:351
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.propose_guardian[routing]() -> void:
+propose_guardian:
+    // smart_contracts/relay_oracle/contract.py:363
+    // @arc4.abimethod
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/relay_oracle/contract.py:144
+    // assert Txn.sender == self.guardian.value, "guardian only"
+    txn Sender
+    intc_0 // 0
+    bytec_3 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    assert // guardian only
+    // smart_contracts/relay_oracle/contract.py:367
+    // assert new_guardian != Global.zero_address, "zero address not allowed"
+    dup
+    global ZeroAddress
+    !=
+    assert // zero address not allowed
+    // smart_contracts/relay_oracle/contract.py:368
+    // assert new_guardian != self.admin.value, "guardian must differ from admin"
+    intc_0 // 0
+    bytec_2 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    dig 1
+    !=
+    assert // guardian must differ from admin
+    // smart_contracts/relay_oracle/contract.py:369
+    // self.pending_guardian.value = new_guardian
+    bytec 7 // "pending_guardian"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:363
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.accept_guardian[routing]() -> void:
+accept_guardian:
+    // smart_contracts/relay_oracle/contract.py:374
+    // assert self.pending_guardian.value != Global.zero_address, "no pending guardian"
+    intc_0 // 0
+    bytec 7 // "pending_guardian"
+    app_global_get_ex
+    assert // check self.pending_guardian exists
+    dup
+    global ZeroAddress
+    !=
+    assert // no pending guardian
+    // smart_contracts/relay_oracle/contract.py:375
+    // assert Txn.sender == self.pending_guardian.value, "not pending guardian"
+    txn Sender
+    dig 1
+    ==
+    assert // not pending guardian
+    // smart_contracts/relay_oracle/contract.py:376
+    // self.guardian.value = self.pending_guardian.value
+    bytec_3 // "guardian"
+    swap
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:377
+    // self.pending_guardian.value = Global.zero_address
+    bytec 7 // "pending_guardian"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/relay_oracle/contract.py:371
+    // @arc4.abimethod
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle.get_lp_price[routing]() -> void:
+get_lp_price:
+    // smart_contracts/relay_oracle/contract.py:381
+    // @arc4.abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/relay_oracle/contract.py:154
+    // return Bytes(_PRICE_PREFIX) + op.itob(pool_id)
+    itob
+    bytec 4 // 0x6c705f70726963655f
+    dig 1
+    concat
+    // smart_contracts/relay_oracle/contract.py:390
+    // price = op.AppGlobal.get_uint64(self._price_key(pool_id))
+    app_global_get
+    // smart_contracts/relay_oracle/contract.py:158
+    // return Bytes(_TS_PREFIX) + op.itob(pool_id)
+    bytec 5 // 0x6c705f74735f
+    uncover 2
+    concat
+    // smart_contracts/relay_oracle/contract.py:391
+    // ts = op.AppGlobal.get_uint64(self._ts_key(pool_id))
+    app_global_get
+    // smart_contracts/relay_oracle/contract.py:392
+    // return arc4.Tuple((arc4.UInt64(price), arc4.UInt64(ts)))
+    swap
+    itob
+    swap
+    itob
+    concat
+    // smart_contracts/relay_oracle/contract.py:381
+    // @arc4.abimethod(readonly=True)
+    pushbytes 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle._assert_admin() -> void:
+_assert_admin:
+    // smart_contracts/relay_oracle/contract.py:140
+    // assert Txn.sender == self.admin.value, "admin only"
+    txn Sender
+    intc_0 // 0
+    bytec_2 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    assert // admin only
+    retsub
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle._assert_admin_or_guardian() -> void:
+_assert_admin_or_guardian:
+    // smart_contracts/relay_oracle/contract.py:149
+    // Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    txn Sender
+    intc_0 // 0
+    bytec_2 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    ==
+    bnz _assert_admin_or_guardian_bool_true@2
+    txn Sender
+    intc_0 // 0
+    bytec_3 // "guardian"
+    app_global_get_ex
+    assert // check self.guardian exists
+    ==
+    bz _assert_admin_or_guardian_bool_false@3
+
+_assert_admin_or_guardian_bool_true@2:
+    intc_1 // 1
+
+_assert_admin_or_guardian_bool_merge@4:
+    // smart_contracts/relay_oracle/contract.py:148-150
+    // assert (
+    //     Txn.sender == self.admin.value or Txn.sender == self.guardian.value
+    // ), "admin or guardian only"
+    assert // admin or guardian only
+    retsub
+
+_assert_admin_or_guardian_bool_false@3:
+    intc_0 // 0
+    b _assert_admin_or_guardian_bool_merge@4
+
+
+// smart_contracts.relay_oracle.contract.RelayOracle._assert_registered(pool_id: uint64) -> void:
+_assert_registered:
+    // smart_contracts/relay_oracle/contract.py:164-165
+    // @subroutine
+    // def _assert_registered(self, pool_id: UInt64) -> None:
+    proto 1 0
+    // smart_contracts/relay_oracle/contract.py:167
+    // Global.current_application_id, self._active_key(pool_id)
+    global CurrentApplicationID
+    // smart_contracts/relay_oracle/contract.py:162
+    // return Bytes(_ACTIVE_PREFIX) + op.itob(pool_id)
+    frame_dig -1
+    itob
+    bytec 9 // 0x6c705f6163746976655f
+    swap
+    concat
+    // smart_contracts/relay_oracle/contract.py:166-168
+    // active, exists = op.AppGlobal.get_ex_uint64(
+    //     Global.current_application_id, self._active_key(pool_id)
+    // )
+    app_global_get_ex
+    // smart_contracts/relay_oracle/contract.py:169
+    // assert exists and active != UInt64(0), "pool not in whitelist"
+    bz _assert_registered_bool_false@3
+    frame_dig 0
+    bz _assert_registered_bool_false@3
+    intc_1 // 1
+
+_assert_registered_bool_merge@4:
+    // smart_contracts/relay_oracle/contract.py:169
+    // assert exists and active != UInt64(0), "pool not in whitelist"
+    assert // pool not in whitelist
+    retsub
+
+_assert_registered_bool_false@3:
+    intc_0 // 0
+    b _assert_registered_bool_merge@4

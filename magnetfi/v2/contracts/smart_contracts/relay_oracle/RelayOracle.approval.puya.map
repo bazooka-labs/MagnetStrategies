@@ -1,0 +1,5999 @@
+{
+  "version": 3,
+  "sources": [
+    "contract.py"
+  ],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAmFA;;AAAA;AAAA;AAAA;;AAAA;;;AAAA;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAAA;;;AAAA;;;;;;;;;;;;;;;;;;;;;;;;;;AAAA;AAAA;;;;;;AAAA;;;AAAA;;;;AAAA;AA6BK;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAUU;;AAAY;;AAAZ;AAAP;AACO;;AAAY;;AAAZ;AAAP;AACO;;AAAA;AAAwB;AAAxB;AAAP;AACA;AAAA;AACA;AAAmB;;AAAnB;AACA;AAAA;;AAAA;AACA;;AAAA;;AAAA;AACA;;AAAA;AAAA;AACA;AAA4B;;AAA5B;AACA;AAAgC;AAAhC;AACA;;AAA2B;;AAA3B;AACA;;AAA8B;;AAA9B;AArBH;AAAA;AA4DA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;;AAAA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;;AAqBU;;AAAA;AAAkB;;AAAlB;AAAP;AACO;AAAoB;;AAApB;AAAP;AAOI;AAAA;;;AAA8B;;;;;;;AAAwB;;AAAxB;AAA9B;AADJ;AAMI;AAA2B;;AAA3B;AAA+C;;AAA/C;AADJ;AAKU;AAA2B;;AAA3B;AAAA;AAAA;;AACV;;;AAKY;AAA2B;;AAA3B;AAAA;AAAA;;AACA;AAA2B;;AAA3B;AACZ;;AAAA;AACO;;AAAA;AAAP;AAGY;AAA2B;;AAA3B;AAAA;AAAA;;AACQ;;AAAb;AAAP;AAOqC;;AAA3B;AAAA;AAEK;;AAAZ;AAAX;;;AAEe;;AAAA;AAAyB;;AAAzB;AAAP;AAKU;AAAlB;AAAyB;;AAAzB;AAAA;;;AACY;AAA4B;AAAA;;AAAA;AAAA;;;AAA5B;;;;AAAwD;;;AAAxD;AADM;AAAA;;;;;AAIc;AAAA;;AAAA;AAAA;AADjB;;AAAA;;AAAA;;AAAA;AAAP;AAzF8B;;AAAA;AAAvB;;AAAA;;AAAA;AAkGP;;AAAA;AA9FO;;AAAA;AAAA;AA+FP;AAAA;AAhFH;AAAA;;AA6DmB;;;;;AAuBnB;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAMG;;;AAEI;;AAvG2B;AAAA;AAAA;AAAA;;AAAxB;;AAAA;AAAA;AAAA;AAAA;;AAsGU;AAAA;AAAA;;AAGL;;;AAAA;;AAAA;;;;AAAL;AAAP;AACA;AAAA;AAAA;AACA;AAA4C;AAA5C;AAnHO;;AAAA;;AAAA;AAAA;;AAAA;AAoHP;;AAAA;AAhHO;;AAAA;AAAA;AAiHiC;;AAAxC;AAdH;AAAA;;;;;AAgBA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAQG;;;AAvH+B;AAAxB;;AAAA;;AAAA;AAwHP;AAhIO;;AAAA;;AAAA;AAiIP;AA7HO;;AAAA;AAAA;AA8HP;AAXH;AAAA;AAaA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAkBG;;;AACA;AAAA;AACA;;AAAA;;;AAxJ8B;AAAA;AAAvB;;AAAA;;AAAA;AAyJP;;AAAA;AArJO;;AAAA;AAAA;AAsJiC;;AAAxC;AAtBH;AAAA;AA0BA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAOG;;;AACO;AAAA;AAAqB;AAArB;AAAP;AACA;AAAA;AAAA;AACgC;;AAA0B;;;;AAA1B;AAAhC;AAAA;AAAA;AAVH;AAAA;AAeG;;;AACO;AAAA;AAAA;AAAA;AAAA;AAAA;AAAoC;AAApC;AAAP;AACO;;AAA2B;AAAA;AAAA;AAAA;AAA3B;AAAP;AACA;;AAAA;AAAA;AACA;AAA4B;;AAA5B;AACA;AAAgC;AAAhC;AARH;AAAA;AAaG;;;AACA;AAA4B;;AAA5B;AACA;AAAgC;AAAhC;AALH;AAAA;AASA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAGG;;;AACO;AAAa;;AAAb;AAAP;AACoB;AAAA;AAAA;AAAA;AAAb;;AAAA;AAAP;AACA;;AAAA;AAAA;AANH;AAAA;AAWU;AAAA;;AAAA;AAAA;AAAA;AAA4B;;AAA5B;AAAP;AACO;;AAAA;;AAAA;AAAP;AACA;AAAA;AAAA;AACA;;AAA2B;;AAA3B;AAGA;AAA4B;;AAA5B;AACA;AAAgC;AAAhC;AAVH;AAAA;AAYA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AA3NU;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAP;AA+NO;AAAgB;;AAAhB;AAAP;AACuB;AAAA;AAAA;AAAA;AAAhB;;AAAA;AAAP;AACA;;AAAA;AAAA;AANH;AAAA;AAWU;AAAA;;AAAA;AAAA;AAAA;AAA+B;;AAA/B;AAAP;AACO;;AAAA;;AAAA;AAAP;AACA;AAAA;AAAA;AACA;;AAA8B;;AAA9B;AANH;AAAA;AAUA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAnOiC;AAAvB;;AAAA;;AAAA;AA4OC;AAxOD;;AAAA;;AAAA;AAyOF;AACc;AAAA;AAAoB;AAAA;AAAhC;AAXV;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAjPU;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAP;;AASI;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAA;;;AAAkC;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAlC;;;;AADJ;;;;;;AAgBH;;;AAGO;;AAL2B;;AAAA;AAAxB;;AAAA;AAAA;AAIU;AAGV;;;AAAA;;AAAA;;;;AAAP;;;",
+  "op_pc_offset": 0,
+  "pc_events": {
+    "1": {
+      "subroutine": "algopy.arc4.ARC4Contract.approval_program",
+      "params": {},
+      "block": "main",
+      "stack_in": [],
+      "op": "intcblock 0 1 8 32"
+    },
+    "7": {
+      "op": "bytecblock \"pending_signer\" \"pending_signer_eta\" \"admin\" \"guardian\" 0x6c705f70726963655f 0x6c705f74735f \"pending_admin\" \"pending_guardian\" \"signer_pubkey\" 0x6c705f6163746976655f \"opup_app_id\""
+    },
+    "143": {
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "145": {
+      "op": "!",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "146": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "147": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "149": {
+      "op": "bz main_create_NoOp@18",
+      "stack_out": []
+    },
+    "152": {
+      "op": "pushbytess 0x685246b0 0xdf22ddfa 0x45aab8b8 0xf11c047e 0x64a2c0ca 0x471cf4d8 0x23385cec 0xc50d6333 0x969a0da3 0x3c30bfe1 0xfe5892d6 0xccdc7a17 // method \"post_signed_price(byte[],byte[])void\", method \"add_pool(uint64,uint64)void\", method \"remove_pool(uint64)void\", method \"admin_set_price(uint64,uint64)void\", method \"propose_signer(byte[])void\", method \"confirm_signer()void\", method \"cancel_pending_signer()void\", method \"propose_admin(address)void\", method \"accept_admin()void\", method \"propose_guardian(address)void\", method \"accept_guardian()void\", method \"get_lp_price(uint64)(uint64,uint64)\"",
+      "defined_out": [
+        "Method(accept_admin()void)",
+        "Method(accept_guardian()void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(admin_set_price(uint64,uint64)void)",
+        "Method(cancel_pending_signer()void)",
+        "Method(confirm_signer()void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "Method(post_signed_price(byte[],byte[])void)",
+        "Method(propose_admin(address)void)",
+        "Method(propose_guardian(address)void)",
+        "Method(propose_signer(byte[])void)",
+        "Method(remove_pool(uint64)void)"
+      ],
+      "stack_out": [
+        "Method(post_signed_price(byte[],byte[])void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(admin_set_price(uint64,uint64)void)",
+        "Method(propose_signer(byte[])void)",
+        "Method(confirm_signer()void)",
+        "Method(cancel_pending_signer()void)",
+        "Method(propose_admin(address)void)",
+        "Method(accept_admin()void)",
+        "Method(propose_guardian(address)void)",
+        "Method(accept_guardian()void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))"
+      ]
+    },
+    "214": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(accept_admin()void)",
+        "Method(accept_guardian()void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(admin_set_price(uint64,uint64)void)",
+        "Method(cancel_pending_signer()void)",
+        "Method(confirm_signer()void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "Method(post_signed_price(byte[],byte[])void)",
+        "Method(propose_admin(address)void)",
+        "Method(propose_guardian(address)void)",
+        "Method(propose_signer(byte[])void)",
+        "Method(remove_pool(uint64)void)",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "Method(post_signed_price(byte[],byte[])void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(admin_set_price(uint64,uint64)void)",
+        "Method(propose_signer(byte[])void)",
+        "Method(confirm_signer()void)",
+        "Method(cancel_pending_signer()void)",
+        "Method(propose_admin(address)void)",
+        "Method(accept_admin()void)",
+        "Method(propose_guardian(address)void)",
+        "Method(accept_guardian()void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "tmp%4#0"
+      ]
+    },
+    "217": {
+      "op": "match post_signed_price add_pool remove_pool admin_set_price propose_signer confirm_signer cancel_pending_signer propose_admin accept_admin propose_guardian accept_guardian get_lp_price",
+      "stack_out": []
+    },
+    "243": {
+      "op": "err"
+    },
+    "244": {
+      "block": "main_create_NoOp@18",
+      "stack_in": [],
+      "op": "pushbytes 0x62cc64d1 // method \"deploy(address,byte[],uint64)void\"",
+      "defined_out": [
+        "Method(deploy(address,byte[],uint64)void)"
+      ],
+      "stack_out": [
+        "Method(deploy(address,byte[],uint64)void)"
+      ]
+    },
+    "250": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(deploy(address,byte[],uint64)void)",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "Method(deploy(address,byte[],uint64)void)",
+        "tmp%5#0"
+      ]
+    },
+    "253": {
+      "op": "match deploy",
+      "stack_out": []
+    },
+    "257": {
+      "op": "err"
+    },
+    "258": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.deploy[routing]",
+      "params": {},
+      "block": "deploy",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "261": {
+      "op": "dup",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "guardian#0 (copy)"
+      ]
+    },
+    "262": {
+      "op": "len",
+      "defined_out": [
+        "guardian#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "len%0#0"
+      ]
+    },
+    "263": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "guardian#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "264": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "eq%0#0"
+      ]
+    },
+    "265": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "266": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0"
+      ]
+    },
+    "269": {
+      "op": "dup",
+      "defined_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "270": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "guardian#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)",
+        "0"
+      ]
+    },
+    "271": {
+      "error": "invalid array length header",
+      "op": "extract_uint16 // on error: invalid array length header",
+      "defined_out": [
+        "aggregate%array_length%0#0",
+        "guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "aggregate%array_length%0#0"
+      ]
+    },
+    "272": {
+      "op": "pushint 2",
+      "defined_out": [
+        "2",
+        "aggregate%array_length%0#0",
+        "guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "aggregate%array_length%0#0",
+        "2"
+      ]
+    },
+    "274": {
+      "op": "+",
+      "defined_out": [
+        "add%0#0",
+        "guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "add%0#0"
+      ]
+    },
+    "275": {
+      "op": "dig 1",
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "add%0#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "277": {
+      "op": "len",
+      "defined_out": [
+        "add%0#0",
+        "guardian#0",
+        "len%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "add%0#0",
+        "len%1#0"
+      ]
+    },
+    "278": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "279": {
+      "error": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "op": "assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "stack_out": [
+        "guardian#0",
+        "tmp%2#0"
+      ]
+    },
+    "280": {
+      "op": "extract 2 0",
+      "defined_out": [
+        "guardian#0",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0"
+      ]
+    },
+    "283": {
+      "op": "txna ApplicationArgs 3",
+      "defined_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ]
+    },
+    "286": {
+      "op": "dup",
+      "defined_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0",
+        "tmp%4#0 (copy)"
+      ]
+    },
+    "287": {
+      "op": "len",
+      "defined_out": [
+        "guardian#0",
+        "len%2#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0",
+        "len%2#0"
+      ]
+    },
+    "288": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "guardian#0",
+        "len%2#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0",
+        "len%2#0",
+        "8"
+      ]
+    },
+    "289": {
+      "op": "==",
+      "defined_out": [
+        "eq%2#0",
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0",
+        "eq%2#0"
+      ]
+    },
+    "290": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "tmp%4#0"
+      ]
+    },
+    "291": {
+      "op": "btoi",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "292": {
+      "op": "dig 2",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "guardian#0 (copy)"
+      ]
+    },
+    "294": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "guardian#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "296": {
+      "op": "!=",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "tmp%1#1"
+      ]
+    },
+    "297": {
+      "error": "guardian required",
+      "op": "assert // guardian required",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "298": {
+      "op": "dig 2",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "guardian#0 (copy)"
+      ]
+    },
+    "300": {
+      "op": "txn Sender",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "guardian#0 (copy)",
+        "tmp%2#1"
+      ]
+    },
+    "302": {
+      "op": "!=",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "tmp%3#1"
+      ]
+    },
+    "303": {
+      "error": "guardian must differ from admin",
+      "op": "assert // guardian must differ from admin",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "304": {
+      "op": "dig 1",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "signer_pubkey#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "signer_pubkey#0 (copy)"
+      ]
+    },
+    "306": {
+      "op": "len",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%4#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "tmp%4#1"
+      ]
+    },
+    "307": {
+      "op": "intc_3 // 32",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "tmp%4#1",
+        "32"
+      ]
+    },
+    "308": {
+      "op": "==",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%5#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "tmp%5#1"
+      ]
+    },
+    "309": {
+      "error": "signer pubkey must be 32 bytes",
+      "op": "assert // signer pubkey must be 32 bytes",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "310": {
+      "op": "dup",
+      "defined_out": [
+        "guardian#0",
+        "opup_app_id#0",
+        "opup_app_id#0 (copy)",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "opup_app_id#0 (copy)"
+      ]
+    },
+    "311": {
+      "error": "opup app id required",
+      "op": "assert // opup app id required",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "312": {
+      "op": "bytec_2 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "\"admin\""
+      ]
+    },
+    "313": {
+      "op": "txn Sender",
+      "defined_out": [
+        "\"admin\"",
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "\"admin\"",
+        "tmp%7#0"
+      ]
+    },
+    "315": {
+      "op": "app_global_put",
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "316": {
+      "op": "bytec_3 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "guardian#0",
+        "opup_app_id#0",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "\"guardian\""
+      ]
+    },
+    "317": {
+      "op": "uncover 3",
+      "stack_out": [
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "\"guardian\"",
+        "guardian#0"
+      ]
+    },
+    "319": {
+      "op": "app_global_put",
+      "stack_out": [
+        "signer_pubkey#0",
+        "opup_app_id#0"
+      ]
+    },
+    "320": {
+      "op": "bytec 8 // \"signer_pubkey\"",
+      "defined_out": [
+        "\"signer_pubkey\"",
+        "opup_app_id#0",
+        "signer_pubkey#0"
+      ],
+      "stack_out": [
+        "signer_pubkey#0",
+        "opup_app_id#0",
+        "\"signer_pubkey\""
+      ]
+    },
+    "322": {
+      "op": "uncover 2",
+      "stack_out": [
+        "opup_app_id#0",
+        "\"signer_pubkey\"",
+        "signer_pubkey#0"
+      ]
+    },
+    "324": {
+      "op": "app_global_put",
+      "stack_out": [
+        "opup_app_id#0"
+      ]
+    },
+    "325": {
+      "op": "bytec 10 // \"opup_app_id\"",
+      "defined_out": [
+        "\"opup_app_id\"",
+        "opup_app_id#0"
+      ],
+      "stack_out": [
+        "opup_app_id#0",
+        "\"opup_app_id\""
+      ]
+    },
+    "327": {
+      "op": "swap",
+      "stack_out": [
+        "\"opup_app_id\"",
+        "opup_app_id#0"
+      ]
+    },
+    "328": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "329": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "defined_out": [
+        "\"pending_signer\""
+      ],
+      "stack_out": [
+        "\"pending_signer\""
+      ]
+    },
+    "330": {
+      "op": "pushbytes 0x",
+      "defined_out": [
+        "\"pending_signer\"",
+        "0x"
+      ],
+      "stack_out": [
+        "\"pending_signer\"",
+        "0x"
+      ]
+    },
+    "332": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "333": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "defined_out": [
+        "\"pending_signer_eta\""
+      ],
+      "stack_out": [
+        "\"pending_signer_eta\""
+      ]
+    },
+    "334": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"pending_signer_eta\"",
+        "0"
+      ]
+    },
+    "335": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "336": {
+      "op": "bytec 6 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\""
+      ],
+      "stack_out": [
+        "\"pending_admin\""
+      ]
+    },
+    "338": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_admin\"",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "\"pending_admin\"",
+        "tmp%8#0"
+      ]
+    },
+    "340": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "341": {
+      "op": "bytec 7 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\""
+      ],
+      "stack_out": [
+        "\"pending_guardian\""
+      ]
+    },
+    "343": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "\"pending_guardian\"",
+        "tmp%9#0"
+      ]
+    },
+    "345": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "346": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "347": {
+      "op": "return",
+      "stack_out": []
+    },
+    "348": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.post_signed_price[routing]",
+      "params": {},
+      "block": "post_signed_price",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "351": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "352": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)",
+        "0"
+      ]
+    },
+    "353": {
+      "error": "invalid array length header",
+      "op": "extract_uint16 // on error: invalid array length header",
+      "defined_out": [
+        "aggregate%array_length%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "aggregate%array_length%0#0"
+      ]
+    },
+    "354": {
+      "op": "pushint 2",
+      "defined_out": [
+        "2",
+        "aggregate%array_length%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "aggregate%array_length%0#0",
+        "2"
+      ]
+    },
+    "356": {
+      "op": "+",
+      "defined_out": [
+        "add%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0"
+      ]
+    },
+    "357": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "359": {
+      "op": "len",
+      "defined_out": [
+        "add%0#0",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0",
+        "len%0#0"
+      ]
+    },
+    "360": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "361": {
+      "error": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "op": "assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "362": {
+      "op": "dup",
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "363": {
+      "op": "extract 2 0",
+      "defined_out": [
+        "message#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "message#0"
+      ]
+    },
+    "366": {
+      "op": "dup",
+      "stack_out": [
+        "tmp%0#0",
+        "message#0",
+        "message#0"
+      ]
+    },
+    "367": {
+      "op": "cover 2",
+      "defined_out": [
+        "message#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0"
+      ]
+    },
+    "369": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0"
+      ]
+    },
+    "372": {
+      "op": "dup",
+      "defined_out": [
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "373": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)",
+        "0"
+      ]
+    },
+    "374": {
+      "error": "invalid array length header",
+      "op": "extract_uint16 // on error: invalid array length header",
+      "defined_out": [
+        "aggregate%array_length%1#0",
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "aggregate%array_length%1#0"
+      ]
+    },
+    "375": {
+      "op": "pushint 2",
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "aggregate%array_length%1#0",
+        "2"
+      ]
+    },
+    "377": {
+      "op": "+",
+      "defined_out": [
+        "add%1#0",
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "add%1#0"
+      ]
+    },
+    "378": {
+      "op": "dig 1",
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "add%1#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "380": {
+      "op": "len",
+      "defined_out": [
+        "add%1#0",
+        "len%1#0",
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "add%1#0",
+        "len%1#0"
+      ]
+    },
+    "381": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "message#0",
+        "tmp%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "382": {
+      "error": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "op": "assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#0"
+      ]
+    },
+    "383": {
+      "op": "extract 2 0",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0"
+      ]
+    },
+    "386": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0",
+        "signature#0"
+      ]
+    },
+    "387": {
+      "op": "cover 3",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0"
+      ]
+    },
+    "389": {
+      "op": "dig 1",
+      "defined_out": [
+        "message#0",
+        "message#0 (copy)",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0",
+        "message#0 (copy)"
+      ]
+    },
+    "391": {
+      "op": "len",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0",
+        "tmp%0#1"
+      ]
+    },
+    "392": {
+      "op": "pushint 85",
+      "defined_out": [
+        "85",
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0",
+        "tmp%0#1",
+        "85"
+      ]
+    },
+    "394": {
+      "op": "==",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0",
+        "tmp%1#1"
+      ]
+    },
+    "395": {
+      "error": "bad message length",
+      "op": "assert // bad message length",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "signature#0"
+      ]
+    },
+    "396": {
+      "op": "len",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#1"
+      ]
+    },
+    "397": {
+      "op": "pushint 64",
+      "defined_out": [
+        "64",
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%2#1",
+        "64"
+      ]
+    },
+    "399": {
+      "op": "==",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0",
+        "tmp%3#1"
+      ]
+    },
+    "400": {
+      "error": "bad signature length",
+      "op": "assert // bad signature length",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "tmp%0#0",
+        "message#0"
+      ]
+    },
+    "401": {
+      "op": "swap",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%0#0"
+      ]
+    },
+    "402": {
+      "op": "extract 2 37",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%4#0"
+      ]
+    },
+    "405": {
+      "op": "pushbytes 0x4d464c5001",
+      "defined_out": [
+        "0x4d464c5001",
+        "message#0",
+        "signature#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%4#0",
+        "0x4d464c5001"
+      ]
+    },
+    "412": {
+      "op": "global GenesisHash",
+      "defined_out": [
+        "0x4d464c5001",
+        "message#0",
+        "signature#0",
+        "tmp%4#0",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%4#0",
+        "0x4d464c5001",
+        "tmp%5#0"
+      ]
+    },
+    "414": {
+      "op": "concat",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%4#0",
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%4#0",
+        "tmp%6#0"
+      ]
+    },
+    "415": {
+      "op": "==",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%7#0"
+      ]
+    },
+    "416": {
+      "error": "bad magic, version or network",
+      "op": "assert // bad magic, version or network",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0"
+      ]
+    },
+    "417": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "message#0 (copy)"
+      ]
+    },
+    "418": {
+      "op": "pushint 37",
+      "defined_out": [
+        "37",
+        "message#0",
+        "message#0 (copy)",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "message#0 (copy)",
+        "37"
+      ]
+    },
+    "420": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%8#0"
+      ]
+    },
+    "421": {
+      "op": "global CurrentApplicationID",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%8#0",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%8#0",
+        "tmp%9#0"
+      ]
+    },
+    "423": {
+      "op": "==",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%10#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "tmp%10#0"
+      ]
+    },
+    "424": {
+      "error": "payload targets another app",
+      "op": "assert // payload targets another app",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0"
+      ]
+    },
+    "425": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "message#0 (copy)"
+      ]
+    },
+    "426": {
+      "op": "pushint 45",
+      "defined_out": [
+        "45",
+        "message#0",
+        "message#0 (copy)",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "message#0 (copy)",
+        "45"
+      ]
+    },
+    "428": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "pool_id#0"
+      ]
+    },
+    "429": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "message#0",
+        "pool_id#0",
+        "pool_id#0"
+      ]
+    },
+    "430": {
+      "op": "cover 2",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0",
+        "pool_id#0"
+      ]
+    },
+    "432": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_registered",
+      "op": "callsub _assert_registered",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0"
+      ]
+    },
+    "435": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0",
+        "message#0 (copy)"
+      ]
+    },
+    "436": {
+      "op": "pushint 53",
+      "defined_out": [
+        "53",
+        "message#0",
+        "message#0 (copy)",
+        "pool_id#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0",
+        "message#0 (copy)",
+        "53"
+      ]
+    },
+    "438": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0",
+        "price_min#0"
+      ]
+    },
+    "439": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "message#0",
+        "price_min#0",
+        "price_min#0 (copy)"
+      ]
+    },
+    "440": {
+      "op": "uncover 2",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0"
+      ]
+    },
+    "442": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0",
+        "message#0 (copy)"
+      ]
+    },
+    "443": {
+      "op": "pushint 61",
+      "defined_out": [
+        "61",
+        "message#0",
+        "message#0 (copy)",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0",
+        "message#0 (copy)",
+        "61"
+      ]
+    },
+    "445": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_max#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0",
+        "price_max#0"
+      ]
+    },
+    "446": {
+      "op": "dig 2",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_max#0",
+        "price_min#0",
+        "price_min#0 (copy)",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0",
+        "price_max#0",
+        "price_min#0 (copy)"
+      ]
+    },
+    "448": {
+      "error": "price must be > 0",
+      "op": "assert // price must be > 0",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "price_min#0",
+        "message#0",
+        "price_max#0"
+      ]
+    },
+    "449": {
+      "op": "uncover 2",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "price_max#0",
+        "price_min#0"
+      ]
+    },
+    "451": {
+      "op": ">=",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%15#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "tmp%15#0"
+      ]
+    },
+    "452": {
+      "error": "inverted price band",
+      "op": "assert // inverted price band",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0"
+      ]
+    },
+    "453": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "message#0 (copy)"
+      ]
+    },
+    "454": {
+      "op": "pushint 69",
+      "defined_out": [
+        "69",
+        "message#0",
+        "message#0 (copy)",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "message#0 (copy)",
+        "69"
+      ]
+    },
+    "456": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "issued_at#0"
+      ]
+    },
+    "457": {
+      "op": "dup",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "message#0",
+        "issued_at#0",
+        "issued_at#0"
+      ]
+    },
+    "458": {
+      "op": "cover 2",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0",
+        "issued_at#0"
+      ]
+    },
+    "460": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%17#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0",
+        "issued_at#0",
+        "tmp%17#0"
+      ]
+    },
+    "462": {
+      "op": "<=",
+      "defined_out": [
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%19#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0",
+        "tmp%19#0"
+      ]
+    },
+    "463": {
+      "error": "payload from the future",
+      "op": "assert // payload from the future",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0"
+      ]
+    },
+    "464": {
+      "op": "pushint 77",
+      "defined_out": [
+        "77",
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0",
+        "77"
+      ]
+    },
+    "466": {
+      "op": "extract_uint64",
+      "defined_out": [
+        "issued_at#0",
+        "max_age#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "max_age#0"
+      ]
+    },
+    "467": {
+      "op": "dup",
+      "defined_out": [
+        "issued_at#0",
+        "max_age#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "max_age#0",
+        "max_age#0"
+      ]
+    },
+    "468": {
+      "op": "pushint 30",
+      "defined_out": [
+        "30",
+        "issued_at#0",
+        "max_age#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "max_age#0",
+        "max_age#0",
+        "30"
+      ]
+    },
+    "470": {
+      "op": ">",
+      "defined_out": [
+        "issued_at#0",
+        "max_age#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%21#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "max_age#0",
+        "tmp%21#0"
+      ]
+    },
+    "471": {
+      "op": "bnz post_signed_price_if_body@2",
+      "defined_out": [
+        "effective#1",
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "effective#1"
+      ]
+    },
+    "474": {
+      "block": "post_signed_price_after_if_else@3",
+      "stack_in": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "effective#1"
+      ],
+      "op": "dig 1",
+      "defined_out": [
+        "issued_at#0 (copy)"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "effective#1",
+        "issued_at#0 (copy)"
+      ]
+    },
+    "476": {
+      "op": "+",
+      "defined_out": [
+        "tmp%22#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%22#0"
+      ]
+    },
+    "477": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%22#0",
+        "tmp%23#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%22#0",
+        "tmp%23#0"
+      ]
+    },
+    "479": {
+      "op": ">=",
+      "defined_out": [
+        "tmp%24#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%24#0"
+      ]
+    },
+    "480": {
+      "error": "payload expired",
+      "op": "assert // payload expired",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0"
+      ]
+    },
+    "481": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "_i#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "482": {
+      "block": "post_signed_price_for_header@4",
+      "stack_in": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ],
+      "op": "dup",
+      "defined_out": [
+        "_i#0 (copy)"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "_i#0 (copy)"
+      ]
+    },
+    "483": {
+      "op": "pushint 3",
+      "defined_out": [
+        "3",
+        "_i#0 (copy)"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "_i#0 (copy)",
+        "3"
+      ]
+    },
+    "485": {
+      "op": "<",
+      "defined_out": [
+        "continue_looping%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "continue_looping%0#0"
+      ]
+    },
+    "486": {
+      "op": "bz post_signed_price_after_for@8",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "489": {
+      "op": "itxn_begin"
+    },
+    "490": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "0"
+      ]
+    },
+    "491": {
+      "op": "bytec 10 // \"opup_app_id\"",
+      "defined_out": [
+        "\"opup_app_id\"",
+        "0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "0",
+        "\"opup_app_id\""
+      ]
+    },
+    "493": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "494": {
+      "error": "check self.opup_app_id exists",
+      "op": "assert // check self.opup_app_id exists",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "495": {
+      "op": "itxn_field ApplicationID",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "497": {
+      "op": "pushint 6 // appl",
+      "defined_out": [
+        "appl"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "appl"
+      ]
+    },
+    "499": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "501": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "0"
+      ]
+    },
+    "502": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "504": {
+      "op": "itxn_submit",
+      "defined_out": [
+        "_i#0"
+      ]
+    },
+    "505": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1",
+        "_i#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0",
+        "1"
+      ]
+    },
+    "506": {
+      "op": "+",
+      "defined_out": [
+        "_i#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ]
+    },
+    "507": {
+      "op": "b post_signed_price_for_header@4"
+    },
+    "510": {
+      "block": "post_signed_price_after_for@8",
+      "stack_in": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "_i#0"
+      ],
+      "op": "pop",
+      "defined_out": [],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0"
+      ]
+    },
+    "511": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "0"
+      ]
+    },
+    "512": {
+      "op": "bytec 8 // \"signer_pubkey\"",
+      "defined_out": [
+        "\"signer_pubkey\"",
+        "0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "0",
+        "\"signer_pubkey\""
+      ]
+    },
+    "514": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "515": {
+      "error": "check self.signer_pubkey exists",
+      "op": "assert // check self.signer_pubkey exists",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "516": {
+      "op": "dig 5",
+      "defined_out": [
+        "maybe_value%1#0",
+        "message#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "maybe_value%1#0",
+        "message#0"
+      ]
+    },
+    "518": {
+      "op": "dig 5",
+      "defined_out": [
+        "maybe_value%1#0",
+        "message#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "maybe_value%1#0",
+        "message#0",
+        "signature#0"
+      ]
+    },
+    "520": {
+      "op": "uncover 2",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "message#0",
+        "signature#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "522": {
+      "op": "ed25519verify_bare",
+      "defined_out": [
+        "message#0",
+        "signature#0",
+        "tmp%25#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%25#0"
+      ]
+    },
+    "523": {
+      "error": "bad signature",
+      "op": "assert // bad signature",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0"
+      ]
+    },
+    "524": {
+      "op": "dig 2",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "pool_id#0"
+      ]
+    },
+    "526": {
+      "op": "itob",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0"
+      ]
+    },
+    "527": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "message#0",
+        "pool_id#0",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "529": {
+      "op": "dig 1",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "message#0",
+        "pool_id#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "531": {
+      "op": "concat",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "532": {
+      "op": "dig 3",
+      "defined_out": [
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%0#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0",
+        "tmp%1#2",
+        "price_min#0"
+      ]
+    },
+    "534": {
+      "op": "app_global_put",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0"
+      ]
+    },
+    "535": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "537": {
+      "op": "swap",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "538": {
+      "op": "concat",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "tmp%1#2"
+      ]
+    },
+    "539": {
+      "op": "swap",
+      "defined_out": [
+        "issued_at#0",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "tmp%1#2",
+        "issued_at#0"
+      ]
+    },
+    "540": {
+      "op": "app_global_put",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0"
+      ]
+    },
+    "541": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1",
+        "message#0",
+        "pool_id#0",
+        "price_min#0",
+        "signature#0"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "1"
+      ]
+    },
+    "542": {
+      "op": "return",
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0"
+      ]
+    },
+    "543": {
+      "block": "post_signed_price_if_body@2",
+      "stack_in": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "max_age#0"
+      ],
+      "op": "pop",
+      "defined_out": [],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0"
+      ]
+    },
+    "544": {
+      "op": "pushint 30",
+      "defined_out": [
+        "effective#1"
+      ],
+      "stack_out": [
+        "message#0",
+        "signature#0",
+        "pool_id#0",
+        "price_min#0",
+        "issued_at#0",
+        "effective#1"
+      ]
+    },
+    "546": {
+      "op": "b post_signed_price_after_if_else@3"
+    },
+    "549": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.add_pool[routing]",
+      "params": {},
+      "block": "add_pool",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "552": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "553": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "554": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "555": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "556": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "557": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "558": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "561": {
+      "op": "dup",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "562": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "563": {
+      "op": "intc_2 // 8",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "564": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "565": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "566": {
+      "op": "btoi",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "initial_price#0"
+      ]
+    },
+    "567": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ]
+    },
+    "568": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "571": {
+      "op": "global CurrentApplicationID",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "initial_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ]
+    },
+    "573": {
+      "op": "swap",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "pool_id#0"
+      ]
+    },
+    "574": {
+      "op": "itob",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0"
+      ]
+    },
+    "575": {
+      "op": "dup",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0",
+        "tmp%0#0"
+      ]
+    },
+    "576": {
+      "op": "cover 3",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0"
+      ]
+    },
+    "578": {
+      "op": "bytec 9 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "580": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "0x6c705f6163746976655f",
+        "tmp%0#0"
+      ]
+    },
+    "581": {
+      "op": "concat",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ]
+    },
+    "582": {
+      "op": "dup",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%1#3",
+        "tmp%1#3"
+      ]
+    },
+    "583": {
+      "op": "cover 2",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "tmp%0#1",
+        "tmp%1#3"
+      ]
+    },
+    "585": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "active#0",
+        "exists#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "active#0",
+        "exists#0"
+      ]
+    },
+    "586": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "exists#0",
+        "active#0"
+      ]
+    },
+    "587": {
+      "op": "cover 4",
+      "defined_out": [
+        "active#0",
+        "exists#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "exists#0"
+      ]
+    },
+    "589": {
+      "op": "bz add_pool_bool_false@4",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "592": {
+      "op": "dig 3",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "active#0"
+      ]
+    },
+    "594": {
+      "op": "bz add_pool_bool_false@4",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "597": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "active#0",
+        "and_result%0#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ]
+    },
+    "598": {
+      "block": "add_pool_bool_merge@5",
+      "stack_in": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ],
+      "op": "!",
+      "defined_out": [
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "tmp%5#0"
+      ]
+    },
+    "599": {
+      "error": "pool already registered",
+      "op": "assert // pool already registered",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "600": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "601": {
+      "op": "dup",
+      "defined_out": [
+        "initial_price#0",
+        "initial_price#0 (copy)"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0",
+        "initial_price#0 (copy)"
+      ]
+    },
+    "602": {
+      "error": "initial price must be > 0",
+      "op": "assert // initial price must be > 0",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "603": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "604": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1",
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "1"
+      ]
+    },
+    "605": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0"
+      ]
+    },
+    "606": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "608": {
+      "op": "uncover 2",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "initial_price#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ]
+    },
+    "610": {
+      "op": "dup",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "active#0",
+        "initial_price#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "611": {
+      "op": "cover 2",
+      "stack_out": [
+        "active#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "613": {
+      "op": "concat",
+      "stack_out": [
+        "active#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ]
+    },
+    "614": {
+      "op": "uncover 2",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "616": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active#0",
+        "tmp%0#0"
+      ]
+    },
+    "617": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "619": {
+      "op": "swap",
+      "stack_out": [
+        "active#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "620": {
+      "op": "concat",
+      "stack_out": [
+        "active#0",
+        "tmp%1#3"
+      ]
+    },
+    "621": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%1#3",
+        "tmp%10#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%1#3",
+        "tmp%10#0"
+      ]
+    },
+    "623": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active#0"
+      ]
+    },
+    "624": {
+      "op": "intc_1 // 1",
+      "stack_out": [
+        "active#0",
+        "1"
+      ]
+    },
+    "625": {
+      "op": "return",
+      "stack_out": [
+        "active#0"
+      ]
+    },
+    "626": {
+      "block": "add_pool_bool_false@4",
+      "stack_in": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "and_result%0#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ]
+    },
+    "627": {
+      "op": "b add_pool_bool_merge@5"
+    },
+    "630": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.remove_pool[routing]",
+      "params": {},
+      "block": "remove_pool",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "633": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "634": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "635": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "636": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "637": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "638": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "639": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "642": {
+      "op": "itob",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "643": {
+      "op": "bytec 9 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "645": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f6163746976655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "647": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "648": {
+      "op": "app_global_del",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "649": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "651": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "653": {
+      "op": "concat",
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "654": {
+      "op": "app_global_del",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "655": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "657": {
+      "op": "swap",
+      "stack_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "658": {
+      "op": "concat",
+      "stack_out": [
+        "tmp%1#2"
+      ]
+    },
+    "659": {
+      "op": "app_global_del",
+      "stack_out": []
+    },
+    "660": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "661": {
+      "op": "return",
+      "stack_out": []
+    },
+    "662": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.admin_set_price[routing]",
+      "params": {},
+      "block": "admin_set_price",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "665": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "666": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "667": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "668": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "669": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "670": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "671": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "674": {
+      "op": "dup",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "675": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "676": {
+      "op": "intc_2 // 8",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "677": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "678": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "679": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0",
+        "price#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "price#0"
+      ]
+    },
+    "680": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "683": {
+      "op": "dup",
+      "defined_out": [
+        "pool_id#0",
+        "price#0",
+        "price#0 (copy)"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "price#0",
+        "price#0 (copy)"
+      ]
+    },
+    "684": {
+      "error": "price must be > 0",
+      "op": "assert // price must be > 0",
+      "stack_out": [
+        "pool_id#0",
+        "price#0"
+      ]
+    },
+    "685": {
+      "op": "dig 1",
+      "defined_out": [
+        "pool_id#0",
+        "pool_id#0 (copy)",
+        "price#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "price#0",
+        "pool_id#0 (copy)"
+      ]
+    },
+    "687": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_registered",
+      "op": "callsub _assert_registered",
+      "stack_out": [
+        "pool_id#0",
+        "price#0"
+      ]
+    },
+    "690": {
+      "op": "swap",
+      "stack_out": [
+        "price#0",
+        "pool_id#0"
+      ]
+    },
+    "691": {
+      "op": "itob",
+      "stack_out": [
+        "price#0",
+        "tmp%0#0"
+      ]
+    },
+    "692": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "694": {
+      "op": "dig 1",
+      "stack_out": [
+        "price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "696": {
+      "op": "concat",
+      "defined_out": [
+        "price#0",
+        "tmp%0#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "price#0",
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "697": {
+      "op": "uncover 2",
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#2",
+        "price#0"
+      ]
+    },
+    "699": {
+      "op": "app_global_put",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "700": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "702": {
+      "op": "swap",
+      "stack_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "703": {
+      "op": "concat",
+      "stack_out": [
+        "tmp%1#2"
+      ]
+    },
+    "704": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%1#2",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "tmp%1#2",
+        "tmp%3#1"
+      ]
+    },
+    "706": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "707": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "708": {
+      "op": "return",
+      "stack_out": []
+    },
+    "709": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.propose_signer[routing]",
+      "params": {},
+      "block": "propose_signer",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "712": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "713": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)",
+        "0"
+      ]
+    },
+    "714": {
+      "error": "invalid array length header",
+      "op": "extract_uint16 // on error: invalid array length header",
+      "defined_out": [
+        "aggregate%array_length%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "aggregate%array_length%0#0"
+      ]
+    },
+    "715": {
+      "op": "pushint 2",
+      "defined_out": [
+        "2",
+        "aggregate%array_length%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "aggregate%array_length%0#0",
+        "2"
+      ]
+    },
+    "717": {
+      "op": "+",
+      "defined_out": [
+        "add%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0"
+      ]
+    },
+    "718": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "720": {
+      "op": "len",
+      "defined_out": [
+        "add%0#0",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "add%0#0",
+        "len%0#0"
+      ]
+    },
+    "721": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "722": {
+      "error": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "op": "assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "723": {
+      "op": "extract 2 0",
+      "defined_out": [
+        "new_pubkey#0"
+      ],
+      "stack_out": [
+        "new_pubkey#0"
+      ]
+    },
+    "726": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "729": {
+      "op": "dup",
+      "defined_out": [
+        "new_pubkey#0",
+        "new_pubkey#0 (copy)"
+      ],
+      "stack_out": [
+        "new_pubkey#0",
+        "new_pubkey#0 (copy)"
+      ]
+    },
+    "730": {
+      "op": "len",
+      "defined_out": [
+        "new_pubkey#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_pubkey#0",
+        "tmp%0#1"
+      ]
+    },
+    "731": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "new_pubkey#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_pubkey#0",
+        "tmp%0#1",
+        "32"
+      ]
+    },
+    "732": {
+      "op": "==",
+      "defined_out": [
+        "new_pubkey#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_pubkey#0",
+        "tmp%1#1"
+      ]
+    },
+    "733": {
+      "error": "signer pubkey must be 32 bytes",
+      "op": "assert // signer pubkey must be 32 bytes",
+      "stack_out": [
+        "new_pubkey#0"
+      ]
+    },
+    "734": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "defined_out": [
+        "\"pending_signer\"",
+        "new_pubkey#0"
+      ],
+      "stack_out": [
+        "new_pubkey#0",
+        "\"pending_signer\""
+      ]
+    },
+    "735": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_signer\"",
+        "new_pubkey#0"
+      ]
+    },
+    "736": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "737": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "739": {
+      "op": "pushint 172800",
+      "defined_out": [
+        "172800",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0",
+        "172800"
+      ]
+    },
+    "743": {
+      "op": "+",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "744": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "defined_out": [
+        "\"pending_signer_eta\"",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0",
+        "\"pending_signer_eta\""
+      ]
+    },
+    "745": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_signer_eta\"",
+        "tmp%3#0"
+      ]
+    },
+    "746": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "747": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "748": {
+      "op": "return",
+      "stack_out": []
+    },
+    "749": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.confirm_signer[routing]",
+      "params": {},
+      "block": "confirm_signer",
+      "stack_in": [],
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "752": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "753": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "defined_out": [
+        "\"pending_signer\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pending_signer\""
+      ]
+    },
+    "754": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "755": {
+      "error": "check self.pending_signer exists",
+      "op": "assert // check self.pending_signer exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "756": {
+      "op": "dup",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "757": {
+      "op": "len",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ]
+    },
+    "758": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%0#0",
+        "32"
+      ]
+    },
+    "759": {
+      "op": "==",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "760": {
+      "error": "no pending signer",
+      "op": "assert // no pending signer",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "761": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ]
+    },
+    "763": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "0"
+      ]
+    },
+    "764": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "defined_out": [
+        "\"pending_signer_eta\"",
+        "0",
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "0",
+        "\"pending_signer_eta\""
+      ]
+    },
+    "765": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "766": {
+      "error": "check self.pending_signer_eta exists",
+      "op": "assert // check self.pending_signer_eta exists",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "767": {
+      "op": ">=",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "768": {
+      "error": "timelock not elapsed",
+      "op": "assert // timelock not elapsed",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "769": {
+      "op": "bytec 8 // \"signer_pubkey\"",
+      "defined_out": [
+        "\"signer_pubkey\"",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "\"signer_pubkey\""
+      ]
+    },
+    "771": {
+      "op": "swap",
+      "stack_out": [
+        "\"signer_pubkey\"",
+        "maybe_value%0#0"
+      ]
+    },
+    "772": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "773": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "stack_out": [
+        "\"pending_signer\""
+      ]
+    },
+    "774": {
+      "op": "pushbytes 0x",
+      "defined_out": [
+        "\"pending_signer\"",
+        "0x"
+      ],
+      "stack_out": [
+        "\"pending_signer\"",
+        "0x"
+      ]
+    },
+    "776": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "777": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "stack_out": [
+        "\"pending_signer_eta\""
+      ]
+    },
+    "778": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"pending_signer_eta\"",
+        "0"
+      ]
+    },
+    "779": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "780": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "781": {
+      "op": "return",
+      "stack_out": []
+    },
+    "782": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.cancel_pending_signer[routing]",
+      "params": {},
+      "block": "cancel_pending_signer",
+      "stack_in": [],
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin_or_guardian",
+      "op": "callsub _assert_admin_or_guardian"
+    },
+    "785": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "defined_out": [
+        "\"pending_signer\""
+      ],
+      "stack_out": [
+        "\"pending_signer\""
+      ]
+    },
+    "786": {
+      "op": "pushbytes 0x",
+      "defined_out": [
+        "\"pending_signer\"",
+        "0x"
+      ],
+      "stack_out": [
+        "\"pending_signer\"",
+        "0x"
+      ]
+    },
+    "788": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "789": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "defined_out": [
+        "\"pending_signer_eta\""
+      ],
+      "stack_out": [
+        "\"pending_signer_eta\""
+      ]
+    },
+    "790": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "\"pending_signer_eta\"",
+        "0"
+      ],
+      "stack_out": [
+        "\"pending_signer_eta\"",
+        "0"
+      ]
+    },
+    "791": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "792": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "793": {
+      "op": "return",
+      "stack_out": []
+    },
+    "794": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.propose_admin[routing]",
+      "params": {},
+      "block": "propose_admin",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "797": {
+      "op": "dup",
+      "defined_out": [
+        "new_admin#0",
+        "new_admin#0 (copy)"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "new_admin#0 (copy)"
+      ]
+    },
+    "798": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "len%0#0"
+      ]
+    },
+    "799": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "len%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "800": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "eq%0#0"
+      ]
+    },
+    "801": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "802": {
+      "callsub": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin_or_guardian",
+      "op": "callsub _assert_admin_or_guardian"
+    },
+    "805": {
+      "op": "dup"
+    },
+    "806": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "new_admin#0",
+        "new_admin#0 (copy)",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "new_admin#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "808": {
+      "op": "!=",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ]
+    },
+    "809": {
+      "error": "zero address not allowed",
+      "op": "assert // zero address not allowed",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "810": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "0"
+      ]
+    },
+    "811": {
+      "op": "bytec_3 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "812": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "813": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "814": {
+      "op": "dig 1",
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0",
+        "new_admin#0 (copy)"
+      ]
+    },
+    "816": {
+      "op": "!=",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#0"
+      ]
+    },
+    "817": {
+      "error": "admin must differ from guardian",
+      "op": "assert // admin must differ from guardian",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "818": {
+      "op": "bytec 6 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\"",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "\"pending_admin\""
+      ]
+    },
+    "820": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_admin\"",
+        "new_admin#0"
+      ]
+    },
+    "821": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "822": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "823": {
+      "op": "return",
+      "stack_out": []
+    },
+    "824": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.accept_admin[routing]",
+      "params": {},
+      "block": "accept_admin",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "825": {
+      "op": "bytec 6 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pending_admin\""
+      ]
+    },
+    "827": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "828": {
+      "error": "check self.pending_admin exists",
+      "op": "assert // check self.pending_admin exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "829": {
+      "op": "dup"
+    },
+    "830": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ]
+    },
+    "832": {
+      "op": "!=",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "833": {
+      "error": "no pending admin",
+      "op": "assert // no pending admin",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "834": {
+      "op": "txn Sender",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ]
+    },
+    "836": {
+      "op": "dig 1",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "838": {
+      "op": "==",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "839": {
+      "error": "not pending admin",
+      "op": "assert // not pending admin",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "840": {
+      "op": "bytec_2 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "\"admin\""
+      ]
+    },
+    "841": {
+      "op": "swap",
+      "stack_out": [
+        "\"admin\"",
+        "maybe_value%0#0"
+      ]
+    },
+    "842": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "843": {
+      "op": "bytec 6 // \"pending_admin\"",
+      "stack_out": [
+        "\"pending_admin\""
+      ]
+    },
+    "845": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_admin\"",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "\"pending_admin\"",
+        "tmp%4#0"
+      ]
+    },
+    "847": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "848": {
+      "op": "bytec_0 // \"pending_signer\"",
+      "defined_out": [
+        "\"pending_signer\""
+      ],
+      "stack_out": [
+        "\"pending_signer\""
+      ]
+    },
+    "849": {
+      "op": "pushbytes 0x",
+      "defined_out": [
+        "\"pending_signer\"",
+        "0x"
+      ],
+      "stack_out": [
+        "\"pending_signer\"",
+        "0x"
+      ]
+    },
+    "851": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "852": {
+      "op": "bytec_1 // \"pending_signer_eta\"",
+      "defined_out": [
+        "\"pending_signer_eta\""
+      ],
+      "stack_out": [
+        "\"pending_signer_eta\""
+      ]
+    },
+    "853": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"pending_signer_eta\"",
+        "0"
+      ]
+    },
+    "854": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "855": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "856": {
+      "op": "return",
+      "stack_out": []
+    },
+    "857": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.propose_guardian[routing]",
+      "params": {},
+      "block": "propose_guardian",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "860": {
+      "op": "dup",
+      "defined_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)"
+      ]
+    },
+    "861": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "len%0#0"
+      ]
+    },
+    "862": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "len%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "863": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "eq%0#0"
+      ]
+    },
+    "864": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "865": {
+      "op": "txn Sender",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1"
+      ]
+    },
+    "867": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "868": {
+      "op": "bytec_3 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "869": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "870": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "871": {
+      "op": "==",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ]
+    },
+    "872": {
+      "error": "guardian only",
+      "op": "assert // guardian only",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "873": {
+      "op": "dup"
+    },
+    "874": {
+      "op": "global ZeroAddress",
+      "stack_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "876": {
+      "op": "!=",
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ]
+    },
+    "877": {
+      "error": "zero address not allowed",
+      "op": "assert // zero address not allowed",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "878": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "new_guardian#0",
+        "0"
+      ]
+    },
+    "879": {
+      "op": "bytec_2 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "880": {
+      "op": "app_global_get_ex",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "881": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "882": {
+      "op": "dig 1",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0",
+        "new_guardian#0 (copy)"
+      ]
+    },
+    "884": {
+      "op": "!=",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%2#0"
+      ]
+    },
+    "885": {
+      "error": "guardian must differ from admin",
+      "op": "assert // guardian must differ from admin",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "886": {
+      "op": "bytec 7 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "\"pending_guardian\""
+      ]
+    },
+    "888": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_guardian\"",
+        "new_guardian#0"
+      ]
+    },
+    "889": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "890": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "891": {
+      "op": "return",
+      "stack_out": []
+    },
+    "892": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.accept_guardian[routing]",
+      "params": {},
+      "block": "accept_guardian",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "893": {
+      "op": "bytec 7 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pending_guardian\""
+      ]
+    },
+    "895": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "896": {
+      "error": "check self.pending_guardian exists",
+      "op": "assert // check self.pending_guardian exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "897": {
+      "op": "dup"
+    },
+    "898": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ]
+    },
+    "900": {
+      "op": "!=",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "901": {
+      "error": "no pending guardian",
+      "op": "assert // no pending guardian",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "902": {
+      "op": "txn Sender",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ]
+    },
+    "904": {
+      "op": "dig 1",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "906": {
+      "op": "==",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "907": {
+      "error": "not pending guardian",
+      "op": "assert // not pending guardian",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "908": {
+      "op": "bytec_3 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "\"guardian\""
+      ]
+    },
+    "909": {
+      "op": "swap",
+      "stack_out": [
+        "\"guardian\"",
+        "maybe_value%0#0"
+      ]
+    },
+    "910": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "911": {
+      "op": "bytec 7 // \"pending_guardian\"",
+      "stack_out": [
+        "\"pending_guardian\""
+      ]
+    },
+    "913": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "\"pending_guardian\"",
+        "tmp%4#0"
+      ]
+    },
+    "915": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "916": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "917": {
+      "op": "return",
+      "stack_out": []
+    },
+    "918": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle.get_lp_price[routing]",
+      "params": {},
+      "block": "get_lp_price",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "921": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "922": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "923": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "924": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "925": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "926": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "927": {
+      "op": "itob",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "928": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "930": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "932": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "933": {
+      "op": "app_global_get",
+      "defined_out": [
+        "price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "price#0"
+      ]
+    },
+    "934": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "price#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "936": {
+      "op": "uncover 2",
+      "stack_out": [
+        "price#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "938": {
+      "op": "concat",
+      "stack_out": [
+        "price#0",
+        "tmp%1#0"
+      ]
+    },
+    "939": {
+      "op": "app_global_get",
+      "defined_out": [
+        "price#0",
+        "ts#0"
+      ],
+      "stack_out": [
+        "price#0",
+        "ts#0"
+      ]
+    },
+    "940": {
+      "op": "swap",
+      "stack_out": [
+        "ts#0",
+        "price#0"
+      ]
+    },
+    "941": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "ts#0"
+      ],
+      "stack_out": [
+        "ts#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "942": {
+      "op": "swap",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "ts#0"
+      ]
+    },
+    "943": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "944": {
+      "op": "concat",
+      "defined_out": [
+        "aggregate%head%1#0"
+      ],
+      "stack_out": [
+        "aggregate%head%1#0"
+      ]
+    },
+    "945": {
+      "op": "pushbytes 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%head%1#0"
+      ],
+      "stack_out": [
+        "aggregate%head%1#0",
+        "0x151f7c75"
+      ]
+    },
+    "951": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%head%1#0"
+      ]
+    },
+    "952": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "953": {
+      "op": "log",
+      "stack_out": []
+    },
+    "954": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "955": {
+      "op": "return",
+      "stack_out": []
+    },
+    "956": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin",
+      "params": {},
+      "block": "_assert_admin",
+      "stack_in": [],
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "958": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0"
+      ]
+    },
+    "959": {
+      "op": "bytec_2 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "960": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "961": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "962": {
+      "op": "==",
+      "defined_out": [
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%1#0"
+      ]
+    },
+    "963": {
+      "error": "admin only",
+      "op": "assert // admin only",
+      "stack_out": []
+    },
+    "964": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "965": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle._assert_admin_or_guardian",
+      "params": {},
+      "block": "_assert_admin_or_guardian",
+      "stack_in": [],
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "967": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0"
+      ]
+    },
+    "968": {
+      "op": "bytec_2 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "969": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "970": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "971": {
+      "op": "==",
+      "defined_out": [
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%1#0"
+      ]
+    },
+    "972": {
+      "op": "bnz _assert_admin_or_guardian_bool_true@2",
+      "stack_out": []
+    },
+    "975": {
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "977": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "tmp%2#0",
+        "0"
+      ]
+    },
+    "978": {
+      "op": "bytec_3 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "979": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "980": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "tmp%2#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "981": {
+      "op": "==",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "982": {
+      "op": "bz _assert_admin_or_guardian_bool_false@3",
+      "stack_out": []
+    },
+    "985": {
+      "block": "_assert_admin_or_guardian_bool_true@2",
+      "stack_in": [],
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "or_result%0#0"
+      ],
+      "stack_out": [
+        "or_result%0#0"
+      ]
+    },
+    "986": {
+      "error": "admin or guardian only",
+      "block": "_assert_admin_or_guardian_bool_merge@4",
+      "stack_in": [
+        "or_result%0#0"
+      ],
+      "op": "assert // admin or guardian only",
+      "defined_out": [],
+      "stack_out": []
+    },
+    "987": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "988": {
+      "block": "_assert_admin_or_guardian_bool_false@3",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "or_result%0#0"
+      ],
+      "stack_out": [
+        "or_result%0#0"
+      ]
+    },
+    "989": {
+      "op": "b _assert_admin_or_guardian_bool_merge@4"
+    },
+    "992": {
+      "subroutine": "smart_contracts.relay_oracle.contract.RelayOracle._assert_registered",
+      "params": {
+        "pool_id#0": "uint64"
+      },
+      "block": "_assert_registered",
+      "stack_in": [],
+      "op": "proto 1 0"
+    },
+    "995": {
+      "op": "global CurrentApplicationID",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "997": {
+      "op": "frame_dig -1",
+      "defined_out": [
+        "pool_id#0 (copy)",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "pool_id#0 (copy)"
+      ]
+    },
+    "999": {
+      "op": "itob",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#1"
+      ]
+    },
+    "1000": {
+      "op": "bytec 9 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#1",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "1002": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f6163746976655f",
+        "tmp%0#1"
+      ]
+    },
+    "1003": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#1"
+      ]
+    },
+    "1004": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "active#0",
+        "exists#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "exists#0"
+      ]
+    },
+    "1005": {
+      "op": "bz _assert_registered_bool_false@3",
+      "stack_out": [
+        "active#0"
+      ]
+    },
+    "1008": {
+      "op": "frame_dig 0",
+      "stack_out": [
+        "active#0",
+        "active#0"
+      ]
+    },
+    "1010": {
+      "op": "bz _assert_registered_bool_false@3",
+      "stack_out": [
+        "active#0"
+      ]
+    },
+    "1013": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "active#0",
+        "and_result%0#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "and_result%0#0"
+      ]
+    },
+    "1014": {
+      "error": "pool not in whitelist",
+      "block": "_assert_registered_bool_merge@4",
+      "stack_in": [
+        "active#0",
+        "and_result%0#0"
+      ],
+      "op": "assert // pool not in whitelist",
+      "defined_out": [],
+      "stack_out": [
+        "active#0"
+      ]
+    },
+    "1015": {
+      "retsub": true,
+      "op": "retsub"
+    },
+    "1016": {
+      "block": "_assert_registered_bool_false@3",
+      "stack_in": [
+        "active#0"
+      ],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "and_result%0#0"
+      ],
+      "stack_out": [
+        "active#0",
+        "and_result%0#0"
+      ]
+    },
+    "1017": {
+      "op": "b _assert_registered_bool_merge@4"
+    }
+  }
+}
