@@ -116,27 +116,15 @@ migration, when a vault redeploy has to happen anyway. v5 removes the urgency.
 purpose.** The schema is frozen at creation, and under-declaring costs a
 redeploy *plus another 48h repoint*, which is the exact cost v5 exists to avoid.
 
-4 uints per pool (price, ts, active, anchor) × 12 = 48, plus
+3 uints per pool (price, ts, active) × 12 = 36 — no anchor (§2.6) — plus
 `pending_signer_eta`. The measured AVM cap is **exactly 64** global entries, so
-57 + 7 leaves the real ceiling at **14 pools** with room spare rather than the
-12 we need today. Creator MBR is `100,000 + 28,500 × uints + 50,000 × bytes` →
+declaring 57 + 7 leaves the real ceiling at **19 pools** rather than the 12 we
+need today. Creator MBR is `100,000 + 28,500 × uints + 50,000 × bytes` →
 **2.12 ALGO** against 1.57 at a minimal 41/6. **Half an ALGO buys permanent
 headroom**, paid once by the admin key.
 
-**The anchor BAND is gone; `lp_anchor_` stays as advisory state.**
-
-The ±25% band bounded a compromised writer and is superseded by the signature.
-But the first draft deleted the `lp_anchor_` key with it, which was a
-self-contradiction: `oracle_bot.effective_bounds` reads `lp_anchor_<pool_id>`
-**every cycle** to derive the signer's own sanity bounds, and that mechanism was
-built on 2026-10-10 *specifically* to end the bug class behind two of the three
-freezes — hardcoded bounds drifting out of agreement with the chain. Deleting
-the key returns the signer to hardcoded constants and reintroduces exactly that
-bug, relocated from the contract to the signer.
-
-So: `lp_anchor_<pool_id>` is **kept and written by `set_price_anchor` (admin),
-read by the signer, and asserted on by nothing.** It is a published reference
-value, not a gate. No post can ever be rejected because of it.
+**The anchor goes entirely — key, setter and band.** See §2.6, which is the
+whole point of v5 and the easiest thing to get wrong.
 
 ### 2.2 `post_signed_price(message: bytes, signature: bytes)` — permissionless
 
@@ -183,6 +171,69 @@ scalar cannot express that — **so a real band is a v4 feature, not a v5 one.**
 Recorded here so nobody assumes otherwise: enabling a band under v5 silently
 values everything at the conservative end.
 
+### 2.6 Every price gate is removed — on chain AND in the signer
+
+This is the commitment v5 exists to honour: *"there is a bigger risk of me not
+being able to liquidate loans on a flash crash than of me fumbling my private
+keys."* Key-compromise risk is accepted; the defences built against it go.
+
+| gate | where | status under v5 |
+|---|---|---|
+| ±25% anchor band | contract | **removed** |
+| ±50%-vs-prior guard | contract | **removed** |
+| `lp_anchor_`, `set_price_anchor`, the re-anchoring chore | contract | **removed** |
+| anchor-derived `min_price`/`max_price` | **signer** | **removed — see below** |
+| `asset_price_bounds` | signer | **removed** |
+| wide scaling-slip band (`PRICE_SANITY_*`) | signer | **kept** — see below |
+| TWAP smoothing | signer | **kept, normative** (§4.0) |
+| multi-route + CompX cross-check | signer | **kept, normative** (§4.0) |
+
+#### The signer-side bound has to go too, and a draft of this spec missed it
+
+An intermediate draft kept `lp_anchor_` as "advisory state, asserted on by
+nothing" so that `oracle_bot.effective_bounds` could keep deriving its ±24%
+bound from it. **That would have defeated the entire exercise.**
+
+Under v5 the signer does not post — it *signs*. If it refuses to sign, **no
+payload exists, so nobody can post**, and permissionless relay buys nothing. The
+halt does not disappear; it moves from the chain to the signer and is just as
+total. A bound that halts the signer is the same object as a band that halts the
+chain, wearing a different hat.
+
+Measured 2026-10-12, with the current anchors:
+
+| pool | vs anchor | bot headroom left |
+|---|---|---|
+| **U/tALGO** | **+14.5%** | **8.3%** |
+| U/USDC | +8.4% | 14.4% |
+| ALGO/USDC | +5.3% | 17.8% |
+| U/ALGO | +6.5% | 16.5% |
+
+So the gate is not theoretical — it is currently 8% from firing on U/tALGO.
+
+**What replaces it: nothing, and deliberately.** With no on-chain band there is
+nothing for a signer bound to stay inside, so the 2026-10-10 bug class it was
+built for — bot bounds drifting out of agreement with the contract band —
+**cannot occur, because neither side exists.**
+
+#### What is kept, and why it is not the same thing
+
+`payload.encode()` keeps one wide band: `PRICE_SANITY_MIN = 1_000` to
+`PRICE_SANITY_MAX = 1_000_000_000`, i.e. **$0.001 to $1,000 per LP token**.
+
+It is not a manipulation defence and not a compromise defence. It exists to
+catch a **×1e6 or ÷1e6 scaling slip**, the likeliest bug in this path, which
+would otherwise be signed and accepted — live prices are ~0.9–2.6e6 and a ×1e6
+slip lands at 9e11. It is three orders of magnitude clear of any real price in
+either direction, so **it never needs touching and can never rot.** That is the
+difference from the band that did: that one was tight, per-pool, and
+hand-maintained.
+
+TWAP and the cross-checks stay because they catch **bugs and manipulation**,
+which key custody has nothing to do with — a bug still runs our code, and a
+thin-pool spike is not a stolen key. Only a compromised signer bypasses them,
+and that is the accepted risk, with the honest cost stated in §4.5.
+
 ### 2.3 Kept, unchanged in spirit
 
 - `add_pool(pool_id, initial_price)` — admin. Seeds `price`, `ts`, `active=1`.
@@ -198,7 +249,7 @@ values everything at the conservative end.
 |---|---|
 | `authorized_updater`, `set_authorized_updater` | no privileged writer exists |
 | `update_lp_price` | replaced by `post_signed_price` |
-| the ±25% anchor **band** | anti-compromise only; superseded by the signature. `lp_anchor_` and `set_price_anchor` are KEPT as advisory state — see §2.1 |
+| `lp_anchor_`, `set_price_anchor`, the ±25% band | anti-compromise only, superseded by the signature — and the chore goes with them (§2.6) |
 | ±50%-vs-prior guard | same, and it is itself a halt source |
 
 ### 2.5 Signer key rotation, and the break-glass
@@ -491,10 +542,10 @@ the vault goes stale the instant it switches.
    a window between step 6's confirm and the deploy where the UI prices
    positions off the *old* oracle while the vault uses the *new* one.
 
-   `OracleHealthPanel` keeps working — `lp_anchor_` survives as advisory state
-   (§2.1) — but its band-distance reading becomes informational rather than a
-   freeze predictor, so it needs relabelling, and a **bundle-freshness /
-   signer-liveness monitor** replaces it as the leading indicator. That monitor
+   `OracleHealthPanel`'s band-distance reading **goes entirely** — there is no
+   anchor and no band (§2.6), so the panel must be reworked, not relabelled. A
+   **bundle-freshness / signer-liveness monitor** replaces it as the leading
+   indicator. That monitor
    is a v5 deliverable, not a follow-up: `getOracleHealth`'s own comment records
    that the distance-to-band was built after the 2026-10-07 post-mortem because
    "nothing in the product showed it," and without a replacement v5 ships with
@@ -588,5 +639,9 @@ Against `contracts/tests/` (67 integration/adversarial) and the signer's 59:
   must be deployed non-deletable (§3).
 - `lp_ts_` carries `issued_at`, so a replayed 30s-old payload reports age ~30s
   and not 0 (§2.2).
-- Schema: a 15th pool fails to register, proving the declared ceiling is real
+- Schema: a 20th pool fails to register, proving the declared ceiling is real
   and known rather than discovered later.
+- **No price is ever refused for being far from anything** (§2.6): a price 10x
+  the last one posts successfully, on chain and through the signer. This is the
+  commitment v5 exists to honour and it should fail loudly if someone
+  reintroduces a bound.

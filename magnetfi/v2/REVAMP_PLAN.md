@@ -54,6 +54,13 @@ cheap migration window on state that gets rebuilt.
 Every halt to date came from the bot's own absolute constants, not from the
 chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
 
+> **Note for v5.** Items 0.1 and 0.6 below build an anchor-derived bound in the
+> signer. That is correct *today*, because the contract band is real and the
+> bound keeps the bot inside it. **Under [v5](./ORACLE_V5_SPEC.md) both go** —
+> with no band to stay inside, a signer-side bound is just the same halt wearing
+> a different hat, and a signer that will not sign means nobody can post at all.
+> See ORACLE_V5_SPEC.md §2.6.
+
 - [x] **0.1 — Derive `min_price`/`max_price` from the on-chain anchor at startup.** DONE 2026-10-10 (`30c4594`), **not yet deployed**.
       Read `lp_anchor_<pool_id>` from the oracle; set bounds to `anchor × 0.76`
       and `× 1.24`. This is TODO item 2, and it is the single highest-value
