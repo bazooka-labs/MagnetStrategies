@@ -5,7 +5,13 @@ from conftest import POOL_ID, LTV_BPS, INITIAL_PRICE, ONE_LP, ONE_MUSD, VAULT_MB
 def test_deploy_and_wire(proto):
     # Oracle seeded with price + anchor
     assert proto.oracle_uint(b"lp_price_") == INITIAL_PRICE
-    assert proto.oracle_uint(b"lp_anchor_") == INITIAL_PRICE
+    # v5 has no anchor at all (ORACLE_V5_SPEC.md §2.6), so there is nothing to
+    # assert there — and its absence is the thing being verified.
+    from conftest import RELAY
+    if RELAY:
+        assert proto.oracle_uint(b"lp_anchor_") is None
+    else:
+        assert proto.oracle_uint(b"lp_anchor_") == INITIAL_PRICE
     # PSM holds full reserve, ceiling opened with USDC, circulating starts at 0
     assert proto.circulating_musd() == 0
     assert proto.psm_usdc() == 100_000 * ONE_MUSD

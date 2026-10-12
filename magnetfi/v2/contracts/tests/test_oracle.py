@@ -1,5 +1,7 @@
 """LP Oracle guards: authorization, ±50% prior deviation, ±25% anchor band, re-anchor."""
 import pytest
+
+from conftest import RELAY
 from conftest import POOL_ID, INITIAL_PRICE
 
 
@@ -14,6 +16,7 @@ def test_only_authorized_updater_can_post(proto):
     assert proto.oracle_uint(b"lp_price_") == 1_050_000
 
 
+@pytest.mark.skipif(RELAY, reason="v5 removes this gate by design — see ORACLE_V5_SPEC.md §2.6. The test is kept so it still guards the LPOracle while that is live.")
 def test_prior_deviation_guard_50pct(proto):
     # >50% drop vs prior (1.0 → 0.49) rejected
     with pytest.raises(Exception):
@@ -26,6 +29,7 @@ def test_prior_deviation_guard_50pct(proto):
     assert proto.oracle_uint(b"lp_price_") == 1_200_000
 
 
+@pytest.mark.skipif(RELAY, reason="v5 removes this gate by design — see ORACLE_V5_SPEC.md §2.6. The test is kept so it still guards the LPOracle while that is live.")
 def test_anchor_band_25pct(proto):
     # Anchor is 1.0 from add_pool. +30% (1.30) exceeds +25% band → rejected
     with pytest.raises(Exception):
@@ -38,6 +42,7 @@ def test_anchor_band_25pct(proto):
     assert proto.oracle_uint(b"lp_price_") == 1_240_000
 
 
+@pytest.mark.skipif(RELAY, reason="v5 removes this gate by design — see ORACLE_V5_SPEC.md §2.6. The test is kept so it still guards the LPOracle while that is live.")
 def test_reanchor_enables_larger_move(proto):
     # Admin re-anchors to follow a genuine move, unblocking a post outside the old band
     proto.set_anchor(700_000)

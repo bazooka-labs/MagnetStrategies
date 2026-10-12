@@ -35,6 +35,29 @@ from algokit_utils import (
 )
 import algokit_utils
 
+# ── Which oracle is under test ───────────────────────────────────────────────
+#
+# MAGNETFI_ORACLE=relay swaps the posted-price LPOracle for the v5 RelayOracle
+# and runs this ENTIRE suite against it unchanged.
+#
+# That is the point. ORACLE_V5_SPEC.md claims the new oracle is a drop-in: the
+# vault reads lp_price_/lp_ts_ by global-state key and never calls the oracle,
+# so it should not notice the swap. Reading the vault says so; this proves it.
+# If borrow, repay, accrual, all three liquidation paths and the adversarial
+# tests pass with the oracle replaced underneath, the claim is demonstrated
+# rather than argued.
+RELAY = os.environ.get("MAGNETFI_ORACLE", "").lower() == "relay"
+
+if RELAY:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "signer"))
+    import payload as _pl
+    import nacl.signing as _nacl
+
+    # Deterministic test signer. Mainnet's key never touches a repo.
+    SIGNER_SEED = bytes(range(32))
+    SIGNER_PUBKEY = bytes(_nacl.SigningKey(SIGNER_SEED).verify_key)
+
 # Quiet the verbose simulate-error logging on intentionally-failing calls.
 algokit_utils.config.config.configure(populate_app_call_resources=True, debug=False)
 
@@ -99,7 +122,16 @@ class Protocol:
             AssetOptInParams(sender=self.treasury.address, asset_id=self.usdc_id))
 
         # Deploy contracts
-        self.oracle = self._deploy("lp_oracle", "LPOracle", [self.guardian.address])
+        if RELAY:
+            # The OpUp app buys the opcode budget for ed25519verify_bare (1900
+            # units against the 700 an app call carries). It must exist first:
+            # the oracle's reference to it is immutable.
+            self.opup = self._deploy("opup", "OpUp", [])
+            self.oracle = self._deploy(
+                "relay_oracle", "RelayOracle",
+                [self.guardian.address, SIGNER_PUBKEY, self.opup.app_id])
+        else:
+            self.oracle = self._deploy("lp_oracle", "LPOracle", [self.guardian.address])
         self.psm = self._deploy(
             "psm", "PSM", [self.musd_id, self.usdc_id, self.guardian.address]
         )
@@ -160,7 +192,9 @@ class Protocol:
     # ── wiring ──────────────────────────────────────────────────────────────────
     def _wire(self) -> None:
         # Oracle
-        self.call(self.oracle, "set_authorized_updater", [self.bot.address], self.admin)
+        if not RELAY:
+            # v5 has no privileged writer — anyone may relay a signed price.
+            self.call(self.oracle, "set_authorized_updater", [self.bot.address], self.admin)
         self.call(self.oracle, "add_pool", [POOL_ID, INITIAL_PRICE], self.admin)
         # PSM opt-ins + treasury
         self.call(self.psm, "opt_in_asset", [self.musd_id], self.admin)
@@ -208,14 +242,38 @@ class Protocol:
         rnd = self.algod.status()["last-round"]
         return self.algod.block_info(rnd)["block"]["ts"]
 
-    def oracle_post(self, price: int) -> None:
-        self.call(self.oracle, "update_lp_price", [POOL_ID, price], self.bot)
+    def sign_payload(self, price: int, issued_at: int | None = None) -> tuple[bytes, bytes]:
+        """Build and sign a v5 payload for POOL_ID, timestamped from the CHAIN."""
+        return _pl.sign(_pl.Payload(
+            target_app=self.oracle.app_id, lp_asa_id=POOL_ID,
+            price_min=price, price_max=price,
+            issued_at=self.latest_ts() if issued_at is None else issued_at,
+            genesis=base64.b64decode(self.algod.suggested_params().gh),
+        ), SIGNER_SEED)
+
+    def oracle_post(self, price: int, sender: SigningAccount | None = None) -> None:
+        if not RELAY:
+            self.call(self.oracle, "update_lp_price", [POOL_ID, price], self.bot)
+            return
+        msg, sig = self.sign_payload(price)
+        # `sender` defaults to the bot only so the two paths look alike. v5 has
+        # no sender check at all — see test_relay_liveness for a stranger doing it.
+        self.call(self.oracle, "post_signed_price", [msg, sig], sender or self.bot)
 
     def set_anchor(self, price: int) -> None:
+        if RELAY:
+            return      # v5 has no anchor and no band — nothing to re-anchor
         self.call(self.oracle, "set_price_anchor", [POOL_ID, price], self.admin)
 
     def set_price(self, price: int) -> None:
-        """Re-anchor then post — lets tests move price beyond the ±25% band in one step."""
+        """
+        Move the price.
+
+        Under the posted-price oracle this needs a re-anchor first, because the
+        ±25% band would reject a large jump. Under v5 there is no band, so the
+        post alone does it — which is the whole point, and why set_anchor is a
+        no-op there rather than a branch at every call site.
+        """
         self.set_anchor(price)
         self.oracle_post(price)
 
