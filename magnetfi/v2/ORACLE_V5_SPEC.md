@@ -1,5 +1,16 @@
 # MagnetFi — Relay Oracle (v5)
 
+> **DEFERRED 2026-10-13 in favour of [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md).**
+> Reading the record rather than the theory: of the three freezes, one was the
+> CONTRACT's anchor band and two were the bot's own bounds (already fixed). The
+> structural cause still live is the contract's bands — and removing those
+> needs a new oracle, but not signed payloads, a signing service, object
+> storage or an opcode budget. v5 adds zero-second pricing at liquidation and
+> removes the trusted key; both are worth less than they cost while every
+> borrower is the operator. Everything below stays true and nothing is wasted —
+> the hard part, proving the vault does not notice an oracle swap, transfers
+> directly.
+
 **Status: contracts BUILT and green on LocalNet; publisher and frontend not
 started.** `contracts/smart_contracts/relay_oracle/` and `.../opup/` compile
 with the pinned puyapy 5.9.0 and pass 16 integration tests driven by the

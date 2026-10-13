@@ -188,6 +188,12 @@ second migration later — but decide that explicitly, here, not by drift.
 
 ---
 
+> **Re-scoped again 2026-10-13 — see [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md).**
+> The next step is the band-free oracle plus a poll/post split, not v5. The
+> freeze record says the live structural cause is the CONTRACT's bands, which
+> need a new oracle but not signed payloads. v5 is built and proven, and waits
+> behind the same tripwire as §5 of that spec: the first third-party borrower.
+
 ## Phase 2 — Build v4
 
 > **Re-scoped 2026-10-11.** v4 was welded to the lender contract because it
