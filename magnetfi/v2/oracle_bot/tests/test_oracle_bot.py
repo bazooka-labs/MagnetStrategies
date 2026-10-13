@@ -1663,3 +1663,30 @@ def test_a_twap_inside_the_band_still_posts(monkeypatch, tmp_path):
     ob._last_anchor[1] = 1_000_000
     ob.update_pool(object(), make_cfg(), make_pool(), twap, "sk", "addr", dry_run=True)
     assert posted and 760_000 <= posted[0] <= 1_240_000
+
+
+# ── the signer must not inherit the bot's anchor bound ───────────────────────
+
+def test_anchor_bounds_apply_by_default(monkeypatch):
+    """Today's bot keeps them: the contract band is real and this stays inside it."""
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: _state_with(pool_token_asset_id=1))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 1.0)
+    monkeypatch.setattr(ob, "effective_bounds", lambda *a, **k: (10**9, 10**9))  # impossible
+    assert ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg()) is None
+
+
+def test_the_signer_can_opt_out_of_the_anchor_bound(monkeypatch):
+    """
+    ORACLE_V5_SPEC.md §2.6. Under v5 there is no band for this bound to stay
+    inside, and a bound that stops the SIGNER signing is the same total halt as
+    a band that stops the chain accepting — no payload means nobody can post.
+    """
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: _state_with(pool_token_asset_id=1))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 1.0)
+    called = []
+    monkeypatch.setattr(ob, "effective_bounds",
+                        lambda *a, **k: called.append(1) or (10**9, 10**9))
+    out = ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg(),
+                          apply_anchor_bounds=False)
+    assert out is not None, "the signer was blocked by a bound that should not apply"
+    assert not called, "effective_bounds was consulted anyway"

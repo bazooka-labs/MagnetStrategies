@@ -721,7 +721,8 @@ def compx_cross_check(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfi
 
 # ── full price pipeline for one pool ────────────────────────────────────────────
 
-def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) -> tuple[int, bool] | None:
+def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig,
+                 *, apply_anchor_bounds: bool = True) -> tuple[int, bool] | None:
     """Read LP pool state, derive underlyings on-chain, compute LP price, apply sanity
     bounds + CompX cross-check. Returns (scaled_price, compx_verified), or None if it
     cannot price safely (incl. a fresh CompX divergence). compx_verified=False means
@@ -784,7 +785,15 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig) ->
     # move, pre-anchor readings inside the 1800s TWAP window can still carry the
     # posted value outside the new band for up to that long. Pre-existing, and
     # not fixed here — see REVAMP_PLAN.md Phase 0.6.
-    min_price, max_price = effective_bounds(client, cfg, pool)
+    #
+    # apply_anchor_bounds=False is for the v5 SIGNER. There is no contract band
+    # under v5, so there is nothing for this bound to keep the price inside —
+    # and a bound that stops the signer signing is the same halt as a band that
+    # stops the chain accepting, because no payload means nobody can post.
+    # ORACLE_V5_SPEC.md §2.6. The signer keeps TWAP, the route cross-checks and
+    # payload.encode()'s wide scaling-slip band, which catch BUGS rather than
+    # key theft.
+    min_price, max_price = effective_bounds(client, cfg, pool) if apply_anchor_bounds else (0, 0)
     if min_price > 0 and price < min_price:
         log.error(f"[{pool.label}] price {price} below sanity floor {min_price}; refusing to post")
         return None

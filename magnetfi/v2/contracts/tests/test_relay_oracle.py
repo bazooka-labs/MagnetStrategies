@@ -16,6 +16,7 @@ Requires: `algokit localnet start`, and both contracts compiled.
 from __future__ import annotations
 
 import base64
+import os
 import sys
 import time
 from pathlib import Path
@@ -160,8 +161,13 @@ def build(genesis: bytes, algorand: AlgorandClient, **over) -> tuple[bytes, byte
 
 def post(oracle, algorand, msg, sig, sender, extra_fee_txns: int = 4):
     """Post, paying enough fee to cover the oracle's inner OpUp calls."""
+    # A unique note, because two identical payloads produce byte-identical app
+    # calls and therefore the same txid — "transaction already in ledger"
+    # rather than anything to do with the contract. conftest's own `call`
+    # helper does the same.
     return oracle.send.call(AppClientMethodCallParams(
         method="post_signed_price", args=[msg, sig], sender=sender,
+        note=os.urandom(8),
         static_fee=AlgoAmount(micro_algo=1000 * extra_fee_txns)))
 
 
@@ -372,3 +378,49 @@ def test_signer_rotation_is_timelocked(deployed, algorand, accounts):
     with pytest.raises(Exception):      # nothing pending now
         oracle.send.call(AppClientMethodCallParams(
             method="confirm_signer", args=[], sender=admin.address))
+
+
+# ── the service's own output, accepted by the contract ───────────────────────
+
+def test_the_signers_output_is_accepted_by_the_deployed_contract(deployed, algorand, genesis, monkeypatch):
+    """
+    Closes the loop.
+
+    Every other test here builds payloads with `payload.py` directly. This one
+    goes through `signer.sign_pool` — the actual service, with its TWAP gate,
+    its confidence policy and its encoding — and feeds the result to the
+    compiled contract. A disagreement anywhere along that path fails here
+    rather than on mainnet.
+
+    Pricing is stubbed because LocalNet has no Tinyman pools; the pipeline it
+    stands in for has its own 139 tests.
+    """
+    import sys
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / "signer"))
+    sys.path.insert(0, str(root / "oracle_bot"))   # signer imports the pipeline
+    import oracle_bot as ob
+    import signer as sg
+
+    _, oracle = deployed
+    price = 915_905
+    monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: (price, True))
+
+    twap = ob.TwapState(Path(__file__).parent / ".signer_twap_test.json")
+    twap.clear(POOL)
+    pool = ob.PoolConfig(dict(pool_id=POOL, pool_address="X", asset_a_id=1,
+                              asset_a_decimals=6, asset_b_id=2, asset_b_decimals=6,
+                              label="U/tALGO"))
+    cfg = ob.BotConfig(dict(oracle_app_id=555, usdc_asa_id=31566704, asset_decimals={},
+                            asset_price_bounds={}, reference_pools={}, pools=[]))
+
+    out = None
+    for _ in range(ob.MIN_TWAP_READINGS):        # the service refuses until smoothed
+        out = sg.sign_pool(object(), cfg, pool, twap, oracle.app_id, SEED,
+                           genesis=genesis, now=chain_now(algorand))
+    assert out is not None, "the signer never produced a payload"
+
+    msg, sig = out
+    post(oracle, algorand, msg, sig, ADMIN_ADDR[0])
+    assert read_state(algorand, oracle.app_id, b"lp_price_", POOL) == price
+    twap.clear(POOL)
