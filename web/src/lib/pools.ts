@@ -119,38 +119,191 @@ export const DEX_LABEL: Record<PoolDex, string> = { tinyman: "Tinyman", pact: "P
 export type PoolMetrics = {
   tvlUsd: number | null;
   feeApr: number | null;
-  farmApr: number | null;   // null when no active farm
+  farmApr: number | null;   // null when no farm, or when the farm pays no measurable rate
   totalApr: number | null;
+  /**
+   * A farm is running on this pool, whether or not it has a rate to show.
+   *
+   * Separate from `farmApr != null` because the two genuinely differ. Pact
+   * computes a farm's APR against what is staked, so a farm that is live and
+   * funded but that nobody has staked into yet reports 0 — measured 2026-10-14,
+   * three of the four live $U farms (U/ALGO, U/ALPHA, U/FOLKS) were in exactly
+   * that state. Keying the Farming badge off the APR alone hid them, which is
+   * the opposite of what a supplier needs to know: those are the pools where
+   * staking captures the whole reward stream.
+   */
+  farmLive: boolean;
 };
-const EMPTY_METRICS: PoolMetrics = { tvlUsd: null, feeApr: null, farmApr: null, totalApr: null };
+const EMPTY_METRICS: PoolMetrics = {
+  tvlUsd: null, feeApr: null, farmApr: null, totalApr: null, farmLive: false,
+};
 
 const TINYMAN_POOLS_API = "https://mainnet.analytics.tinyman.org/api/v1/pools";
 const PACT_POOLS_API = "https://api.pact.fi/api/pools";
+const PACT_FACTORY_FARMS_API = "https://api.pact.fi/api/v1/factory-farms";
+/**
+ * Below this, in percentage points, a farm counts as paying nothing.
+ *
+ * Treats rounding dust as "no rate" so the headline APR is not nudged by noise,
+ * while `farmLive` still reports that the farm is there.
+ */
+const FARM_APR_FLOOR = 0.01;
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; MagnetStrategies/1.0)" };
 const pct = (v: unknown) => (v == null ? null : Number(v) * 100);
+
+/**
+ * Pact farms, by the pool id they reward.
+ *
+ * Pact has TWO farm tables and they are not interchangeable:
+ *
+ *   /api/v1/farms          — the 2022-era legacy farms. All 177 are `ended`.
+ *   /api/v1/factory-farms  — the current farm factory. This is the live one.
+ *
+ * Reading the wrong one makes every current farm invisible, and so does the
+ * per-pool endpoint this file uses for TVL and fee APR: measured 2026-10-14,
+ * `/api/pools/{id}` returns `rewards: []` and `apr_7d_all === apr_7d` for all
+ * six $U pools even though four of them are being farmed. Deriving the farm APR
+ * as the excess of `apr_7d_all` over `apr_7d` therefore could only ever yield
+ * zero, which is why farms never showed up here.
+ *
+ * `/api/v1/pools` does carry a joined `farmAprFraction`, but it is the APR
+ * alone — it cannot say a farm EXISTS when that APR is 0, and it costs 8 paged
+ * requests and ~3.7 MB because the list honours no filter (`poolIds`, `ids`,
+ * `poolId`, `assetIds`, `tokenIds`, `search` and `hasFarm` were each tried and
+ * all returned the same unfiltered first page). factory-farms is one unpaged
+ * 74 kB request and carries the farm's status, so it is used instead.
+ */
+type PactFarm = { apr: number | null; live: boolean };
+type PactFarmIndex = Map<string, PactFarm>;
+
+type PactFactoryFarm = {
+  status?: string;
+  aprFraction?: number | string | null;
+  pool?: { poolId?: string | number } | null;
+};
+
+async function loadPactFarmIndex(): Promise<PactFarmIndex> {
+  const index: PactFarmIndex = new Map();
+  const r = await fetch(`${PACT_FACTORY_FARMS_API}?chain=algorand-mainnet`, {
+    headers: UA,
+    next: { revalidate: 60 },
+  });
+  if (!r.ok) return index;
+  const body: { data?: PactFactoryFarm[] } = await r.json();
+
+  for (const farm of body?.data ?? []) {
+    const poolId = farm?.pool?.poolId;
+    // Single-asset farms reward a token rather than an LP position and have no
+    // pool to attach to; they are not pools on this page.
+    if (poolId == null || farm?.status !== "live") continue;
+    const apr = pct(farm?.aprFraction);
+    index.set(String(poolId), { apr: apr != null && apr > FARM_APR_FLOOR ? apr : null, live: true });
+  }
+
+  return index;
+}
+
+/**
+ * The memoised index.
+ *
+ * A rejected or empty result is deliberately NOT held for the full window: an
+ * upstream blip would otherwise strip the Farming badge off every Pact pool for
+ * a minute, and a stale-but-correct farm figure beats a confidently absent one.
+ */
+let pactFarmIndexCache: { at: number; value: Promise<PactFarmIndex> } | null = null;
+const PACT_FARM_INDEX_TTL_MS = 60_000;
+
+function pactFarmIndex(): Promise<PactFarmIndex> {
+  let entry = pactFarmIndexCache;
+  if (!entry || Date.now() - entry.at >= PACT_FARM_INDEX_TTL_MS) {
+    const started: { at: number; value: Promise<PactFarmIndex> } = {
+      at: Date.now(),
+      value: loadPactFarmIndex().then((index) => {
+        // An empty index means it did not load; let the next read retry.
+        if (!index.size && pactFarmIndexCache === started) pactFarmIndexCache = null;
+        return index;
+      }),
+    };
+    started.value.catch(() => {
+      if (pactFarmIndexCache === started) pactFarmIndexCache = null;
+    });
+    pactFarmIndexCache = started;
+    entry = started;
+  }
+  return entry.value.catch((): PactFarmIndex => new Map());
+}
 
 async function fetchTinymanMetrics(addr: string): Promise<PoolMetrics> {
   const r = await fetch(`${TINYMAN_POOLS_API}/${addr}/`, { headers: UA, next: { revalidate: 60 } });
   if (!r.ok) return EMPTY_METRICS;
   const p = await r.json();
+  const farmApr = pct(p.staking_total_annual_percentage_rate); // null when no farm
   return {
     tvlUsd: Number(p.liquidity_in_usd) || 0,
     feeApr: pct(p.annual_percentage_rate),
-    farmApr: pct(p.staking_total_annual_percentage_rate), // null when no farm
+    farmApr,
     totalApr: pct(p.total_annual_percentage_rate),
+    // Tinyman reports a rate or nothing at all, so the rate IS the signal here.
+    farmLive: farmApr != null && farmApr > FARM_APR_FLOOR,
   };
 }
 
 async function fetchPactMetrics(id: string): Promise<PoolMetrics> {
-  const r = await fetch(`${PACT_POOLS_API}/${id}`, { headers: UA, next: { revalidate: 60 } });
+  // TVL and fee APR come from the per-pool endpoint; the farm APR only exists in
+  // the v1 index (see PactFarmIndex). The index is fetched alongside rather than
+  // after, so a pool card costs one round trip either way.
+  const [r, farmIndex] = await Promise.all([
+    fetch(`${PACT_POOLS_API}/${id}`, { headers: UA, next: { revalidate: 60 } }),
+    pactFarmIndex(),
+  ]);
   if (!r.ok) return EMPTY_METRICS;
   const p = await r.json();
-  const feeApr = pct(p.apr_7d);
-  const totalApr = pct(p.apr_7d_all);
-  // Pact folds farm rewards into apr_7d_all; the excess over the fee APR is the farm APR.
-  const farmApr =
-    feeApr != null && totalApr != null && totalApr - feeApr > 0.01 ? totalApr - feeApr : null;
-  return { tvlUsd: Number(p.tvl_usd) || 0, feeApr, farmApr, totalApr };
+  const farm = farmIndex.get(id);
+  return {
+    tvlUsd: Number(p.tvl_usd) || 0,
+    ...resolvePactApr({
+      feeApr: pct(p.apr_7d),
+      reportedTotal: pct(p.apr_7d_all),
+      indexedFarm: farm?.apr ?? null,
+      farmLive: farm?.live ?? false,
+    }),
+  };
+}
+
+/**
+ * Reconcile Pact's two farm signals into one fee/farm/total triple.
+ *
+ * Split out from the fetch so it can be tested without the network.
+ *
+ * `indexedFarm` is `farmAprFraction` from the v1 index, which Pact states
+ * outright and which is therefore preferred. The `reportedTotal` excess is kept
+ * as a fallback because on Pact's OLD pools `apr_7d_all` genuinely did fold farm
+ * rewards in, and those pools carry no farm figure in the v1 index — dropping it
+ * would have un-farmed them.
+ *
+ * The 0.01pp floor on both treats rounding dust as "no farm", so the Farming
+ * badge does not light up for a farm that has stopped paying.
+ */
+export function resolvePactApr(input: {
+  feeApr: number | null;
+  reportedTotal: number | null;
+  indexedFarm: number | null;
+  farmLive?: boolean;
+}): Omit<PoolMetrics, "tvlUsd"> {
+  const { feeApr, reportedTotal, indexedFarm, farmLive = false } = input;
+
+  const folded =
+    feeApr != null && reportedTotal != null && reportedTotal - feeApr > FARM_APR_FLOOR
+      ? reportedTotal - feeApr
+      : null;
+  const farmApr = indexedFarm != null && indexedFarm > FARM_APR_FLOOR ? indexedFarm : folded;
+
+  // apr_7d_all does NOT include a factory farm, so the headline adds it back.
+  // When the farm came from the fold, reportedTotal already contains it and
+  // feeApr + farmApr reproduces it exactly.
+  const totalApr = farmApr != null && feeApr != null ? feeApr + farmApr : reportedTotal;
+
+  return { feeApr, farmApr, totalApr, farmLive: farmLive || farmApr != null };
 }
 
 export async function fetchPoolMetrics(venue: Pick<Venue, "dex" | "ref">): Promise<PoolMetrics> {
@@ -192,14 +345,16 @@ export function combineMetrics(parts: PoolMetrics[]): PoolMetrics {
     return rows.reduce((a, r) => a + r.apr * r.w, 0) / weight;
   };
 
-  // farmApr stays null unless some venue actually farms, so the Farming badge
-  // does not light up on a blended zero.
+  // farmApr stays null unless some venue actually pays, so a blended zero does
+  // not invent a rate. farmLive is a separate OR: a farm running on one venue of
+  // a pair is still a farm a supplier can stake into, even with no rate yet.
   const farm = blend("farmApr");
   return {
     tvlUsd,
     feeApr: blend("feeApr"),
     farmApr: farm != null && farm > 0 ? farm : null,
     totalApr: blend("totalApr"),
+    farmLive: parts.some((m) => m.farmLive),
   };
 }
 

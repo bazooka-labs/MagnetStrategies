@@ -18,7 +18,12 @@ function DexBadge({ dex }: { dex: PoolDex }) {
 }
 
 function PoolCard({ p }: { p: PoolData }) {
-  const farming = p.farmApr != null && p.farmApr > 0;
+  // A farm can be live without a rate: Pact computes farm APR against what is
+  // staked, so a funded farm nobody has staked into yet reports 0. Those are
+  // precisely the pools worth staking into, so the badge follows farmLive and
+  // the rate is shown only when there is one.
+  const farmRate = p.farmApr != null && p.farmApr > 0;
+  const farming = p.farmLive || farmRate;
   return (
     <Panel className="animate-enter-1 hover-depth flex flex-col p-6">
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -44,7 +49,14 @@ function PoolCard({ p }: { p: PoolData }) {
         <p className="mt-1 font-mono text-3xl font-bold text-green-400">{fmtApr(p.totalApr)}</p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
           <span>Swap Fees <span className="font-mono text-gray-300">{fmtApr(p.feeApr)}</span></span>
-          {farming && <span>Farm <span className="font-mono text-green-300">{fmtApr(p.farmApr)}</span></span>}
+          {farming && (
+            <span>
+              Farm{" "}
+              <span className="font-mono text-green-300">
+                {farmRate ? fmtApr(p.farmApr) : "live \u00b7 unstaked"}
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -123,8 +135,9 @@ export function PoolsSection() {
       <p className="mt-5 flex items-start gap-2 text-xs text-gray-500">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         A <span className="font-medium text-gray-400">Farming</span> badge appears whenever a pool has an active
-        rewards program — these vary over time and are pulled live, so no pool ever shows a stale incentive.
-        Liquidity is added directly on the DEX.
+        rewards program — these vary over time and are pulled live, so no pool ever shows a stale incentive. A farm
+        reading <span className="font-medium text-gray-400">live · unstaked</span> is funded but has nothing staked
+        in it yet, so it has no rate to quote. Liquidity is added directly on the DEX.
       </p>
     </section>
   );
