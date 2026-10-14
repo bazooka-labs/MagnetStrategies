@@ -107,6 +107,35 @@ export async function getOracleHealth(algod: algosdk.Algodv2): Promise<PoolOracl
   });
 }
 
+/**
+ * Admin / guardian / bot addresses on an oracle app.
+ *
+ * Used to prefill the migration forms. A guardian pasted by hand is a 58-char
+ * opportunity to get it wrong, and the guardian is fixed at deploy (rotatable
+ * only through propose/accept), so reading the live one is both safer and the
+ * correct default — the new oracle should answer to the same people.
+ */
+export type OracleRoles = { admin: string; guardian: string; authorizedUpdater: string };
+
+export async function getOracleRoles(
+  algod: algosdk.Algodv2, oracleId: number = ACTIVE.oracle,
+): Promise<OracleRoles> {
+  const app = await algod.getApplicationByID(oracleId).do();
+  const read = (k: string): string => {
+    const target = Buffer.from(k).toString("base64");
+    for (const kv of app.params.globalState ?? []) {
+      const key = typeof kv.key === "string" ? kv.key : Buffer.from(kv.key).toString("base64");
+      if (key !== target) continue;
+      const raw = kv.value.bytes;
+      const bytes = typeof raw === "string" ? Buffer.from(raw, "base64") : Buffer.from(raw ?? []);
+      if (bytes.length !== 32) return "";
+      return algosdk.encodeAddress(new Uint8Array(bytes));
+    }
+    return "";
+  };
+  return { admin: read("admin"), guardian: read("guardian"), authorizedUpdater: read("authorized_updater") };
+}
+
 export type ProtocolStats = { circulating: number; ceiling: number; psmUsdc: number; oracle: OracleInfo };
 
 export async function getProtocolStats(algod: algosdk.Algodv2): Promise<ProtocolStats> {

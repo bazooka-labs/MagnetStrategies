@@ -13,9 +13,14 @@ export const USDC_ASA_ID_MAINNET = 31566704; // mainnet USDC (default for the wi
 const SEED_MUSD_BASE = BigInt("500000000000000"); // 500M × 1e6 — full reserve
 const MAX_FEE = microAlgo(50_000); // ceiling for inner-fee coverage
 
-type Which = "oracle" | "psm" | "vault" | "psmv3" | "folksadapter";
+type Which = "oracle" | "leanoracle" | "psm" | "vault" | "psmv3" | "folksadapter";
 const SPEC_URL: Record<Which, string> = {
   oracle: "/contracts/LPOracle.arc56.json",
+  // Shipped ALONGSIDE LPOracle.arc56.json, never over it: the admin panel
+  // deploys from these files and the banded oracle's UI still needs its own
+  // spec for the whole 48h window, and for a rollback after it
+  // (ORACLE_LEAN_SPEC.md §6 step 7).
+  leanoracle: "/contracts/LeanOracle.arc56.json",
   psm: "/contracts/PSM.arc56.json",
   vault: "/contracts/Vault.arc56.json",
   psmv3: "/contracts/PSMv3.arc56.json",
@@ -58,6 +63,58 @@ export async function deployOracle(algorand: AlgorandClient, sender: string, gua
   const f = await factory(algorand, "oracle", sender);
   const { appClient: c } = await f.send.create({ method: "deploy", args: [guardian] });
   return c.appId;
+}
+
+/**
+ * Migration step 1 — deploy the lean oracle.
+ *
+ * Same constructor as LPOracle (guardian only). What differs is what the
+ * contract will NOT do: no ±25% anchor band, no ±50%-vs-prior guard, and no
+ * `set_price_anchor` method at all.
+ *
+ * The creator pays the app's global-state MBR at creation. The declared schema
+ * is 57 uints / 7 byte-slices, so that is
+ * 100_000 + 28_500×57 + 50_000×7 ≈ **2.07 ALGO** out of the admin wallet — more
+ * than the banded oracle, because the schema is declared at the 19-pool ceiling
+ * rather than grown per pool (ORACLE_LEAN_SPEC.md §2.3).
+ */
+export async function deployLeanOracle(
+  algorand: AlgorandClient, sender: string, guardian: string,
+): Promise<bigint> {
+  const f = await factory(algorand, "leanoracle", sender);
+  const { appClient: c } = await f.send.create({ method: "deploy", args: [guardian] });
+  return c.appId;
+}
+
+/**
+ * Migration steps 2-3 — authorize the bot, then register every pool.
+ *
+ * All pools in ONE atomic group with the updater call, so a partial
+ * registration is not reachable: a pool missing from the new oracle goes dead
+ * the instant the cutover confirms, and it presents as "oracle stale" rather
+ * than "price not set" because freshness is checked before the price — so the
+ * symptom points at a dead bot rather than at the pool nobody registered.
+ * Pinned by test_a_pool_missing_from_the_new_oracle_dies_at_cutover.
+ *
+ * `prices` must be FRESH. The seed is what every existing position is valued
+ * against the moment the vault switches over; a stale seed reprices the whole
+ * book at cutover.
+ */
+export async function configLeanOracle(
+  algorand: AlgorandClient, sender: string, oracleId: bigint,
+  bot: string, pools: { poolId: bigint; price: bigint }[],
+): Promise<void> {
+  if (pools.length === 0) throw new Error("refusing to configure an oracle with no pools");
+  const c = await appClient(algorand, "leanoracle", oracleId, sender);
+  let g = algorand
+    .newGroup()
+    .addAppCallMethodCall(await c.params.call({ method: "set_authorized_updater", args: [bot], maxFee: MAX_FEE }));
+  for (const p of pools) {
+    g = g.addAppCallMethodCall(
+      await c.params.call({ method: "add_pool", args: [p.poolId, p.price], maxFee: MAX_FEE }),
+    );
+  }
+  await g.send(SEND_OPTS);
 }
 
 // Deploys the v3 (Productive Reserves) PSM — the launch PSM. Same deploy signature as v2

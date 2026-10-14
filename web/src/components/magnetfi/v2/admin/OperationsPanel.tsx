@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { ACTIVE } from "@/lib/magnetfi";
+import { ACTIVE, ACTIVE_ORACLE_POOLS } from "@/lib/magnetfi";
+import { deployLeanOracle, configLeanOracle } from "@/lib/magnetfiDeploy";
+import { getOracleHealth, getOracleRoles, type OracleRoles } from "@/lib/magnetfiReads";
 import * as ops from "@/lib/magnetfiOps";
 import { Panel } from "../shared";
 
@@ -40,7 +42,7 @@ function loadCfg(): Cfg {
   return base;
 }
 
-type Field = { key: string; label: string; placeholder?: string };
+type Field = { key: string; label: string; placeholder?: string; defaultValue?: string };
 
 export function ActionForm({
   title, desc, fields, button, tone = "default", onRun,
@@ -49,7 +51,14 @@ export function ActionForm({
   tone?: "default" | "danger" | "warn";
   onRun: (v: Record<string, string>) => Promise<void>;
 }) {
-  const [v, setV] = useState<Record<string, string>>({});
+  // Defaults are read from chain by the caller, so a 58-char address is checked
+  // rather than retyped. Keyed on the joined defaults so a late-arriving read
+  // (they are fetched async) populates the inputs instead of being ignored.
+  const defaults = fields.map((f) => f.defaultValue ?? "").join("|");
+  const seed = () =>
+    Object.fromEntries(fields.filter((f) => f.defaultValue).map((f) => [f.key, f.defaultValue!]));
+  const [v, setV] = useState<Record<string, string>>(seed);
+  useEffect(() => { setV(seed()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [defaults]);
   const [busy, setBusy] = useState(false);
   const ready = fields.every((f) => (v[f.key] ?? "").trim() !== "");
 
@@ -81,7 +90,7 @@ export function ActionForm({
           try {
             await onRun(v);
             toast.success(`${title} ✓`);
-            setV({});
+            setV(seed());
           } catch (e) {
             const m = e instanceof Error ? e.message : "Transaction failed";
             toast.error(m.includes("rejected") ? "Signing cancelled" : m.slice(0, 140));
@@ -121,6 +130,13 @@ export function OperationsPanel() {
   // A stale saved ID (from before a redeploy) once caused a "pause" to hit a retired vault; this
   // makes the mismatch visible and offers a one-click reset, while leaving the admin in control
   // (editing IDs to operate a fresh deployment still works).
+  // Read once for the migration forms' defaults; failure just leaves them blank.
+  const [roles, setRoles] = useState<OracleRoles | null>(null);
+  useEffect(() => {
+    if (!algodClient) return;
+    getOracleRoles(algodClient).then(setRoles).catch(() => setRoles(null));
+  }, [algodClient]);
+
   const deployed = useMemo(() => deployedCfg(), []);
   const drift = (Object.keys(deployed) as (keyof Cfg)[]).filter(
     (k) => deployed[k] !== "" && cfg[k] !== "" && cfg[k] !== deployed[k],
@@ -323,6 +339,59 @@ export function OperationsPanel() {
           </Section>
 
           {/* Governance */}
+          {/* ORACLE_LEAN_SPEC.md §6 steps 1-3. Steps 4-5 are bot-side (a SECOND
+              instance — never repoint the first), and step 6's propose/confirm
+              already exist in Governance below. */}
+          <Section
+            title="Lean oracle migration — steps 1-3"
+            note={
+              <>
+                Deploys the band-free oracle beside the live one and registers every pool on it.
+                It does <strong className="text-white/60">not</strong> touch the vault — the vault
+                keeps reading the banded oracle until <em>Confirm LP oracle repoint</em> in
+                Governance below, 48h after the propose. Next, run a{" "}
+                <strong className="text-white/60">second</strong> bot instance against the new
+                oracle; repointing the existing one starves the oracle the vault is still using and
+                freezes the protocol for the whole window.
+              </>
+            }
+          >
+            <ActionForm
+              title="1. Deploy lean oracle"
+              desc="Costs ~2.07 ALGO from your wallet for the app's global-state MBR (schema declared at the 19-pool ceiling). Guardian is prefilled from the live oracle."
+              fields={[{ key: "g", label: "Guardian address", defaultValue: roles?.guardian ?? "" }]}
+              button="Deploy"
+              onRun={async (v) => {
+                const id = await deployLeanOracle(a(), me(), v.g.trim());
+                toast.success(`Lean oracle deployed — app ${id}. Paste it into step 2.`, { duration: 30_000 });
+              }}
+            />
+            <ActionForm
+              title="2+3. Authorize bot & register all pools"
+              desc="One atomic group: set_authorized_updater plus add_pool for every pool, seeded from the LIVE prices. Refuses to run if any feed is stale — the seed is what existing positions are valued against the moment the vault switches."
+              fields={[
+                { key: "app", label: "Lean oracle app ID" },
+                { key: "bot", label: "Bot address", defaultValue: roles?.authorizedUpdater ?? "" },
+              ]}
+              button="Authorize + register"
+              tone="warn"
+              onRun={async (v) => {
+                const rows = await getOracleHealth(algodClient!);
+                const stale = rows.filter((r) => r.ts === 0 || r.ageSec >= 1800).map((r) => r.id);
+                if (stale.length) {
+                  throw new Error(`Refusing: ${stale.join(", ")} stale. Seed from a live feed only.`);
+                }
+                if (rows.length !== ACTIVE_ORACLE_POOLS.length) {
+                  throw new Error(`Expected ${ACTIVE_ORACLE_POOLS.length} pools, read ${rows.length}.`);
+                }
+                await configLeanOracle(
+                  a(), me(), BigInt(v.app.trim()), v.bot.trim(),
+                  rows.map((r) => ({ poolId: BigInt(r.poolId), price: BigInt(Math.round(r.price * 1e6)) })),
+                );
+              }}
+            />
+          </Section>
+
           <Section
             title="Governance — timelocked & rotation (advanced)"
             note={
