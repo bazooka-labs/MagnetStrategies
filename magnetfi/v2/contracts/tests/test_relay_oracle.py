@@ -382,7 +382,7 @@ def test_signer_rotation_is_timelocked(deployed, algorand, accounts):
 
 # ── the service's own output, accepted by the contract ───────────────────────
 
-def test_the_signers_output_is_accepted_by_the_deployed_contract(deployed, algorand, genesis, monkeypatch):
+def test_the_signers_output_is_accepted_by_the_deployed_contract(deployed, algorand, genesis, monkeypatch, tmp_path):
     """
     Closes the loop.
 
@@ -406,7 +406,10 @@ def test_the_signers_output_is_accepted_by_the_deployed_contract(deployed, algor
     price = 915_905
     monkeypatch.setattr(ob, "get_lp_price", lambda *a, **k: (price, True))
 
-    twap = ob.TwapState(Path(__file__).parent / ".signer_twap_test.json")
+    # tmp_path, not the tests directory: this writes a real TWAP state file, and
+    # a persistent one both litters the repo and lets a previous run's readings
+    # leak into this one — the gate under test counts readings.
+    twap = ob.TwapState(tmp_path / "signer_twap_test.json")
     twap.clear(POOL)
     pool = ob.PoolConfig(dict(pool_id=POOL, pool_address="X", asset_a_id=1,
                               asset_a_decimals=6, asset_b_id=2, asset_b_decimals=6,

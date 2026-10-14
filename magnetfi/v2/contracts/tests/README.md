@@ -24,8 +24,58 @@ Tinyman state).
 .venv-test/bin/python -m pytest tests/ -q
 ```
 
-Reset LocalNet between long sessions if round counts grow very large:
-`algokit localnet reset`.
+### Which oracle
+
+`MAGNETFI_ORACLE` swaps the oracle underneath and runs the WHOLE suite against
+it. The vault reads `lp_price_`/`lp_ts_` by global-state key and never calls the
+oracle, so each spec claims its oracle is a drop-in; this is what demonstrates
+it rather than arguing it.
+
+| value | contract | writer | band | last run (2026-10-14) |
+|---|---|---|---|---|
+| unset / `posted` | `LPOracle` — live on mainnet | authorized | ±25% anchor, ±50% prior | 119 passed, 9 skipped |
+| `lean` | `LeanOracle` | authorized | **none** | 108 passed, 20 skipped |
+| `relay` | `RelayOracle` (v5) | **none** — signed payloads | **none** | 109 passed, 19 skipped |
+
+```
+MAGNETFI_ORACLE=lean .venv-test/bin/python -m pytest tests/ -q
+```
+
+Writer-ness and band-ness are separate flags (`RELAY`, `BANDED`) because the
+lean oracle keeps the first and drops the second. Skip a test on the property it
+actually needs, never on the oracle's name — keyed off one flag, the suite
+skipped the band tests and the writer test together, which left the lean
+oracle's authorization gate untested exactly where it is the only gate left.
+
+### Reset LocalNet before each full run
+
+```
+algokit localnet reset
+```
+
+LocalNet's genesis accounts hold participation keys that **expire around round
+30000**, and dev mode mints a block per transaction. Measured 2026-10-14: a full
+suite run costs about **3,400 rounds**, so one reset is good for roughly eight
+runs — three consecutive runs reached round 10,322 with all three accounts still
+`Online`.
+
+(An earlier revision of this file said 20,000 rounds per run and "about one and
+a half runs per reset". That was wrong by ~6x. The dispenser failure that
+prompted it came from a LocalNet left running for two days, already past round
+30000, not from a single run's cost.)
+
+Once past the expiry the accounts go `Offline`,
+`algorand.account.localnet_dispenser()` can no longer find a dispenser, and
+every test errors out in fixture setup with:
+
+```
+Error retrieving LocalNet dispenser account; couldn't find the default account
+```
+
+That is an exhausted chain, **not** a failing test — the giveaway is that the
+errors arrive in fixture setup and the first run of a session passed. Resetting
+before a comparison run is still worth it: it costs ~20s and removes the
+question entirely.
 
 ## What's covered
 

@@ -195,8 +195,15 @@ class LeanOracle(
         Set the oracle bot wallet address.
 
         Must be called before any price can be posted. Immediate (not timelocked) so a
-        compromised bot key can be rotated fast — its blast radius is already bounded by
-        the ±50% and ±25% guards. Zero address is rejected (AUD-044).
+        compromised bot key can be rotated fast.
+
+        NOTE: in the banded LPOracle this docstring went on to say the blast radius was
+        "already bounded by the ±50% and ±25% guards". That is exactly what this contract
+        removes, so rotation speed is no longer a second line of defence behind a bound —
+        it is the ONLY one. Immediacy is therefore load-bearing here in a way it was not
+        before. See ORACLE_LEAN_SPEC.md §5 and the key-compromise tripwire in STATUS.md.
+
+        Zero address is rejected (AUD-044).
         """
         self._assert_admin()
         assert new_address != Global.zero_address, "zero address not allowed"

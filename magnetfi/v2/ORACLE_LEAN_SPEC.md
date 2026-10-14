@@ -389,6 +389,15 @@ validates only `!= 0`, so a typo'd app id otherwise commits a 48h freeze.
 bot can post to it, so repointing back is a 48h wait with a *functioning* feed
 behind it rather than a dead one.
 
+> **Rehearsed on LocalNet, 2026-10-14** —
+> `contracts/tests/test_migration_rehearsal.py` (9 tests) executes this whole
+> sequence with a second lean oracle standing beside the live banded one, and
+> pins each claim above to protocol behaviour: the step-4 freeze, the
+> "proposal is not a cutover" window, the cutover itself, the `accept_admin`
+> restart, step 8's harmless staleness, and this rollback paragraph. The two
+> oracles are seeded at different prices so the vault's borrowing capacity
+> reads back which one it is pricing from. See STATUS.md §3.
+
 ### Documentation that becomes actively wrong — these are incident runbooks
 
 `ADMIN.md:149-153` is the "Recognizing an anchor-band rejection" entry that
@@ -409,6 +418,21 @@ the lagging `lp_ts_` age.
 
 A freshness/liveness monitor is therefore a **deliverable of this change**, not
 a follow-up. Without it the change trades a freeze cause for a blind spot.
+
+> **Revised 2026-10-14.** Half of this is wrong and the conclusion was too
+> strong. The band-distance warning predicted **band-caused freezes**; removing
+> the band removes that failure mode, so there is no freeze blind spot to fill —
+> staleness is still covered by `FeedWatch`'s `lp_ts_` age and
+> `getOracleHealth.level`. What is actually lost is the ability to notice a
+> **wrong-but-fresh** price, and for the bug class that matters most (a
+> one-sided decimals slip, §2.2b) the composition check already covers it.
+>
+> The out-of-process requirement was specifically about **key compromise** — a
+> risk the operator has accepted, by the same argument that deferred v5. So this
+> is **not a ship blocker**. Delivered instead: a price cross-check in the admin
+> panel comparing each posted `lp_price_` against third-party pool TVL divided
+> by on-chain `issued_pool_tokens` — independent of the bot's entire pricing
+> path, and needing no new process, key or alert channel.
 
 ---
 

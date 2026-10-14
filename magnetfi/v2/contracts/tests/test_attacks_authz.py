@@ -4,7 +4,7 @@ The highest-stakes guards: nobody but the registered vault may mint mUSD, and ev
 privileged method must reject non-admin callers.
 """
 import pytest
-from conftest import ONE_LP, ONE_MUSD, POOL_ID
+from conftest import BANDED, RELAY, ONE_LP, ONE_MUSD, POOL_ID
 
 
 # ── cross-contract bypass: the mUSD minting guard ──────────────────────────────
@@ -82,16 +82,37 @@ def test_psm_admin_methods_reject_non_admin(proto):
 
 
 def test_oracle_admin_methods_reject_non_admin(proto):
+    """
+    Each admin method must reject a stranger BECAUSE of the admin gate.
+
+    The reason is asserted, not just the failure. These are single app calls, so
+    the contract's assert comment survives (a grouped call would lose it to
+    algokit's simulate path) — and without the check a case can pass simply
+    because the method does not exist on the oracle under test, which is what
+    `set_price_anchor` does on every oracle that has no band.
+    """
     m = proto.new_user()
+    # Every oracle has these two.
     cases = [
-        ("set_authorized_updater", [m.address]),
         ("add_pool", [999, ONE_MUSD]),
         ("remove_pool", [POOL_ID]),
-        ("set_price_anchor", [POOL_ID, ONE_MUSD]),
     ]
+    # The rest exist only on the oracles that have the corresponding feature.
+    # Listing a method an oracle does not implement would pass on "method not
+    # found" rather than on the admin gate — which is exactly what this sweep
+    # was doing before the reason assertion below was added: under `relay` BOTH
+    # set_authorized_updater and set_price_anchor were passing vacuously.
+    if not RELAY:
+        cases.append(("set_authorized_updater", [m.address]))   # no privileged writer in v5
+    if BANDED:
+        cases.append(("set_price_anchor", [POOL_ID, ONE_MUSD]))  # no anchor without a band
+    if RELAY:
+        cases.append(("admin_set_price", [POOL_ID, ONE_MUSD]))   # v5's break-glass override
+
     for method, args in cases:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as e:
             proto.call(proto.oracle, method, args, m)
+        assert "admin only" in str(e.value), f"{method} failed, but not on the admin gate: {e.value}"
 
 
 # ── liquidations cannot be triggered by the borrower (self-liquidation / grief) ─

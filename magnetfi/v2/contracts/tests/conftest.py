@@ -37,16 +37,39 @@ import algokit_utils
 
 # ── Which oracle is under test ───────────────────────────────────────────────
 #
-# MAGNETFI_ORACLE=relay swaps the posted-price LPOracle for the v5 RelayOracle
-# and runs this ENTIRE suite against it unchanged.
+# MAGNETFI_ORACLE selects the oracle and runs this ENTIRE suite against it
+# unchanged:
 #
-# That is the point. ORACLE_V5_SPEC.md claims the new oracle is a drop-in: the
-# vault reads lp_price_/lp_ts_ by global-state key and never calls the oracle,
-# so it should not notice the swap. Reading the vault says so; this proves it.
-# If borrow, repay, accrual, all three liquidation paths and the adversarial
-# tests pass with the oracle replaced underneath, the claim is demonstrated
-# rather than argued.
-RELAY = os.environ.get("MAGNETFI_ORACLE", "").lower() == "relay"
+#   (unset) | posted   LPOracle     live today — authorized writer + anchor band
+#   lean               LeanOracle   authorized writer, NO band
+#   relay              RelayOracle  v5 — signed payloads, no writer, no band
+#
+# That is the point. Each spec claims its oracle is a drop-in: the vault reads
+# lp_price_/lp_ts_ by global-state key and never calls the oracle, so it should
+# not notice the swap. Reading the vault says so; this proves it. If borrow,
+# repay, accrual, all three liquidation paths and the adversarial tests pass
+# with the oracle replaced underneath, the claim is demonstrated rather than
+# argued.
+#
+# Two INDEPENDENT properties, not one axis:
+#
+#   how a price arrives   a privileged app call, or a signed payload anyone relays
+#   whether it is bounded an anchor band + prior-deviation guard, or nothing
+#
+# LPOracle has both, v5 has neither, and the lean oracle deliberately keeps the
+# writer and drops the band. A single RELAY flag cannot express that middle
+# case: keyed off it, the suite would skip the band tests and the writer tests
+# together, so the lean oracle's authorization gate would go untested exactly
+# where it is the ONLY remaining gate.
+_ORACLE = os.environ.get("MAGNETFI_ORACLE", "").lower() or "posted"
+if _ORACLE not in ("posted", "lean", "relay"):
+    raise SystemExit(f"MAGNETFI_ORACLE must be posted|lean|relay, got {_ORACLE!r}")
+
+# Prices arrive as signed payloads rather than a privileged app call.
+RELAY = _ORACLE == "relay"
+LEAN = _ORACLE == "lean"
+# The contract bounds the price it is handed. Only the live LPOracle does.
+BANDED = _ORACLE == "posted"
 
 if RELAY:
     import sys as _sys
@@ -130,6 +153,10 @@ class Protocol:
             self.oracle = self._deploy(
                 "relay_oracle", "RelayOracle",
                 [self.guardian.address, SIGNER_PUBKEY, self.opup.app_id])
+        elif LEAN:
+            # Same constructor and the same writer gate as LPOracle; it is the
+            # band that is gone, which is why no other branch here changes.
+            self.oracle = self._deploy("lean_oracle", "LeanOracle", [self.guardian.address])
         else:
             self.oracle = self._deploy("lp_oracle", "LPOracle", [self.guardian.address])
         self.psm = self._deploy(
@@ -261,18 +288,18 @@ class Protocol:
         self.call(self.oracle, "post_signed_price", [msg, sig], sender or self.bot)
 
     def set_anchor(self, price: int) -> None:
-        if RELAY:
-            return      # v5 has no anchor and no band — nothing to re-anchor
+        if not BANDED:
+            return      # no band -> no anchor -> nothing to re-anchor
         self.call(self.oracle, "set_price_anchor", [POOL_ID, price], self.admin)
 
     def set_price(self, price: int) -> None:
         """
         Move the price.
 
-        Under the posted-price oracle this needs a re-anchor first, because the
-        ±25% band would reject a large jump. Under v5 there is no band, so the
-        post alone does it — which is the whole point, and why set_anchor is a
-        no-op there rather than a branch at every call site.
+        Under the live LPOracle this needs a re-anchor first, because the ±25%
+        band would reject a large jump. Under the lean oracle and v5 there is no
+        band, so the post alone does it — which is the whole point, and why
+        set_anchor is a no-op there rather than a branch at every call site.
         """
         self.set_anchor(price)
         self.oracle_post(price)
@@ -324,13 +351,20 @@ class Protocol:
         grp.add_app_call_method_call(self._mc(self.vault, "pay_interest", [POOL_ID], user))
         grp.send(_SP)
 
-    def repay_principal(self, user: SigningAccount, amount: int) -> None:
+    def repay_principal(self, user: SigningAccount, amount: int, cover: int | None = None) -> None:
         # There is no standalone repay-principal method: pay_interest is the sole repayment
         # path and always charges accrued interest first. To repay `amount` of principal in a
         # test, top the borrower up with a small mUSD buffer for interest, then pay
         # interest + amount; the contract charges interest, applies the rest to principal,
         # and refunds any excess. Mirrors the frontend's repayPrincipal reroute.
-        cover = ONE_MUSD // 100
+        #
+        # `cover` is that interest buffer. The 0.01 mUSD default suits the usual test, which
+        # accrues for seconds — but interest is charged BEFORE principal, so if the buffer
+        # does not meet it the shortfall comes out of the principal portion and the vault is
+        # left with a residue instead of closing. A test that time-travels (the migration
+        # rehearsal jumps 48h) must raise it. Overpayment is refunded, so a generous value
+        # costs nothing.
+        cover = ONE_MUSD // 100 if cover is None else cover
         self.admin_acquire_musd(cover)
         self._give(user.address, self.musd_id, cover)
         self.pay_interest(user, amount + cover)

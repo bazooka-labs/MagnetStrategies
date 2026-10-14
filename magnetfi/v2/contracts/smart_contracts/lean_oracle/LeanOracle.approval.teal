@@ -359,16 +359,16 @@ set_authorized_updater:
     intc_3 // 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/lean_oracle/contract.py:201
+    // smart_contracts/lean_oracle/contract.py:208
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/lean_oracle/contract.py:202
+    // smart_contracts/lean_oracle/contract.py:209
     // assert new_address != Global.zero_address, "zero address not allowed"
     dup
     global ZeroAddress
     !=
     assert // zero address not allowed
-    // smart_contracts/lean_oracle/contract.py:203
+    // smart_contracts/lean_oracle/contract.py:210
     // self.authorized_updater.value = new_address
     bytec 7 // "authorized_updater"
     swap
@@ -381,7 +381,7 @@ set_authorized_updater:
 
 // smart_contracts.lean_oracle.contract.LeanOracle.add_pool[routing]() -> void:
 add_pool:
-    // smart_contracts/lean_oracle/contract.py:205
+    // smart_contracts/lean_oracle/contract.py:212
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -398,10 +398,10 @@ add_pool:
     assert // invalid number of bytes for arc4.uint64
     btoi
     swap
-    // smart_contracts/lean_oracle/contract.py:220
+    // smart_contracts/lean_oracle/contract.py:227
     // self._assert_admin()
     callsub _assert_admin
-    // smart_contracts/lean_oracle/contract.py:223
+    // smart_contracts/lean_oracle/contract.py:230
     // Global.current_application_id, self._active_key(pool_id)
     global CurrentApplicationID
     // smart_contracts/lean_oracle/contract.py:117
@@ -415,14 +415,14 @@ add_pool:
     concat
     dup
     cover 2
-    // smart_contracts/lean_oracle/contract.py:222-224
+    // smart_contracts/lean_oracle/contract.py:229-231
     // active_val, already_exists = op.AppGlobal.get_ex_uint64(
     //     Global.current_application_id, self._active_key(pool_id)
     // )
     app_global_get_ex
     swap
     cover 4
-    // smart_contracts/lean_oracle/contract.py:225
+    // smart_contracts/lean_oracle/contract.py:232
     // assert not (already_exists and active_val != UInt64(0)), "pool already registered"
     bz add_pool_bool_false@4
     dig 3
@@ -430,16 +430,16 @@ add_pool:
     intc_0 // 1
 
 add_pool_bool_merge@5:
-    // smart_contracts/lean_oracle/contract.py:225
+    // smart_contracts/lean_oracle/contract.py:232
     // assert not (already_exists and active_val != UInt64(0)), "pool already registered"
     !
     assert // pool already registered
-    // smart_contracts/lean_oracle/contract.py:226
+    // smart_contracts/lean_oracle/contract.py:233
     // assert initial_price > UInt64(0), "initial price must be > 0"
     swap
     dup
     assert // initial price must be > 0
-    // smart_contracts/lean_oracle/contract.py:228
+    // smart_contracts/lean_oracle/contract.py:235
     // op.AppGlobal.put(self._active_key(pool_id), UInt64(1))
     swap
     intc_0 // 1
@@ -451,7 +451,7 @@ add_pool_bool_merge@5:
     dup
     cover 2
     concat
-    // smart_contracts/lean_oracle/contract.py:229
+    // smart_contracts/lean_oracle/contract.py:236
     // op.AppGlobal.put(self._price_key(pool_id), initial_price)
     uncover 2
     app_global_put
@@ -460,11 +460,11 @@ add_pool_bool_merge@5:
     bytec 5 // 0x6c705f74735f
     swap
     concat
-    // smart_contracts/lean_oracle/contract.py:230
+    // smart_contracts/lean_oracle/contract.py:237
     // op.AppGlobal.put(self._ts_key(pool_id), Global.latest_timestamp)
     global LatestTimestamp
     app_global_put
-    // smart_contracts/lean_oracle/contract.py:205
+    // smart_contracts/lean_oracle/contract.py:212
     // @arc4.abimethod
     intc_0 // 1
     return
@@ -476,7 +476,7 @@ add_pool_bool_false@4:
 
 // smart_contracts.lean_oracle.contract.LeanOracle.remove_pool[routing]() -> void:
 remove_pool:
-    // smart_contracts/lean_oracle/contract.py:232
+    // smart_contracts/lean_oracle/contract.py:239
     // @arc4.abimethod
     txna ApplicationArgs 1
     dup
@@ -485,7 +485,7 @@ remove_pool:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/lean_oracle/contract.py:241
+    // smart_contracts/lean_oracle/contract.py:248
     // self._assert_admin()
     callsub _assert_admin
     // smart_contracts/lean_oracle/contract.py:117
@@ -494,7 +494,7 @@ remove_pool:
     bytec 6 // 0x6c705f6163746976655f
     dig 1
     concat
-    // smart_contracts/lean_oracle/contract.py:242
+    // smart_contracts/lean_oracle/contract.py:249
     // op.AppGlobal.delete(self._active_key(pool_id))
     app_global_del
     // smart_contracts/lean_oracle/contract.py:109
@@ -502,7 +502,7 @@ remove_pool:
     bytec 4 // 0x6c705f70726963655f
     dig 1
     concat
-    // smart_contracts/lean_oracle/contract.py:243
+    // smart_contracts/lean_oracle/contract.py:250
     // op.AppGlobal.delete(self._price_key(pool_id))
     app_global_del
     // smart_contracts/lean_oracle/contract.py:113
@@ -510,10 +510,10 @@ remove_pool:
     bytec 5 // 0x6c705f74735f
     swap
     concat
-    // smart_contracts/lean_oracle/contract.py:244
+    // smart_contracts/lean_oracle/contract.py:251
     // op.AppGlobal.delete(self._ts_key(pool_id))
     app_global_del
-    // smart_contracts/lean_oracle/contract.py:232
+    // smart_contracts/lean_oracle/contract.py:239
     // @arc4.abimethod
     intc_0 // 1
     return
@@ -521,7 +521,7 @@ remove_pool:
 
 // smart_contracts.lean_oracle.contract.LeanOracle.get_lp_price[routing]() -> void:
 get_lp_price:
-    // smart_contracts/lean_oracle/contract.py:248
+    // smart_contracts/lean_oracle/contract.py:255
     // @arc4.abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
@@ -536,7 +536,7 @@ get_lp_price:
     bytec 4 // 0x6c705f70726963655f
     dig 1
     concat
-    // smart_contracts/lean_oracle/contract.py:259
+    // smart_contracts/lean_oracle/contract.py:266
     // price = op.AppGlobal.get_uint64(self._price_key(pool_id))
     app_global_get
     // smart_contracts/lean_oracle/contract.py:113
@@ -544,17 +544,17 @@ get_lp_price:
     bytec 5 // 0x6c705f74735f
     uncover 2
     concat
-    // smart_contracts/lean_oracle/contract.py:260
+    // smart_contracts/lean_oracle/contract.py:267
     // ts = op.AppGlobal.get_uint64(self._ts_key(pool_id))
     app_global_get
-    // smart_contracts/lean_oracle/contract.py:261
+    // smart_contracts/lean_oracle/contract.py:268
     // return arc4.Tuple((arc4.UInt64(price), arc4.UInt64(ts)))
     swap
     itob
     swap
     itob
     concat
-    // smart_contracts/lean_oracle/contract.py:248
+    // smart_contracts/lean_oracle/contract.py:255
     // @arc4.abimethod(readonly=True)
     pushbytes 0x151f7c75
     swap
