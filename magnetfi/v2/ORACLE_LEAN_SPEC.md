@@ -1,14 +1,21 @@
-# MagnetFi — Lean Oracle + poll/post split
+# MagnetFi — Lean Oracle
 
 **Status: specification, pre-build.** Nothing here is implemented.
 
-Two changes that share one purpose: **remove the remaining ways this protocol
-can freeze itself.**
+_Revised 2026-10-13 after an independent review (SOUND-WITH-CHANGES, one
+BLOCKER). The decision to delete the bands was confirmed and independently
+verified. Three things changed: the migration procedure would have **frozen the
+protocol for 48 hours** (§6 step 4); removing the bot's bound left the posted
+price with **nothing bounding it at all** (§2.2b); and the poll/post split was
+**withdrawn** after its justification turned out to be wrong (§3)._
 
-1. **A band-free oracle contract.** The posted-price model exactly as it runs
-   today, with the anchor, the anchor band and the deviation guard deleted.
-2. **Separate polling from posting in the bot.** Poll every 5 minutes, post
-   every 10. Same behaviour, 50% of the fees, and no new mechanism.
+**One change, with one purpose: remove the last way this protocol can freeze
+itself.**
+
+A band-free oracle — the posted-price model exactly as it runs today, with the
+anchor, the anchor band and the deviation guard deleted. The bot keeps its
+current 5-minute cadence; the only bot change is dropping bounds that read an
+anchor which no longer exists.
 
 This **supersedes [ORACLE_V5_SPEC.md](./ORACLE_V5_SPEC.md) as the next step.**
 v5 is built and proven; it is deferred, not abandoned — see §8.
@@ -79,6 +86,40 @@ its oracle reference is swappable — `propose_lp_oracle` → 48h →
 claim is not theoretical: the v5 work proved it by running the **entire** vault
 suite against a replacement oracle, 109 passing.
 
+### 2.2b The posted price still needs ONE bound — a free one
+
+The review found the hole this spec would otherwise leave, and it is not
+hypothetical.
+
+Today the posted LP price is bounded twice: by the contract's ±25% band and by
+the bot's anchor-derived bound. This change removes both. `asset_price_bounds`
+does **not** cover the gap — it bounds the *underlying asset* prices, while the
+posted number comes out of `compute_lp_price`, which then divides by
+`10 ** asset_a_decimals`, `10 ** asset_b_decimals` and `10 ** LP_DECIMALS`,
+none of which is bounded by anything.
+
+**$U has 5 decimals** — an unusual value, one digit from 6. A one-sided decimals
+slip makes that side's TVL 10× too small, so the LP price lands at ~0.55× truth
+with **every asset price inside its bounds, the multi-route cross-check green,
+and CompX green**, because all three check *asset* prices. The TWAP then
+faithfully smooths a consistently wrong number straight into a borrow and
+liquidation input. §3.6's claim that the remaining checks "catch bugs" is false
+for precisely the bug class that writes a wrong number.
+
+**The fix costs nothing and cannot rot.** In a Tinyman v2 constant-product pool
+the two sides' USD values are equal by arbitrage, so assert they match:
+
+```
+|tvl_a − tvl_b| / pool_tvl  <  tolerance        (a few percent)
+```
+
+This catches a one-sided decimals or price slip with **no dependence on the
+absolute price level**, so there is no constant to maintain and nothing to
+drift out of date. It is not a band: it cannot reject a real price move, because
+a real move keeps both sides equal.
+
+(Observed live, every pool: sides balanced to within $11 on a $1.7M pool.)
+
 ### 2.3 State schema — declare it at the ceiling
 
 3 uints per pool (price, ts, active) instead of 4. Byte slots: updater, admin,
@@ -88,111 +129,112 @@ guardian, and two pendings.
 cap. The current oracle declares 40/6, which caps it at 10 pools.
 
 The schema is **frozen at creation**, so under-declaring costs a redeploy *plus
-another 48h repoint*. 57 uints is 19 pools. The extra MBR is about 0.5 ALGO,
-paid once. Cheap against being stuck at 10 pools when a 11th collateral arrives.
+another 48h repoint*. 57 uints is exactly 19 pools. MBR measured on LocalNet:
+40/6 → 1,540,000 µA, 57/7 → 2,074,500 µA, so **+0.53 ALGO**, paid once by the
+deploying wallet — which needs ~3.6 ALGO free during the window, since both
+oracles are live.
+
+**57 leaves zero headroom for a future *named* global uint, and that is
+deliberate.** The one remedy this spec defers to — the upward rate limit in §5's
+tripwire — needs only the prior price and prior timestamp, both of which this
+oracle already stores per pool. So the ceiling choice does not foreclose it. If
+any pause flag or per-pool max-age becomes plausible, 42 uints (14 pools) leaves
+15 slots and still doubles today's capacity.
 
 ---
 
-## 3. The bot: split polling from posting
+## 3. The poll/post split — proposed, then withdrawn
 
-### 3.1 The problem with a single interval
+An earlier draft of this spec split `POLL_INTERVAL` from a new `POST_INTERVAL`
+to halve posting fees. **The review killed it, and was right to.** Recorded here
+rather than deleted, because the reasoning is the useful part.
 
-`POLL_INTERVAL` currently governs both how often the price is measured and how
-often it is written. They have different costs and different constraints, and
-conflating them makes the cheap knob dangerous.
+### What I got wrong
 
-Measured: **polling is free** (read-only algod); **posting is 0.001 ALGO**.
-Observed over 47 hours: 1,121 posts, 1.121 ALGO, flat minimum fee.
+**The arithmetic was computed on a number the loop does not control.**
+`sleep_for = max(0, POLL_INTERVAL - elapsed)` (`oracle_bot.py:1443-1451`), so
+real spacing is `max(POLL_INTERVAL, cycle_time)`. Production `twap_state.json`
+shows consecutive readings **369–370s apart**, not 300 — a cycle takes ~70s, and
+that grows with pool count on a design declaring room for 19.
 
-And the binding constraint is not cost, it is **restart margin**:
+**The restart-gap justification was simply false.** `TwapState` is persistent,
+so a restart reloads the window and the first cycle can post immediately. There
+is no warm-up on restart at either interval, and therefore no "10-minute restart
+gap" to avoid. That was the entire case I made for the split.
 
-```
-MIN_TWAP_READINGS × POLL_INTERVAL  must be  <  ORACLE_FRESHNESS
-          3       ×      300       =  900   <    1800        ✓
-          3       ×      600       = 1800   =    1800        ✗ no margin
-          3       ×      900       = 2700   >    1800        ✗ 15-min outage per restart
-```
+**`TWAP_WINDOW = 7` would have been a no-op.** At 370s spacing `MAX_TWAP_AGE =
+1800` holds at most 5 readings, so today's window already saturates the cutoff.
+The §7 test asserting a 30-minute span would have passed on synthetic
+timestamps and been false on the box.
 
-Raising the single interval to 10 minutes leaves a **10-minute stale gap after
-every restart** — the failure of 2026-10-13. At 15 minutes it is worse, and
-`MAX_TWAP_AGE = 1800` would hold only three readings, so one late cycle drops
-it to two and **posting stops entirely**.
+**The saving is smaller than I quoted.** The measured rate — 1,121 posts in 47h
+— is ~$2.1/month, which is what I attributed to the *post-10* column. Real
+saving: **$1–1.7/month.**
 
-### 3.2 The change
+### What it would have cost
 
-```python
-POLL_INTERVAL   = 300   # unchanged — TWAP resolution AND retry granularity
-POST_INTERVAL   = 600   # new — the only thing that costs money
-TWAP_WINDOW     = 7     # 5 -> 7, a 30-minute smoothing span
-```
+Not a restart gap but **retry budget**, measured at the real 370s spacing:
 
-| | poll 5 / post 5 (today) | **poll 5 / post 10** | poll 10 / post 10 |
-|---|---|---|---|
-| warm-up | 15 min | **15 min** | 30 min |
-| TWAP span | 20 min | **30 min** | 30 min |
-| cost, 4 pools | $4.14/mo | **$2.07/mo** | $2.07/mo |
-| restart gap | none | **none** | **10 min** |
+| consecutive failed posts before the vault freezes | post-5 | post-10 |
+|---|---|---|
+| | **4** | **3** |
 
-The middle column is the same cost as the right one with the sharp edge gone.
+And the specific combination worth caring about: a 15-minute host reboot — the
+2026-10-13 failure — **plus one failed post freezes the vault under post-10 and
+does not under post-5.**
 
-### 3.3 The post clock lives on chain, not in a file
+It would also have added a **silent total freeze mode**: the gate compares the
+bot's wall clock against the chain's `lp_ts_`, so a clock ~12 minutes slow
+pushes the effective cadence past `ORACLE_FRESHNESS` with no error anywhere —
+healthy logs, accepted posts, every liquidation path reverting. This file
+already carries a four-hour clock-labelling bug found on that same host.
 
-`update_pool` posts when `now - lp_ts_<pool_id> >= POST_INTERVAL`, reading
-`lp_ts_` from the oracle exactly as `read_onchain_price` reads `lp_price_`.
+### Conclusion
 
-No new local state, and three properties fall out for free:
+**$1/month for six minutes of a thirty-minute outage budget, plus a new silent
+freeze mode, on a protocol whose documented failure is freezing.** Posting stays
+at `POLL_INTERVAL`. If fees ever matter, the honest lever is fewer pools, not a
+longer interval.
 
-- **Survives restarts.** A restart cannot reset the clock and lose the saving.
-- **Retries immediately.** A failed post never updated `lp_ts_`, so the next
-  5-minute poll sees the interval still elapsed and tries again — the retry
-  granularity stays at 5 minutes even though the cadence is 10.
-- **Cannot drift from reality.** The chain is the record of what was posted.
+## 3b. The bot's remaining change
 
-### 3.4 A guard against the next person turning this knob
+With the split withdrawn, the bot change reduces to one thing: **remove the
+anchor-derived bounds**, because the anchor they read no longer exists.
 
-An assertion, tested:
-
-```python
-assert MIN_TWAP_READINGS * POLL_INTERVAL < ORACLE_FRESHNESS
-```
-
-These four constants constrain each other and nothing currently says so. I
-found the 15-minute collision only because it was questioned. The next person
-should get a test failure, not a production gap.
-
-### 3.5 The bot's anchor-derived bounds go
-
-Phase 0.1 made the bot derive `min_price`/`max_price` from `lp_anchor_`, so its
-bounds could not drift from the contract's band. **With no band, there is
-nothing to stay inside**, and a bound that stops the bot posting is the same
-halt as a band that stops the chain accepting.
-
-So `effective_bounds`, `anchor_bounds` and `read_onchain_anchor` are removed
-from the posting path, along with the Phase 0.6 posted-price bound check.
+Removed: `effective_bounds`, `effective_bounds_with_anchor`, `anchor_bounds`,
+`read_onchain_anchor`, `_last_anchor`, the Phase 0.6 posted-price bound, and the
+re-anchor `twap.clear` block — the last of which is the **only** working
+instance of "drop stale TWAP history", so see the note below before deleting it.
 
 Phase 0.1 and 0.6 were correct for the oracle they were written against. They
 retire with it.
 
-### 3.6 What the bot keeps, and why it is not the same thing
+**Replaced by** the TVL-balance invariant in §2.2b, which bounds the posted
+price without a constant to maintain.
 
-| kept | catches |
-|---|---|
-| TWAP smoothing | single-block pool manipulation |
-| multi-route cross-check | derivation and route bugs |
-| CompX divergence | a wrong second opinion |
-| `asset_price_bounds` | a ×1e6 scaling slip — wide, and three orders of magnitude from any real price |
-| pool `asset_1_id` / `pool_token_asset_id` checks | a misconfigured pool |
+**Also in the same change, or §8's "proven" claim stops being true:**
+`signer/signer.py` calls `get_lp_price(..., apply_anchor_bounds=False)` and
+`signer/tests/test_signer.py` monkeypatches `effective_bounds`. Both break the
+moment the kwarg and the function go. One line each.
 
-These catch **bugs**. Key custody has nothing to do with them: a bug still runs
-our code. Only a stolen key bypasses them, and that is the accepted risk.
+### A pre-existing problem this makes last longer
 
----
+`MAX_TWAP_AGE` measures from the **newest** reading, so after an outage
+pre-outage readings within 1800s survive and the trapezoid weights the downtime
+at full width. Measured with the real `TwapState`: a 20-minute outage during a
+genuine 30% drop produces a first post of **885,350 against a 700,000 spot** —
+understating the crash by 26%, at exactly the moment liquidation matters.
+
+The re-anchor `twap.clear` was the only remedy in the codebase and this change
+deletes its trigger. Either segment the history and average only the newest
+contiguous run, or post spot when the window contains a gap. **Not optional** —
+it is the same flash-crash case §5 says the operator ranks above key loss.
 
 ## 4. What this does not change
 
 - The bot still holds a key the contract trusts. Accepted (§1).
-- The price can still be up to `POST_INTERVAL + POLL_INTERVAL` old when a
-  liquidator acts. At 10/5 that is 15 minutes against a 30-minute window.
+- The price can still be ~6 minutes old when a liquidator acts (the observed
+  cycle spacing), against a 30-minute window.
 - A dead bot still freezes the feed after 30 minutes. Operational: a VPS and a
   watchdog, not a contract change.
 
@@ -203,30 +245,82 @@ they cost while every borrower is the operator (§8).
 
 ## 5. The risk, stated plainly
 
-Without the bands, **a compromised bot key can set any price.**
+Without the bands, **a compromised bot key can set any price.** The first draft
+of this section got the consequences wrong in four ways; the review corrected
+them and the corrections mostly make it *less* alarming, not more.
 
-Bounded in one direction only: `circulating mUSD ≤ psm_usdc` caps over-minting
-at the PSM reserve. It does **not** cap the other direction — a price set too
-low makes every borrower liquidatable at 500–700 bps, irreversibly, and that
-loss falls on **borrowers**.
+### What a poisoned price actually does
 
-Three things worth being clear about:
+**A price set too HIGH is the one the bot key can do alone.** It makes genuinely
+unhealthy vaults **un-liquidatable** — the same `_oracle_price` feeds the health
+factor — with no capital and no second transaction. **That is the
+flash-crash-cannot-liquidate failure the operator ranks above key loss**, and
+the PSM invariant does not bound it: `circulating ≤ psm_usdc` caps *minting*,
+not this. The first draft missed it entirely.
 
-1. **This is not new exposure relative to v5.** A compromised v5 *signer* can
-   set any price too. Same blast radius, different key.
-2. **It is new relative to today.** The bands bound a compromised key to ±25%
-   of the anchor. That bound is being deliberately given up.
-3. **It is bounded by who borrows.** Today all three vaults are the operator's
-   own wallets, so a compromise costs the operator. That stops being true the
-   moment a third party borrows.
+**A price set too LOW is not reachable by the bot key alone.** All three
+liquidation paths are admin-gated (`vault/contract.py:650, 700, 786`), so
+"every borrower becomes liquidatable" additionally requires the **operator** to
+act on the poisoned price. That makes it an operational risk, and it changes
+what the control should be: an independent price check before liquidating, not
+necessarily an on-chain limit.
 
-**Tripwire:** before a third-party borrower opens a vault, re-answer this. The
-upward rate limit in
-[LP_ORACLE.md](./LP_ORACLE.md#designs-considered-and-rejected) is the design to
-reach for first — it was rejected for defending only against key compromise,
-which is exactly the argument that changes when the loss stops being yours.
+### Versus v5 — the asymmetry runs both ways
 
----
+The first draft claimed "identical blast radius". True per post, misleading as
+risk:
+
+- **In this design's favour:** `set_authorized_updater` is **immediate**, so a
+  detected compromise is revoked in one transaction. v5's signer rotation is
+  `propose_signer` → **48h** → `confirm_signer`.
+- **Against it:** this key lives on the always-on bot host that also fetches a
+  third-party bundle over HTTPS. v5's lives on an inbound-closed, single-purpose
+  box. Same radius, materially different probability.
+
+Expected loss is the product of both. Neither design dominates.
+
+### What the bands were actually worth
+
+Measured against live vault parameters (`ltv_` 6000/6500, `liq_` 7500): a post
+13–20% low **already** makes a max-LTV vault liquidatable — inside the ±25%
+band. So the band never prevented liquidation *eligibility*; it bounded the
+*magnitude* of borrower loss. And the ±50%-vs-prior guard is ratchetable ~16×
+within a single atomic group, with no reaction time, so removing it costs
+essentially nothing.
+
+Of the three claims in the first draft, only "it bounds a compromised key to
+±25%" was precisely true — and it is weaker than it reads.
+
+### The break-glass levers this design keeps
+
+These are the response plan, and belong in the runbook:
+
+| lever | who | speed |
+|---|---|---|
+| `pause()` — gates both borrow paths | admin | immediate (`unpause` is guardian-only, so a stolen hot key cannot lift it) |
+| `set_authorized_updater` | admin | immediate |
+| `remove_pool` + `add_pool` | admin | one group — an arbitrary price overwrite |
+
+### Tripwire
+
+**Before a third-party borrower opens a vault**, re-answer this. Today every
+vault is the operator's own, so a compromise costs the operator. The upward
+rate limit in [LP_ORACLE.md](./LP_ORACLE.md#designs-considered-and-rejected) is
+the design to reach for — it was rejected for defending only against key
+compromise, which is exactly the argument that changes when the loss stops being
+yours. It needs no new state (§2.3).
+
+### Nothing else validates the posted price — so something must
+
+After this change `FeedWatch.check` tests **age** only, `check_algo_against_pex`
+compares the bot's own ALGO derivation rather than the posted LP price, and
+`getOracleHealth`'s only non-age signal was the band.
+
+So §6's monitor is not merely a liveness monitor. It must compare the **posted
+`lp_price_` against an independently derived price, per pool**, and it must run
+**outside the bot process**, whose key is the threat being monitored. Without
+that, this change trades a freeze cause for a blind spot in the exact dimension
+it just unbounded.
 
 ## 6. Migration
 
@@ -237,20 +331,56 @@ Same shape as any oracle swap, and the vault keeps serving throughout.
 3. `add_pool` for all four, each with a fresh price — `3163770927` U/tALGO,
    `3673941603` U/USDC, `1002590888` ALGO/USDC, `3617313492` U/ALGO. Price in
    **human units** in the Admin UI; it scales by 1e6.
-4. Point the bot's `config.json` at the new `oracle_app_id` and let it run.
-   **Both oracles run in parallel** — the old one keeps serving the vault, and
-   the bot can post to either.
-5. **Confirm all four stay fresh**, and re-check immediately before step 6.
+4. ⚠️ **Run a SECOND bot instance for the new oracle. Do not repoint the first.**
+
+   An earlier draft said "point the bot's config at the new oracle — both run
+   in parallel." **That would have frozen the protocol for 48 hours.** The bot
+   holds exactly one oracle id (`BotConfig.oracle_app_id`), so repointing it
+   stops feeding the OLD oracle — which is still the vault's oracle for the
+   whole timelock. It goes stale in 30 minutes and borrowing plus all three
+   liquidation paths revert until `confirm_lp_oracle`, with no shortcut back
+   because the timelock applies in both directions.
+
+   So: a second process, with its **own `config.json`** (the `ORACLE_APP_ID`
+   env var is dead whenever the file carries the key) **and its own
+   `TWAP_STATE_PATH`**, since `STATE_FILE` is a module-level singleton and the
+   two would otherwise corrupt each other's window. Fees double for 48 hours —
+   about $0.15.
+
+5. **Watch BOTH oracles.** `FeedWatch` only knows `cfg.oracle_app_id`, so each
+   instance is blind to the other's. Confirm all four pools are fresh **on the
+   old oracle** throughout, and **on the new one** immediately before step 6.
 6. `propose_lp_oracle(<new>)` → **48h** → `confirm_lp_oracle()`.
    ⚠️ `accept_admin` clears `pending_lp_oracle` (`vault/contract.py:288-292`),
    so an admin rotation mid-window silently restarts the 48 hours.
-7. Frontend: the oracle id in `magnetfi.ts`; `getOracleHealth`, which reads
-   `lp_anchor_` and computes a band that no longer exists; `OracleHealthPanel`;
-   and `magnetfiOps.ts`'s `set_price_anchor` call, a method that is gone.
-8. Retire the old oracle.
+7. Frontend — and the ordering matters in **both** directions:
+
+   - The oracle id in `magnetfi.ts` must change **at or before** step 6's
+     confirm, or the UI reports the wrong oracle's freshness across the switch.
+   - The **"Re-anchor price" action must SURVIVE until step 8.** The old banded
+     oracle is the vault's oracle for 48 more hours and can still freeze exactly
+     as it did on 2026-08-21 — and U/tALGO currently has only ~16% of up-room
+     to its ceiling. Removing the band's only remedy while the banded oracle is
+     still load-bearing is the specific hazard here.
+   - Ship the new ABI as a **versioned artifact** (`LPOracleLean.arc56.json`),
+     not by overwriting `LPOracle.arc56.json` — the admin panel deploys from
+     that file and the old oracle's UI still needs it.
+   - Also: `magnetfiOracleHealth.test.ts`, `OperationsPanel.tsx`'s re-anchor
+     form, and `magnetfiDeploy.ts`'s "sets price AND the ±25% anchor" comment.
+8. **Stop posting to the old oracle.** It cannot be deleted — the contract has
+   no delete handler, so the app and its ~1.5 ALGO MBR are permanent. "Retire"
+   means shut down its bot instance and remove its UI, nothing more.
+
+**A structural fix for the whole class of ordering mistakes above:** have the
+bot and `getOracleHealth` read the active oracle from the **vault's own**
+`lp_oracle_app_id` global (present and readable on mainnet) instead of a local
+constant. Then "pointed at the wrong oracle" becomes impossible rather than a
+step someone has to remember.
 
 **Before step 6, simulate it.** Read-only against mainnet:
-`[confirm_lp_oracle, update_lp_price, trigger_full_liquidation]`. Same-group
+`[confirm_lp_oracle, update_lp_price, trigger_full_liquidation, open_vault, borrow_more]`
+— the borrow paths included because they are where §5's upward attack runs and
+where the PSM cap applies. Same-group
 state visibility is proven, so one simulation exercises the whole new path
 against the real vault before anything is submitted. `confirm_lp_oracle`
 validates only `!= 0`, so a typo'd app id otherwise commits a 48h freeze.
@@ -258,6 +388,17 @@ validates only `!= 0`, so a typo'd app id otherwise commits a 48h freeze.
 **Rollback** is real here, unlike under v5: the old oracle still works and the
 bot can post to it, so repointing back is a 48h wait with a *functioning* feed
 behind it rather than a dead one.
+
+### Documentation that becomes actively wrong — these are incident runbooks
+
+`ADMIN.md:149-153` is the "Recognizing an anchor-band rejection" entry that
+tells the operator to re-anchor. After this it must read *"the lean oracle has
+no band — if a post fails, it is not this"*, or the next outage gets diagnosed
+against a mechanism that no longer exists. Same for `LAUNCH_RUNBOOK.md`
+(several), `LP_ORACLE.md`, `REVAMP_PLAN.md` Phase 0.1/0.6, and `AUDIT.md`
+P19-03. `add_pool`'s own docstring justifies the anchor as "closing the
+first-post manipulation window (AUD-003/AUD-043)" — that window reopens, so
+restate it rather than leave the code contradicting itself.
 
 ### What replaces the band-distance warning
 
@@ -291,13 +432,20 @@ and authz must pass untouched; only the band tests change.
 
 **Bot**
 
-- `MIN_TWAP_READINGS × POLL_INTERVAL < ORACLE_FRESHNESS` (§3.4)
-- posts when `now - lp_ts_ >= POST_INTERVAL`, not before
-- a failed post leaves `lp_ts_` unchanged and the next **5-minute** poll retries
-- a restart does not reset the post clock
-- `TWAP_WINDOW = 7` yields a 30-minute span at 5-minute polling
-- no anchor read remains on the posting path — asserted over the AST, since a
-  regex would match the prose explaining why it was removed
+- the TVL-balance invariant rejects a one-sided decimals slip (§2.2b) — build it
+  from the $U 5-decimal case, which is the one that reaches production
+- it does **not** reject a genuine large price move, in either direction
+- no anchor read remains on the posting path — asserted over the **AST**, since
+  a regex would match the prose explaining why it was removed
+- a TWAP window spanning an outage does not silently understate a crash (§3b)
+- the signer still works with the kwarg gone
+
+**Harness.** `conftest.py`'s `RELAY` flag conflates two orthogonal properties —
+`set_anchor` is a no-op only when `RELAY`, while `oracle_post` uses
+`update_lp_price` only when *not* `RELAY`. A `lean` mode needs band-ness
+separated from payload-ness. Three suites pin anchor behaviour and must be
+**rewritten rather than skipped**: `test_oracle.py` (`test_reanchor_enables_larger_move`),
+`test_smoke.py`, `test_attacks_authz.py`.
 
 ---
 
