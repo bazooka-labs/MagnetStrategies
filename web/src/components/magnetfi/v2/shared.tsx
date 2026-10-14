@@ -50,6 +50,28 @@ export function Panel({
   );
 }
 
+/**
+ * Collateral family, as a glow.
+ *
+ * Not decoration. Every $U-denominated vault shares one risk — the whole book
+ * rides on one thin token. ALGO/USDC is the only collateral that does not, and
+ * the only one deep enough to actually unwind a seizure without moving the price
+ * against the liquidator. Colouring the family makes that split readable at a
+ * glance instead of requiring someone to parse four pair names.
+ *
+ * Purple is the Magnet brand hue (magnet-500, #a855f7); gold marks the outsider.
+ * Ring plus shadow so it layers OVER a status tint rather than competing with it
+ * — a stale or at-risk card still reads red first. The opacities were tuned by
+ * rendering against the red a stale pool already carries, which is the state
+ * they have to survive.
+ */
+export const MAGNET_GLOW =
+  "ring-1 ring-magnet-400/60 shadow-[0_0_30px_-2px_rgba(168,85,247,0.8),inset_0_0_14px_-8px_rgba(192,132,252,0.9)]";
+export const ALGO_GLOW =
+  "ring-1 ring-amber-300/60 shadow-[0_0_30px_-2px_rgba(251,191,36,0.75),inset_0_0_14px_-8px_rgba(253,224,71,0.9)]";
+/** Keyed by VaultType.id / oracle pool id — the one non-$U collateral glows gold. */
+export const collateralGlow = (id: string) => (id === "algo-usdc" ? ALGO_GLOW : MAGNET_GLOW);
+
 export function SoonBadge() {
   return (
     <span className="inline-flex items-center rounded-full border border-magnet-500/30 bg-magnet-500/10 px-2.5 py-0.5 text-xs font-medium text-magnet-300">

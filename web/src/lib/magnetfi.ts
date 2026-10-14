@@ -87,12 +87,15 @@ export const ACTIVE_POOL_WIRING = POOL_WIRING[_NET];
 export type OraclePool = { id: string; poolId: number; lpAsaId: number; vaultWired: boolean };
 const ORACLE_POOLS: Record<"mainnet" | "testnet", OraclePool[]> = {
   mainnet: [
+    // Order is display order, and it groups by collateral family: the three $U
+    // pools first, then the one that is not. That is the same split the card
+    // glow encodes, and interleaving them would undercut it.
     { id: "u-talgo", poolId: 3163770927, lpAsaId: 3163770927, vaultWired: true },
     { id: "u-usdc", poolId: 3673941603, lpAsaId: 3673941603, vaultWired: true },
     // Oracle-only. Queued 2026-10-13; the bot prices them, the vault cannot lend
     // against them until the migration registers them vault-side.
-    { id: "algo-usdc", poolId: 1002590888, lpAsaId: 1002590888, vaultWired: false },
     { id: "u-algo", poolId: 3617313492, lpAsaId: 3617313492, vaultWired: false },
+    { id: "algo-usdc", poolId: 1002590888, lpAsaId: 1002590888, vaultWired: false },
   ],
   testnet: [
     { id: "u-talgo", poolId: 765095900, lpAsaId: 765095900, vaultWired: true },

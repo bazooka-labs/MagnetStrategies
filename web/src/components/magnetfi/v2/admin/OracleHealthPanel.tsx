@@ -41,7 +41,7 @@ import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import { getOracleHealth, type PoolOracleHealth } from "@/lib/magnetfiReads";
 import { crossCheckPools, type PriceCrossCheck } from "@/lib/magnetfiPriceCheck";
-import { Panel } from "../shared";
+import { Panel, collateralGlow } from "../shared";
 
 const age = (s: number) => (s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
 const pct = (n: number | null) => (n === null ? "—" : `${n >= 0 ? "" : "−"}${Math.abs(n).toFixed(1)}%`);
@@ -49,29 +49,6 @@ const px = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 6, 
 const divergeTone = (l: PriceCrossCheck["level"]) =>
   l === "critical" ? "text-red-300" : l === "warn" ? "text-amber-300" : l === "ok" ? "text-green-400" : "text-white/50";
 
-/**
- * Collateral family, as a glow.
- *
- * Not decoration. Every $U-denominated pool shares one risk: the whole book
- * rides on one thin token. ALGO/USDC is the only collateral here that does not,
- * and it is also the only one deep enough to actually unwind a seizure. Giving
- * it a different colour makes that split legible at a glance instead of
- * requiring someone to read four pair names.
- *
- * Purple is the Magnet brand hue (magnet-500, #a855f7); gold marks the outsider.
- * Applied as ring + shadow so it layers over the status tone rather than
- * competing with it — a critical pool still reads red first.
- */
-// Tuned by rendering, not by reasoning: at ring/30 and a -4px spread the glow
-// was invisible under the red a stale pool already carries — and with the feed
-// down every pool is stale, so that is the state it has to survive. The inset
-// line keeps the family colour legible inside the card where the status tint is
-// strongest.
-const MAGNET_GLOW =
-  "ring-1 ring-magnet-400/60 shadow-[0_0_30px_-2px_rgba(168,85,247,0.8),inset_0_0_14px_-8px_rgba(192,132,252,0.9)]";
-const ALGO_GLOW =
-  "ring-1 ring-amber-300/60 shadow-[0_0_30px_-2px_rgba(251,191,36,0.75),inset_0_0_14px_-8px_rgba(253,224,71,0.9)]";
-const glowFor = (id: string) => (id === "algo-usdc" ? ALGO_GLOW : MAGNET_GLOW);
 
 function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
   const tone =
@@ -83,7 +60,7 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
     p.level === "critical" ? "text-red-300" : p.level === "warn" ? "text-amber-300" : "text-green-400";
 
   return (
-    <div className={`rounded-xl border p-3.5 ${tone} ${glowFor(p.id)}`}>
+    <div className={`rounded-xl border p-3.5 ${tone} ${collateralGlow(p.id)}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-mono text-sm font-semibold text-white">{p.id}</p>

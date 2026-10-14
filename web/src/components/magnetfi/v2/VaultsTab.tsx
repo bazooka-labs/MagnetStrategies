@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import {
   VAULT_TYPES, PROTOCOL_LIVE, pct, formatUsd, maxBorrow, healthFactor, liquidationBuffer,
-  projectedAccruedInterest, poolWiring, type VaultType,
+  projectedAccruedInterest, poolWiring, ACTIVE_ORACLE_POOLS, type VaultType,
 } from "@/lib/magnetfi";
 import {
   makeAlgorand, optIn, openVault, payInterest, repayPrincipal, borrowMore, addCollateral,
@@ -16,14 +16,35 @@ import {
   getOracle, getVaultPosition, getBalances, getProtocolStats, getTotalVaultDebt,
   MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
 } from "@/lib/magnetfiReads";
-import { Panel, PairGlyph, PrimaryButton } from "./shared";
+import { Panel, PairGlyph, PrimaryButton, SoonBadge, collateralGlow } from "./shared";
 import { LpVaultLearnMore } from "./LpVaultLearnMore";
 
-// Collateral pools with on-chain wiring — one live vault panel each. A VaultType without wiring
-// (poolWiring undefined) is not yet configured on-chain and is omitted here.
-const LIVE_VAULTS = VAULT_TYPES
-  .map((vt) => ({ vt, pool: poolWiring(vt.id) }))
-  .filter((x): x is { vt: VaultType; pool: PoolRef } => !!x.pool);
+/**
+ * One card per collateral pool the ORACLE prices — which is four, not two.
+ *
+ * This used to list only pools with vault wiring, so U/ALGO and ALGO/USDC were
+ * absent from the page entirely. Both are live on the oracle and being posted
+ * to; only their vault-side registration is outstanding, deliberately deferred
+ * to the lean-oracle migration so each pool is registered once rather than
+ * twice (STATUS.md §6).
+ *
+ * They are NOT given a working panel. `open_vault` would revert — the vault has
+ * no rate, LTV, liquidation threshold or LP ASA for them — and a borrow button
+ * that always fails is worse than no card. They render as priced-but-not-open.
+ *
+ * Keyed off ACTIVE_ORACLE_POOLS rather than VAULT_TYPES because VAULT_TYPES also
+ * carries aspirational pairs (u-wbtc) that no oracle prices and nothing tracks.
+ */
+type VaultCard =
+  | { kind: "live"; vt: VaultType; pool: PoolRef }
+  | { kind: "pending"; vt: VaultType };
+
+const VAULT_CARDS: VaultCard[] = ACTIVE_ORACLE_POOLS.flatMap((op) => {
+  const vt = VAULT_TYPES.find((v) => v.id === op.id);
+  if (!vt) return [];
+  const pool = poolWiring(vt.id);
+  return [pool ? { kind: "live" as const, vt, pool } : { kind: "pending" as const, vt }];
+});
 
 function hfColor(hf: number): string {
   if (hf === Infinity) return "text-gray-400";
@@ -84,6 +105,53 @@ function HeaderMetric({ label, value, sub, subClass }: {
       <p className="mt-1 font-mono text-lg font-bold text-white">{value}</p>
       {sub && <p className={`mt-0.5 text-[11px] ${subClass ?? "text-gray-500"}`}>{sub}</p>}
     </div>
+  );
+}
+
+/**
+ * A pool the oracle prices but the vault cannot lend against yet.
+ *
+ * Deliberately inert: same identity and risk parameters as a live card so the
+ * pair is visible and comparable, but no inputs and no actions, because every
+ * one of them would revert. The reason is stated rather than left to look like
+ * an outage — the feed is healthy; it is the vault-side registration that is
+ * outstanding, and it lands with the migration.
+ */
+function PendingVaultPanel({ vt }: { vt: VaultType }) {
+  return (
+    <Panel className={`p-6 ${collateralGlow(vt.id)}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <PairGlyph tokens={vt.tokens} />
+          <h2 className="font-display text-xl font-semibold text-white sm:text-2xl">
+            {vt.tokens[0]} / {vt.tokens[1]}
+          </h2>
+        </div>
+        <SoonBadge />
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <HeaderMetric label="Interest rate" value={`${pct(vt.rateBps)}%`} />
+        <HeaderMetric label="LTV ratio" value={`${pct(vt.ltvBps)}%`} />
+        {/* Deliberately NOT "oracle live" in green: this card fetches nothing, so
+            it cannot know the feed's state, and as of 2026-10-14 these two pools
+            were 85-111h stale while the badge would have claimed otherwise.
+            Registration is the fact available here; freshness belongs to the
+            cards that actually read it. */}
+        <HeaderMetric label="LP price" value="Registered" sub="not yet borrowable" />
+      </div>
+
+      <p className="mt-4 text-xs leading-relaxed text-gray-500">{vt.blurb}</p>
+
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3.5">
+        <p className="text-[11px] leading-relaxed text-gray-400">
+          This pool is registered on the oracle and carries a price, and its feed shows up in the
+          admin Oracle Health panel alongside the live vaults. Borrowing opens once it is also
+          registered on the vault, which happens with the next oracle migration — pools are
+          registered once there rather than twice now.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -181,7 +249,7 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
   const dueText = { green: "text-green-400", yellow: "text-yellow-400", red: "text-red-400" }[dueTone];
 
   return (
-    <Panel className="p-6">
+    <Panel className={`p-6 ${collateralGlow(vt.id)}`}>
       {/* Header bar — one container per vault: title + key metrics, no subtext */}
       <div className="flex items-center gap-3">
         <PairGlyph tokens={vt.tokens} />
@@ -405,9 +473,13 @@ export function VaultsTab() {
         <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
       ) : (
         <div className="grid gap-5 md:grid-cols-2">
-          {LIVE_VAULTS.map(({ vt, pool }) => (
-            <VaultPanel key={vt.id} vt={vt} pool={pool} util={util} />
-          ))}
+          {VAULT_CARDS.map((c) =>
+            c.kind === "live" ? (
+              <VaultPanel key={c.vt.id} vt={c.vt} pool={c.pool} util={util} />
+            ) : (
+              <PendingVaultPanel key={c.vt.id} vt={c.vt} />
+            ),
+          )}
         </div>
       )}
     </section>
