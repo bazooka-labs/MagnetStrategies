@@ -119,7 +119,7 @@ function HeaderMetric({ label, value, sub, subClass }: {
  */
 function PendingVaultPanel({ vt }: { vt: VaultType }) {
   return (
-    <Panel className={`p-6 ${collateralGlow(vt.id)}`}>
+    <Panel className="p-6" glowClass={collateralGlow(vt.id)}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={vt.tokens} />
@@ -249,7 +249,7 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
   const dueText = { green: "text-green-400", yellow: "text-yellow-400", red: "text-red-400" }[dueTone];
 
   return (
-    <Panel className={`p-6 ${collateralGlow(vt.id)}`}>
+    <Panel className="p-6" glowClass={collateralGlow(vt.id)}>
       {/* Header bar — one container per vault: title + key metrics, no subtext */}
       <div className="flex items-center gap-3">
         <PairGlyph tokens={vt.tokens} />

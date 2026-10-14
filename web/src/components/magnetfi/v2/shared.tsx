@@ -33,14 +33,26 @@ export function Panel({
   children,
   className = "",
   glow = false,
+  glowClass = "",
 }: {
   children: ReactNode;
   className?: string;
   glow?: boolean;
+  /**
+   * A coloured glow that REPLACES the panel's default drop shadow.
+   *
+   * It has to replace rather than stack, because the default includes
+   * `shadow-black/40`, which sets `--tw-shadow-color` and therefore recolours
+   * any shadow passed through `className` to black. Passing a glow that way
+   * leaves only its ring visible — a thin border where a neon glow was
+   * intended, which is exactly how this first shipped.
+   */
+  glowClass?: string;
 }) {
+  const shadow = glowClass || "shadow-xl shadow-black/40";
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm shadow-xl shadow-black/40 ${
+      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm ${shadow} ${
         glow ? "glow-blue" : ""
       } ${className}`}
     >

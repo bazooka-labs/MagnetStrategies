@@ -69,7 +69,10 @@ export default function MagnetFiPage() {
   const { address, isConnected } = useWallet();
   const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
   const [showAdmin, setShowAdmin] = useState(false);
-  const [tab, setTab] = useState<Tab>("markets");
+  // Lands on the LP vaults: they are MagnetFi's own product, where the vault,
+  // PSM and oracle work we run actually lives. The lending markets are hosted
+  // on CompX — worth offering, but not the thing this page is for.
+  const [tab, setTab] = useState<Tab>("vaults");
 
   /**
    * `?tab=vaults` deep-links the LP vaults.
@@ -104,16 +107,16 @@ export default function MagnetFiPage() {
       <div className="animate-enter mb-8 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
           <TabButton
-            active={tab === "markets"}
-            onClick={() => setTab("markets")}
-            icon={Landmark}
-            label="Lending Markets"
-          />
-          <TabButton
             active={tab === "vaults"}
             onClick={() => setTab("vaults")}
             icon={Layers}
             label="LP Collateral Vaults"
+          />
+          <TabButton
+            active={tab === "markets"}
+            onClick={() => setTab("markets")}
+            icon={Landmark}
+            label="Lending Markets"
           />
         </div>
 
