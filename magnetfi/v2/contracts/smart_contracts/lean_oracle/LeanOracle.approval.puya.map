@@ -1,0 +1,3303 @@
+{
+  "version": 3,
+  "sources": [
+    "contract.py"
+  ],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAmDA;;AAAA;AAAA;AAAA;;AAAA;;;AAAA;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAAA;;;AAAA;;;;;;;;;;;;;;;;;;;;AAAA;AAAA;;;;;;AAAA;;;AAAA;;;;AAAA;AA6BK;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAGU;AAAY;;AAAZ;AAAP;AACO;AAAY;;AAAZ;AAAP;AACA;AAAmB;;AAAnB;AACA;AAAA;AAAA;AACA;AAA2B;;AAA3B;AACA;AAA8B;;AAA9B;AARH;AAAA;AA8CA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAvBO;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAA;;;AAAkC;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAlC;;;;AADJ;AA4BoB;;AAAb;;AAAA;AAAP;AACoB;AAAA;AAAA;AAAA;AAAb;;AAAA;AAAP;AACA;AAAA;AAAA;AANH;AAAA;;;;;AAWU;AAAA;AAAA;AAAA;AAAA;AAA4B;;AAA5B;AAAP;AACO;;AAAA;;AAAA;AAAP;AACA;AAAA;AAAA;AACA;AAA2B;;AAA3B;AANH;AAAA;AAQA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AA5CU;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAP;AAgDO;AAAgB;;AAAhB;AAAP;AACuB;AAAA;AAAA;AAAA;AAAhB;;AAAA;AAAP;AACA;AAAA;AAAA;AANH;AAAA;AAWU;AAAA;AAAA;AAAA;AAAA;AAA+B;;AAA/B;AAAP;AACO;;AAAA;;AAAA;AAAP;AACA;AAAA;AAAA;AACA;AAA8B;;AAA9B;AANH;AAAA;AAUA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;AAgBU;;AAAc;AAAA;;AAAA;AAAA;AAAd;AAAP;AACA;AAGI;;AAhE2B;AAAA;AAAA;AAAA;;AAAxB;;AAAA;AAAA;AA+DqB;AAAA;AAAA;;AAGrB;;;AAAA;;AAAA;;;;AAAP;AA1EO;;AAAA;;AAAA;AA8EP;;AAAA;AA1EO;;AAAA;AAAA;AA2EiC;;AAAxC;AA3BH;AAAA;;;;;AA+BA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AASG;;;AACO;AAAe;;AAAf;AAAP;AACA;;AAAA;AAAA;AAXH;AAAA;AAaA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAeG;;;AAGI;;AA1G2B;AAAA;AAAA;AAAA;;AAAxB;;AAAA;AAAA;AAAA;AAAA;;AAyGsB;AAAA;AAAA;;AAGjB;;;AAAA;;AAAA;;;;AAAL;AAAP;AACA;AAAA;AAAA;AAEA;AAA4C;AAA5C;AAvHO;;AAAA;;AAAA;AAAA;;AAAA;AAwHP;;AAAA;AApHO;;AAAA;AAAA;AAqHiC;;AAAxC;AAzBH;AAAA;;;;;AA2BA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AASG;;;AA5H+B;AAAxB;;AAAA;;AAAA;AA6HP;AArIO;;AAAA;;AAAA;AAsIP;AAlIO;;AAAA;AAAA;AAmIP;AAZH;AAAA;AAgBA;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AA3IiC;AAAvB;;AAAA;;AAAA;AAsJC;AAlJD;;AAAA;;AAAA;AAmJF;AACc;AAAA;AAAoB;AAAA;AAAhC;AAbV;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAzJU;;AAAc;AAAA;AAAA;AAAA;AAAd;AAAP;",
+  "op_pc_offset": 0,
+  "pc_events": {
+    "1": {
+      "subroutine": "algopy.arc4.ARC4Contract.approval_program",
+      "params": {},
+      "block": "main",
+      "stack_in": [],
+      "op": "intcblock 1 0 8 32"
+    },
+    "7": {
+      "op": "bytecblock \"admin\" \"guardian\" \"pending_admin\" \"pending_guardian\" 0x6c705f70726963655f 0x6c705f74735f 0x6c705f6163746976655f \"authorized_updater\""
+    },
+    "102": {
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "104": {
+      "op": "!",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "105": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "106": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "108": {
+      "op": "bz main_create_NoOp@15",
+      "stack_out": []
+    },
+    "111": {
+      "op": "pushbytess 0xc50d6333 0x969a0da3 0x3c30bfe1 0xfe5892d6 0x7d781a7f 0x8955311c 0xdf22ddfa 0x45aab8b8 0xccdc7a17 // method \"propose_admin(address)void\", method \"accept_admin()void\", method \"propose_guardian(address)void\", method \"accept_guardian()void\", method \"update_lp_price(uint64,uint64)void\", method \"set_authorized_updater(address)void\", method \"add_pool(uint64,uint64)void\", method \"remove_pool(uint64)void\", method \"get_lp_price(uint64)(uint64,uint64)\"",
+      "defined_out": [
+        "Method(accept_admin()void)",
+        "Method(accept_guardian()void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "Method(propose_admin(address)void)",
+        "Method(propose_guardian(address)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(set_authorized_updater(address)void)",
+        "Method(update_lp_price(uint64,uint64)void)"
+      ],
+      "stack_out": [
+        "Method(propose_admin(address)void)",
+        "Method(accept_admin()void)",
+        "Method(propose_guardian(address)void)",
+        "Method(accept_guardian()void)",
+        "Method(update_lp_price(uint64,uint64)void)",
+        "Method(set_authorized_updater(address)void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))"
+      ]
+    },
+    "158": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(accept_admin()void)",
+        "Method(accept_guardian()void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "Method(propose_admin(address)void)",
+        "Method(propose_guardian(address)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(set_authorized_updater(address)void)",
+        "Method(update_lp_price(uint64,uint64)void)",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "Method(propose_admin(address)void)",
+        "Method(accept_admin()void)",
+        "Method(propose_guardian(address)void)",
+        "Method(accept_guardian()void)",
+        "Method(update_lp_price(uint64,uint64)void)",
+        "Method(set_authorized_updater(address)void)",
+        "Method(add_pool(uint64,uint64)void)",
+        "Method(remove_pool(uint64)void)",
+        "Method(get_lp_price(uint64)(uint64,uint64))",
+        "tmp%4#0"
+      ]
+    },
+    "161": {
+      "op": "match propose_admin accept_admin propose_guardian accept_guardian update_lp_price set_authorized_updater add_pool remove_pool get_lp_price",
+      "stack_out": []
+    },
+    "181": {
+      "op": "err"
+    },
+    "182": {
+      "block": "main_create_NoOp@15",
+      "stack_in": [],
+      "op": "pushbytes 0x0a47cd05 // method \"deploy(address)void\"",
+      "defined_out": [
+        "Method(deploy(address)void)"
+      ],
+      "stack_out": [
+        "Method(deploy(address)void)"
+      ]
+    },
+    "188": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(deploy(address)void)",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "Method(deploy(address)void)",
+        "tmp%5#0"
+      ]
+    },
+    "191": {
+      "op": "match deploy",
+      "stack_out": []
+    },
+    "195": {
+      "op": "err"
+    },
+    "196": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.deploy[routing]",
+      "params": {},
+      "block": "deploy",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "199": {
+      "op": "dup",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "guardian#0 (copy)"
+      ]
+    },
+    "200": {
+      "op": "len",
+      "defined_out": [
+        "guardian#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "len%0#0"
+      ]
+    },
+    "201": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "guardian#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "202": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "eq%0#0"
+      ]
+    },
+    "203": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "204": {
+      "op": "dup"
+    },
+    "205": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "207": {
+      "op": "!=",
+      "defined_out": [
+        "guardian#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%1#1"
+      ]
+    },
+    "208": {
+      "error": "guardian required",
+      "op": "assert // guardian required",
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "209": {
+      "op": "dup"
+    },
+    "210": {
+      "op": "txn Sender",
+      "defined_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "guardian#0 (copy)",
+        "tmp%2#0"
+      ]
+    },
+    "212": {
+      "op": "!=",
+      "defined_out": [
+        "guardian#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "tmp%3#0"
+      ]
+    },
+    "213": {
+      "error": "guardian must differ from admin",
+      "op": "assert // guardian must differ from admin",
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "214": {
+      "op": "bytec_0 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "\"admin\""
+      ]
+    },
+    "215": {
+      "op": "txn Sender",
+      "defined_out": [
+        "\"admin\"",
+        "guardian#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "\"admin\"",
+        "tmp%4#0"
+      ]
+    },
+    "217": {
+      "op": "app_global_put",
+      "stack_out": [
+        "guardian#0"
+      ]
+    },
+    "218": {
+      "op": "bytec_1 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "guardian#0"
+      ],
+      "stack_out": [
+        "guardian#0",
+        "\"guardian\""
+      ]
+    },
+    "219": {
+      "op": "swap",
+      "stack_out": [
+        "\"guardian\"",
+        "guardian#0"
+      ]
+    },
+    "220": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "221": {
+      "op": "bytec_2 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\""
+      ],
+      "stack_out": [
+        "\"pending_admin\""
+      ]
+    },
+    "222": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_admin\"",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "\"pending_admin\"",
+        "tmp%5#0"
+      ]
+    },
+    "224": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "225": {
+      "op": "bytec_3 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\""
+      ],
+      "stack_out": [
+        "\"pending_guardian\""
+      ]
+    },
+    "226": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "\"pending_guardian\"",
+        "tmp%6#0"
+      ]
+    },
+    "228": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "229": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "230": {
+      "op": "return",
+      "stack_out": []
+    },
+    "231": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.propose_admin[routing]",
+      "params": {},
+      "block": "propose_admin",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1"
+    },
+    "234": {
+      "op": "dup",
+      "defined_out": [
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "new_admin#0"
+      ]
+    },
+    "235": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "len%0#0"
+      ]
+    },
+    "236": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "len%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "237": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "eq%0#0"
+      ]
+    },
+    "238": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "239": {
+      "op": "txn Sender",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1"
+      ]
+    },
+    "241": {
+      "op": "intc_1 // 0",
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "242": {
+      "op": "bytec_0 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "new_admin#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "243": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_admin#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "244": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "245": {
+      "op": "==",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ]
+    },
+    "246": {
+      "op": "bnz propose_admin_bool_true@3",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "249": {
+      "op": "txn Sender",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#1"
+      ]
+    },
+    "251": {
+      "op": "intc_1 // 0",
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#1",
+        "0"
+      ]
+    },
+    "252": {
+      "op": "bytec_1 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "new_admin#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#1",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "253": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0",
+        "new_admin#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#1",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "254": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#1",
+        "maybe_value%1#0"
+      ]
+    },
+    "255": {
+      "op": "==",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%3#0"
+      ]
+    },
+    "256": {
+      "op": "bz propose_admin_bool_false@4",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "259": {
+      "block": "propose_admin_bool_true@3",
+      "stack_in": [
+        "new_admin#0"
+      ],
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "or_result%0#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "or_result%0#0"
+      ]
+    },
+    "260": {
+      "error": "admin or guardian only",
+      "block": "propose_admin_bool_merge@5",
+      "stack_in": [
+        "new_admin#0",
+        "or_result%0#0"
+      ],
+      "op": "assert // admin or guardian only",
+      "defined_out": [],
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "261": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1"
+      ]
+    },
+    "263": {
+      "op": "dig 1",
+      "defined_out": [
+        "new_admin#0",
+        "new_admin#0 (copy)",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%0#1",
+        "new_admin#0 (copy)"
+      ]
+    },
+    "265": {
+      "op": "!=",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%1#1"
+      ]
+    },
+    "266": {
+      "error": "zero address not allowed",
+      "op": "assert // zero address not allowed",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "267": {
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "0"
+      ]
+    },
+    "268": {
+      "op": "bytec_1 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "269": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "270": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "271": {
+      "op": "dig 1",
+      "stack_out": [
+        "new_admin#0",
+        "maybe_value%0#0",
+        "new_admin#0 (copy)"
+      ]
+    },
+    "273": {
+      "op": "!=",
+      "defined_out": [
+        "new_admin#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "tmp%2#0"
+      ]
+    },
+    "274": {
+      "error": "admin must differ from guardian",
+      "op": "assert // admin must differ from guardian",
+      "stack_out": [
+        "new_admin#0"
+      ]
+    },
+    "275": {
+      "op": "bytec_2 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\"",
+        "new_admin#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "\"pending_admin\""
+      ]
+    },
+    "276": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_admin\"",
+        "new_admin#0"
+      ]
+    },
+    "277": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "278": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "279": {
+      "op": "return",
+      "stack_out": []
+    },
+    "280": {
+      "block": "propose_admin_bool_false@4",
+      "stack_in": [
+        "new_admin#0"
+      ],
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "or_result%0#0"
+      ],
+      "stack_out": [
+        "new_admin#0",
+        "or_result%0#0"
+      ]
+    },
+    "281": {
+      "op": "b propose_admin_bool_merge@5"
+    },
+    "284": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.accept_admin[routing]",
+      "params": {},
+      "block": "accept_admin",
+      "stack_in": [],
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "285": {
+      "op": "bytec_2 // \"pending_admin\"",
+      "defined_out": [
+        "\"pending_admin\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pending_admin\""
+      ]
+    },
+    "286": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "287": {
+      "error": "check self.pending_admin exists",
+      "op": "assert // check self.pending_admin exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "288": {
+      "op": "dup"
+    },
+    "289": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ]
+    },
+    "291": {
+      "op": "!=",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "292": {
+      "error": "no pending admin",
+      "op": "assert // no pending admin",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "293": {
+      "op": "txn Sender",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ]
+    },
+    "295": {
+      "op": "dig 1",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "297": {
+      "op": "==",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "298": {
+      "error": "not pending admin",
+      "op": "assert // not pending admin",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "299": {
+      "op": "bytec_0 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "\"admin\""
+      ]
+    },
+    "300": {
+      "op": "swap",
+      "stack_out": [
+        "\"admin\"",
+        "maybe_value%0#0"
+      ]
+    },
+    "301": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "302": {
+      "op": "bytec_2 // \"pending_admin\"",
+      "stack_out": [
+        "\"pending_admin\""
+      ]
+    },
+    "303": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_admin\"",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "\"pending_admin\"",
+        "tmp%4#0"
+      ]
+    },
+    "305": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "306": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "307": {
+      "op": "return",
+      "stack_out": []
+    },
+    "308": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.propose_guardian[routing]",
+      "params": {},
+      "block": "propose_guardian",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "311": {
+      "op": "dup",
+      "defined_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)"
+      ]
+    },
+    "312": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "len%0#0"
+      ]
+    },
+    "313": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "len%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "314": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "eq%0#0"
+      ]
+    },
+    "315": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "316": {
+      "op": "txn Sender",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1"
+      ]
+    },
+    "318": {
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "319": {
+      "op": "bytec_1 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "0",
+        "\"guardian\""
+      ]
+    },
+    "320": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_guardian#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "321": {
+      "error": "check self.guardian exists",
+      "op": "assert // check self.guardian exists",
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "322": {
+      "op": "==",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ]
+    },
+    "323": {
+      "error": "guardian only",
+      "op": "assert // guardian only",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "324": {
+      "op": "dup"
+    },
+    "325": {
+      "op": "global ZeroAddress",
+      "stack_out": [
+        "new_guardian#0",
+        "new_guardian#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "327": {
+      "op": "!=",
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%1#1"
+      ]
+    },
+    "328": {
+      "error": "zero address not allowed",
+      "op": "assert // zero address not allowed",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "329": {
+      "op": "intc_1 // 0",
+      "stack_out": [
+        "new_guardian#0",
+        "0"
+      ]
+    },
+    "330": {
+      "op": "bytec_0 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "331": {
+      "op": "app_global_get_ex",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "332": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "333": {
+      "op": "dig 1",
+      "stack_out": [
+        "new_guardian#0",
+        "maybe_value%0#0",
+        "new_guardian#0 (copy)"
+      ]
+    },
+    "335": {
+      "op": "!=",
+      "defined_out": [
+        "new_guardian#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "tmp%2#0"
+      ]
+    },
+    "336": {
+      "error": "guardian must differ from admin",
+      "op": "assert // guardian must differ from admin",
+      "stack_out": [
+        "new_guardian#0"
+      ]
+    },
+    "337": {
+      "op": "bytec_3 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "new_guardian#0"
+      ],
+      "stack_out": [
+        "new_guardian#0",
+        "\"pending_guardian\""
+      ]
+    },
+    "338": {
+      "op": "swap",
+      "stack_out": [
+        "\"pending_guardian\"",
+        "new_guardian#0"
+      ]
+    },
+    "339": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "340": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "341": {
+      "op": "return",
+      "stack_out": []
+    },
+    "342": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.accept_guardian[routing]",
+      "params": {},
+      "block": "accept_guardian",
+      "stack_in": [],
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "343": {
+      "op": "bytec_3 // \"pending_guardian\"",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"pending_guardian\""
+      ]
+    },
+    "344": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "345": {
+      "error": "check self.pending_guardian exists",
+      "op": "assert // check self.pending_guardian exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "346": {
+      "op": "dup"
+    },
+    "347": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#0"
+      ]
+    },
+    "349": {
+      "op": "!=",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "350": {
+      "error": "no pending guardian",
+      "op": "assert // no pending guardian",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "351": {
+      "op": "txn Sender",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0"
+      ]
+    },
+    "353": {
+      "op": "dig 1",
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%2#0",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "355": {
+      "op": "==",
+      "defined_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "tmp%3#0"
+      ]
+    },
+    "356": {
+      "error": "not pending guardian",
+      "op": "assert // not pending guardian",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "357": {
+      "op": "bytec_1 // \"guardian\"",
+      "defined_out": [
+        "\"guardian\"",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "\"guardian\""
+      ]
+    },
+    "358": {
+      "op": "swap",
+      "stack_out": [
+        "\"guardian\"",
+        "maybe_value%0#0"
+      ]
+    },
+    "359": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "360": {
+      "op": "bytec_3 // \"pending_guardian\"",
+      "stack_out": [
+        "\"pending_guardian\""
+      ]
+    },
+    "361": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"pending_guardian\"",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "\"pending_guardian\"",
+        "tmp%4#0"
+      ]
+    },
+    "363": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "364": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "365": {
+      "op": "return",
+      "stack_out": []
+    },
+    "366": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.update_lp_price[routing]",
+      "params": {},
+      "block": "update_lp_price",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "369": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "370": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "371": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "372": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "373": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "374": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "375": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "378": {
+      "op": "dup",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "379": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "380": {
+      "op": "intc_2 // 8",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "381": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "382": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "383": {
+      "op": "btoi",
+      "defined_out": [
+        "new_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "new_price#0"
+      ]
+    },
+    "384": {
+      "op": "dup",
+      "stack_out": [
+        "pool_id#0",
+        "new_price#0",
+        "new_price#0"
+      ]
+    },
+    "385": {
+      "op": "cover 2",
+      "defined_out": [
+        "new_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0"
+      ]
+    },
+    "387": {
+      "op": "txn Sender",
+      "defined_out": [
+        "new_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%0#1"
+      ]
+    },
+    "389": {
+      "op": "intc_1 // 0",
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "390": {
+      "op": "bytec 7 // \"authorized_updater\"",
+      "defined_out": [
+        "\"authorized_updater\"",
+        "0",
+        "new_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%0#1",
+        "0",
+        "\"authorized_updater\""
+      ]
+    },
+    "392": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "new_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "393": {
+      "error": "check self.authorized_updater exists",
+      "op": "assert // check self.authorized_updater exists",
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "394": {
+      "op": "==",
+      "defined_out": [
+        "new_price#0",
+        "pool_id#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0",
+        "tmp%1#1"
+      ]
+    },
+    "395": {
+      "error": "not authorized updater",
+      "op": "assert // not authorized updater",
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "new_price#0"
+      ]
+    },
+    "396": {
+      "error": "price must be > 0",
+      "op": "assert // price must be > 0",
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0"
+      ]
+    },
+    "397": {
+      "op": "global CurrentApplicationID",
+      "defined_out": [
+        "new_price#0",
+        "pool_id#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "pool_id#0",
+        "tmp%3#1"
+      ]
+    },
+    "399": {
+      "op": "swap",
+      "stack_out": [
+        "new_price#0",
+        "tmp%3#1",
+        "pool_id#0"
+      ]
+    },
+    "400": {
+      "op": "itob",
+      "stack_out": [
+        "new_price#0",
+        "tmp%3#1",
+        "tmp%0#0"
+      ]
+    },
+    "401": {
+      "op": "dup",
+      "stack_out": [
+        "new_price#0",
+        "tmp%3#1",
+        "tmp%0#0",
+        "tmp%0#0"
+      ]
+    },
+    "402": {
+      "op": "cover 2",
+      "defined_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1",
+        "tmp%0#0"
+      ]
+    },
+    "404": {
+      "op": "bytec 6 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1",
+        "tmp%0#0",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "406": {
+      "op": "swap",
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1",
+        "0x6c705f6163746976655f",
+        "tmp%0#0"
+      ]
+    },
+    "407": {
+      "op": "concat",
+      "defined_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "tmp%3#1",
+        "tmp%1#3"
+      ]
+    },
+    "408": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "active_exists#0",
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "active_val#0",
+        "active_exists#0"
+      ]
+    },
+    "409": {
+      "op": "swap",
+      "stack_out": [
+        "new_price#0",
+        "tmp%0#0",
+        "active_exists#0",
+        "active_val#0"
+      ]
+    },
+    "410": {
+      "op": "cover 3",
+      "defined_out": [
+        "active_exists#0",
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "active_exists#0"
+      ]
+    },
+    "412": {
+      "op": "bz update_lp_price_bool_false@4",
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ]
+    },
+    "415": {
+      "op": "dig 2",
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "active_val#0"
+      ]
+    },
+    "417": {
+      "op": "bz update_lp_price_bool_false@4",
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ]
+    },
+    "420": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "active_val#0",
+        "and_result%0#0",
+        "new_price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "and_result%0#0"
+      ]
+    },
+    "421": {
+      "error": "pool not in whitelist",
+      "block": "update_lp_price_bool_merge@5",
+      "stack_in": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "and_result%0#0"
+      ],
+      "op": "assert // pool not in whitelist",
+      "defined_out": [],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ]
+    },
+    "422": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "424": {
+      "op": "dig 1",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "426": {
+      "op": "concat",
+      "defined_out": [
+        "price_key#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "price_key#0"
+      ]
+    },
+    "427": {
+      "op": "uncover 2",
+      "defined_out": [
+        "new_price#0",
+        "price_key#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "price_key#0",
+        "new_price#0"
+      ]
+    },
+    "429": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0"
+      ]
+    },
+    "430": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "432": {
+      "op": "swap",
+      "stack_out": [
+        "active_val#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "433": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%1#3"
+      ]
+    },
+    "434": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%1#3",
+        "tmp%10#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%1#3",
+        "tmp%10#0"
+      ]
+    },
+    "436": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active_val#0"
+      ]
+    },
+    "437": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "1"
+      ]
+    },
+    "438": {
+      "op": "return",
+      "stack_out": [
+        "active_val#0"
+      ]
+    },
+    "439": {
+      "block": "update_lp_price_bool_false@4",
+      "stack_in": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0"
+      ],
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "and_result%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "new_price#0",
+        "tmp%0#0",
+        "and_result%0#0"
+      ]
+    },
+    "440": {
+      "op": "b update_lp_price_bool_merge@5"
+    },
+    "443": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.set_authorized_updater[routing]",
+      "params": {},
+      "block": "set_authorized_updater",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "new_address#0"
+      ],
+      "stack_out": [
+        "new_address#0"
+      ]
+    },
+    "446": {
+      "op": "dup",
+      "defined_out": [
+        "new_address#0",
+        "new_address#0 (copy)"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "new_address#0 (copy)"
+      ]
+    },
+    "447": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "new_address#0"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "len%0#0"
+      ]
+    },
+    "448": {
+      "op": "intc_3 // 32",
+      "defined_out": [
+        "32",
+        "len%0#0",
+        "new_address#0"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "449": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "new_address#0"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "eq%0#0"
+      ]
+    },
+    "450": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "new_address#0"
+      ]
+    },
+    "451": {
+      "callsub": "smart_contracts.lean_oracle.contract.LeanOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "454": {
+      "op": "dup"
+    },
+    "455": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "new_address#0",
+        "new_address#0 (copy)",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "new_address#0 (copy)",
+        "tmp%0#1"
+      ]
+    },
+    "457": {
+      "op": "!=",
+      "defined_out": [
+        "new_address#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "tmp%1#1"
+      ]
+    },
+    "458": {
+      "error": "zero address not allowed",
+      "op": "assert // zero address not allowed",
+      "stack_out": [
+        "new_address#0"
+      ]
+    },
+    "459": {
+      "op": "bytec 7 // \"authorized_updater\"",
+      "defined_out": [
+        "\"authorized_updater\"",
+        "new_address#0"
+      ],
+      "stack_out": [
+        "new_address#0",
+        "\"authorized_updater\""
+      ]
+    },
+    "461": {
+      "op": "swap",
+      "stack_out": [
+        "\"authorized_updater\"",
+        "new_address#0"
+      ]
+    },
+    "462": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "463": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "464": {
+      "op": "return",
+      "stack_out": []
+    },
+    "465": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.add_pool[routing]",
+      "params": {},
+      "block": "add_pool",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "468": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "469": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "470": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "471": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "472": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "473": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "474": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "477": {
+      "op": "dup",
+      "defined_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "478": {
+      "op": "len",
+      "defined_out": [
+        "len%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "479": {
+      "op": "intc_2 // 8",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "480": {
+      "op": "==",
+      "defined_out": [
+        "eq%1#0",
+        "pool_id#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "481": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "pool_id#0",
+        "tmp%2#0"
+      ]
+    },
+    "482": {
+      "op": "btoi",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0",
+        "initial_price#0"
+      ]
+    },
+    "483": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "initial_price#0",
+        "pool_id#0"
+      ]
+    },
+    "484": {
+      "callsub": "smart_contracts.lean_oracle.contract.LeanOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "487": {
+      "op": "global CurrentApplicationID",
+      "defined_out": [
+        "initial_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "initial_price#0",
+        "pool_id#0",
+        "tmp%0#1"
+      ]
+    },
+    "489": {
+      "op": "swap",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "pool_id#0"
+      ]
+    },
+    "490": {
+      "op": "itob",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0"
+      ]
+    },
+    "491": {
+      "op": "dup",
+      "stack_out": [
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0",
+        "tmp%0#0"
+      ]
+    },
+    "492": {
+      "op": "cover 3",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0"
+      ]
+    },
+    "494": {
+      "op": "bytec 6 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%0#0",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "496": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "0x6c705f6163746976655f",
+        "tmp%0#0"
+      ]
+    },
+    "497": {
+      "op": "concat",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ]
+    },
+    "498": {
+      "op": "dup",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%0#1",
+        "tmp%1#3",
+        "tmp%1#3"
+      ]
+    },
+    "499": {
+      "op": "cover 2",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%0#1",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "tmp%0#1",
+        "tmp%1#3"
+      ]
+    },
+    "501": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "active_val#0",
+        "already_exists#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "active_val#0",
+        "already_exists#0"
+      ]
+    },
+    "502": {
+      "op": "swap",
+      "stack_out": [
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "already_exists#0",
+        "active_val#0"
+      ]
+    },
+    "503": {
+      "op": "cover 4",
+      "defined_out": [
+        "active_val#0",
+        "already_exists#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "already_exists#0"
+      ]
+    },
+    "505": {
+      "op": "bz add_pool_bool_false@4",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "508": {
+      "op": "dig 3",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "active_val#0"
+      ]
+    },
+    "510": {
+      "op": "bz add_pool_bool_false@4",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "513": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "active_val#0",
+        "and_result%0#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ]
+    },
+    "514": {
+      "block": "add_pool_bool_merge@5",
+      "stack_in": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ],
+      "op": "!",
+      "defined_out": [
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "tmp%5#0"
+      ]
+    },
+    "515": {
+      "error": "pool already registered",
+      "op": "assert // pool already registered",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "516": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "517": {
+      "op": "dup",
+      "defined_out": [
+        "initial_price#0",
+        "initial_price#0 (copy)"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0",
+        "initial_price#0 (copy)"
+      ]
+    },
+    "518": {
+      "error": "initial price must be > 0",
+      "op": "assert // initial price must be > 0",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "519": {
+      "op": "swap",
+      "defined_out": [
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ]
+    },
+    "520": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1",
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "1"
+      ]
+    },
+    "521": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0"
+      ]
+    },
+    "522": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "524": {
+      "op": "uncover 2",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "initial_price#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ]
+    },
+    "526": {
+      "op": "dup",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "initial_price#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "initial_price#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "527": {
+      "op": "cover 2",
+      "stack_out": [
+        "active_val#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "529": {
+      "op": "concat",
+      "stack_out": [
+        "active_val#0",
+        "initial_price#0",
+        "tmp%0#0",
+        "tmp%1#3"
+      ]
+    },
+    "530": {
+      "op": "uncover 2",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "tmp%1#3",
+        "initial_price#0"
+      ]
+    },
+    "532": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0"
+      ]
+    },
+    "533": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "535": {
+      "op": "swap",
+      "stack_out": [
+        "active_val#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "536": {
+      "op": "concat",
+      "stack_out": [
+        "active_val#0",
+        "tmp%1#3"
+      ]
+    },
+    "537": {
+      "op": "global LatestTimestamp",
+      "defined_out": [
+        "tmp%1#3",
+        "tmp%10#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%1#3",
+        "tmp%10#0"
+      ]
+    },
+    "539": {
+      "op": "app_global_put",
+      "stack_out": [
+        "active_val#0"
+      ]
+    },
+    "540": {
+      "op": "intc_0 // 1",
+      "stack_out": [
+        "active_val#0",
+        "1"
+      ]
+    },
+    "541": {
+      "op": "return",
+      "stack_out": [
+        "active_val#0"
+      ]
+    },
+    "542": {
+      "block": "add_pool_bool_false@4",
+      "stack_in": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3"
+      ],
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "and_result%0#0"
+      ],
+      "stack_out": [
+        "active_val#0",
+        "tmp%0#0",
+        "initial_price#0",
+        "tmp%1#3",
+        "and_result%0#0"
+      ]
+    },
+    "543": {
+      "op": "b add_pool_bool_merge@5"
+    },
+    "546": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.remove_pool[routing]",
+      "params": {},
+      "block": "remove_pool",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "549": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "550": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "551": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "552": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "553": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "554": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "555": {
+      "callsub": "smart_contracts.lean_oracle.contract.LeanOracle._assert_admin",
+      "op": "callsub _assert_admin"
+    },
+    "558": {
+      "op": "itob",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "559": {
+      "op": "bytec 6 // 0x6c705f6163746976655f",
+      "defined_out": [
+        "0x6c705f6163746976655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f6163746976655f"
+      ]
+    },
+    "561": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f6163746976655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "563": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "564": {
+      "op": "app_global_del",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "565": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "567": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "569": {
+      "op": "concat",
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#2"
+      ]
+    },
+    "570": {
+      "op": "app_global_del",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "571": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "573": {
+      "op": "swap",
+      "stack_out": [
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "574": {
+      "op": "concat",
+      "stack_out": [
+        "tmp%1#2"
+      ]
+    },
+    "575": {
+      "op": "app_global_del",
+      "stack_out": []
+    },
+    "576": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "577": {
+      "op": "return",
+      "stack_out": []
+    },
+    "578": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle.get_lp_price[routing]",
+      "params": {},
+      "block": "get_lp_price",
+      "stack_in": [],
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "581": {
+      "op": "dup",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "582": {
+      "op": "len",
+      "defined_out": [
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0"
+      ]
+    },
+    "583": {
+      "op": "intc_2 // 8",
+      "defined_out": [
+        "8",
+        "len%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "len%0#0",
+        "8"
+      ]
+    },
+    "584": {
+      "op": "==",
+      "defined_out": [
+        "eq%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "eq%0#0"
+      ]
+    },
+    "585": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "586": {
+      "op": "btoi",
+      "defined_out": [
+        "pool_id#0"
+      ],
+      "stack_out": [
+        "pool_id#0"
+      ]
+    },
+    "587": {
+      "op": "itob",
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "588": {
+      "op": "bytec 4 // 0x6c705f70726963655f",
+      "defined_out": [
+        "0x6c705f70726963655f",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f"
+      ]
+    },
+    "590": {
+      "op": "dig 1",
+      "stack_out": [
+        "tmp%0#0",
+        "0x6c705f70726963655f",
+        "tmp%0#0 (copy)"
+      ]
+    },
+    "592": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "tmp%1#0"
+      ]
+    },
+    "593": {
+      "op": "app_global_get",
+      "defined_out": [
+        "price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "price#0"
+      ]
+    },
+    "594": {
+      "op": "bytec 5 // 0x6c705f74735f",
+      "defined_out": [
+        "0x6c705f74735f",
+        "price#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "price#0",
+        "0x6c705f74735f"
+      ]
+    },
+    "596": {
+      "op": "uncover 2",
+      "stack_out": [
+        "price#0",
+        "0x6c705f74735f",
+        "tmp%0#0"
+      ]
+    },
+    "598": {
+      "op": "concat",
+      "stack_out": [
+        "price#0",
+        "tmp%1#0"
+      ]
+    },
+    "599": {
+      "op": "app_global_get",
+      "defined_out": [
+        "price#0",
+        "ts#0"
+      ],
+      "stack_out": [
+        "price#0",
+        "ts#0"
+      ]
+    },
+    "600": {
+      "op": "swap",
+      "stack_out": [
+        "ts#0",
+        "price#0"
+      ]
+    },
+    "601": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "ts#0"
+      ],
+      "stack_out": [
+        "ts#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "602": {
+      "op": "swap",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "ts#0"
+      ]
+    },
+    "603": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "604": {
+      "op": "concat",
+      "defined_out": [
+        "aggregate%head%1#0"
+      ],
+      "stack_out": [
+        "aggregate%head%1#0"
+      ]
+    },
+    "605": {
+      "op": "pushbytes 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%head%1#0"
+      ],
+      "stack_out": [
+        "aggregate%head%1#0",
+        "0x151f7c75"
+      ]
+    },
+    "611": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%head%1#0"
+      ]
+    },
+    "612": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "613": {
+      "op": "log",
+      "stack_out": []
+    },
+    "614": {
+      "op": "intc_0 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "615": {
+      "op": "return",
+      "stack_out": []
+    },
+    "616": {
+      "subroutine": "smart_contracts.lean_oracle.contract.LeanOracle._assert_admin",
+      "params": {},
+      "block": "_assert_admin",
+      "stack_in": [],
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "618": {
+      "op": "intc_1 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0"
+      ]
+    },
+    "619": {
+      "op": "bytec_0 // \"admin\"",
+      "defined_out": [
+        "\"admin\"",
+        "0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "0",
+        "\"admin\""
+      ]
+    },
+    "620": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "621": {
+      "error": "check self.admin exists",
+      "op": "assert // check self.admin exists",
+      "stack_out": [
+        "tmp%0#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "622": {
+      "op": "==",
+      "defined_out": [
+        "tmp%1#0"
+      ],
+      "stack_out": [
+        "tmp%1#0"
+      ]
+    },
+    "623": {
+      "error": "admin only",
+      "op": "assert // admin only",
+      "stack_out": []
+    },
+    "624": {
+      "retsub": true,
+      "op": "retsub"
+    }
+  }
+}

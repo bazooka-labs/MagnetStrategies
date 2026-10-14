@@ -1009,9 +1009,34 @@ def test_effective_bounds_prefers_the_anchor(monkeypatch):
 
 
 def test_effective_bounds_falls_back_to_config_when_anchor_unreadable(monkeypatch):
-    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    """None = the READ failed. Keep the bound the banded oracle still enforces."""
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: None)
     pool = make_pool(min_price=111, max_price=222)
     assert ob.effective_bounds(object(), make_cfg(), pool) == (111, 222)
+
+
+def test_an_oracle_with_no_anchor_gets_no_bound_at_all(monkeypatch):
+    """
+    0 = the oracle HAS no anchor — the lean oracle (ORACLE_LEAN_SPEC.md). There
+    is no band for a bot-side bound to stay inside, and a bound that stops the
+    bot posting is the same halt as a band that stops the chain accepting. It
+    must not fall back to the config bounds either.
+    """
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    pool = make_pool(min_price=111, max_price=222)
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (0, 0)
+
+
+def test_one_bot_serves_both_oracles_without_a_flag_day(monkeypatch):
+    """
+    The migration runs both oracles for 48h. The same binary must bound against
+    the banded one and not bound against the lean one, decided per read.
+    """
+    pool = make_pool(min_price=111, max_price=222)
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 1_000_000)
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (760_000, 1_240_000)
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+    assert ob.effective_bounds(object(), make_cfg(), pool) == (0, 0)
 
 
 def test_effective_bounds_unbounded_when_neither_available(monkeypatch):
@@ -1021,10 +1046,28 @@ def test_effective_bounds_unbounded_when_neither_available(monkeypatch):
     assert ob.effective_bounds(object(), make_cfg(), pool) == (0, 0)
 
 
-def test_read_onchain_anchor_returns_zero_on_error():
+def test_read_onchain_anchor_returns_None_on_error():
+    """Unknown, not absent — see test_an_oracle_with_no_anchor_gets_no_bound."""
     class Boom:
         def application_info(self, *a, **k): raise RuntimeError("algod down")
-    assert ob.read_onchain_anchor(Boom(), 1, 2) == 0
+    assert ob.read_onchain_anchor(Boom(), 1, 2) is None
+
+
+def test_read_onchain_anchor_returns_zero_when_the_key_is_genuinely_absent():
+    import base64 as _b
+    other = _b.b64encode(b"lp_anchor_" + (9).to_bytes(8, "big")).decode()
+    class C:
+        def application_info(self, *a, **k):
+            return {"params": {"global-state": [
+                {"key": other, "value": {"type": 2, "uint": 1}}]}}
+    assert ob.read_onchain_anchor(C(), 1, 2) == 0
+
+
+def test_read_onchain_anchor_calls_an_empty_state_unknown():
+    class C:
+        def application_info(self, *a, **k):
+            return {"params": {"global-state": []}}
+    assert ob.read_onchain_anchor(C(), 1, 2) is None
 
 
 # ── the CompX sentinel is no longer falsy ─────────────────────────────────────
@@ -1690,3 +1733,117 @@ def test_the_signer_can_opt_out_of_the_anchor_bound(monkeypatch):
                           apply_anchor_bounds=False)
     assert out is not None, "the signer was blocked by a bound that should not apply"
     assert not called, "effective_bounds was consulted anyway"
+
+
+# ── pool composition: warn, never block (ORACLE_LEAN_SPEC §2.2b) ─────────────
+#
+# Once the bands are gone this is the only thing watching for a wrong MAGNITUDE.
+# Measured on mainnet: normal imbalance 0.000%-0.276%; a one-sided decimals slip
+# reads 81.8% on every one of the four pools.
+
+@pytest.fixture(autouse=True)
+def _clear_imbalance():
+    ob._imbalance_level.clear()
+    yield
+    ob._imbalance_level.clear()
+
+
+def _lopsided(monkeypatch, factor):
+    """Pool state where side B is `factor` times side A."""
+    monkeypatch.setattr(ob, "fetch_pool_state", lambda *a, **k: _state_with(
+        pool_token_asset_id=1, asset_1_reserves=1_000_000,
+        asset_2_reserves=int(1_000_000 * factor)))
+    monkeypatch.setattr(ob, "derive_asset_price_usdc", lambda *a, **k: 1.0)
+    monkeypatch.setattr(ob, "read_onchain_anchor", lambda *a, **k: 0)
+
+
+def test_a_lopsided_pool_warns_but_still_posts(monkeypatch, caplog):
+    """
+    The decision: warn, do not gate. Refusing would make this a freeze source —
+    the exact species of thing the lean oracle removes — and it is the wrong
+    tool anyway, because a decimals slip is a CONFIG-TIME error with the
+    operator already looking.
+    """
+    import logging
+    _lopsided(monkeypatch, 10.0)          # a 1-decimal slip
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        out = ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg())
+    assert out is not None, "the imbalance check blocked a post — it must only warn"
+    assert any("sides" in r.message for r in caplog.records)
+
+
+def test_a_balanced_pool_stays_quiet(monkeypatch, caplog):
+    import logging
+    _lopsided(monkeypatch, 1.002)         # inside the observed 0.276% normal
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg())
+    assert not any("sides" in r.message for r in caplog.records)
+
+
+def test_a_standing_imbalance_warns_once(monkeypatch, caplog):
+    import logging
+    _lopsided(monkeypatch, 10.0)
+    with caplog.at_level(logging.ERROR, logger="oracle_bot"):
+        for _ in range(4):
+            ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg())
+    assert len([r for r in caplog.records if "sides" in r.message]) == 1
+
+
+def test_the_imbalance_check_can_never_stop_a_price(monkeypatch):
+    """
+    Even if it throws outright. It is a warning; a warning that can abort a
+    price post is just a gate with extra steps.
+
+    `_pool_reserves` is called twice — once by compute_lp_price, once by the
+    check — so this fails only the SECOND call, leaving the pricing path intact.
+    """
+    _lopsided(monkeypatch, 1.0)
+    real = ob._pool_reserves
+    calls = []
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) > 1:
+            raise RuntimeError("boom inside the check")
+        return real(*a, **k)
+    monkeypatch.setattr(ob, "_pool_reserves", flaky)
+    assert ob.get_lp_price(object(), make_pool(pool_id=1), make_cfg()) is not None
+    assert len(calls) > 1, "the check never ran, so this proved nothing"
+
+
+# ── TWAP across an outage (decision 2, option A) ─────────────────────────────
+
+def test_a_gap_discards_the_history_rather_than_averaging_across_it(tmp_path):
+    """
+    MAX_TWAP_AGE measures from the NEWEST reading, so pre-outage readings
+    survive and the trapezoid weights the blackout at full width. Measured: a
+    20-minute gap during a real 30% drop produced 885,350 against a 700,000
+    spot — understating the crash by 26%, exactly when liquidation matters.
+    """
+    s = ob.TwapState(tmp_path / "t.json")
+    base = int(time.time()) - 3000
+    for i in range(3):
+        s.add(7, base + i * 300, 1_000_000, 5, max_gap=600)
+    assert s.count(7) == 3
+    s.add(7, base + 600 + 1200, 700_000, 5, max_gap=600)   # 20-minute outage
+    assert s.count(7) == 1, "averaged across the gap"
+    assert s.twap(7, 700_000) == 700_000, "the stale price still leaked in"
+
+
+def test_one_slow_cycle_does_not_discard_anything(tmp_path):
+    """Production spacing is ~370s, not POLL_INTERVAL. Normal jitter is not an outage."""
+    s = ob.TwapState(tmp_path / "t.json")
+    base = int(time.time()) - 1200
+    for i, gap in enumerate((0, 370, 420, 380)):
+        s.add(7, base + sum((0, 370, 420, 380)[:i + 1]), 1_000_000, 5, max_gap=600)
+    assert s.count(7) == 4
+
+
+def test_add_without_max_gap_is_unchanged(tmp_path):
+    """The parameter is opt-in, so every existing caller behaves as before."""
+    s = ob.TwapState(tmp_path / "t.json")
+    base = int(time.time()) - 3000
+    # 1200s apart: a gap that WOULD be discarded with max_gap, and is inside
+    # MAX_TWAP_AGE so the pre-existing cutoff does not remove it either.
+    s.add(7, base, 1_000_000, 5)
+    s.add(7, base + 1200, 700_000, 5)
+    assert s.count(7) == 2

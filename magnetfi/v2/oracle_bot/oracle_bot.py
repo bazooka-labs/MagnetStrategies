@@ -203,6 +203,27 @@ BOUND_INNER_HIGH_PCT = 124
 # move; below that the divergence is telling us about ALGO, not about a bug.
 ROUTE_DIVERGENCE_ALERT = 0.05
 
+# A pool's two sides should be equal in USD. Warn when they are not.
+#
+# This is the only thing watching for a wrong MAGNITUDE once the bands are gone,
+# and it is deliberately NOT a gate. The posted price passes through three
+# decimal divisions (asset_a_decimals, asset_b_decimals, LP_DECIMALS) that
+# nothing else checks — and $U has FIVE decimals, one digit from the usual six.
+# A one-sided slip yields ~0.55x the true price with every asset price in
+# bounds and both cross-checks green, because all of them check asset prices
+# rather than the composition. Measured: a slip reads 81.8%.
+#
+# It only WARNS. Refusing to post would make this a freeze source, which is the
+# whole species of thing this design removes — and it would be the wrong tool
+# anyway, because a decimals slip is a CONFIG-TIME error. It can only appear
+# right after someone edits config.json, so the operator is already looking.
+#
+# Because a false positive costs a log line rather than an outage, the threshold
+# can afford to be sensitive. Observed normal across all four pools: 0.000% to
+# 0.276%.
+POOL_IMBALANCE_ALERT = 0.05
+_imbalance_level: dict[int, str] = {}
+
 # Per (asset, route) divergence state, so a standing divergence is reported on
 # TRANSITION rather than every cycle. Same discipline as FeedWatch and
 # check_algo_against_pex: "a 5-minute alarm clock for six hours is how people
@@ -308,8 +329,30 @@ class TwapState:
             tmp_path.unlink(missing_ok=True)
             raise
 
-    def add(self, pool_id: int, ts: int, price: int, window: int) -> None:
+    def add(self, pool_id: int, ts: int, price: int, window: int,
+            max_gap: int | None = None) -> None:
+        """
+        Record a reading. With `max_gap`, a longer gap than that since the last
+        reading DISCARDS the history first.
+
+        Why: MAX_TWAP_AGE measures from the NEWEST reading, so after an outage
+        the pre-outage readings survive and the trapezoid weights the blackout
+        at full width as though we had data for it. Measured — a 20-minute gap
+        during a genuine 30% drop produces a first post of 885,350 against a
+        700,000 spot, understating the crash by 26%, at exactly the moment
+        liquidation matters.
+
+        Clearing costs MIN_TWAP_READINGS cycles of warm-up after any outage. That
+        is the deliberate trade: correct prices over fast recovery, which makes
+        bot uptime matter MORE, not less.
+        """
         history = self.history.setdefault(pool_id, [])
+        if max_gap is not None and history and ts - history[-1][0] > max_gap:
+            gap = ts - history[-1][0]
+            log.warning(f"pool {pool_id}: {gap}s since the last reading (> {max_gap}s) — "
+                        f"discarding {len(history)} reading(s) from before the gap rather "
+                        f"than averaging across it")
+            history = []
         history.append((ts, price))
         # Drop readings older than MAX_TWAP_AGE so we never time-weight across a
         # downtime gap (F7); with MIN_TWAP_READINGS this fails stale instead.
@@ -826,6 +869,28 @@ def get_lp_price(client: algod.AlgodClient, pool: PoolConfig, cfg: BotConfig,
             compx_verified = (status == "ok")
             compx_state = status
 
+    # Composition check — see POOL_IMBALANCE_ALERT. Transition-gated, like the
+    # route check, so a standing imbalance is one line and not one per cycle.
+    try:
+        res_a, res_b = _pool_reserves(pool_state, pool.asset_a_id, pool.asset_b_id)
+        tvl_a = res_a / 10 ** pool.asset_a_decimals * price_a
+        tvl_b = res_b / 10 ** pool.asset_b_decimals * price_b
+        total = tvl_a + tvl_b
+        imb = abs(tvl_a - tvl_b) / total if total > 0 else 0.0
+        lvl = "off" if imb > POOL_IMBALANCE_ALERT else "ok"
+        if lvl != _imbalance_level.get(pool.pool_id):
+            detail = (f"[{pool.label}] pool sides ${tvl_a:,.0f} vs ${tvl_b:,.0f} "
+                      f"({imb:.2%} apart)")
+            if lvl == "off":
+                log.error(f"{detail} — the two sides of a constant-product pool should "
+                          f"be equal. Check asset_a_decimals/asset_b_decimals for this "
+                          f"pool. Still posting; this is a warning, not a gate.")
+            elif _imbalance_level.get(pool.pool_id) is not None:
+                log.info(f"{detail} — back in balance")
+            _imbalance_level[pool.pool_id] = lvl
+    except Exception as e:  # noqa: BLE001 — a warning must never stop a price
+        log.debug(f"[{pool.label}] imbalance check skipped: {e}")
+
     log.info(
         f"[{pool.label}] reserve_a={pool_state.get('asset_1_reserves')} "
         f"reserve_b={pool_state.get('asset_2_reserves')} "
@@ -850,17 +915,31 @@ def read_onchain_price(client: algod.AlgodClient, oracle_app_id: int, pool_id: i
     return 0
 
 
-def read_onchain_anchor(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int:
-    """Read the admin-set anchor for pool_id. 0 when absent or unreadable."""
+def read_onchain_anchor(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int | None:
+    """
+    The admin-set anchor for pool_id: a value, 0 if the oracle HAS no anchor, or
+    None if the read failed.
+
+    The three-way answer is what lets one bot serve both oracles with no flag
+    day. The lean oracle has no anchor key at all, so 0 means "this oracle has
+    no band — do not bound" while None means "unknown — keep the old
+    behaviour". Collapsing them would either halt the bot against the lean
+    oracle or drop the bound on an algod hiccup against the banded one.
+    """
     try:
         key_b64 = base64.b64encode(b"lp_anchor_" + pool_id.to_bytes(8, "big")).decode()
         info = client.application_info(oracle_app_id)
-        for item in info.get("params", {}).get("global-state", []):
-            if item["key"] == key_b64:
-                return item["value"].get("uint", 0)
+        state = info.get("params", {}).get("global-state")
+        if not isinstance(state, list) or not state:
+            return None                       # degraded reply, not an answer
+        for item in state:
+            if item.get("key") == key_b64:
+                v = item.get("value") or {}
+                return v["uint"] if v.get("type") == 2 and "uint" in v else None
+        return 0                              # populated state, no anchor key
     except Exception as e:
         log.debug(f"Failed to read anchor for pool {pool_id}: {e}")
-    return 0
+        return None
 
 
 def read_onchain_active(client: algod.AlgodClient, oracle_app_id: int, pool_id: int) -> int | None:
@@ -931,14 +1010,25 @@ def effective_bounds_with_anchor(
 ) -> tuple[int, int, int]:
     """(anchor, min, max). The anchor is returned so a caller can notice it MOVED."""
     anchor = read_onchain_anchor(client, cfg.oracle_app_id, pool.pool_id)
+
+    # The lean oracle has no anchor and no band (ORACLE_LEAN_SPEC.md), so there
+    # is nothing for a bot-side bound to keep the price inside — and a bound
+    # that stops the bot posting is the same halt as a band that stops the chain
+    # accepting. Against that oracle the absolute bound is simply off.
+    if anchor == 0:
+        return 0, 0, 0
+
+    if anchor is None:
+        # Unknown, not absent. Keep whatever the config says rather than
+        # silently dropping a bound the banded oracle still enforces.
+        if pool.min_price or pool.max_price:
+            log.warning(f"[{pool.label}] anchor unreadable — falling back to configured bounds")
+            return 0, pool.min_price, pool.max_price
+        log.warning(f"[{pool.label}] anchor unreadable and no configured bounds — bound disabled")
+        return 0, 0, 0
+
     lo, hi = anchor_bounds(anchor)
-    if lo > 0:
-        return anchor, lo, hi
-    if pool.min_price or pool.max_price:
-        log.warning(f"[{pool.label}] anchor unreadable — falling back to configured bounds")
-        return anchor, pool.min_price, pool.max_price
-    log.warning(f"[{pool.label}] no anchor and no configured bounds — absolute bound disabled")
-    return anchor, 0, 0
+    return anchor, lo, hi
 
 
 def effective_bounds(client: algod.AlgodClient, cfg: "BotConfig", pool: PoolConfig) -> tuple[int, int]:
@@ -1037,16 +1127,19 @@ def update_pool(client: algod.AlgodClient, cfg: BotConfig, pool: PoolConfig,
     # readings age out". Nothing unsmoothed is posted in the meantime: the
     # fail-stale gate below refuses to post on thin history.
     prev = _last_anchor.get(pool.pool_id)
-    if prev is not None and anchor > 0 and anchor != prev:
+    if prev is not None and anchor and anchor != prev:
         dropped = twap.clear(pool.pool_id)
         log.warning(f"[{pool.label}] anchor moved {prev} → {anchor}; dropped {dropped} TWAP "
                     f"reading(s) taken before it. Holding ~{MIN_TWAP_READINGS * POLL_INTERVAL // 60}min "
                     f"while the window refills.")
-    if anchor > 0:
+    if anchor:
         _last_anchor[pool.pool_id] = anchor
 
     now = int(time.time())
-    twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW)
+    # 2x the expected cycle spacing: one slow cycle is normal, a real outage is
+    # not. Measured spacing in production is ~370s, not POLL_INTERVAL, because
+    # the loop sleeps `POLL_INTERVAL - elapsed`.
+    twap.add(pool.pool_id, now, spot_price, TWAP_WINDOW, max_gap=2 * POLL_INTERVAL)
 
     # Fail-stale gate (P19-07): on thin history a single reading would dominate, so
     # don't post until the window has filled. The prior on-chain price stands.
