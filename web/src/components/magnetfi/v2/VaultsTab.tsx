@@ -39,12 +39,37 @@ type VaultCard =
   | { kind: "live"; vt: VaultType; pool: PoolRef }
   | { kind: "pending"; vt: VaultType };
 
-const VAULT_CARDS: VaultCard[] = ACTIVE_ORACLE_POOLS.flatMap((op) => {
-  const vt = VAULT_TYPES.find((v) => v.id === op.id);
-  if (!vt) return [];
-  const pool = poolWiring(vt.id);
-  return [pool ? { kind: "live" as const, vt, pool } : { kind: "pending" as const, vt }];
-});
+/**
+ * Display order for the public page, deliberately not ACTIVE_ORACLE_POOLS' order.
+ *
+ * ALGO/USDC leads. It is the only collateral here that is not $U-denominated,
+ * and the only pool deep enough to unwind a seizure without the liquidation
+ * moving the price against the liquidator — so it is the one to show a visitor
+ * first, even though it cannot be borrowed against yet.
+ *
+ * ACTIVE_ORACLE_POOLS keeps its own order (the three $U pools, then the
+ * outsider) because the admin health panel reads operationally: the pools that
+ * can actually freeze a borrow belong at the top there.
+ */
+const CARD_ORDER = ["algo-usdc", "u-talgo", "u-usdc", "u-algo"];
+
+const VAULT_CARDS: VaultCard[] = ACTIVE_ORACLE_POOLS
+  .slice()
+  .sort((a, b) => {
+    // Anything not named falls to the end rather than vanishing, so adding a
+    // pool to ACTIVE_ORACLE_POOLS can never silently drop it off the page.
+    const rank = (id: string) => {
+      const i = CARD_ORDER.indexOf(id);
+      return i === -1 ? CARD_ORDER.length : i;
+    };
+    return rank(a.id) - rank(b.id);
+  })
+  .flatMap((op) => {
+    const vt = VAULT_TYPES.find((v) => v.id === op.id);
+    if (!vt) return [];
+    const pool = poolWiring(vt.id);
+    return [pool ? { kind: "live" as const, vt, pool } : { kind: "pending" as const, vt }];
+  });
 
 function hfColor(hf: number): string {
   if (hf === Infinity) return "text-gray-400";
