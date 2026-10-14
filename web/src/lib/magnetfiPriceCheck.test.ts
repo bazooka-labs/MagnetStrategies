@@ -3,10 +3,10 @@
  *
  * Only the pure classification is tested here — the reads themselves hit chain
  * and a third-party API, and a test that fetched would be testing Tinyman's
- * uptime. The live path was verified against mainnet on 2026-10-14: all four
- * registered pools returned an independent price, diverging by 0.26%-4.20% from
- * a posted price frozen for 23-109 hours. Those are upper bounds from a dead
- * feed, not a calibration sample — see magnetfiPriceCheck.ts.
+ * uptime. The live path was verified against mainnet on 2026-10-14 with the
+ * feed running: all four registered pools returned an independent price,
+ * diverging by 0.02%-0.69%. An earlier reading of 0.26%-4.20% came from a dead
+ * feed and was an upper bound, not a sample — see magnetfiPriceCheck.ts.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -92,10 +92,11 @@ describe("classifying a divergence", () => {
     // signature (~45%) must sit well above the critical line, or the band is
     // decoration.
     //
-    // Deliberately NOT asserted: that ordinary lag stays below the warn line.
-    // That premise is unvalidated — the only live readings available came from a
-    // feed frozen for 23-109 hours and reached 4.20%, within 0.8pp of WARN.
-    // Pinning it here would promote a guess to a requirement.
+    // Still deliberately NOT asserted: that ordinary lag stays below the warn
+    // line. It now looks comfortably true — live divergence measured 0.02%-0.69%
+    // against a 5% line — but one afternoon of calm markets is not a bound, and
+    // pinning it would turn an observation into a requirement a volatile day
+    // could break.
     expect(DIVERGE_CRITICAL_PCT).toBeLessThan(45);
     expect(DIVERGE_WARN_PCT).toBeLessThan(DIVERGE_CRITICAL_PCT);
     expect(DIVERGE_WARN_PCT).toBeGreaterThan(0);

@@ -10,10 +10,16 @@ what is built, what is next, and which document to trust for what._
 
 | | | |
 |---|---|---|
-| LP Oracle | `3644230020` | **banded** — ±25% anchor, ±50%-vs-prior |
+| LP Oracle | `3644230020` | **banded** — ±25% anchor, ±50%-vs-prior. Still the vault's oracle |
+| **Lean oracle** | `3741272132` | deployed 2026-10-14, no band. **Queued, not yet live** — see §1b |
 | PSM v3 | `3644230181` | reserve **$151.40 USDC** |
 | Vault | `3671287267` | **3 open positions**, all the founder's own wallets |
-| mUSD ASA | `3615600399` | ~$100 circulating, essentially all in the mUSD/USDC pool |
+| mUSD ASA | `3615600399` | **101.40** circulating |
+
+**Interest rates** (set on chain 2026-10-14, matching the UI): U/tALGO **1000 bps**,
+U/USDC **600 bps**. These apply to NEW vaults only — the rate is copied into the
+vault box at `open_vault`, so the three open positions stay at 800/500/800 for
+their whole life.
 
 > **Open loans do NOT need to be closed for this migration.** That requirement
 > (`REVAMP_PLAN.md:22`) is a consequence of deploying a new **vault**, the one
@@ -27,17 +33,51 @@ what is built, what is next, and which document to trust for what._
 **Registered on the oracle only** (priced, but nothing can borrow against them):
 ALGO/USDC `1002590888`, U/ALGO `3617313492`.
 
-### ⚠️ The feed is down
+### The feed — restored 2026-10-14
 
-The oracle bot stopped on 2026-10-13 after a host reboot and has not been
-restarted. All pools are past the vault's 30-minute freshness window, so
-**borrowing and all three liquidation paths are currently reverting.** No
-exposure — every position is the founder's and none is near liquidation — but
-nothing else in this document matters until it is running.
+The bot stopped on 2026-10-13 after a host reboot; borrowing and all three
+liquidation paths reverted for ~27 hours. Restarted 2026-10-14 18:44Z, first
+posts at 18:49Z after the expected TWAP warm-up (`MIN_TWAP_READINGS = 3` at
+~370s spacing, rebuilt from scratch because the outage was far past `max_gap`).
 
-**Fix:** `git pull` on the bot host, then restart. The pull also deploys four
-pools instead of two; ALGO/USDC and U/ALGO have **never been posted to**, which
-is why their price still equals the seed `add_pool` wrote.
+All four pools are posting. **ALGO/USDC and U/ALGO were priced for the first
+time ever** — before this they carried only the seed `add_pool` wrote.
+
+First live read of the cross-check, against a healthy feed: divergence
+**0.04%–0.69%** across the four pools. That supersedes the 0.26–4.20% recorded
+in §3b, which was measured against a feed frozen 23–109 hours and is an upper
+bound rather than a sample — the 5% warn line has ~15x headroom over real lag,
+not the 1.2x the stale numbers implied.
+
+## 1b. ⚠️ Migration in flight — the 48h window
+
+`propose_lp_oracle(3741272132)` was submitted **2026-10-14 20:46Z**.
+
+| | |
+|---|---|
+| confirmable at | **2026-10-16 20:46:52Z** |
+| vault still reads | `3644230020` (banded) until `confirm_lp_oracle` |
+| both oracles | fed by separate bot instances, all four pools fresh on each |
+
+Steps 1–5 of [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md) are done. The lean
+oracle's deployed bytecode was verified to match the repo artifact exactly, its
+pools were seeded from the live feed (0.00–0.03% off), and it carries **zero**
+anchor keys.
+
+**Until the confirm, three things must hold:**
+
+- **Both bots keep running.** The banded oracle is still the vault's; stopping
+  its instance freezes the protocol, and the timelock applies in both directions.
+- **Do not rotate the vault admin.** `accept_admin` clears `pending_lp_oracle`
+  (`vault/contract.py:288-292`) with no revert and no warning, silently
+  restarting the 48 hours.
+- **Confirm on posts, not on freshness.** `add_pool` sets `lp_ts_`, so a seeded
+  oracle reads "fresh" for 30 minutes whether or not its bot ever worked. The
+  test is a transaction from the bot wallet, not a recent timestamp. (This
+  caught us once: the lean oracle showed four fresh pools while having received
+  zero posts.)
+
+The guardian veto — `cancel_pending_lp_oracle` — is available throughout.
 
 ---
 
@@ -45,8 +85,9 @@ is why their price still equals the seed `add_pool` wrote.
 
 The oracle has frozen three times. Two were the bot's own hardcoded bounds —
 **fixed**. One, on 2026-08-21, was the *contract's* anchor band rejecting a
-perfectly valid post, and that cause is **still live**. The fix is a new oracle
-with the bands deleted, swapped in behind the vault's existing 48h timelock.
+perfectly valid post, and that cause is **still live until the swap confirms**.
+The fix is a new oracle with the bands deleted, swapped in behind the vault's
+existing 48h timelock — deployed and queued as of 2026-10-14, see §1b.
 The operator has accepted key-compromise risk explicitly; the bands only ever
 bounded a compromised key, and their cost — a protocol-wide freeze — is not
 accepted.
@@ -55,11 +96,11 @@ accepted.
 
 ---
 
-## 3. What is built but not deployed
+## 3. What is built
 
 | | state |
 |---|---|
-| **Lean oracle contract** | compiled, schema 57/7, no anchor or band in the TEAL |
+| **Lean oracle contract** | **DEPLOYED `3741272132`** 2026-10-14 — schema 57/7, zero anchor keys on chain, deployed bytecode verified identical to the repo artifact |
 | **Lean oracle: vault suite** | **108 passed / 20 skipped** (128 collected) — the whole suite run against it, as was done for v5 |
 | **Migration rehearsal** | **9 tests, passing** — the §6 sequence executed on LocalNet with both oracles live |
 | **Bot: adaptive bounds** | serves the banded AND lean oracle from one binary, decided per read — so the 48h parallel window needs no flag day |
@@ -309,11 +350,25 @@ for a freeze that can still happen.
 **Settled:** the composition check warns rather than gates, at 5%; a TWAP gap
 discards history (option A) above 2× the expected cycle spacing.
 
+**Done 2026-10-14:**
+
+- ~~**Interest rates.**~~ `set_rate(3163770927, 1000)` and
+  `set_rate(3673941603, 600)` are on chain and now match the UI. The drift had
+  been open since `9aa945a`, where the cards were updated to the intended rates
+  and the calls were never made.
+
 **Open:**
 
 - **A storage bucket** — only needed if v5 is revived; the lean oracle needs none.
-- **Interest rates.** Two admin calls, affecting new vaults only:
-  `set_rate(3163770927, 1000)` and `set_rate(3673941603, 600)`. Live values are
-  800 and 500.
-- **Vault-side registration for ALGO/USDC and U/ALGO** — deliberately deferred
-  until the migration, so the pools are registered once rather than twice.
+- **Vault-side registration for ALGO/USDC and U/ALGO** — still deferred. Both
+  are now priced on BOTH oracles, but neither has a vault-side rate, LTV,
+  liquidation threshold or LP ASA, so nothing can be borrowed against them. They
+  render as inert "Coming soon" cards and carry an ORACLE ONLY badge in the
+  admin health panel.
+- **Rotating the oracle bot key.** `QX7EPGRC…` had its mnemonic pasted into a
+  terminal and a chat transcript on 2026-10-14. It is the authorized updater on
+  **both** oracles now, so rotation is two `set_authorized_updater` calls, both
+  admin-only and immediate. Doing it inside the 48h window means the lean oracle
+  never goes live trusting an exposed key. The blast radius is bounded to
+  posting prices — it cannot move funds — and while the banded oracle is live
+  the ±25% band bounds it further; after the swap it does not.

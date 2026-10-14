@@ -28,19 +28,20 @@
  * from chain, so neither touches our asset prices, our decimals handling, our
  * route selection or our TWAP. A 0.55x error shows up as ~45% divergence.
  *
- * ── The thresholds are PROVISIONAL ────────────────────────────────────────
- * Measured against mainnet 2026-10-14, all four registered pools diverged by
- * **0.26%-4.20%** — but the feed had been down since 2026-10-13, so the posted
- * leg was frozen 24-109 hours old and every one of those readings is an
- * upper bound on what a live feed would show, not a sample of it.
+ * ── What the bands are calibrated against ─────────────────────────────────
+ * Measured against mainnet with a LIVE feed, 2026-10-14 19:5xZ, all four
+ * registered pools: **0.02%-0.69%** divergence.
  *
- * Those numbers therefore CANNOT calibrate the bands, and they are never judged
- * anyway: `classifyDivergence` returns "unknown" whenever the feed is stale, so
- * a verdict only ever applies to fresh data, of which there is currently none.
- * Re-measure once the bot is running and tighten or widen accordingly. Until
- * then 5% is a guess informed by the composition check's agreed tolerance, and
- * the value that actually matters is the 15% ceiling's distance from the ~45%
- * decimals-slip signature.
+ * An earlier revision recorded 0.26%-4.20% and called the thresholds
+ * provisional on the strength of it. Those readings were taken while the bot
+ * was down and the posted leg was frozen 23-109 hours old, so they were upper
+ * bounds rather than a sample — and they are never judged anyway, since
+ * `classifyDivergence` returns "unknown" on a stale feed.
+ *
+ * With a live feed the real spread is an order of magnitude tighter, so the 5%
+ * warn line carries roughly 15x headroom over ordinary TWAP lag rather than the
+ * 1.2x the stale numbers implied. The 15% ceiling keeps its distance from the
+ * ~45% decimals-slip signature, which is the number that actually matters.
  *
  * ── What it is NOT ────────────────────────────────────────────────────────
  * Not a gate and not an alert: a pull-only readout, like the rest of this
