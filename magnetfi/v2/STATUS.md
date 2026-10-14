@@ -15,6 +15,14 @@ what is built, what is next, and which document to trust for what._
 | Vault | `3671287267` | **3 open positions**, all the founder's own wallets |
 | mUSD ASA | `3615600399` | ~$100 circulating, essentially all in the mUSD/USDC pool |
 
+> **Open loans do NOT need to be closed for this migration.** That requirement
+> (`REVAMP_PLAN.md:22`) is a consequence of deploying a new **vault**, the one
+> contract with no repointing path; `ORACLE_V5_SPEC.md:84` tabulates it as the
+> v4-vs-v5 difference — *"unwind every open position: yes | no"*. The lean
+> oracle swap repoints the **oracle** via `propose_lp_oracle` →
+> `confirm_lp_oracle` and never redeploys the vault, so vault boxes are
+> untouched. Asserted, not inferred: see §3's rehearsal.
+
 **Collateral registered on the vault:** U/tALGO `3163770927`, U/USDC `3673941603`.
 **Registered on the oracle only** (priced, but nothing can borrow against them):
 ALGO/USDC `1002590888`, U/ALGO `3617313492`.
@@ -52,15 +60,199 @@ accepted.
 | | state |
 |---|---|
 | **Lean oracle contract** | compiled, schema 57/7, no anchor or band in the TEAL |
+| **Lean oracle: vault suite** | **108 passed / 20 skipped** (128 collected) — the whole suite run against it, as was done for v5 |
+| **Migration rehearsal** | **9 tests, passing** — the §6 sequence executed on LocalNet with both oracles live |
 | **Bot: adaptive bounds** | serves the banded AND lean oracle from one binary, decided per read — so the 48h parallel window needs no flag day |
 | **Bot: composition warning** | warns when a pool's two sides disagree; never gates |
 | **Bot: TWAP gap handling** | discards history across an outage rather than averaging through it |
 | Phase 0 (bot) | all pushed, **none deployed** — see §1 |
 
-**Still required before the lean oracle ships:** contract integration tests (the
-full vault suite run against it, as was done for v5), a LocalNet rehearsal of
-the whole migration, a **price-plausibility monitor** running outside the bot
-process, and the doc sweep in §5.
+**Still required before the lean oracle ships:** the doc sweep in §5, which
+must happen at migration step 8 and **not before**.
+
+#### The "price-plausibility monitor" was downgraded — 2026-10-14
+
+Earlier revisions of this page listed an out-of-process price-plausibility
+monitor as a ship blocker. **It was not a discussed requirement**; it entered in
+the lean spec (§5, §6) and propagated here, and the reasoning behind calling it
+a blocker does not hold up:
+
+- The band-distance warning it was meant to "replace" existed to predict
+  **band-caused freezes**. Removing the band removes that failure mode, so the
+  indicator's purpose goes with it. The remaining freeze mode is staleness,
+  already covered by `FeedWatch`'s `lp_ts_` age and `getOracleHealth.level`.
+- The frightening **bug class** — a one-sided decimals slip putting the LP price
+  at ~0.55x truth with every asset-price check green ($U has 5 decimals) — is
+  covered by the composition check, which is **built** and set to warn at 5%.
+- What is genuinely left is **key-compromise detection**, since the monitor's
+  distinguishing feature was running outside the process whose key is the
+  threat. That is the risk the operator accepted explicitly, and the same
+  argument that deferred v5.
+
+The claim that this change "trades a freeze cause for a blind spot" was half
+wrong: the blind spot is for a **wrong-but-fresh price**, not for a freeze.
+
+What was done instead, because it needs no new process, key or alert channel:
+a **price cross-check surfaced in the admin panel** — see §3b.
+
+**Say plainly what that is and is not.** The cross-check is a *pull* readout, not
+an alert: no push, no channel, and it sits behind a connected admin wallet.
+Detecting a wrong-but-fresh price with it requires somebody to be looking at the
+page at the time. Right now it returns **"unknown" for every pool**, because the
+feed has been down since 2026-10-13 and a stale feed is deliberately left
+unjudged.
+
+So the key-compromise risk the monitor was meant to cover is **accepted, not
+covered**. That is a defensible position at ~$100 mUSD circulating with three
+positions all belonging to the operator — but it is a risk acceptance, and it
+should be re-opened by the same tripwire as v5: before a third-party borrower
+opens a vault.
+
+### Integration tests — done 2026-10-14
+
+`MAGNETFI_ORACLE` now selects the oracle and runs the entire suite against it:
+
+```
+.venv-test/bin/python -m pytest tests/ -q                        # posted  119 passed,  9 skipped
+MAGNETFI_ORACLE=lean  .venv-test/bin/python -m pytest tests/ -q  # lean    108 passed, 20 skipped
+MAGNETFI_ORACLE=relay .venv-test/bin/python -m pytest tests/ -q  # relay   109 passed, 19 skipped
+```
+
+Borrow, repay, accrual, all three liquidation paths and the adversarial tests
+pass with the oracle swapped underneath, so the drop-in claim is demonstrated
+rather than argued.
+
+Two things that needed fixing to make that meaningful:
+
+- **The flag conflated two properties.** A single `RELAY` switch mixed *how a
+  price arrives* (privileged app call vs signed payload) with *whether the
+  contract bounds it*. The lean oracle keeps the writer and drops the band, so
+  keyed off one flag the suite skipped the band tests and the writer test
+  together — leaving the lean oracle's authorization gate untested exactly where
+  it is the only gate left. Now split into `BANDED` and `RELAY`.
+- **A rejection test was passing for the wrong reason.** Under `relay`,
+  `test_only_authorized_updater_can_post` passed because `update_lp_price` does
+  not exist on that contract, not because a gate rejected the sender. It is now
+  skipped there and runs under `lean`, where the gate is real.
+
+The removal is also asserted **positively**, not just inferred from a skip:
+`test_unbanded_oracle_accepts_any_move` posts +30%, then −62% against the prior,
+then a 20x, with no re-anchor. `test_anchor_band_25pct` asserts the banded
+oracle **rejects** the very same +30% post — same input, opposite outcome, both
+asserted. `test_gates_that_survive_the_band_removal` pins the three surviving
+asserts by message.
+
+
+### Migration rehearsal — done 2026-10-14
+
+`contracts/tests/test_migration_rehearsal.py` — 9 tests, run from the banded
+oracle because that is where the migration starts. It stands up a **second,
+lean oracle beside the live one** and executes the §6 sequence.
+
+The existing repoint tests in `test_roles_timelock.py` propose
+`proto.oracle.app_id` — the oracle already in use — so they prove the timelock
+mechanics but cannot show which oracle the vault prices from. The rehearsal
+seeds the two oracles at **different prices (1.00 vs 2.00)** and reads the
+vault's borrowing capacity to the micro-unit: an exact capacity is an exact
+price, so "did the cutover happen" is answered by protocol behaviour instead of
+by reading a global and trusting it means something.
+
+What it pins:
+
+| | |
+|---|---|
+| step 4 | repointing the only bot **freezes the protocol** — the new oracle fresh and correct, the old one merely unfed, borrowing dead anyway |
+| step 4 | recovery is just feeding the old oracle again, which is what the second instance is for |
+| pending | a proposal is not a cutover: capacity stays at the old oracle's price for the whole window |
+| step 6 | after confirm, capacity doubles to the lean oracle's price |
+| step 6 | an **admin rotation mid-window silently restarts the 48h** — `pending_lp_oracle` is cleared with no revert and no warning |
+| step 8 | once cut over, letting the old oracle go stale is harmless |
+| rollback | real: through the return window the lean oracle keeps serving, so the wait happens with a **live** feed |
+| positions | a loan opened **before** the swap carries straight through it and still repays and closes afterwards |
+| repayment | needs **no fresh oracle** — so a dead feed can never trap a borrower |
+
+The freeze case and the post-cutover case are the actual proof, as a pair: the
+same stale-old / fresh-new chain state is a total freeze while the swap is
+pending and completely fine once it is confirmed. Verified non-vacuous by
+mutation — giving both oracles the same price breaks exactly the three tests
+that depend on the discriminator.
+
+**A testing finding that applies beyond this file.** Grouped calls — and every
+vault operation is an atomic group — go through algokit's simulate path, which
+reports `logic eval error: assert failed pc=3151` and **drops the assert
+comment**. So an error-message assertion cannot work there, only on single app
+calls. The rehearsal therefore proves causes by construction: a boundary (cap
+succeeds, cap+1 does not, which pins the price exactly) or a before/after where
+the single intervening change is the suspected one. Worth knowing that existing
+`pytest.raises(Exception)` on a grouped call cannot tell "rejected for the right
+reason" from "rejected for a fee error".
+
+## 3b. The price cross-check — shipped 2026-10-14
+
+Every other signal on the oracle answers **"is the price fresh"**. None could
+see a price that is **wrong but fresh**, and the one non-age signal in the admin
+panel — distance to the anchor band — disappears with the lean oracle.
+
+`web/src/lib/magnetfiPriceCheck.ts` adds an independent read, surfaced per pool
+in the Oracle Health panel:
+
+```
+independent price = third-party pool TVL (USD) / on-chain issued LP tokens
+```
+
+The numerator is Tinyman's own analytics figure, the denominator is
+`issued_pool_tokens` from the pool's local state under validator app
+`1002541853`. Neither touches our asset prices, decimals handling, route
+selection or TWAP — so it is independent of the entire path that produces
+`lp_price_`. The decimals-slip bug class (§2.2b of the lean spec: $U's 5
+decimals putting the LP price at ~0.55x truth with every asset check green)
+shows up here as **~45% divergence**.
+
+**Verified against mainnet 2026-10-14.** All four registered pools returned an
+independent price, diverging from the posted one by **0.26%-4.20%** while
+the feed was 23-109 hours stale — upper bounds from a dead feed, NOT a
+calibration sample:
+
+| pool | posted | independent | divergence |
+|---|---|---|---|
+| ALGO/USDC `1002590888` | 1.149714 | 1.152716 | 0.26% |
+| U/tALGO `3163770927` | 0.933838 | 0.899364 | 3.83% |
+| U/ALGO `3617313492` | 0.869922 | 0.834855 | 4.20% |
+| U/USDC `3673941603` | 2.520573 | 2.473703 | 1.89% |
+
+Design decisions worth keeping:
+
+- **Warn at 5%, critical at 15%.** 5% matches the composition check's agreed
+  tolerance and absorbs the two legitimate causes of disagreement — the posted
+  price is TWAP-smoothed so it lags spot, and the third-party TVL is sampled at
+  a different instant. 15% sits far above any plausible lag and far below the
+  ~45% bug signature.
+- **A stale feed is left unjudged.** Divergence on an old price is expected and
+  the staleness alarm has already fired; reporting it again as "wrong" would be
+  two alarms for one fault. The numbers still show, the verdict does not.
+- **It cannot gate anything.** Pull-only, like the rest of the panel, so a
+  Tinyman outage degrades it to "unknown" and never looks like a bad price. The
+  cross-check runs in its own try/catch *after* the health read, so it cannot
+  cost the freshness readout during an outage — which is the readout that
+  matters most then.
+- **On a critical reading the panel says pause, not re-anchor.** Re-anchoring a
+  wrong price makes it postable rather than fixing it, and the re-anchor button
+  sits directly below.
+
+10 tests cover the classification; the network paths are deliberately untested,
+since a test that fetched would be testing Tinyman's uptime.
+
+**Two limits worth stating.** The thresholds are **provisional**: the only live
+readings available came from a feed frozen 23-109 hours, so they are upper
+bounds rather than a calibration sample, and 5% WARN should be re-measured once
+the bot is running. And the check is independent of *our* pricing path, not of
+an attacker — Tinyman's `liquidity_in_usd` for a $U pool derives from Tinyman's
+own $U price, which comes from these same thin pools.
+
+**Known gap:** the panel iterates `ACTIVE_POOL_WIRING`, which lists only the two
+vault-wired pools, so **ALGO/USDC and U/ALGO are not displayed** even though the
+cross-check already knows their addresses. That is pre-existing and will resolve
+when those two are wired vault-side at the migration.
 
 ## 4. Built, proven, and deliberately shelved
 
