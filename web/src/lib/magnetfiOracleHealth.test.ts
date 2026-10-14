@@ -7,9 +7,13 @@
 import { describe, expect, it, vi } from "vitest";
 import algosdk from "algosdk";
 import { getOracleHealth } from "./magnetfiReads";
-import { ACTIVE_POOL_WIRING } from "./magnetfi";
+import { ACTIVE_ORACLE_POOLS, ACTIVE_POOL_WIRING } from "./magnetfi";
 
-const POOLS = Object.entries(ACTIVE_POOL_WIRING);
+// Keyed off the ORACLE's pool set, which is what getOracleHealth iterates.
+// Using POOL_WIRING here passed only by coincidence — the two sets overlap on
+// u-talgo — and would not have noticed them diverging, which is the exact bug
+// this file now guards.
+const POOLS = ACTIVE_ORACLE_POOLS.map((p) => [p.id, p] as const);
 const [FIRST_ID, FIRST] = POOLS[0];
 
 const key = (prefix: string, poolId: number) =>
@@ -119,5 +123,30 @@ describe("pools are reported independently", () => {
     })));
     expect(r.find((x) => x.poolId === FIRST.poolId)!.level).toBe("critical");
     expect(r.find((x) => x.poolId === second.poolId)!.level).toBe("ok");
+  });
+});
+
+describe("which pools the panel shows", () => {
+  it("covers every pool the oracle carries, not just the borrowable ones", async () => {
+    // The regression: the panel iterated POOL_WIRING (vault-side), so ALGO/USDC
+    // and U/ALGO — registered on the oracle and being posted to — were invisible
+    // in the one view whose job is to notice a feed that has stopped.
+    const rows = await getOracleHealth(fakeAlgod({}));
+    expect(rows).toHaveLength(ACTIVE_ORACLE_POOLS.length);
+    for (const p of ACTIVE_ORACLE_POOLS) {
+      expect(rows.find((r) => r.poolId === p.poolId)).toBeTruthy();
+    }
+  });
+
+  it("marks a priced-but-unborrowable pool as not vault-wired", async () => {
+    // So an oracle-only pool reads as monitored-but-not-collateral rather than
+    // as a collateral vault that has gone quiet.
+    const rows = await getOracleHealth(fakeAlgod({}));
+    for (const p of ACTIVE_ORACLE_POOLS) {
+      const row = rows.find((r) => r.poolId === p.poolId)!;
+      expect(row.vaultWired).toBe(p.vaultWired);
+      // And vault-wired must agree with the vault-side source of truth.
+      expect(row.vaultWired).toBe(p.id in ACTIVE_POOL_WIRING);
+    }
   });
 });

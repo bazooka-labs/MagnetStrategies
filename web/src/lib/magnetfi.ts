@@ -65,6 +65,40 @@ const POOL_WIRING: Record<"mainnet" | "testnet", Record<string, PoolWiring>> = {
   },
 };
 export const ACTIVE_POOL_WIRING = POOL_WIRING[_NET];
+
+/**
+ * Pools registered on the ORACLE, which is not the same set as POOL_WIRING.
+ *
+ * POOL_WIRING answers "can someone borrow against this" — it is the vault side.
+ * The oracle prices more than the vault lends against: ALGO/USDC and U/ALGO
+ * were registered and are being posted to, but their vault-side registration is
+ * deliberately deferred to the lean-oracle migration so each pool is registered
+ * once rather than twice (STATUS.md §6).
+ *
+ * Keeping them out of POOL_WIRING is correct — adding them there would offer a
+ * vault nobody can open. But it also meant the admin's Oracle Health panel,
+ * which iterates POOL_WIRING, showed two of four live feeds: the two pools the
+ * bot had never posted to were invisible in the one place that exists to notice
+ * a feed that is not posting.
+ *
+ * `vaultWired` carries the distinction into the panel so an unborrowable pool
+ * reads as monitored-but-not-collateral rather than as an oversight.
+ */
+export type OraclePool = { id: string; poolId: number; lpAsaId: number; vaultWired: boolean };
+const ORACLE_POOLS: Record<"mainnet" | "testnet", OraclePool[]> = {
+  mainnet: [
+    { id: "u-talgo", poolId: 3163770927, lpAsaId: 3163770927, vaultWired: true },
+    { id: "u-usdc", poolId: 3673941603, lpAsaId: 3673941603, vaultWired: true },
+    // Oracle-only. Queued 2026-10-13; the bot prices them, the vault cannot lend
+    // against them until the migration registers them vault-side.
+    { id: "algo-usdc", poolId: 1002590888, lpAsaId: 1002590888, vaultWired: false },
+    { id: "u-algo", poolId: 3617313492, lpAsaId: 3617313492, vaultWired: false },
+  ],
+  testnet: [
+    { id: "u-talgo", poolId: 765095900, lpAsaId: 765095900, vaultWired: true },
+  ],
+};
+export const ACTIVE_ORACLE_POOLS = ORACLE_POOLS[_NET];
 /** On-chain IDs for a collateral pool by VaultType id; undefined if not yet wired ("coming soon"). */
 export function poolWiring(typeId: string): PoolWiring | undefined {
   return ACTIVE_POOL_WIRING[typeId];

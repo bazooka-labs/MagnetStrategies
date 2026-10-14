@@ -99,11 +99,12 @@ export function ActionForm({
   );
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
     <section>
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">{title}</h4>
       <Panel className="p-4 sm:p-5">
+        {note && <div className="mb-3 text-[11px] leading-relaxed text-white/40">{note}</div>}
         <div className="grid gap-3 lg:grid-cols-2">{children}</div>
       </Panel>
     </section>
@@ -289,14 +290,32 @@ export function OperationsPanel() {
           </Section>
 
           {/* Oracle */}
-          <Section title="Oracle">
-            <ActionForm title="Re-anchor price" desc="Follow a genuine large move (price as mUSD/LP)."
+          {/* These actions target the oracle that is DEPLOYED today — the banded
+              one. Two of them exist only because it has a band, and both go away
+              when the lean oracle is swapped in. They must NOT be removed before
+              that: the banded oracle remains the vault's oracle for the whole 48h
+              timelock, and "Re-anchor price" is the only remedy for a band
+              rejection during it (STATUS.md §5). */}
+          <Section
+            title="Oracle"
+            note={
+              <>
+                Targets the <strong className="text-white/60">banded</strong> oracle now live.{" "}
+                <strong className="text-white/60">Re-anchor price</strong> exists only because that
+                oracle has a ±25% band, and the anchor set by <strong className="text-white/60">Add
+                pool</strong> is the same mechanism — both become meaningless once the lean oracle
+                is swapped in, and neither is removed before then, because re-anchoring is the only
+                way out of a band rejection during the 48h window.
+              </>
+            }
+          >
+            <ActionForm title="Re-anchor price" desc="Follow a genuine large move (price as mUSD/LP). Banded oracle only."
               fields={[{ key: "p", label: "Pool ID" }, { key: "pr", label: "Price (mUSD/LP)" }]} button="Set anchor"
               onRun={(v) => ops.setPriceAnchor(a(), me(), oracle(), BigInt(v.p), base(v.pr))} />
             <ActionForm title="Rotate bot key" desc="Authorize a new oracle bot wallet."
               fields={[{ key: "addr", label: "New bot address" }]} button="Set updater"
               onRun={(v) => ops.setAuthorizedUpdater(a(), me(), oracle(), v.addr)} />
-            <ActionForm title="Add pool" desc="Register a new pool (price sets the ±25% anchor)."
+            <ActionForm title="Add pool" desc="Register a new pool. On the banded oracle the price also sets the ±25% anchor; on the lean oracle it is only a seed."
               fields={[{ key: "p", label: "Pool ID" }, { key: "pr", label: "Initial price (mUSD/LP)" }]} button="Add pool"
               onRun={(v) => ops.addPool(a(), me(), oracle(), BigInt(v.p), base(v.pr))} />
             <ActionForm title="Remove pool" desc="Delist a pool. Ensure no open vaults first." fields={[{ key: "p", label: "Pool ID" }]}
@@ -304,7 +323,18 @@ export function OperationsPanel() {
           </Section>
 
           {/* Governance */}
-          <Section title="Governance — timelocked & rotation (advanced)">
+          <Section
+            title="Governance — timelocked & rotation (advanced)"
+            note={
+              <>
+                <strong className="text-white/60">Propose / Confirm LP oracle repoint</strong> is the
+                lean-oracle migration. The PSM&nbsp;→&nbsp;vault repoint below is a different,
+                heavier move: it is for replacing the <em>vault</em>, which has no repointing path,
+                and forces every open position to be closed and reopened. It is not part of the
+                oracle swap.
+              </>
+            }
+          >
             <ActionForm title="Propose LP oracle repoint" desc="Vault → new oracle. 48h timelock; guardian can cancel."
               fields={[{ key: "id", label: "New oracle app ID" }]} button="Propose" tone="warn"
               onRun={(v) => ops.proposeLpOracle(a(), me(), vault(), BigInt(v.id))} />

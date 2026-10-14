@@ -49,6 +49,30 @@ const px = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 6, 
 const divergeTone = (l: PriceCrossCheck["level"]) =>
   l === "critical" ? "text-red-300" : l === "warn" ? "text-amber-300" : l === "ok" ? "text-green-400" : "text-white/50";
 
+/**
+ * Collateral family, as a glow.
+ *
+ * Not decoration. Every $U-denominated pool shares one risk: the whole book
+ * rides on one thin token. ALGO/USDC is the only collateral here that does not,
+ * and it is also the only one deep enough to actually unwind a seizure. Giving
+ * it a different colour makes that split legible at a glance instead of
+ * requiring someone to read four pair names.
+ *
+ * Purple is the Magnet brand hue (magnet-500, #a855f7); gold marks the outsider.
+ * Applied as ring + shadow so it layers over the status tone rather than
+ * competing with it — a critical pool still reads red first.
+ */
+// Tuned by rendering, not by reasoning: at ring/30 and a -4px spread the glow
+// was invisible under the red a stale pool already carries — and with the feed
+// down every pool is stale, so that is the state it has to survive. The inset
+// line keeps the family colour legible inside the card where the status tint is
+// strongest.
+const MAGNET_GLOW =
+  "ring-1 ring-magnet-400/60 shadow-[0_0_30px_-2px_rgba(168,85,247,0.8),inset_0_0_14px_-8px_rgba(192,132,252,0.9)]";
+const ALGO_GLOW =
+  "ring-1 ring-amber-300/60 shadow-[0_0_30px_-2px_rgba(251,191,36,0.75),inset_0_0_14px_-8px_rgba(253,224,71,0.9)]";
+const glowFor = (id: string) => (id === "algo-usdc" ? ALGO_GLOW : MAGNET_GLOW);
+
 function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
   const tone =
     p.level === "critical" ? "border-red-400/30 bg-red-500/[0.07]"
@@ -59,9 +83,18 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
     p.level === "critical" ? "text-red-300" : p.level === "warn" ? "text-amber-300" : "text-green-400";
 
   return (
-    <div className={`rounded-xl border p-3.5 ${tone}`}>
+    <div className={`rounded-xl border p-3.5 ${tone} ${glowFor(p.id)}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-mono text-sm font-semibold text-white">{p.id}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-mono text-sm font-semibold text-white">{p.id}</p>
+          {/* A pool the oracle prices but nobody can borrow against yet. Without
+              this the row looks like a collateral vault that has gone quiet. */}
+          {!p.vaultWired && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              oracle only
+            </span>
+          )}
+        </div>
         <p className={`font-mono text-xs ${ageTone}`}>
           {p.ts === 0 ? "never posted" : `updated ${age(p.ageSec)} ago`}
         </p>
@@ -120,11 +153,23 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
       {p.level === "critical" && (
         <p className="mt-2 flex items-start gap-1.5 text-[11px] text-red-200">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            Past the vault&apos;s 30-minute window. Borrowing <strong>and all liquidations</strong>{" "}
-            are reverting on this pool. Check the bot log for &quot;refusing to post&quot;, then
-            re-anchor below if the price has genuinely moved.
-          </span>
+          {p.vaultWired ? (
+            <span>
+              Past the vault&apos;s 30-minute window. Borrowing <strong>and all liquidations</strong>{" "}
+              are reverting on this pool. Check the bot log for &quot;refusing to post&quot;, then
+              re-anchor below if the price has genuinely moved.
+            </span>
+          ) : (
+            /* Nothing can be borrowed or liquidated here yet, so the vault
+               consequences do not apply — claiming they do would send someone
+               hunting an outage that is not happening. It still matters: the
+               feed must be healthy BEFORE this pool is registered vault-side. */
+            <span>
+              Past the 30-minute window. Nothing is borrowable against this pool yet, so no vault
+              operation is affected — but it must be posting reliably before it is registered
+              vault-side at the migration.
+            </span>
+          )}
         </p>
       )}
       {p.level !== "critical" && p.nearBand && (

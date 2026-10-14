@@ -15,6 +15,13 @@ import { Panel } from "../shared";
 // Focused, resumable flow to REDEPLOY the vault against the LIVE PSM + oracle (reusing the
 // existing mUSD ASA). Distinct from the full-stack DeployWizard: it deploys ONLY a new vault
 // and re-points the live PSM to it via the 48h timelock. Progress persists across the wait.
+//
+// ⚠️ This is NOT the lean-oracle migration, and reaching for it by mistake is expensive.
+// Swapping the oracle uses propose_lp_oracle → confirm_lp_oracle and never touches a vault
+// box. Replacing the VAULT is the move with no repointing path: it additionally requires
+// closing and reopening every open position, re-registering every pool (1 oracle + 5 vault
+// calls each) and re-canarying them (REVAMP_PLAN.md:22, ORACLE_V5_SPEC.md:84). Use this only
+// when the vault bytecode itself has to change.
 // v2: bumped from v1 so the completed progress persisted by the PRIOR redeploy (the repayment-fix
 // vault) is ignored and this liquidation-penalty redeploy starts from a clean slate.
 const LS_KEY = "magnetfi_vault_redeploy_v2";

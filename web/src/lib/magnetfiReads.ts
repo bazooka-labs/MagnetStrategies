@@ -2,7 +2,7 @@
 // Kept separate from magnetfiClient so the default (Overview) view stays lightweight.
 
 import algosdk from "algosdk";
-import { ACTIVE, ACTIVE_POOL_WIRING, PSM_REDEEM_FEE_BPS } from "./magnetfi";
+import { ACTIVE, ACTIVE_ORACLE_POOLS, PSM_REDEEM_FEE_BPS } from "./magnetfi";
 
 const ORACLE_FRESHNESS = 1_800; // 30 min — MUST match vault/contract.py ORACLE_FRESHNESS
 /** Half the window: two missed 5-minute cycles, with time left to act. */
@@ -73,6 +73,8 @@ export type PoolOracleHealth = {
   /** Percent the price may still rise / fall before a post reverts. Null without an anchor. */
   roomUpPct: number | null;
   roomDownPct: number | null;
+  /** False for a pool the oracle prices but the vault cannot lend against yet. */
+  vaultWired: boolean;
   level: "ok" | "warn" | "critical";
   /** Within 5% of either edge — the state that precedes a freeze. */
   nearBand: boolean;
@@ -81,7 +83,10 @@ export type PoolOracleHealth = {
 export async function getOracleHealth(algod: algosdk.Algodv2): Promise<PoolOracleHealth[]> {
   const app = await algod.getApplicationByID(ACTIVE.oracle).do();
   const now = Math.floor(Date.now() / 1000);
-  return Object.entries(ACTIVE_POOL_WIRING).map(([id, w]) => {
+  // Every pool the ORACLE carries, not just the vault-wired ones — a feed that
+  // is not posting has to be visible whether or not anyone can borrow on it.
+  return ACTIVE_ORACLE_POOLS.map((w) => {
+    const id = w.id;
     const price = (globalUint(app, poolKey("lp_price_", w.poolId)) ?? 0) / 1_000_000;
     const anchor = (globalUint(app, poolKey("lp_anchor_", w.poolId)) ?? 0) / 1_000_000;
     const ts = globalUint(app, poolKey("lp_ts_", w.poolId)) ?? 0;
@@ -97,7 +102,8 @@ export async function getOracleHealth(algod: algosdk.Algodv2): Promise<PoolOracl
         : ageSec >= ORACLE_WARN_AGE ? "warn"
         : "ok";
     const nearBand = (roomUpPct !== null && roomUpPct < 5) || (roomDownPct !== null && roomDownPct < 5);
-    return { id, poolId: w.poolId, price, anchor, ts, ageSec, bandLow, bandHigh, roomUpPct, roomDownPct, level, nearBand };
+    return { id, poolId: w.poolId, vaultWired: w.vaultWired, price, anchor, ts, ageSec,
+             bandLow, bandHigh, roomUpPct, roomDownPct, level, nearBand };
   });
 }
 
