@@ -80,8 +80,50 @@ export type PoolOracleHealth = {
   nearBand: boolean;
 };
 
-export async function getOracleHealth(algod: algosdk.Algodv2): Promise<PoolOracleHealth[]> {
-  const app = await algod.getApplicationByID(ACTIVE.oracle).do();
+/**
+ * Which oracle the VAULT is actually reading, and whether a swap is queued.
+ *
+ * Read from the vault rather than from the `ACTIVE.oracle` constant, because
+ * during an oracle migration the constant is a guess and the vault is the fact.
+ * `confirm_lp_oracle` moves the vault the instant it lands; a UI keyed off a
+ * compiled-in id keeps reporting the old oracle's freshness until someone
+ * redeploys the frontend, which is an ordering mistake waiting to happen
+ * (ORACLE_LEAN_SPEC.md §6 names it as the structural fix for that whole class).
+ */
+export type OracleSwapState = {
+  activeOracle: number;
+  /** The queued oracle during the 48h window; null when nothing is pending. */
+  pendingOracle: number | null;
+  /** Unix seconds when the pending swap may be confirmed. */
+  pendingEtaSec: number | null;
+  /** True when the vault is reading something other than the compiled-in constant. */
+  driftedFromConstant: boolean;
+};
+
+export async function getOracleSwapState(algod: algosdk.Algodv2): Promise<OracleSwapState> {
+  const app = await algod.getApplicationByID(ACTIVE.vault).do();
+  const u = (k: string): number => globalUint(app, new Uint8Array(Buffer.from(k))) ?? 0;
+  const activeOracle = u("lp_oracle_app_id") || ACTIVE.oracle;
+  const pending = u("pending_lp_oracle");
+  const eta = u("pending_lp_oracle_eta");
+  return {
+    activeOracle,
+    pendingOracle: pending || null,
+    pendingEtaSec: pending ? eta || null : null,
+    driftedFromConstant: activeOracle !== ACTIVE.oracle,
+  };
+}
+
+/**
+ * `oracleId` defaults to the compiled-in constant so existing callers and tests
+ * are unaffected; the panel passes the vault's answer, and passes the PENDING
+ * oracle too during a migration window, where it must be fresh before the
+ * confirm lands or the cutover arrives into a frozen protocol.
+ */
+export async function getOracleHealth(
+  algod: algosdk.Algodv2, oracleId: number = ACTIVE.oracle,
+): Promise<PoolOracleHealth[]> {
+  const app = await algod.getApplicationByID(oracleId).do();
   const now = Math.floor(Date.now() / 1000);
   // Every pool the ORACLE carries, not just the vault-wired ones — a feed that
   // is not posting has to be visible whether or not anyone can borrow on it.

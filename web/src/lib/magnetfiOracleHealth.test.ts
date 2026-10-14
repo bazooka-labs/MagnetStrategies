@@ -6,8 +6,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 import algosdk from "algosdk";
-import { getOracleHealth } from "./magnetfiReads";
-import { ACTIVE_ORACLE_POOLS, ACTIVE_POOL_WIRING } from "./magnetfi";
+import { getOracleHealth, getOracleSwapState } from "./magnetfiReads";
+import { ACTIVE, ACTIVE_ORACLE_POOLS, ACTIVE_POOL_WIRING } from "./magnetfi";
 
 // Keyed off the ORACLE's pool set, which is what getOracleHealth iterates.
 // Using POOL_WIRING here passed only by coincidence — the two sets overlap on
@@ -148,5 +148,59 @@ describe("which pools the panel shows", () => {
       // And vault-wired must agree with the vault-side source of truth.
       expect(row.vaultWired).toBe(p.id in ACTIVE_POOL_WIRING);
     }
+  });
+});
+
+describe("which oracle the vault is reading", () => {
+  /** An algod whose VAULT app returns these globals. */
+  function fakeVault(g: Record<string, number>) {
+    const gs = Object.entries(g).map(([k, uint]) => ({
+      key: Buffer.from(k).toString("base64"),
+      value: { type: 2, uint },
+    }));
+    return {
+      getApplicationByID: () => ({ do: async () => ({ params: { globalState: gs } }) }),
+    } as unknown as algosdk.Algodv2;
+  }
+
+  it("reports the vault's oracle, not the compiled-in constant", async () => {
+    // The point of reading from chain: after confirm_lp_oracle the vault moves
+    // immediately, while the constant keeps pointing at the old oracle until
+    // someone redeploys the frontend.
+    const st = await getOracleSwapState(fakeVault({ lp_oracle_app_id: 999_111 }));
+    expect(st.activeOracle).toBe(999_111);
+    expect(st.driftedFromConstant).toBe(true);
+  });
+
+  it("reports no drift when the vault agrees with the constant", async () => {
+    const st = await getOracleSwapState(fakeVault({ lp_oracle_app_id: ACTIVE.oracle }));
+    expect(st.activeOracle).toBe(ACTIVE.oracle);
+    expect(st.driftedFromConstant).toBe(false);
+  });
+
+  it("surfaces a queued swap and its eta", async () => {
+    const st = await getOracleSwapState(
+      fakeVault({ lp_oracle_app_id: ACTIVE.oracle, pending_lp_oracle: 424_242, pending_lp_oracle_eta: 1_800_000_000 }),
+    );
+    expect(st.pendingOracle).toBe(424_242);
+    expect(st.pendingEtaSec).toBe(1_800_000_000);
+  });
+
+  it("treats a zero pending oracle as nothing queued", async () => {
+    // The vault zeroes pending_lp_oracle on confirm and on cancel, so 0 is the
+    // resting state rather than a real app id.
+    const st = await getOracleSwapState(
+      fakeVault({ lp_oracle_app_id: ACTIVE.oracle, pending_lp_oracle: 0, pending_lp_oracle_eta: 0 }),
+    );
+    expect(st.pendingOracle).toBeNull();
+    expect(st.pendingEtaSec).toBeNull();
+  });
+
+  it("falls back to the constant if the vault read yields nothing", async () => {
+    // A degraded read must not report oracle 0, which would make the panel
+    // query a nonexistent app and show nothing at all.
+    const st = await getOracleSwapState(fakeVault({}));
+    expect(st.activeOracle).toBe(ACTIVE.oracle);
+    expect(st.driftedFromConstant).toBe(false);
   });
 });

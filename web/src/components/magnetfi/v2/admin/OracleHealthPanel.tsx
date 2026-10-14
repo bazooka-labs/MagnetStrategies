@@ -39,7 +39,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { getOracleHealth, type PoolOracleHealth } from "@/lib/magnetfiReads";
+import { getOracleHealth, getOracleSwapState, type OracleSwapState, type PoolOracleHealth } from "@/lib/magnetfiReads";
 import { crossCheckPools, type PriceCrossCheck } from "@/lib/magnetfiPriceCheck";
 import { Panel, collateralGlow } from "../shared";
 
@@ -161,15 +161,31 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
 
 export function OracleHealthPanel() {
   const [rows, setRows] = useState<PoolOracleHealth[] | null>(null);
+  const [pendingRows, setPendingRows] = useState<PoolOracleHealth[] | null>(null);
+  const [swap, setSwap] = useState<OracleSwapState | null>(null);
   const [checks, setChecks] = useState<Record<number, PriceCrossCheck>>({});
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const algod = new algosdk.Algodv2("", ALGOD_URLS.mainnet, "");
-      const health = await getOracleHealth(algod);
+      // Which oracle the VAULT reads, not which one this build was compiled
+      // against. During a migration those differ, and the vault is the fact.
+      const st = await getOracleSwapState(algod);
+      setSwap(st);
+      const health = await getOracleHealth(algod, st.activeOracle);
       setRows(health);
       setErr(null);
+
+      // The queued oracle has to be posting BEFORE the confirm lands, or the
+      // cutover arrives into a protocol that is frozen from its first second.
+      if (st.pendingOracle) {
+        try {
+          setPendingRows(await getOracleHealth(algod, st.pendingOracle));
+        } catch { setPendingRows(null); }
+      } else {
+        setPendingRows(null);
+      }
       // After, and in its own try: the cross-check depends on a third party, and
       // its failure must not cost us the freshness readout, which is the one
       // that matters during an outage.
@@ -211,9 +227,40 @@ export function OracleHealthPanel() {
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading oracle…
         </p>
       ) : (
-        <div className="mt-3 space-y-2.5">
-          {rows.map((p) => <Row key={p.id} p={p} x={checks[p.poolId]} />)}
-        </div>
+        <>
+          {swap?.driftedFromConstant && (
+            <p className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/5 p-2.5 text-[11px] text-amber-200/90">
+              The vault is reading oracle <span className="font-mono">{swap.activeOracle}</span>, not
+              the one this build was compiled against. Shown below is the oracle actually in use —
+              update the constant in <span className="font-mono">magnetfi.ts</span>.
+            </p>
+          )}
+          <div className="mt-3 space-y-2.5">
+            {rows.map((p) => <Row key={p.id} p={p} x={checks[p.poolId]} />)}
+          </div>
+
+          {swap?.pendingOracle && (
+            <div className="mt-5">
+              <p className="mb-2 text-[11px] text-white/45">
+                Queued oracle <span className="font-mono text-white/70">{swap.pendingOracle}</span> —
+                confirmable {swap.pendingEtaSec
+                  ? new Date(swap.pendingEtaSec * 1000).toUTCString().replace("GMT", "UTC")
+                  : "once the timelock elapses"}
+                . The vault still prices from the oracle above until then. Every pool here must be
+                posting <em>before</em> you confirm.
+              </p>
+              {pendingRows === null ? (
+                <p className="text-[11px] text-amber-300/80">
+                  Could not read the queued oracle — do not confirm until it is readable and fresh.
+                </p>
+              ) : (
+                <div className="space-y-2.5 opacity-90">
+                  {pendingRows.map((p) => <Row key={`pending-${p.id}`} p={p} />)}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <p className="mt-3 text-[10px] leading-relaxed text-white/30">
