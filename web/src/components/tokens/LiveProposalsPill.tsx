@@ -25,6 +25,7 @@
  */
 
 import { Vote as VoteIcon } from "lucide-react";
+import { RAISED_MAGNET } from "./raisedButton";
 import { UVOTE_LIVE } from "@/lib/uvote";
 import { liveCount, useUVoteProposals } from "@/hooks/useUVoteProposals";
 
@@ -39,7 +40,7 @@ export function LiveProposalsPill() {
   return (
     <a
       href="#governance"
-      className="inline-flex w-fit items-center gap-2 rounded-full border border-magnet-500/40 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200 transition-colors hover:border-magnet-400/60 hover:bg-magnet-500/15 hover:text-magnet-100"
+      className={RAISED_MAGNET}
     >
       <VoteIcon className="h-3.5 w-3.5" />
       Live proposals:{" "}

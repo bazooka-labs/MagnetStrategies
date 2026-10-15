@@ -55,10 +55,6 @@ export function MagnetTokenView({
               wrapped unpredictably; a column puts them in a fixed reading
               order. */}
           <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-              Live on Algorand mainnet
-            </span>
             <AboutModal triggerLabel="About $U" heading="What is $U?">
               <p>
                 Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi

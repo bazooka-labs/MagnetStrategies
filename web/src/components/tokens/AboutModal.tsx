@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { RAISED_AMBER } from "./raisedButton";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
@@ -37,7 +38,7 @@ export function AboutModal({
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+        className={RAISED_AMBER}
       >
         <Info className="h-3.5 w-3.5" />
         {triggerLabel}
