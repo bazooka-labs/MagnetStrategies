@@ -49,14 +49,11 @@ function PoolCard({ p }: { p: PoolData }) {
         <p className="mt-1 font-mono text-3xl font-bold text-green-400">{fmtApr(p.totalApr)}</p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
           <span>Swap Fees <span className="font-mono text-gray-300">{fmtApr(p.feeApr)}</span></span>
-          {farming && (
-            <span>
-              Farm{" "}
-              <span className="font-mono text-green-300">
-                {farmRate ? fmtApr(p.farmApr) : "live \u00b7 unstaked"}
-              </span>
-            </span>
-          )}
+          {/* Only when there is a rate to quote. The badge above already says a
+              farm exists; a second element repeating that in words added length
+              without information, and it was the first thing to wrap awkwardly
+              on a phone. */}
+          {farmRate && <span>Farm <span className="font-mono text-green-300">{fmtApr(p.farmApr)}</span></span>}
         </div>
       </div>
 
@@ -132,13 +129,20 @@ export function PoolsSection() {
         </div>
       )}
 
-      <p className="mt-5 flex items-start gap-2 text-xs text-gray-500">
+      {/* The icon row is the flex container; the copy is a single <p> inside it.
+          Previously the <p> itself was the flex container, which made every
+          child its own flex item — so "Farming" was pulled out of the sentence
+          into its own gapped column and the rest wrapped beside it as a second
+          column. It read as a label with a paragraph hanging off it rather than
+          as one sentence. */}
+      <div className="mt-5 flex items-start gap-2 text-xs text-gray-500">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        A <span className="font-medium text-gray-400">Farming</span> badge appears whenever a pool has an active
-        rewards program — these vary over time and are pulled live, so no pool ever shows a stale incentive. A farm
-        reading <span className="font-medium text-gray-400">live · unstaked</span> is funded but has nothing staked
-        in it yet, so it has no rate to quote. Liquidity is added directly on the DEX.
-      </p>
+        <p>
+          <span className="font-medium text-gray-400">Farming</span> means the pool pays reward incentives on top
+          of swap fees. Rates are read live, so nothing here is a stale number. A badge with no Farm rate beside it
+          means the farm is funded but nothing is staked in it yet. Liquidity is added directly on the DEX.
+        </p>
+      </div>
     </section>
   );
 }
