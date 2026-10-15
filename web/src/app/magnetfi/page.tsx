@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RAISED_AMBER, RAISED_AMBER_ON, RAISED_MAGNET } from "@/components/raisedButton";
-import { LpVaultLearnMore } from "@/components/magnetfi/v2/LpVaultLearnMore";
+import { RAISED_AMBER, RAISED_AMBER_ON } from "@/components/raisedButton";
 import Link from "next/link";
 import { Coins, Landmark, Layers, Shield } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
@@ -127,17 +126,10 @@ export default function MagnetFiPage() {
             buttons so they read as actions next to the flat segmented track,
             which is a selector; the two should not look alike. */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Learn more lives here rather than in the vaults header so the three
-              controls form one row. Scoped to the tab it explains. */}
-          {tab === "vaults" && <LpVaultLearnMore />}
-          <Link
-            href="/tokens?tab=musd"
-            // Magnet purple: this one leads to a Magnet product page, so it carries
-            // the brand accent rather than neutral chrome.
-            className={RAISED_MAGNET}
-          >
-            <Coins className="h-3.5 w-3.5" /> mUSD
-          </Link>
+          {/* Learn more and mUSD moved INTO the vaults hero: a title and the
+              things you can do with it should be one object, not two rows that
+              happen to sit near each other. Admin stays here because it is
+              page-scoped, not a property of either tab. */}
           {isAdmin && (
             <button
               onClick={() => setShowAdmin((v) => !v)}

@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import Link from "next/link";
+import { Coins } from "lucide-react";
+import { SectionHero } from "./SectionHero";
+import { LpVaultLearnMore } from "./LpVaultLearnMore";
+import { StatCell } from "@/components/tokens/StatCell";
+import { RAISED_MAGNET } from "@/components/raisedButton";
 import { Info, Loader2, RefreshCw, CalendarClock, Vault } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
@@ -69,6 +75,9 @@ const VAULT_CARDS: VaultCard[] = ACTIVE_ORACLE_POOLS
     const pool = poolWiring(vt.id);
     return [pool ? { kind: "live" as const, vt, pool } : { kind: "pending" as const, vt }];
   });
+
+/** Stat-box money: "…" while a read is outstanding, never a confident $0.00. */
+const money = (v: number | null) => (v === null ? "…" : `$${formatUsd(v)}`);
 
 function hfColor(hf: number): string {
   if (hf === Infinity) return "text-gray-400";
@@ -471,62 +480,45 @@ export function VaultsTab() {
   }, [algodClient]);
 
   const capacity = (borrowed ?? 0) + (ceiling ?? 0);
+  // Nullable twin: `capacity` coalesces to 0 for the utilisation maths, which
+  // would render a confident "$0.00" ceiling while the reads are still in
+  // flight. The stat boxes want "…" until both halves have actually arrived.
+  const capacityOrNull = borrowed === null || ceiling === null ? null : borrowed + ceiling;
   const util = borrowed !== null && ceiling !== null && capacity > 0
     ? Math.min(100, (borrowed / capacity) * 100)
     : null;
 
   return (
     <section>
-      {/* A panel rather than loose text on the background: it is the first
-          thing on the tab and it was reading as a stray caption above the
-          cards. "Learn more" moved up into the page control row, so this is
-          now purely the explanation — one sentence of what the product does
-          and one of what it costs you, which is what someone needs before
-          looking at four cards of numbers. */}
-      <Panel className="mb-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-        <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-500 to-magnet-800 text-white shadow-lg shadow-magnet-900/50">
-            <Vault className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="font-display text-base font-semibold text-white">LP Collateral Vaults</h2>
-            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-gray-400">
-              Deposit Tinyman LP tokens as collateral and borrow{" "}
-              <span className="font-medium text-gray-200">mUSD</span> against them. Your liquidity
-              stays in the pool earning trading fees the whole time it backs the loan.
-            </p>
-            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-gray-500">
-              Interest accrues on what you borrow, and a position is liquidated if its health factor
-              falls below 1.00 — add collateral or repay to stay clear of it.
-            </p>
-          </div>
-        </div>
+      <SectionHero
+        icon={<Vault className="h-6 w-6" />}
+        title="LP Collateral Vaults"
+        description="Borrow mUSD against your Tinyman LP tokens — your liquidity keeps earning trading fees the whole time it backs the loan."
+      >
+        <LpVaultLearnMore />
+        <Link href="/tokens?tab=musd" className={RAISED_MAGNET}>
+          <Coins className="h-3.5 w-3.5" /> mUSD
+        </Link>
+      </SectionHero>
 
-        {/* The two protocol-wide numbers, in the dead space the copy left. Both
-            are already fetched for the per-card utilisation bar, so this costs
-            no extra read — and they answer the question the cards cannot: how
-            much room is left across the whole book, not just this pair. */}
-        {PROTOCOL_LIVE && (
-          <dl className="flex shrink-0 gap-8 pr-1">
-            {([
-              ["Borrowed", borrowed],
-              ["Available", ceiling],
-            ] as const).map(([label, v]) => (
-              <div key={label}>
-                <dt className="text-[11px] uppercase tracking-wider text-gray-500">{label}</dt>
-                <dd className="mt-1 font-mono text-lg font-semibold text-white">
-                  {v === null ? "…" : formatUsd(v)}
-                  {/* Unit stated: these are mUSD, not dollars of collateral, and
-                      the two are easy to conflate on a page full of both. */}
-                  <span className="ml-1 text-[11px] font-normal text-gray-500">mUSD</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        </div>
-      </Panel>
+      {/* The lending book in three figures. Capacity is the PSM's ceiling, so
+          the first box grows as the reserve does — it is not a constant. All
+          three come from reads already made for the per-card utilisation bar.
+
+          Tones are POSITIONAL, matching the token pages left-to-right
+          green/amber/teal. Tempting to make them semantic here (green =
+          available, amber = borrowed) but these are three slices of one number,
+          and colouring them by mood would imply a judgement the protocol is not
+          making. */}
+      {PROTOCOL_LIVE && (
+        <Panel className="mb-6">
+          <div className="grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <StatCell label="Total Max Lending" value={money(capacityOrNull)} sub="PSM lending ceiling" tone="green" />
+            <StatCell label="Current Borrowed" value={money(borrowed)} sub="Across all vaults" tone="amber" />
+            <StatCell label="Current Available" value={money(ceiling)} sub="Left to borrow" tone="teal" />
+          </div>
+        </Panel>
+      )}
 
       {!PROTOCOL_LIVE ? (
         <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>

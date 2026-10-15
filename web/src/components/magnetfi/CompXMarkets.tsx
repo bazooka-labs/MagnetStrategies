@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SectionHero } from "./v2/SectionHero";
 import Image from "next/image";
 import { LendingClient, type MarketData } from "@compx/sdk";
 import { TrendingUp, Wallet } from "lucide-react";
@@ -173,19 +174,12 @@ export function CompXMarkets() {
   return (
     <>
       <section>
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/15 border border-blue-500/20">
-            <TrendingUp className="h-4 w-4 text-blue-400" />
-          </div>
-          <div>
-            <h2 className="font-display text-sm font-semibold text-white">Single Token Markets</h2>
-            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-500">
-              Lend and borrow individual assets through CompX&apos;s money markets on Algorand. Supply
-              to earn yield, or borrow against your deposited collateral. Rates float with market
-              utilization.
-            </p>
-          </div>
-        </div>
+        <SectionHero
+          accent="blue"
+          icon={<TrendingUp className="h-6 w-6" />}
+          title="Single Token Markets"
+          description="Lend and borrow individual assets through CompX's money markets on Algorand. Supply to earn yield, or borrow against your collateral — rates float with utilization."
+        />
 
         {error ? (
           <Panel className="p-6 text-center">
