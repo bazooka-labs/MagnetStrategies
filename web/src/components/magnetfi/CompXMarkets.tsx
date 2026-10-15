@@ -175,8 +175,6 @@ export function CompXMarkets() {
     <>
       <section>
         <SectionHero
-          accent="blue"
-          icon={<TrendingUp className="h-6 w-6" />}
           title="Single Token Markets"
           description="Lend and borrow individual assets through CompX's money markets on Algorand. Supply to earn yield, or borrow against your collateral — rates float with utilization."
         />

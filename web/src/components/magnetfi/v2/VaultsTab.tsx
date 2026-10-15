@@ -188,7 +188,7 @@ function PendingVaultPanel({ vt }: { vt: VaultType }) {
   );
 }
 
-function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: number | null }) {
+function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
   const [pos, setPos] = useState<VaultPosition | null>(null);
@@ -299,23 +299,6 @@ function VaultPanel({ vt, pool, util }: { vt: VaultType; pool: PoolRef; util: nu
           sub={oracle ? (fresh ? "oracle fresh" : "oracle stale") : undefined}
           subClass={fresh ? "text-green-400" : "text-red-400"}
         />
-      </div>
-
-      {/* PSM utilization — shared across every vault (same ceiling backs them all), same
-          bar treatment as the Single Token Markets utilization display. */}
-      <div className="mt-4">
-        <div className="mb-1.5 flex items-center justify-between">
-          <p className="text-[11px] uppercase tracking-wider text-gray-500">PSM Utilization</p>
-          <p className="font-mono text-xs text-gray-400">{util === null ? "…" : `${util.toFixed(1)}%`}</p>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-          {util !== null && (
-            <div
-              className="h-full rounded-full bg-magnet-500 transition-all duration-700"
-              style={{ width: `${Math.min(100, util)}%` }}
-            />
-          )}
-        </div>
       </div>
 
       <div className="my-6 border-t border-white/10" />
@@ -491,7 +474,6 @@ export function VaultsTab() {
   return (
     <section>
       <SectionHero
-        icon={<Vault className="h-6 w-6" />}
         title="LP Collateral Vaults"
         description="Borrow mUSD against your Tinyman LP tokens — your liquidity keeps earning trading fees the whole time it backs the loan."
       >
@@ -517,6 +499,30 @@ export function VaultsTab() {
             <StatCell label="Current Borrowed" value={money(borrowed)} sub="Across all vaults" tone="amber" />
             <StatCell label="Current Available" value={money(ceiling)} sub="Left to borrow" tone="teal" />
           </div>
+
+          {/* One bar, not one per card. The PSM ceiling backs every vault, so
+              the same percentage was repeating on all four — and sitting inside
+              a card it read as that pair's utilisation rather than the
+              protocol's. Here it belongs to the three numbers it is computed
+              from, directly beneath them. */}
+          <div className="border-t border-white/10 px-5 py-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                PSM Utilization
+              </p>
+              <p className="font-mono text-xs text-gray-400">
+                {util === null ? "…" : `${util.toFixed(1)}%`}
+              </p>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              {util !== null && (
+                <div
+                  className="h-full rounded-full bg-magnet-500 transition-all duration-700"
+                  style={{ width: `${Math.min(100, util)}%` }}
+                />
+              )}
+            </div>
+          </div>
         </Panel>
       )}
 
@@ -526,7 +532,7 @@ export function VaultsTab() {
         <div className="grid gap-5 md:grid-cols-2">
           {VAULT_CARDS.map((c) =>
             c.kind === "live" ? (
-              <VaultPanel key={c.vt.id} vt={c.vt} pool={c.pool} util={util} />
+              <VaultPanel key={c.vt.id} vt={c.vt} pool={c.pool} />
             ) : (
               <PendingVaultPanel key={c.vt.id} vt={c.vt} />
             ),
