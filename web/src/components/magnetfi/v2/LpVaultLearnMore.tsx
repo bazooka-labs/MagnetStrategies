@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RAISED_AMBER } from "@/components/raisedButton";
 import { createPortal } from "react-dom";
 import { X, BookOpen, TrendingUp, Lock, Clock, CircleDollarSign, ShieldCheck } from "lucide-react";
 
@@ -33,7 +34,7 @@ export function LpVaultLearnMore() {
           beside the heading it belongs to; an amber pill is the established
           shape for "press here to understand what you are looking at". */}
       <button onClick={() => setOpen(true)} aria-haspopup="dialog"
-        className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500">
+        className={RAISED_AMBER}>
         <BookOpen className="h-3.5 w-3.5" /> Learn more
       </button>
 

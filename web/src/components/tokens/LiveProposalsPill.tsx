@@ -25,7 +25,7 @@
  */
 
 import { Vote as VoteIcon } from "lucide-react";
-import { RAISED_MAGNET } from "./raisedButton";
+import { RAISED_MAGNET } from "../raisedButton";
 import { UVOTE_LIVE } from "@/lib/uvote";
 import { liveCount, useUVoteProposals } from "@/hooks/useUVoteProposals";
 

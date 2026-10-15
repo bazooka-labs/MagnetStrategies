@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RAISED_AMBER, RAISED_AMBER_ON, RAISED_MAGNET } from "@/components/raisedButton";
+import { LpVaultLearnMore } from "@/components/magnetfi/v2/LpVaultLearnMore";
 import Link from "next/link";
 import { Coins, Landmark, Layers, Shield } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
@@ -120,29 +122,30 @@ export default function MagnetFiPage() {
           />
         </div>
 
-        {/* Outside the track: one navigates away, one reveals a panel. Neither
-            is "the thing you are currently looking at". */}
+        {/* Outside the track: these ACT rather than switch view — one navigates
+            away, one opens an explainer, one reveals write controls. Raised
+            buttons so they read as actions next to the flat segmented track,
+            which is a selector; the two should not look alike. */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Learn more lives here rather than in the vaults header so the three
+              controls form one row. Scoped to the tab it explains. */}
+          {tab === "vaults" && <LpVaultLearnMore />}
           <Link
             href="/tokens?tab=musd"
             // Magnet purple: this one leads to a Magnet product page, so it carries
             // the brand accent rather than neutral chrome.
-            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-magnet-500/40 bg-magnet-500/10 px-3 py-1.5 text-xs font-medium text-magnet-200 transition-colors hover:border-magnet-400/60 hover:bg-magnet-500/15 hover:text-magnet-100"
+            className={RAISED_MAGNET}
           >
             <Coins className="h-3.5 w-3.5" /> mUSD
           </Link>
           {isAdmin && (
             <button
               onClick={() => setShowAdmin((v) => !v)}
-              className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                // Amber — the colour every other "this is not ordinary
-                // browsing" control uses here: the risk disclosures and the
-                // explainer triggers. Admin reveals write controls over live
-                // protocol state, which is squarely that category.
-                showAdmin
-                  ? "border-amber-400/60 bg-amber-500/20 text-amber-100"
-                  : "border-amber-400/30 bg-amber-500/10 text-amber-200 hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100"
-              }`}
+              aria-pressed={showAdmin}
+              // Amber — the colour every other "this is not ordinary browsing"
+              // control uses here. Toggled ON it inverts to a pressed-in face,
+              // so the row shows at a glance whether admin is open.
+              className={showAdmin ? RAISED_AMBER_ON : RAISED_AMBER}
             >
               <Shield className="h-3.5 w-3.5" /> Admin
             </button>

@@ -31,3 +31,9 @@ export const RAISED_MAGNET =
   "hover:from-magnet-400/35 hover:to-magnet-700/28 hover:border-magnet-300/60 " +
   "active:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_0_0_rgba(0,0,0,0),0_2px_5px_rgba(0,0,0,0.4)] " +
   "focus-visible:outline-magnet-400";
+
+/** Amber, pressed-in: for a toggle that is currently ON. */
+export const RAISED_AMBER_ON =
+  `${BASE} border border-amber-300/70 bg-gradient-to-b from-amber-500/35 to-amber-700/25 text-amber-50 ` +
+  "shadow-[inset_0_2px_5px_rgba(0,0,0,0.5),0_1px_0_rgba(146,64,14,0.5)] " +
+  "focus-visible:outline-amber-400";

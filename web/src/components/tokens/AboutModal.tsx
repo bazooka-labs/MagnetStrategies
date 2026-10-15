@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { RAISED_AMBER } from "./raisedButton";
+import { RAISED_AMBER } from "../raisedButton";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 

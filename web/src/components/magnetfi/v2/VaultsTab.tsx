@@ -17,7 +17,6 @@ import {
   MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
 } from "@/lib/magnetfiReads";
 import { Panel, PairGlyph, PrimaryButton, SoonBadge, collateralGlow } from "./shared";
-import { LpVaultLearnMore } from "./LpVaultLearnMore";
 
 /**
  * One card per collateral pool the ORACLE prices — which is four, not two.
@@ -478,21 +477,56 @@ export function VaultsTab() {
 
   return (
     <section>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">
-            <Vault className="h-4 w-4" />
+      {/* A panel rather than loose text on the background: it is the first
+          thing on the tab and it was reading as a stray caption above the
+          cards. "Learn more" moved up into the page control row, so this is
+          now purely the explanation — one sentence of what the product does
+          and one of what it costs you, which is what someone needs before
+          looking at four cards of numbers. */}
+      <Panel className="mb-5 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-magnet-500 to-magnet-800 text-white shadow-lg shadow-magnet-900/50">
+            <Vault className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-display text-sm font-semibold text-white">LP Collateral Vaults</h2>
-            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-500">
-              Stay liquid with Magnet&apos;s LP Vaults. Deposit your Tinyman LP tokens as collateral
-              and borrow mUSD against them while you keep earning trading fees in the background.
+            <h2 className="font-display text-base font-semibold text-white">LP Collateral Vaults</h2>
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-gray-400">
+              Deposit Tinyman LP tokens as collateral and borrow{" "}
+              <span className="font-medium text-gray-200">mUSD</span> against them. Your liquidity
+              stays in the pool earning trading fees the whole time it backs the loan.
+            </p>
+            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-gray-500">
+              Interest accrues on what you borrow, and a position is liquidated if its health factor
+              falls below 1.00 — add collateral or repay to stay clear of it.
             </p>
           </div>
         </div>
-        <LpVaultLearnMore />
-      </div>
+
+        {/* The two protocol-wide numbers, in the dead space the copy left. Both
+            are already fetched for the per-card utilisation bar, so this costs
+            no extra read — and they answer the question the cards cannot: how
+            much room is left across the whole book, not just this pair. */}
+        {PROTOCOL_LIVE && (
+          <dl className="flex shrink-0 gap-8 pr-1">
+            {([
+              ["Borrowed", borrowed],
+              ["Available", ceiling],
+            ] as const).map(([label, v]) => (
+              <div key={label}>
+                <dt className="text-[11px] uppercase tracking-wider text-gray-500">{label}</dt>
+                <dd className="mt-1 font-mono text-lg font-semibold text-white">
+                  {v === null ? "…" : formatUsd(v)}
+                  {/* Unit stated: these are mUSD, not dollars of collateral, and
+                      the two are easy to conflate on a page full of both. */}
+                  <span className="ml-1 text-[11px] font-normal text-gray-500">mUSD</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        </div>
+      </Panel>
 
       {!PROTOCOL_LIVE ? (
         <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>
