@@ -14,16 +14,21 @@ const navLinks = [
    *
    * The Strategy ARM still exists and still groups this with the CLMM pools and
    * vaults to come — but an arm is an organising principle and the nav is a
-   * shopping surface, and they do not have to match. Predict already proves it:
-   * by the arm's own definition ("you take a position") prediction markets are
-   * Strategy, and they are a top-level item because that is how people shop.
-   *
-   * Nobody scans a nav for "Strategy" wanting a leveraged perps screen. Strategy
-   * rejoins the nav when it has something to show; until then this is six items,
-   * not seven.
+   * shopping surface, and they do not have to match. Nobody scans a nav for
+   * "Strategy" wanting a leveraged perps screen. Strategy rejoins the nav when
+   * it has something to show.
    */
   { href: "/trade", label: "Trade", external: false },
-  { href: "/predict", label: "Predict", external: false },
+  /**
+   * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest
+   * surface on the site — every item there costs attention the ones beside it
+   * could have had.
+   *
+   * HIDDEN, NOT REMOVED. `/predict` still builds and still serves, and
+   * `src/lib/vpl.ts` is untouched, so anyone holding a link keeps working and
+   * bringing it back is this line rather than a rebuild. Same treatment Vote
+   * got below, for the same reason.
+   */
   // No "Vote" entry: UVote is a section of the $U page now. One proposal had
   // ever been opened, and a standing nav slot leading to "check back when the
   // founder opens the first vote" spends attention this bar does not have.
