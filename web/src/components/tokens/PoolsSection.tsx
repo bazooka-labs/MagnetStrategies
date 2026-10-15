@@ -138,9 +138,8 @@ export function PoolsSection() {
       <div className="mt-5 flex items-start gap-2 text-xs text-gray-500">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p>
-          <span className="font-medium text-gray-400">Farming</span> means the pool pays reward incentives on top
-          of swap fees. Rates are read live, so nothing here is a stale number. A badge with no Farm rate beside it
-          means the farm is funded but nothing is staked in it yet. Liquidity is added directly on the DEX.
+          <span className="font-medium text-gray-400">Farming</span> badge indicates a farm is currently live for
+          the associated liquidity pool. Farm pools pay reward incentives on top of swap fees.
         </p>
       </div>
     </section>
