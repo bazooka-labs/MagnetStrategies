@@ -86,11 +86,29 @@ export function ArrivalSplash({
       aria-hidden="true"
       // `top-16` is the navbar's height: the blur starts under it, so the nav
       // stays legible and usable throughout.
-      className="animate-splash pointer-events-none fixed inset-x-0 bottom-0 top-16 z-40 flex items-center justify-center overflow-hidden bg-black/55 backdrop-blur-md"
+      className="animate-splash pointer-events-none fixed inset-x-0 bottom-0 top-16 z-40 flex items-center justify-center overflow-hidden"
       // Drives every `splash-*` keyframe. Set here so the timeout above and the
       // animations cannot disagree about how long this lasts.
       style={{ ["--splash-dur" as string]: `${durationMs}ms` }}
     >
+      {/* ── The scrim owns the backdrop blur, and nothing renders inside it ──
+          It used to be the container, so the mark was a DESCENDANT of a
+          backdrop-filtered element. Every mark carries a filter of its own
+          (`magnet-glow-soft`, or a drop-shadow utility) plus a scale animation,
+          which promotes it to its own compositing layer — and a browser samples
+          the backdrop per layer, so the sampling changes at that layer's edge
+          and paints a faint rectangle exactly the size of the image's box.
+
+          Phones show it and desktops usually do not: mobile GPUs composite at
+          lower precision and tile differently, so the seam survives rounding
+          there and vanishes here. It was never screen brightness.
+
+          Keeping the blur on a SIBLING behind the content removes the
+          precondition rather than masking the symptom — no filtered element is
+          a descendant of a backdrop-filtered one any more. The parent keeps the
+          opacity animation, so all three layers still fade together. */}
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
+
       {/* The glow is its own element so it can breathe on a different curve — a
           single animated group makes the light and the mark move together like
           a flat sticker. */}
