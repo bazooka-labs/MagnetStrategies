@@ -148,7 +148,7 @@ body {
   100% { opacity: 0; }
 }
 .animate-logo-fade-out {
-  animation: logo-fade-out 3.2s ease-in-out forwards;
+  animation: logo-fade-out 2.2s ease-in-out forwards;
 }
 
 @keyframes headline-fade-in {
@@ -164,13 +164,23 @@ body {
    takes 2s, which is the grammar this has kept through every version.
 
      stage               fades in     holds       fades out
-     Magnet logo         —            0–1.6s      1.6–3.2s
-     Magnet Strategies   3.2–4.8s     stays       —
+     Magnet logo         —            0–1.1s      1.1–2.2s
+     Magnet Strategies   2.2–3.4s     stays       —
+     divider / tagline   3.5–4.05s    stays       —
+     social links        4.25–4.7s    stays       —
 
-   Every figure here is the original x0.8: the whole sequence was cut by 20%
-   on feedback that it dragged. The 2s grammar below describes the shape it
-   was built to, not the numbers now in the rules — the proportions are
-   untouched, only the clock.
+   Cut twice on feedback that it dragged: first a flat 0.8x of the original,
+   then a second pass that went after the specific complaint — the wait between
+   the mark and the banner. There was never a dead gap there; the banner always
+   started the instant the mark finished. The wait WAS the mark, holding 1.6s
+   and then taking another 1.6s to leave. Halving both brings the banner in a
+   full second earlier, which is what "too long between the M and the logo"
+   actually meant.
+
+   The equal-2s grammar the original was built on is therefore gone on purpose.
+   What replaced it is a shape: each element arrives a little faster than the
+   one before, so the page accelerates toward being usable rather than
+   metronoming through stages.
 
    It grew to five — the mark, "Attract Yield", "Attract Liquidity", "Attract
    Leverage", then the banner — and came back. The three middle lines said in
@@ -192,7 +202,7 @@ body {
    where the utility lands at byte 36502 and `.animate-fade-up` at 38907. */
 
 /* Final stage — fades in and stays, the same reveal the headline used. */
-.animate-stage-final { animation: headline-fade-in 1.6s ease-in-out 3.2s both; }
+.animate-stage-final { animation: headline-fade-in 1.2s ease-in-out 2.2s both; }
 
 /* The divider and tagline — the 6050ms and 6150ms the markup always asked for,
    now actually applied. These were chosen while the hero ran 24s, deliberately
@@ -200,10 +210,13 @@ body {
    a stagger read as a stall. At two stages the hero finishes at 6s and they
    land just behind the banner settling, which is what they were always timed
    against: the first thing arriving, not the last. */
-.animate-hero-outro-1 { animation: fade-up 0.48s ease-out 4.84s both; }
-.animate-hero-outro-2 { animation: fade-up 0.48s ease-out 4.92s both; }
-/* The social row, last in. Same 0.8x scaling as everything above it. */
-.animate-hero-outro-3 { animation: fade-up 0.48s ease-out 5.04s both; }
+.animate-hero-outro-1 { animation: fade-up 0.45s ease-out 3.5s both; }
+.animate-hero-outro-2 { animation: fade-up 0.45s ease-out 3.6s both; }
+/* The social row is the only beat that is NOT part of the stagger above.
+   The divider and tagline arrive 100ms apart, which reads as one thing
+   landing; the links wait 650ms after the tagline starts so they register as
+   a separate, final event — the page finishing rather than still arriving. */
+.animate-hero-outro-3 { animation: fade-up 0.45s ease-out 4.25s both; }
 
 /* ── Ambient magnetic field lines ──────────────────────────────────────────
    Drives <AmbientField />, which mounts once in the root layout. The loop

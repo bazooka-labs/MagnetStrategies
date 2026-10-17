@@ -115,11 +115,11 @@ export default function LandingPage() {
           {/* Arrives last, a beat behind the tagline. The page ends here now
               that the footer is gone, so this is the only way off it besides
               the nav — hence real hit areas rather than bare 20px glyphs. */}
-          <div className="mt-2 flex items-center gap-2 animate-hero-outro-3">
+          <div className="mt-3 flex items-center gap-3 animate-hero-outro-3">
             {([
-              [SOCIALS.x, "X / Twitter", <XIcon key="x" className="h-5 w-5" />],
-              [SOCIALS.discord, "Discord", <DiscordIcon key="d" className="h-5 w-5" />],
-              [SOCIALS.github, "GitHub", <Github key="g" className="h-5 w-5" />],
+              [SOCIALS.x, "X / Twitter", <XIcon key="x" className="h-6 w-6" />],
+              [SOCIALS.discord, "Discord", <DiscordIcon key="d" className="h-6 w-6" />],
+              [SOCIALS.github, "GitHub", <Github key="g" className="h-6 w-6" />],
             ] as const).map(([href, label, icon]) => (
               <a
                 key={label}
@@ -127,7 +127,11 @@ export default function LandingPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={label}
-                className="rounded-xl border border-white/15 bg-white/5 p-2.5 text-white/70 backdrop-blur-sm transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+                // Heavier chrome than the same control would carry elsewhere.
+                // Every other page sits on near-black, where white/15 borders
+                // read fine; this hero is a LIGHT photograph, so the usual
+                // translucent treatment washes out against it.
+                className="rounded-xl border border-white/30 bg-black/20 p-3.5 text-white backdrop-blur-sm transition-colors hover:border-white/60 hover:bg-black/35"
               >
                 {icon}
               </a>
