@@ -10,8 +10,8 @@ what is built, what is next, and which document to trust for what._
 
 | | | |
 |---|---|---|
-| LP Oracle | `3644230020` | **banded** — ±25% anchor, ±50%-vs-prior. Still the vault's oracle |
-| **Lean oracle** | `3741272132` | deployed 2026-10-14, no band. **Queued, not yet live** — see §1b |
+| **LP Oracle** | `3741272132` | **lean** — no band. The vault's oracle since 2026-10-17 19:01Z |
+| Banded oracle | `3644230020` | the previous live oracle. **Still fed, deliberately** — see §1b |
 | PSM v3 | `3644230181` | reserve **$151.40 USDC** |
 | Vault | `3671287267` | **3 open positions**, all the founder's own wallets |
 | mUSD ASA | `3615600399` | **101.40** circulating |
@@ -49,35 +49,64 @@ in §3b, which was measured against a feed frozen 23–109 hours and is an upper
 bound rather than a sample — the 5% warn line has ~15x headroom over real lag,
 not the 1.2x the stale numbers implied.
 
-## 1b. ⚠️ Migration in flight — the 48h window
+## 1b. Lean-oracle migration — COMPLETE
 
-`propose_lp_oracle(3741272132)` was submitted **2026-10-14 20:46Z**.
+`confirm_lp_oracle` landed **2026-10-17 19:01:15Z**. The vault reads
+`3741272132`; `pending_lp_oracle` and its ETA are both cleared.
 
 | | |
 |---|---|
-| confirmable at | **2026-10-16 20:46:52Z** |
-| vault still reads | `3644230020` (banded) until `confirm_lp_oracle` |
-| both oracles | fed by separate bot instances, all four pools fresh on each |
+| proposed | 2026-10-14 20:46Z |
+| confirmed | **2026-10-17 19:01:15Z** |
+| vault reads | `3741272132` (lean, no band) |
+| frontend constant | repointed in `web/src/lib/magnetfi.ts` *before* the confirm |
 
-Steps 1–5 of [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md) are done. The lean
-oracle's deployed bytecode was verified to match the repo artifact exactly, its
-pools were seeded from the live feed (0.00–0.03% off), and it carries **zero**
-anchor keys.
+**Evidence the switch was safe.** Both oracles ran concurrently off separate
+bot instances. Over the 21h overlap, 1,017 posts paired within 120s diverged by
+at most **0.04%** (median ~0.000%); at matched sampling times on confirm day the
+worst was **0.0009%**. Larger instantaneous readings (up to ~0.14%) are sampling
+offset between two independently-scheduled bots, not disagreement — they
+collapse the moment the trailing oracle posts.
 
-**Until the confirm, three things must hold:**
+**Step 8 is deliberately NOT done.** [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md)
+step 8 retires the banded oracle by shutting down its bot and removing its UI.
+That stays open through the stabilisation window, because the same spec's
+rollback paragraph depends on it: rollback is `propose_lp_oracle` + another 48h
+— there is no `set_lp_oracle`, no emergency path, and `cancel_pending_lp_oracle`
+acts only on a *pending* proposal — and it is only worth having if the feed
+behind it is alive. Keeping `3644230020` fed means a rollback proposal arrives
+at a working oracle rather than a cold one. **Do not stop that bot instance.**
 
-- **Both bots keep running.** The banded oracle is still the vault's; stopping
-  its instance freezes the protocol, and the timelock applies in both directions.
-- **Do not rotate the vault admin.** `accept_admin` clears `pending_lp_oracle`
-  (`vault/contract.py:288-292`) with no revert and no warning, silently
-  restarting the 48 hours.
-- **Confirm on posts, not on freshness.** `add_pool` sets `lp_ts_`, so a seeded
-  oracle reads "fresh" for 30 minutes whether or not its bot ever worked. The
-  test is a transaction from the bot wallet, not a recent timestamp. (This
-  caught us once: the lean oracle showed four fresh pools while having received
-  zero posts.)
+Step 8 becomes correct once we are not going to roll back. Until then:
 
-The guardian veto — `cancel_pending_lp_oracle` — is available throughout.
+- `ADMIN.md:151`'s anchor-band re-anchor procedure **stays**, and so does the
+  re-anchor action in the admin UI. A banded-oracle freeze no longer freezes
+  the protocol, but it would quietly destroy the rollback target.
+- The spec's structural fix is still open and now matters more: have the bot
+  and `getOracleHealth` read `lp_oracle_app_id` from the **vault** rather than
+  a compiled-in constant, so "pointed at the wrong oracle" stops being a step
+  anyone has to remember. `getOracleSwapState` already does this; `getOracle`
+  and the bot do not.
+
+### Two things this migration taught us
+
+**`confirm_lp_oracle` does not look at the oracle.** Its gate is
+`Global.latest_timestamp >= pending_lp_oracle_eta` — the BLOCK timestamp. It
+says nothing about whether the incoming oracle has ever posted. Once the 48h
+has elapsed the call succeeds against a feed that is arbitrarily stale, and
+since `ORACLE_FRESHNESS` (1800s) gates `open_vault`, `borrow_more` and all
+three `trigger_*_liquidation`, confirming onto a dead oracle freezes borrowing
+**and liquidations** in one transaction. The incoming feed must be verified
+live immediately before the confirm; nothing on chain will do it for you.
+
+**A single bot instance is a single point of failure.** A power cut on
+2026-10-15 took the lean oracle down for 48h because its instance did not
+restart. That was harmless only because the oracle was not yet live. Both bots
+now auto-start at logon via
+`oracle_bot/start_oracles.cmd`, launched from a stub in the Windows Startup
+folder, each with its own `TWAP_STATE_PATH` (two bots sharing one TWAP file
+corrupts it). Verified by an actual power cycle on 2026-10-17: both returned
+with no input, fast enough that no pool approached the freshness gate.
 
 ---
 
@@ -333,15 +362,21 @@ price, and the PSM invariant caps only the over-minting direction. See
 ### ADMIN.md is not stale yet, and must not be "fixed" early
 
 `ADMIN.md:151` tells the operator how to recognise an **anchor-band rejection**
-and re-anchor out of it. That guidance is **correct today** and stays correct
-for the whole 48h migration window, because the banded oracle remains the
-vault's oracle until `confirm_lp_oracle`. U/tALGO currently sits at `933,838`
-against an anchor of `870,000` — about 16% of room to the ceiling — so this is
-a live procedure, not a historical one.
+and re-anchor out of it. That guidance is still **correct**, though the reason
+changed at the 2026-10-17 cutover and the severity dropped with it.
 
-It becomes wrong at **migration step 8**, not before. The same applies to the
-re-anchor action in the admin UI: removing it early takes away the only remedy
-for a freeze that can still happen.
+It is no longer protecting the protocol: the vault prices off the lean oracle,
+which has no band, so a banded-oracle freeze can no longer gate borrowing or
+liquidations. What it now protects is the **rollback target** (§1b). The band
+is still live on `3644230020`, U/tALGO still sits near its ceiling, and a
+freeze there would go unnoticed precisely because nothing user-facing breaks —
+leaving a dead feed behind the only route back off the lean oracle.
+
+So it becomes wrong at **migration step 8**, not before, exactly as originally
+written. The same applies to the re-anchor action in the admin UI. The one
+change: this is now a lower-urgency procedure that nothing will alert you to,
+which is an argument for the independent cross-check in §3b covering the
+standby oracle too, not just the live one.
 
 ---
 
