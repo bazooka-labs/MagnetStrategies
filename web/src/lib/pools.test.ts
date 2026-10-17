@@ -121,11 +121,31 @@ describe("combining venues", () => {
   it("leaves farmApr null unless a venue actually farms", () => {
     // A blended zero must not light up the Farming badge.
     expect(combineMetrics([m(100, 5), m(100, 5)]).farmApr).toBeNull();
+  });
+
+  it("dilutes a farm across the venues that do NOT have one", () => {
+    // This assertion used to expect 10 — it encoded the bug rather than the
+    // intent, which is why the bug shipped. Half the pair's liquidity earns a
+    // 10% farm and half earns none, so a dollar in the pair earns 5%.
     const farming = combineMetrics([
       { tvlUsd: 100, feeApr: 5, farmApr: 10, totalApr: 15, farmLive: true },
       { tvlUsd: 100, feeApr: 5, farmApr: null, totalApr: 5, farmLive: false },
     ]);
-    expect(farming.farmApr).toBeCloseTo(10, 6);
+    expect(farming.farmApr).toBeCloseTo(5, 6);
+  });
+
+  it("keeps fee + farm equal to the headline total", () => {
+    // The invariant the card displays, and the one that would have caught the
+    // U/ALGO error: it read Fee 3.18 + Farm 7.45 against a Total of 6.53,
+    // because the farm was averaged over only the farming venue's TVL while the
+    // total was averaged over both. Live shape, uneven TVL on purpose — equal
+    // weights hide a weighting bug.
+    const c = combineMetrics([
+      { tvlUsd: 2478.45, feeApr: 3.1493, farmApr: null, totalApr: 3.1493, farmLive: false },
+      { tvlUsd: 2019.3, feeApr: 3.2228, farmApr: 7.4528, totalApr: 10.6756, farmLive: true },
+    ]);
+    expect(c.feeApr! + c.farmApr!).toBeCloseTo(c.totalApr!, 6);
+    expect(c.farmApr).toBeCloseTo(3.3458, 3);
   });
 
   it("carries farmLive over from any one venue", () => {

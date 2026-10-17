@@ -336,9 +336,32 @@ export function combineMetrics(parts: PoolMetrics[]): PoolMetrics {
   const tvlUsd = tvls.length ? tvls.reduce((a, b) => a + b, 0) : null;
 
   const blend = (key: "feeApr" | "farmApr" | "totalApr"): number | null => {
+    /**
+     * A missing farm is a real ZERO. A missing fee or total is an UNKNOWN.
+     *
+     * That asymmetry is the whole of it. Dropping nulls is right for fee and
+     * total — a venue that failed to report should not be averaged in as 0%,
+     * which would understate the pair. But `farmApr: null` on a venue that
+     * reported fine means "no farm here", and dropping it took the farm average
+     * over only the FARMING venue's TVL.
+     *
+     * Measured on U/ALGO, 2026-10-16: Tinyman $2,478 at no farm, Pact $2,019
+     * farming 7.45%. The card read Fee 3.18% + Farm 7.45% against a Total of
+     * 6.53% — because 7.45% was Pact's own rate, undiluted, as though the whole
+     * pair earned it. A dollar in the pair earns 7.45 x 2019/4498 = 3.35%, and
+     * 3.18 + 3.35 is the 6.53 the total already said.
+     *
+     * The total was never wrong. The farm figure was, and it was the optimistic
+     * direction — the one a supplier would act on.
+     *
+     * A venue whose read failed outright carries tvlUsd null, so w = 0 and
+     * folding it in at 0% changes nothing.
+     */
+    const nullIsZero = key === "farmApr";
     const rows = parts
       .map((m) => ({ apr: m[key], w: m.tvlUsd ?? 0 }))
-      .filter((r): r is { apr: number; w: number } => r.apr != null);
+      .filter((r) => r.apr != null || (nullIsZero && r.w > 0))
+      .map((r) => ({ apr: r.apr ?? 0, w: r.w }));
     if (!rows.length) return null;
     const weight = rows.reduce((a, r) => a + r.w, 0);
     if (weight <= 0) return rows.reduce((a, r) => a + r.apr, 0) / rows.length;
