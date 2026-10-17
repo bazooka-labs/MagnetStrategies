@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import algosdk from "algosdk";
-import { getOracleHealth, getOracleSwapState } from "./magnetfiReads";
+import { getActiveOracleId, getOracle, getOracleHealth, getOracleRoles, getOracleSwapState } from "./magnetfiReads";
 import { ACTIVE, ACTIVE_ORACLE_POOLS, ACTIVE_POOL_WIRING } from "./magnetfi";
 
 // Keyed off the ORACLE's pool set, which is what getOracleHealth iterates.
@@ -202,5 +202,189 @@ describe("which oracle the vault is reading", () => {
     const st = await getOracleSwapState(fakeVault({}));
     expect(st.activeOracle).toBe(ACTIVE.oracle);
     expect(st.driftedFromConstant).toBe(false);
+  });
+});
+
+/**
+ * The oracle id is asked of the vault, not assumed.
+ *
+ * These need an algod that DISTINGUISHES apps. `fakeAlgod` above returns the
+ * same global state for every id, so it cannot tell "read the vault's answer"
+ * from "read the constant" — a test written on it would pass either way, which
+ * is the failure mode this file was rewritten to avoid in the first place.
+ */
+function routedAlgod(byApp: Record<number, Record<string, number>>) {
+  const seen: number[] = [];
+  const algod = {
+    getApplicationByID: (id: number | bigint) => {
+      const n = Number(id);
+      seen.push(n);
+      const gs = Object.entries(byApp[n] ?? {}).map(([k, uint]) => ({ key: k, value: { type: 2, uint } }));
+      return { do: async () => ({ params: { globalState: gs } }) };
+    },
+  } as unknown as algosdk.Algodv2;
+  return { algod, seen };
+}
+
+const VAULT_KEY = Buffer.from("lp_oracle_app_id").toString("base64");
+const REPOINTED = 424_242;
+
+describe("reads follow the vault's oracle, not the compiled-in constant", () => {
+  it("resolves the oracle the vault actually points at", async () => {
+    const { algod } = routedAlgod({ [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED } });
+    expect(await getActiveOracleId(algod)).toBe(REPOINTED);
+  });
+
+  it("reads the PRICE from that oracle, not from ACTIVE.oracle", async () => {
+    // The real regression: after a repoint, getOracle must stop serving the
+    // retired oracle's price. Both apps carry a price for the same pool and
+    // they differ, so the returned number names which one was read.
+    const { algod, seen } = routedAlgod({
+      [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED },
+      [ACTIVE.oracle]: { [key("lp_price_", FIRST.poolId)]: 1_000_000 },
+      [REPOINTED]: { [key("lp_price_", FIRST.poolId)]: 2_000_000 },
+    });
+    const o = await getOracle(algod, FIRST.poolId);
+    expect(o.price).toBe(2);
+    expect(seen).toContain(REPOINTED);
+    expect(seen).not.toContain(ACTIVE.oracle);
+  });
+
+  it("lets a caller override, so the panel can watch the PENDING oracle", async () => {
+    // A queued oracle is by definition not the vault's yet; monitoring it
+    // before the confirm is the whole point of the override.
+    const { algod, seen } = routedAlgod({
+      [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED },
+      [999_999]: { [key("lp_price_", FIRST.poolId)]: 3_000_000 },
+    });
+    expect((await getOracle(algod, FIRST.poolId, 999_999)).price).toBe(3);
+    expect(seen).not.toContain(ACTIVE.vault);   // no needless vault read
+  });
+
+  it("falls back to the constant rather than failing the read", async () => {
+    // A vault read that throws must not blank the price UI.
+    const algod = {
+      getApplicationByID: (id: number | bigint) => ({
+        do: async () => {
+          if (Number(id) === ACTIVE.vault) throw new Error("algod down");
+          return { params: { globalState: [] } };
+        },
+      }),
+    } as unknown as algosdk.Algodv2;
+    expect(await getActiveOracleId(algod)).toBe(ACTIVE.oracle);
+  });
+
+  it("treats an unset vault key as 'use the constant'", async () => {
+    const { algod } = routedAlgod({ [ACTIVE.vault]: {} });
+    expect(await getActiveOracleId(algod)).toBe(ACTIVE.oracle);
+  });
+});
+
+/**
+ * The other two functions that changed signature.
+ *
+ * `getOracleHealth` and `getOracleRoles` also went from a defaulted constant to
+ * resolving from the vault, and neither had a test for that path — the only
+ * existing getOracleHealth coverage runs on `fakeAlgod`, which answers every
+ * app id with the same state and so cannot tell the two apart.
+ */
+function routedAlgodMixed(
+  byApp: Record<number, Record<string, { uint?: number; bytes?: string }>>,
+) {
+  const seen: number[] = [];
+  return {
+    seen,
+    algod: {
+      getApplicationByID: (id: number | bigint) => {
+        const n = Number(id);
+        seen.push(n);
+        const gs = Object.entries(byApp[n] ?? {}).map(([key, v]) => ({
+          key,
+          value: v.bytes !== undefined
+            ? { type: 1, bytes: v.bytes, uint: 0 }
+            : { type: 2, uint: v.uint ?? 0 },
+        }));
+        return { do: async () => ({ params: { globalState: gs } }) };
+      },
+    } as unknown as algosdk.Algodv2,
+  };
+}
+
+describe("getOracleHealth follows the vault too", () => {
+  it("reads health from the repointed oracle, not the constant", async () => {
+    const { algod, seen } = routedAlgod({
+      [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED },
+      [ACTIVE.oracle]: { [key("lp_ts_", FIRST.poolId)]: 111 },
+      [REPOINTED]: { [key("lp_ts_", FIRST.poolId)]: 222 },
+    });
+    const rows = await getOracleHealth(algod);
+    expect(rows.find((r) => r.id === FIRST_ID)!.ts).toBe(222);
+    expect(seen).not.toContain(ACTIVE.oracle);
+  });
+
+  it("still honours an explicit id, for the pending oracle", async () => {
+    const { algod, seen } = routedAlgod({
+      [777]: { [key("lp_ts_", FIRST.poolId)]: 333 },
+    });
+    const rows = await getOracleHealth(algod, 777);
+    expect(rows.find((r) => r.id === FIRST_ID)!.ts).toBe(333);
+    expect(seen).not.toContain(ACTIVE.vault);
+  });
+});
+
+describe("getOracleRoles follows the vault too", () => {
+  it("reads roles from the repointed oracle", async () => {
+    const addr = algosdk.decodeAddress(
+      "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A").publicKey;
+    const b64 = Buffer.from(addr).toString("base64");
+    const { algod, seen } = routedAlgodMixed({
+      [ACTIVE.vault]: { [VAULT_KEY]: { uint: REPOINTED } },
+      [REPOINTED]: { [Buffer.from("admin").toString("base64")]: { bytes: b64 } },
+    });
+    const roles = await getOracleRoles(algod);
+    expect(roles.admin).toBe("KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A");
+    expect(seen).toContain(REPOINTED);
+  });
+});
+
+describe("zero is treated as 'resolve', not as app 0", () => {
+  it("resolves from the vault when passed an explicit 0", async () => {
+    // The resolver guards with `||` and the consumers used to guard with `??`,
+    // so an explicit 0 would have reached getApplicationByID(0) and thrown.
+    // ACTIVE.oracle is 0 in the documented pre-deploy shape, which is exactly
+    // where a 0 could surface.
+    const { algod } = routedAlgod({
+      [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED },
+      [REPOINTED]: { [key("lp_price_", FIRST.poolId)]: 5_000_000 },
+    });
+    expect((await getOracle(algod, FIRST.poolId, 0)).price).toBe(5);
+  });
+});
+
+describe("the fallback announces itself", () => {
+  it("warns when the vault read fails, naming both app ids", async () => {
+    // The fallback is the remediation for a silent wrong-oracle read, so the
+    // signal is the feature. Without this test, deleting the warn is invisible
+    // — which is exactly what it is there to prevent.
+    const algod = {
+      getApplicationByID: () => ({ do: async () => { throw new Error("algod down"); } }),
+    } as unknown as algosdk.Algodv2;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await getActiveOracleId(algod)).toBe(ACTIVE.oracle);
+      expect(warn).toHaveBeenCalledOnce();
+      const msg = String(warn.mock.calls[0][0]);
+      expect(msg).toContain(String(ACTIVE.vault));
+      expect(msg).toContain(String(ACTIVE.oracle));
+    } finally { warn.mockRestore(); }
+  });
+
+  it("does NOT warn on the ordinary path", async () => {
+    const { algod } = routedAlgod({ [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await getActiveOracleId(algod);
+      expect(warn).not.toHaveBeenCalled();
+    } finally { warn.mockRestore(); }
   });
 });

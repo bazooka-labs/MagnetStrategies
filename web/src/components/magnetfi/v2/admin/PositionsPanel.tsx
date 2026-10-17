@@ -8,7 +8,7 @@ import {
   ACTIVE, VAULT_TYPES, poolWiring, healthFactor, liquidationBuffer,
   projectedAccruedInterest, formatUsd, pct,
 } from "@/lib/magnetfi";
-import { getAllPositions, getOracle, type AdminPosition, type OracleInfo } from "@/lib/magnetfiReads";
+import { getAllPositions, getActiveOracleId, getOracle, type AdminPosition, type OracleInfo } from "@/lib/magnetfiReads";
 import * as ops from "@/lib/magnetfiOps";
 import { Panel } from "../shared";
 
@@ -94,7 +94,10 @@ export function PositionsPanel() {
     try {
       const ps = await getAllPositions(algodClient);
       const poolIds = [...new Set(ps.map((p) => p.poolId))];
-      const od = await Promise.all(poolIds.map((pid) => getOracle(algodClient, pid).then((o) => [pid, o] as const)));
+      // Resolve the vault's oracle ONCE for the batch; getOracle would
+      // otherwise read the vault again for every pool in this list.
+      const oid = await getActiveOracleId(algodClient);
+      const od = await Promise.all(poolIds.map((pid) => getOracle(algodClient, pid, oid).then((o) => [pid, o] as const)));
       setOracles(Object.fromEntries(od));
       setPositions(ps);
     } catch (e) {

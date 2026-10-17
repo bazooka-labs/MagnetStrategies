@@ -37,8 +37,51 @@ const poolKey = (prefix: string, poolId: number = ACTIVE.poolId) =>
 
 export type OracleInfo = { price: number; ts: number; fresh: boolean };
 
-export async function getOracle(algod: algosdk.Algodv2, poolId: number = ACTIVE.poolId): Promise<OracleInfo> {
-  const app = await algod.getApplicationByID(ACTIVE.oracle).do();
+/**
+ * The oracle the VAULT is reading, asked of the vault rather than assumed.
+ *
+ * `ACTIVE.oracle` is a guess that is correct only until the next repoint, and
+ * on 2026-10-17 it was briefly wrong in production by design: the constant had
+ * to be edited and shipped BEFORE `confirm_lp_oracle` or the UI would have
+ * reported the retired oracle's price and freshness across the cutover. That
+ * ordering worked, but only because someone remembered it. This removes the
+ * requirement to remember.
+ *
+ * Falls back to the constant when the vault read fails. A price display must
+ * not go blank because one extra call did — and the constant is right whenever
+ * no migration is in flight, which is almost always.
+ *
+ * But the fallback is WARNED, not silent. The window where it is wrong is
+ * exactly the window where it matters: between a repoint and the constant
+ * being shipped, a flaky vault read sends every price on the page to the
+ * oracle the vault just stopped using. The write path is unaffected — the
+ * transaction builders resolve the vault's real oracle through simulate — so
+ * this misleads a reader rather than mispricing a trade. That is still worth
+ * a line in the console rather than nothing at all.
+ */
+export async function getActiveOracleId(algod: algosdk.Algodv2): Promise<number> {
+  try {
+    const app = await algod.getApplicationByID(ACTIVE.vault).do();
+    return globalUint(app, new Uint8Array(Buffer.from("lp_oracle_app_id"))) || ACTIVE.oracle;
+  } catch (e) {
+    console.warn(
+      `[magnetfi] could not read lp_oracle_app_id from vault ${ACTIVE.vault}; ` +
+      `falling back to the compiled-in oracle ${ACTIVE.oracle}. If a repoint has ` +
+      `happened and this constant is behind, prices on this page are from the ` +
+      `WRONG oracle.`, e);
+    return ACTIVE.oracle;
+  }
+}
+
+/**
+ * `oracleId` is optional and resolves from the VAULT when omitted. Callers that
+ * read several pools at once should resolve it once and pass it, rather than
+ * paying a vault read per pool.
+ */
+export async function getOracle(
+  algod: algosdk.Algodv2, poolId: number = ACTIVE.poolId, oracleId?: number,
+): Promise<OracleInfo> {
+  const app = await algod.getApplicationByID(oracleId || await getActiveOracleId(algod)).do();
   const price = globalUint(app, poolKey("lp_price_", poolId)) ?? 0;
   const ts = globalUint(app, poolKey("lp_ts_", poolId)) ?? 0;
   const now = Math.floor(Date.now() / 1000);
@@ -115,15 +158,22 @@ export async function getOracleSwapState(algod: algosdk.Algodv2): Promise<Oracle
 }
 
 /**
- * `oracleId` defaults to the compiled-in constant so existing callers and tests
- * are unaffected; the panel passes the vault's answer, and passes the PENDING
- * oracle too during a migration window, where it must be fresh before the
- * confirm lands or the cutover arrives into a frozen protocol.
+ * `oracleId` omitted means "whichever oracle the vault is reading", resolved
+ * from the vault.
+ *
+ * Two callers, and they differ on purpose. OracleHealthPanel passes an id
+ * explicitly because it also monitors the PENDING oracle during a migration
+ * window — that one is by definition not the vault's yet, and it must be fresh
+ * before the confirm lands or the cutover arrives into a frozen protocol.
+ * OperationsPanel's "register all pools" step omits it, so the `add_pool` seed
+ * prices for a NEW oracle come from whichever oracle the vault is actually
+ * reading rather than from a constant that may be mid-migration. That seeding
+ * path is the reason the fallback below must not be silent.
  */
 export async function getOracleHealth(
-  algod: algosdk.Algodv2, oracleId: number = ACTIVE.oracle,
+  algod: algosdk.Algodv2, oracleId?: number,
 ): Promise<PoolOracleHealth[]> {
-  const app = await algod.getApplicationByID(oracleId).do();
+  const app = await algod.getApplicationByID(oracleId || await getActiveOracleId(algod)).do();
   const now = Math.floor(Date.now() / 1000);
   // Every pool the ORACLE carries, not just the vault-wired ones — a feed that
   // is not posting has to be visible whether or not anyone can borrow on it.
@@ -160,9 +210,9 @@ export async function getOracleHealth(
 export type OracleRoles = { admin: string; guardian: string; authorizedUpdater: string };
 
 export async function getOracleRoles(
-  algod: algosdk.Algodv2, oracleId: number = ACTIVE.oracle,
+  algod: algosdk.Algodv2, oracleId?: number,
 ): Promise<OracleRoles> {
-  const app = await algod.getApplicationByID(oracleId).do();
+  const app = await algod.getApplicationByID(oracleId || await getActiveOracleId(algod)).do();
   const read = (k: string): string => {
     const target = Buffer.from(k).toString("base64");
     for (const kv of app.params.globalState ?? []) {
