@@ -9,6 +9,19 @@
  * GitHub is not here: lucide ships it, so importing a second source for the
  * same mark would be the drift this file exists to prevent.
  */
+
+/**
+ * The canonical links. One place, because they had already drifted: the navbar
+ * carried a Discord invite (naqFXmfM) that had stopped working, in two separate
+ * hardcoded copies, while a newer one was handed over for the landing page. A
+ * dead invite on every page of the site is the kind of thing nobody reports —
+ * they just leave.
+ */
+export const SOCIALS = {
+  x: "https://x.com/Bazooka_Labs",
+  discord: "https://discord.gg/XyTPkN2e",
+  github: "https://github.com/bazooka-labs/MagnetStrategies",
+} as const;
 export function XIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">

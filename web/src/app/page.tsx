@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Github } from "lucide-react";
-import { XIcon, DiscordIcon } from "@/components/SocialIcons";
+import { XIcon, DiscordIcon, SOCIALS } from "@/components/SocialIcons";
 import { Navbar } from "@/components/Navbar";
 
 /** Each stage fills the hero box and centres itself inside it.
@@ -117,9 +117,9 @@ export default function LandingPage() {
               the nav — hence real hit areas rather than bare 20px glyphs. */}
           <div className="mt-2 flex items-center gap-2 animate-hero-outro-3">
             {([
-              ["https://x.com/Bazooka_Labs", "X / Twitter", <XIcon key="x" className="h-5 w-5" />],
-              ["https://discord.gg/XyTPkN2e", "Discord", <DiscordIcon key="d" className="h-5 w-5" />],
-              ["https://github.com/bazooka-labs/MagnetStrategies", "GitHub", <Github key="g" className="h-5 w-5" />],
+              [SOCIALS.x, "X / Twitter", <XIcon key="x" className="h-5 w-5" />],
+              [SOCIALS.discord, "Discord", <DiscordIcon key="d" className="h-5 w-5" />],
+              [SOCIALS.github, "GitHub", <Github key="g" className="h-5 w-5" />],
             ] as const).map(([href, label, icon]) => (
               <a
                 key={label}
