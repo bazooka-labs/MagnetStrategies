@@ -11,7 +11,7 @@ what is built, what is next, and which document to trust for what._
 | | | |
 |---|---|---|
 | **LP Oracle** | `3741272132` | **lean** — no band. The vault's oracle since 2026-10-17 19:01Z |
-| Banded oracle | `3644230020` | the previous live oracle. **Still fed, deliberately** — see §1b |
+| Banded oracle | `3644230020` | **RETIRED 2026-10-17.** Nothing posts to it; the vault does not read it. Permanent on chain (no delete handler) |
 | PSM v3 | `3644230181` | reserve **$151.40 USDC** |
 | Vault | `3671287267` | **3 open positions**, all the founder's own wallets |
 | mUSD ASA | `3615600399` | **101.40** circulating |
@@ -68,35 +68,70 @@ worst was **0.0009%**. Larger instantaneous readings (up to ~0.14%) are sampling
 offset between two independently-scheduled bots, not disagreement — they
 collapse the moment the trailing oracle posts.
 
-**Step 8 is deliberately NOT done.** [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md)
-step 8 retires the banded oracle by shutting down its bot and removing its UI.
-That stays open through the stabilisation window, because the same spec's
-rollback paragraph depends on it: rollback is `propose_lp_oracle` + another 48h
-— there is no `set_lp_oracle`, no emergency path, and `cancel_pending_lp_oracle`
-acts only on a *pending* proposal.
+**Step 8 is DONE — the banded oracle is retired.** 2026-10-17, by decision:
+we are running one oracle, not keeping a standby.
 
-How much the standby needs to be *running* is weaker than first written here.
-Rollback is gated by the same 48h timelock, so a proposal gives 48 hours of
-notice to revive a feed that warms up in ~10 minutes, and the bot, its config
-and the launcher are all in this repo. The banded instance died silently at
-2026-10-17 18:56Z and it cost nothing.
+Rollback was the only argument for keeping `3644230020` fed, and it was always
+weaker than it first looked here: rollback carries the same 48h timelock, so a
+proposal gives 48 hours of notice to revive a feed that warms up in ten
+minutes, and the bot, both configs and the launcher are all in this repo. The
+banded instance died silently at 18:56Z and cost nothing. Reviving it is a
+`git pull` and one command.
 
-What does degrade while it sits cold is the **band**: ±25% against a stored
-anchor and ±50% against the last price, both frozen at 18:56Z. The longer the
-gap, the likelier a restart is band-rejected and needs the admin re-anchor
-action first. That is the argument for keeping it fed — not staleness itself,
-and not protocol safety.
+Removed with it: the second bot from `start_oracles.cmd` (it would otherwise
+have restarted the banded feed at the next logon), `setPriceAnchor` and the
+"Re-anchor price" admin form, the anchor/band fields on `PoolOracleHealth` and
+their panel rows, and ADMIN.md's re-anchoring procedure. The app itself cannot
+be deleted — no delete handler — so it and its ~1.5 ALGO MBR sit on chain
+forever, unread.
 
-Step 8 becomes correct once we are not going to roll back. Until then:
+### ⚠️ The bot key's compromise impact changed from bounded to unbounded
 
-- `ADMIN.md:151`'s anchor-band re-anchor procedure **stays**, and so does the
-  re-anchor action in the admin UI. A banded-oracle freeze no longer freezes
-  the protocol, but it would quietly destroy the rollback target.
-- The spec's structural fix is still open and now matters more: have the bot
-  and `getOracleHealth` read `lp_oracle_app_id` from the **vault** rather than
-  a compiled-in constant, so "pointed at the wrong oracle" stops being a step
-  anyone has to remember. `getOracleSwapState` already does this; `getOracle`
-  and the bot do not.
+This is the part of the migration that made something worse, and it is not
+hidden in a diff.
+
+ADMIN.md's bot-key row read **"bounded price movement, not unbounded"**, and
+that was true: a post had to land within ±50% of the prior one and ±25% of the
+admin anchor, so a compromised updater key bought bounded mispricing plus
+staleness. `update_lp_price` on the lean oracle
+(`LeanOracle.approval.teal:263-347`) asserts only sender, price > 0 and pool
+active, then writes — no deviation check, no bounds, no rate limit. A holder of
+`authorized_updater` can post **any price** for any pool.
+
+**The loss is still bounded, and the first draft of this section got that
+wrong.** Two limits the key does not control:
+
+- **Upward.** Over-borrowing against an inflated price mints mUSD, and
+  `psm_v3/contract.py:439` caps issuance at
+  `circulating + amount <= _total_backing()`. Backing is real USDC
+  (`_psm_usdc_balance() + _deployed_backing()`), **not** oracle-priced
+  collateral, so the same attack cannot inflate the ceiling. Headroom today is
+  ~$50 (§1). It scales with the PSM, not the oracle.
+- **Downward.** All three `trigger_*_liquidation` methods are
+  `_assert_admin()`. A crashed price seizes nothing by itself; it needs the
+  admin to act on it.
+
+§2.2b's TVL-balance invariant is often called the replacement for the band. It
+is not, twice over: it lives in the **bot**, which a key holder bypasses by
+posting directly, and it **warns rather than gates** even when it does run
+(`oracle_bot.py:887`).
+
+Consequences, in order:
+
+1. **`QX7EPGRC…` should be rotated.** It is the live `authorized_updater`, and
+   it has been pasted into shell history on two machines and stored in a
+   Windows user registry hive. The honest framing is "can mint up to the PSM's
+   free backing, and can make the admin liquidate the wrong people" — not "can
+   drain the vault". That is a smaller problem than the band's removal first
+   suggested, and it grows with the PSM reserve.
+2. **The independent cross-check is no longer a nice-to-have.** The admin
+   Oracle-health panel's "Independent" column (pool TVL ÷ issued LP tokens,
+   third-party sourced) is now the only thing that can catch a wrong-but-fresh
+   price. It is a pull mechanism nobody is obliged to look at.
+3. **§5's upward rate limit is the real fix** and is still deferred. The lean
+   oracle stores prior price and prior timestamp per pool, so the tripwire
+   needs no new state — the spec notes the 57-uint ceiling was chosen so this
+   stays possible.
 
 ### Two things this migration taught us
 
@@ -111,12 +146,15 @@ live immediately before the confirm; nothing on chain will do it for you.
 
 **A single bot instance is a single point of failure.** A power cut on
 2026-10-15 took the lean oracle down for 48h because its instance did not
-restart. That was harmless only because the oracle was not yet live. Both bots
-now auto-start at logon via
-`oracle_bot/start_oracles.cmd`, launched from a stub in the Windows Startup
-folder, each with its own `TWAP_STATE_PATH` (two bots sharing one TWAP file
-corrupts it). Verified by an actual power cycle on 2026-10-17: both returned
-with no input, fast enough that no pool approached the freshness gate.
+restart. That was harmless only because the oracle was not yet live. The feed
+now auto-starts at logon via `oracle_bot/start_oracles.cmd`, launched from a
+stub in the Windows Startup folder. Verified by an actual power cycle on
+2026-10-17, fast enough that no pool approached the freshness gate.
+
+That launcher started BOTH bots when it was verified; it starts only the lean
+one since step 8 retired the banded oracle later the same day. It still sets
+`TWAP_STATE_PATH` explicitly, because if a second bot is ever run again each
+needs its own state file — two sharing one corrupts the history.
 
 ---
 
@@ -124,9 +162,9 @@ with no input, fast enough that no pool approached the freshness gate.
 
 The oracle has frozen three times. Two were the bot's own hardcoded bounds —
 **fixed**. One, on 2026-08-21, was the *contract's* anchor band rejecting a
-perfectly valid post, and that cause is **still live until the swap confirms**.
-The fix is a new oracle with the bands deleted, swapped in behind the vault's
-existing 48h timelock — deployed and queued as of 2026-10-14, see §1b.
+perfectly valid post. That cause is **gone**: the fix was a new oracle with the
+bands deleted, swapped in behind the vault's existing 48h timelock, confirmed
+2026-10-17 19:01Z and the banded oracle retired the same day (§1b).
 The operator has accepted key-compromise risk explicitly; the bands only ever
 bounded a compromised key, and their cost — a protocol-wide freeze — is not
 accepted.
@@ -358,35 +396,42 @@ price, and the PSM invariant caps only the over-minting direction. See
 | document | status |
 |---|---|
 | **STATUS.md** (this) | current |
-| **ORACLE_LEAN_SPEC.md** | **current plan** — the next thing to build |
+| **ORACLE_LEAN_SPEC.md** | **executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this, and §5's rate limit is the one deferred piece |
 | ORACLE_V5_SPEC.md | built and proven, **deferred**; carries the notice |
 | SIGNED_PAYLOAD.md | current, describes v5's wire format |
 | REVAMP_PLAN.md | phase structure still useful; **Phase 2 is superseded** by the lean spec |
-| LP_ORACLE.md | accurate for the **live banded** oracle; its "v4" section is superseded |
+| LP_ORACLE.md | ⚠️ describes the **retired** banded oracle. Carries a stale-banner; its band/anchor/`set_price_anchor` material and its "compromised key is bounded" claim no longer describe anything live |
 | **ADMIN.md** | **accurate for what is running** — see below |
-| LAUNCH_RUNBOOK.md | accurate for adding a pool to the **banded** oracle |
+| LAUNCH_RUNBOOK.md | ⚠️ its add-a-pool procedure targets the **retired** oracle app and the wrong config file. Carries a stale-banner. Do not follow it without reading that |
 | TODO.md | its "path forward" predates both re-scopes; use this page instead |
-| AUDIT.md, AUDIT_HANDOFF.md | **historical records.** P19-03 documents the anchor band as a finding that was *addressed*; the band is now being removed deliberately. Do not rewrite the record — it is what was true then |
+| AUDIT.md, AUDIT_HANDOFF.md | **historical records.** P19-03 documents the anchor band as a finding that was *addressed*; the band was then removed deliberately on 2026-10-17. Do not rewrite the record — it is what was true then. AUDIT_HANDOFF §8.3's manipulation bound reads as a live safety argument and is not one any more, so it carries a dated note rather than an edit |
 | PSM.md, VAULT.md, LIQUIDATION.md, mUSD.md, OVERVIEW.md, FOLKS_ADAPTER.md | unaffected |
 
-### ADMIN.md is not stale yet, and must not be "fixed" early
+### ADMIN.md: swept 2026-10-17, with step 8
 
-`ADMIN.md:151` tells the operator how to recognise an **anchor-band rejection**
-and re-anchor out of it. That guidance is still **correct**, though the reason
-changed at the 2026-10-17 cutover and the severity dropped with it.
+This section used to say the anchor-band re-anchor procedure must NOT be
+"fixed" early, because the banded oracle was still the vault's oracle and
+later still the rollback target. Both reasons expired the same day.
 
-It is no longer protecting the protocol: the vault prices off the lean oracle,
-which has no band, so a banded-oracle freeze can no longer gate borrowing or
-liquidations. What it now protects is the **rollback target** (§1b). The band
-is still live on `3644230020`, U/tALGO still sits near its ceiling, and a
-freeze there would go unnoticed precisely because nothing user-facing breaks —
-leaving a dead feed behind the only route back off the lean oracle.
+`ADMIN.md`'s re-anchoring section is now a tombstone: the band, the
+`set_price_anchor` call and the "Re-anchor price" admin form are all gone, and
+the stale-pool diagnosis is rewritten around what can actually refuse a post.
 
-So it becomes wrong at **migration step 8**, not before, exactly as originally
-written. The same applies to the re-anchor action in the admin UI. The one
-change: this is now a lower-urgency procedure that nothing will alert you to,
-which is an argument for the independent cross-check in §3b covering the
-standby oracle too, not just the live one.
+**Two things in that sweep were wrong on the first pass and are worth
+recording, because both are the same mistake — naming a check that does not
+check.**
+
+- `effective_bounds_with_anchor` returns `(0,0,0)` when the oracle has no
+  anchor (`oracle_bot.py:1012`), so the per-pool `min_price`/`max_price` in
+  `config.lean.json` are **inert**. That is deliberate — a bot-side bound that
+  refuses to post is the same halt as a band that refuses to accept — but it
+  means the config reads as a guardrail it is not.
+- The §2.2b TVL-balance invariant **warns and keeps posting**
+  (`oracle_bot.py:887`). It is not "the replacement bound", and §6 already
+  recorded that it warns rather than gates.
+
+What actually gates a post: `asset_price_bounds`, the CompX divergence check,
+and the spot-vs-TWAP upward spike block. ADMIN.md carries that as a table.
 
 ---
 

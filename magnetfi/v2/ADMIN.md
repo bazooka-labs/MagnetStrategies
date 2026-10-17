@@ -10,19 +10,18 @@ This is a deliberate choice. Trustless governance adds complexity and attack sur
 
 | Role | Key type | Powers |
 |---|---|---|
-| **Admin** (hot) | Hardware wallet | Rates/LTV/thresholds, all liquidations, fee/reserve management, oracle-bot authorization, price re-anchoring, opt-ins, *proposing* the timelocked oracle/vault repoints, pause |
+| **Admin** (hot) | Hardware wallet | Rates/LTV/thresholds, all liquidations, fee/reserve management, oracle-bot authorization, opt-ins, *proposing* the timelocked oracle/vault repoints, pause |
 | **Guardian** (cold) | Cold multisig | Pause **and** unpause, **cancel** any queued timelocked change (the veto), and propose admin rotation (recovery). Never signs routine transactions. |
 
 **What the admin can do:**
 - Trigger all liquidations; set rates / LTV / thresholds; manage PSM reserves; collect revenue
-- Authorize/rotate the oracle bot key; re-anchor oracle prices
+- Authorize/rotate the oracle bot key
 - *Propose* (not instantly execute) oracle/vault-contract repoints — these are timelocked 48h
 - Pause new borrowing / minting
 
 **What the admin canNOT do (contract-enforced):**
 - Withdraw PSM USDC below total circulating mUSD
 - Trigger micro-liquidation before 90 days of non-payment
-- Post prices with >50% deviation from prior, or >±25% from the admin anchor (oracle guards)
 - Set rates above 3000 bps (30% APR)
 - **Instantly** repoint the LP oracle or the registered vault contract — these wait out a 48h timelock during which the guardian can cancel
 - **Unpause** after the guardian has paused (only the guardian can lift a guardian-set lock)
@@ -74,7 +73,7 @@ Separate hot wallet authorized only to post LP prices. Separate from both admin 
 | Permissions | `update_lp_price()` only across LP oracle contract |
 | Storage | Server environment variable (encrypted); never in shell history |
 | Operations frequency | Every 5 minutes (automated) |
-| Compromise impact | **Bounded price movement, not unbounded.** A compromised bot can move price only within ±50% of the prior post AND ±25% of the admin anchor before it needs the admin to re-anchor (which a compromised bot cannot do). Worst case is bounded mispricing + staleness, not arbitrary drift. Rotate via `set_authorized_updater()`. |
+| Compromise impact | ⚠️ **The PRICE is unbounded as of 2026-10-17; the LOSS is not.** This row read "bounded price movement, not unbounded" while the banded oracle was live — a post had to sit within ±50% of the prior one and ±25% of the admin anchor. `update_lp_price` on the lean oracle (`LeanOracle.approval.teal:263-347`) asserts only sender, price > 0, and pool active, then writes. No deviation check, no bounds, no rate limit. So a holder of this key can post **any** price for any pool.<br><br>What that is worth to an attacker is bounded by two things the key does not control. **Upward:** over-borrowing against an inflated price mints mUSD, and `psm_v3/contract.py:439` caps issuance at `circulating + amount <= _total_backing()`, where backing is real USDC — not oracle-priced collateral — so it cannot be inflated by the same attack. Today that headroom is ~$50 (§1: $151.40 reserve, $101.40 circulating) and it scales with reserves, so this bound tightens or loosens with the PSM, not with the oracle. **Downward:** all three `trigger_*_liquidation` methods are `_assert_admin()`, so a crashed price does not let the key holder seize anything; it needs the admin to act on it.<br><br>Rotate via `set_authorized_updater()`. The right mental model is "can mint up to the PSM's free backing and can make the admin liquidate the wrong people", not "can drain the vault". |
 
 ---
 
@@ -146,15 +145,21 @@ higher threshold (e.g. a pure stable/stable collateral pair) would require **rec
 
 **Rate change note:** rate changes take effect on next accrual event per position. Borrowers are not notified on-chain. The frontend must display the current rate and alert borrowers when rates change.
 
-**Oracle re-anchoring note:** the LP oracle bounds posted prices to ±25% of an admin anchor. During a genuine large price move, call `set_price_anchor(pool_id, new_anchor)` (LP Oracle, admin) to follow it; otherwise the bot's posts will be rejected once they hit the band edge. This manual step is the cumulative-drift backstop a compromised bot cannot perform.
+**Oracle re-anchoring: removed 2026-10-17.** This section described the ±25% anchor band and the `set_price_anchor` call that followed a genuine large move. Both are gone with the banded oracle (ORACLE_LEAN_SPEC.md §6 step 8). The lean oracle has no anchor, no band, and does not implement `set_price_anchor`; the admin panel's "Re-anchor price" form has been removed because it would have called a method the live app does not have.
 
-**Recognizing an anchor-band rejection (happened 2026-08-21, U/tALGO).** Symptom: a pool's price goes **stale on the UI while the bot is running and logging no pricing errors** — the bot computes a valid price and passes its own guards/CompX check, but the *post transaction* fails:
-```
-logic eval error: assert failed pc=512, opcodes=divw; >=; assert  (app=3644230020)  "above/below anchor band"
-```
-Cause: the LP price has drifted past the ±25% band around a now-stale anchor (e.g. U/tALGO legitimately rose past its anchor ceiling as $U appreciated). It is **not** the bot, not fees, not the price being wrong.
-- **Fix (self-serve, ~1 min):** `/magnetfi` → Admin → Operations → **"Re-anchor price"** → Pool ID + current price (mUSD/LP, in dollars, e.g. `0.74`). Next bot cycle (~5 min) posts again. A restart only "fixes" it if the price has since drifted back inside the band — re-anchor is the durable fix.
-- **Prevent:** re-anchor when a pool nears its band edge, keeping the anchor near the live price. A staleness/anchor-proximity alert is planned to flag this automatically — see [TODO.md → Bot redundancy & alerting](./TODO.md) (shelved 2026-08-25).
+A pool can no longer freeze from a band rejection — removing that failure mode is the entire reason the lean oracle exists, after U/tALGO froze this way on 2026-08-21. What it costs is the only on-chain bound on a posted price; see the bot-key compromise row above.
+
+**A stale pool now means something different.** The old first guess was a band rejection with the bot healthy. There is no such thing any more: if a pool goes stale, either the process is dead or the bot is refusing to post on one of its own checks. Check the process first — the 2026-10-15 outage was simply a bot that never restarted after a power cut — then grep the log for `refusing to post`.
+
+**Know which checks can actually produce that line**, because two plausible candidates cannot:
+
+| Check | Gates a post? | Where |
+|---|---|---|
+| `asset_price_bounds` (per underlying asset) | **yes** | `oracle_bot.py:610` |
+| CompX divergence | **yes** | `oracle_bot.py:758` |
+| spot-vs-TWAP upward spike | **yes** | `oracle_bot.py:1173` |
+| per-pool `min_price`/`max_price` in config.lean.json | **no — inert** | `effective_bounds_with_anchor` returns `(0,0,0)` with no anchor (`:1012`), so the floor/ceiling guards are skipped. Deliberate: a bot-side bound that refuses to post is the same halt as a band that refuses to accept. |
+| §2.2b TVL-balance invariant | **no — warns only** | `oracle_bot.py:887`, "Still posting; this is a warning, not a gate" |
 
 #### Liquidations
 
@@ -245,8 +250,8 @@ The admin (or an automated monitoring script) should track:
 
 | Metric | Threshold | Action |
 |---|---|---|
-| Oracle bot last update | >10 min stale | Alert. If the bot is running with no pricing errors, check for an **anchor-band rejection** (`pc=512` in bot logs — see re-anchoring note) and re-anchor; otherwise investigate/restart |
-| Any pool: posted price vs anchor band | within ~5% of a band edge | **Re-anchor to current price** before posts start getting rejected (proactive) |
+| Oracle bot last update | >10 min stale | Alert. Check the process is alive first — a power cut left it down 48h on 2026-10-15. If it is running, look for `refusing to post` (asset bounds, CompX divergence, or the spot-vs-TWAP spike block — see the table above for what cannot produce it). There is no band rejection to look for any more. |
+| Any pool: posted vs independent price | >5% divergence | Investigate before acting. Nothing on chain bounds the posted price now, so this cross-check (admin → Oracle health) is the substitute for the band. |
 | Oracle bot wallet ALGO (`authorized_updater`) | <2 ALGO | Top up — the bot pays fees per post |
 | Any vault: `current_time - last_payment_timestamp` | >75 days | Flag; begin borrower outreach |
 | Any vault: `current_time - last_payment_timestamp` | >90 days | Eligible for micro-liq; admin discretion on timing |
@@ -272,7 +277,7 @@ Order matters — do not skip steps or reorder.
 - [ ] **Verify wBTC ASA decimal count on Algorand mainnet** — actual decimals must match the value hardcoded in the oracle bot decimal config table (AUD-006)
 - [ ] **Confirm Tinyman v2 pool account address + AMM validator app id** for each pool (the bot reads reserves from the pool account's LOCAL state — see P19-01). Set `pool_address` and `amm_validator_app_id` in `oracle_bot/config.json`.
 - [ ] Prepare initial risk parameter values for all supported pool types: `rate_bps`, `ltv_bps`, `liq_threshold_bps`, `lp_asa_id` per pool (confirm `liq_threshold_bps > ltv_bps` for each pool before deploying)
-- [ ] Confirm initial oracle prices for each pool (used as `initial_price` to `add_pool()` — sets both the live price and the ±25% anchor)
+- [ ] Confirm initial oracle prices for each pool (used as `initial_price` to `add_pool()` — on the lean oracle this is a SEED only; it sets `lp_ts_`, so the pool reads "fresh" for 30 minutes whether or not a bot has ever posted to it)
 
 ### Deploy Contracts (admin wallet, via deploy wizard or script)
 > The deploy wizard was removed from the live admin panel post-launch (retained in git — re-add to `AdminTab.tsx` to use). The method calls below are unchanged. Frontend map: [web/README.md](../../web/README.md).
@@ -284,7 +289,7 @@ Order matters — do not skip steps or reorder.
 
 ### Initialize LP Oracle
 - [ ] Call `set_authorized_updater(bot_wallet_address)`
-- [ ] For each supported pool: call `add_pool(pool_id, initial_price)` — sets live price AND the ±25% drift anchor (AUD-043 / P19-03)
+- [ ] For each supported pool: call `add_pool(pool_id, initial_price)` — seeds the live price. No anchor is set: the lean oracle has none (AUD-043 / P19-03 applied to the retired banded oracle)
 - [ ] Verify price and timestamp stored for each pool; confirm `lp_price_[pool_id] > 0`
 
 ### Initialize PSM
@@ -326,7 +331,7 @@ Order matters — do not skip steps or reorder.
 - Repayments, interest payments, and collateral additions remain open (oracle not required for these)
 - Action: restart bot immediately; if bot infrastructure is compromised, deploy replacement with new wallet and call `set_authorized_updater()`
 - **Post-restart freshness gap (Pass 26/27):** after a >30-min outage the bot needs ~3 fresh readings (~15 min at the 5-min poll) to refill the TWAP window before it posts again; borrows and liquidations stay blocked during that window. Fail-safe, but liquidators must wait for the first post after recovery.
-- **CompX second-source monitoring:** the bot cross-checks $U against CompX's Flux oracle (`3307588794`). If CompX goes stale/unavailable, the bot restricts to flat / ≤10%-decline posts and refuses any increase — a *bounded* fail-stale, hard-capped at −25% by the on-chain anchor. Monitor CompX freshness and re-anchor discipline, and run a redundant bot instance before scaling TVL (AUD-004).
+- **CompX second-source monitoring:** the bot cross-checks $U against CompX's Flux oracle (`3307588794`). If CompX goes stale/unavailable, the bot restricts to flat / ≤10%-decline posts and refuses any increase. This used to be hard-capped at −25% by the on-chain anchor as well; since 2026-10-17 that backstop is gone, so the restriction is enforced **only by the bot's own code** and does nothing against a compromised key. Monitor CompX freshness, and run a redundant bot instance before scaling TVL (AUD-004).
 
 **PSM reserve critically low:**
 - If PSM USDC balance approaches circulating mUSD, vault ceiling approaches zero

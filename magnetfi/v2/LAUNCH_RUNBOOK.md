@@ -1,5 +1,16 @@
 # MagnetFi v3 — Mainnet Launch Runbook
 
+> ⚠️ **STALE IN ONE IMPORTANT PLACE — read before adding a pool (2026-10-17).**
+> The oracle steps in this runbook target the **retired banded oracle**
+> `3644230020` and `oracle_bot/config.json`. The live oracle is the lean one,
+> `3741272132`, fed from `config.lean.json`. Following the add-a-pool procedure
+> as written registers a pool on a dead app: the vault never prices it, the
+> live bot is never told about it, and the diagnosis path it gives you
+> (re-anchor) no longer exists. There is no anchor and no `set_price_anchor`
+> on the lean oracle, so every band/anchor instruction below is inert.
+> See [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md) step 8 and
+> [STATUS.md](./STATUS.md) §1b. Everything non-oracle here is still accurate.
+
 Every privileged step is **Pera-signed by the connected admin/guardian wallet** through the
 `/magnetfi` admin panel — no seed phrase, no script. Follow in order. Detailed method-level notes:
 [ADMIN.md](./ADMIN.md#deployment-procedure-v2). Launch posture: **small ceiling, buffer ≥ 70%,
@@ -114,16 +125,23 @@ admin-adjustable; raise toward 70/80 once the liquidation bot is proven.
 
 ## ⚠️ Order matters
 
-> ### `min_price` / `max_price` are now DERIVED — leave them out
+> ### `min_price` / `max_price` do nothing — leave them out
 >
-> The bot reads `lp_anchor_<pool_id>` off the oracle **every cycle** and enforces
-> `ceil(anchor × 0.76) … floor(anchor × 1.24)`, rounding inward so it can never
-> accept a price the contract would revert. Config values are a fallback used
-> only if the anchor is unreadable, and a re-anchor now takes effect on the next
-> pass with no restart.
+> **Against the lean oracle these fields are inert.** The bot derives its bounds
+> from `lp_anchor_<pool_id>`, the lean oracle has no such key, and
+> `effective_bounds_with_anchor` returns `(0, 0, 0)` for a missing anchor
+> (`oracle_bot.py:1012`), which skips the floor/ceiling guards entirely. The
+> values still sitting in `config.lean.json` for the existing pools are read and
+> discarded.
 >
-> So omit both fields for a new pool. They are kept in the schema only for that
-> fallback. The history below is why this is derived rather than written down:
+> That is deliberate, not an oversight: a bot-side absolute bound that refuses
+> to post is the same protocol-wide halt as a contract band that refuses to
+> accept, and removing that halt is why the lean oracle exists. What still gates
+> a post is `asset_price_bounds` (per underlying asset), the CompX divergence
+> check, and the spot-vs-TWAP spike block.
+>
+> So omit both fields for a new pool. The history below is why they stopped
+> being written down by hand, back when they still had an effect:
 >
 > - ALGO/USDC's `max_price` of 1,440,000 was **2,858 above** the band ceiling of
 >   1,437,142. The bot would have accepted a price the contract rejects — a
@@ -131,11 +149,14 @@ admin-adjustable; raise toward 70/80 once the liquidation bot is proven.
 > - U/ALGO's bounds were copied from U/tALGO and cleared the ceiling by **293
 >   units** (0.03%), which is margin only by coincidence.
 >
-> Both are now impossible by construction.
+> Both were made impossible by deriving the bounds, and are now moot: there is
+> no band for them to disagree with.
 >
 > This is the same failure class that froze U/tALGO on 2026-10-09, where a
 > `max_price` of 900,000 blocked a legitimate rise while the contract band still
-> had 21% of room. Bot bounds and contract band must be derived from one number.
+> had 21% of room. That class of freeze is what the lean oracle removes — at the
+> cost of there being no on-chain bound at all. See ADMIN.md's bot-key
+> compromise row.
 
 
 > ⚠️ **Read before running either list.** Verified against `vault/contract.py`
@@ -165,7 +186,11 @@ wasted fee every five minutes.
 ### 1. Admin calls (hardware wallet)
 
 ```
-oracle 3644230020   add_pool(1002590888, <fresh LP price>)      # UI: human units
+oracle 3741272132   add_pool(1002590888, <fresh LP price>)      # LEAN oracle. UI: human units.
+                                                                # Seed only: no anchor is set.
+                                                                # 3644230020 is the RETIRED banded
+                                                                # oracle — adding a pool there does
+                                                                # nothing the vault can see.
 vault  3671287267   set_lp_asa_id(1002590888, 1002590888)
 vault  3671287267   set_liq_threshold(1002590888, 7500)        # BEFORE set_ltv
 vault  3671287267   set_ltv(1002590888, 6500)
@@ -176,9 +201,15 @@ vault  3671287267   opt_in_asset(1002590888)                   # vault must hold
 Threshold was 7800 in an earlier revision of this file. That exceeds the firm
 7500 cap and would have broken partial liquidation silently.
 
-`add_pool` sets the price **and** the anchor, so no separate re-anchor.
+`add_pool` seeds the price. There is no anchor on the lean oracle, so there is
+nothing to re-anchor — but note it also writes `lp_ts_`, so the pool reads
+**fresh for 30 minutes** before any bot has posted to it. Confirm a real post
+landed before wiring the pool vault-side; a seeded timestamp looks identical to
+a working feed.
 
-### 2. Oracle bot — add to `config.json` `pools`, then restart
+### 2. Oracle bot — add to `config.lean.json` `pools`, then restart
+
+(`config.json` is the retired banded feed's config, kept only as a record.)
 
 ```json
 {

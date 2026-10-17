@@ -154,6 +154,17 @@ composability risk (8.4) — we consume its pools, we don't run its logic.
 
 ### 8.3 The manipulation bound (why 60% LTV + ±25% anchor is safe)
 
+> ⚠️ **No longer a live safety argument (noted 2026-10-17, record not rewritten).**
+> The ±25% anchor this bound rests on was removed with the banded oracle
+> (ORACLE_LEAN_SPEC.md §6 step 8). The lean oracle applies no cap to the
+> reported price, so the `0.60 × 1.25 × V = 0.75 V` arithmetic below no longer
+> describes a reachable worst case — there is no 1.25 ceiling. What bounds the
+> damage now is the PSM's real-USDC issuance cap and the admin gate on
+> liquidation, not an oracle band. This section stays as written because it is
+> what the audit found at the time; for the current position see ADMIN.md's
+> bot-key compromise row and STATUS.md §1b.
+
+
 The `±25%` anchor caps how far the reported price can be inflated; combined with 60% LTV:
 `max borrow = 0.60 × 1.25 × V = 0.75 V` (V = true collateral value). Debt of 0.75 V against real
 collateral V sits right at the **75% liquidation threshold** → liquidators seize collateral that

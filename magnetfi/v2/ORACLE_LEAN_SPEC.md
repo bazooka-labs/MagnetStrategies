@@ -367,9 +367,34 @@ Same shape as any oracle swap, and the vault keeps serving throughout.
      that file and the old oracle's UI still needs it.
    - Also: `magnetfiOracleHealth.test.ts`, `OperationsPanel.tsx`'s re-anchor
      form, and `magnetfiDeploy.ts`'s "sets price AND the ±25% anchor" comment.
-8. **Stop posting to the old oracle.** It cannot be deleted — the contract has
-   no delete handler, so the app and its ~1.5 ALGO MBR are permanent. "Retire"
-   means shut down its bot instance and remove its UI, nothing more.
+8. **Stop posting to the old oracle.** ✅ **DONE 2026-10-17.** It cannot be
+   deleted — the contract has no delete handler, so app `3644230020` and its
+   ~1.5 ALGO MBR are permanent. "Retire" meant shut down its bot instance and
+   remove its UI, nothing more.
+
+   What was removed: `start_oracles.cmd` now launches one bot, not two (it
+   would otherwise have revived the banded feed at the next logon);
+   `setPriceAnchor` and the "Re-anchor price" admin form, which pointed at a
+   method the lean oracle does not implement; the anchor/band fields on
+   `PoolOracleHealth` and their panel rows, permanently null without an
+   anchor; and the re-anchor guidance in ADMIN.md.
+
+   What was NOT removed: `config.json`, kept beside `config.lean.json` as the
+   record of the retired feed's configuration.
+
+   **One thing got worse and is recorded rather than glossed.** ADMIN.md's
+   bot-key compromise row read "bounded price movement, not unbounded" because
+   the band bounded it on chain. With the band gone, a holder of the updater
+   key can post an arbitrary PRICE. The LOSS stays bounded — mUSD issuance is
+   capped at the PSM's real-USDC backing (`psm_v3:439`), and all three
+   liquidation triggers are admin-gated — so that row now distinguishes the
+   two rather than claiming the vault can be drained.
+
+   §2.2b's TVL-balance invariant is **not** the replacement bound, despite
+   being written here as one. It runs in the bot, which a key holder bypasses,
+   and it warns rather than gates (`oracle_bot.py:887`; STATUS.md §6 recorded
+   the warn-not-gate decision). §5's upward rate limit remains the real
+   remedy, and remains deferred.
 
 **A structural fix for the whole class of ordering mistakes above:** have the
 bot and `getOracleHealth` read the active oracle from the **vault's own**

@@ -21,12 +21,11 @@ const key = (prefix: string, poolId: number) =>
     .toString("base64");
 
 /** An algod whose oracle app returns exactly these per-pool values. */
-function fakeAlgod(per: Record<number, { price?: number; anchor?: number; ts?: number }>) {
+function fakeAlgod(per: Record<number, { price?: number; ts?: number }>) {
   const gs: { key: string; value: { type: number; uint: number } }[] = [];
   for (const [pid, v] of Object.entries(per)) {
     const id = Number(pid);
     if (v.price !== undefined) gs.push({ key: key("lp_price_", id), value: { type: 2, uint: v.price } });
-    if (v.anchor !== undefined) gs.push({ key: key("lp_anchor_", id), value: { type: 2, uint: v.anchor } });
     if (v.ts !== undefined) gs.push({ key: key("lp_ts_", id), value: { type: 2, uint: v.ts } });
   }
   return { getApplicationByID: () => ({ do: async () => ({ params: { globalState: gs } }) }) } as unknown as algosdk.Algodv2;
@@ -44,13 +43,13 @@ const only = (rows: Awaited<ReturnType<typeof getOracleHealth>>) =>
 describe("staleness levels track the vault's own window", () => {
   it("is ok while fresh", async () => {
     const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 870_000, ts: at(120) } })));
+      [FIRST.poolId]: { price: 900_000_000, ts: at(120) } })));
     expect(only(r).level).toBe("ok");
   });
 
   it("warns at half the window, before anything breaks", async () => {
     const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 870_000, ts: at(901) } })));
+      [FIRST.poolId]: { price: 900_000_000, ts: at(901) } })));
     expect(only(r).level).toBe("warn");
   });
 
@@ -58,7 +57,7 @@ describe("staleness levels track the vault's own window", () => {
     // 1800s is ORACLE_FRESHNESS in vault/contract.py. Past it, borrowing and
     // ALL THREE liquidation paths revert.
     const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 870_000, ts: at(1801) } })));
+      [FIRST.poolId]: { price: 900_000_000, ts: at(1801) } })));
     expect(only(r).level).toBe("critical");
   });
 
@@ -66,50 +65,31 @@ describe("staleness levels track the vault's own window", () => {
     // ts === 0 means add_pool has not run. Reporting that as a six-hour outage
     // is how an alert stops being believed.
     const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 0, anchor: 0, ts: 0 } })));
+      [FIRST.poolId]: { price: 0, ts: 0 } })));
     expect(only(r).level).toBe("ok");
     expect(only(r).ts).toBe(0);
   });
 });
 
-describe("the band is the leading indicator", () => {
-  it("computes ±25% around the anchor", async () => {
-    const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 800_000, ts: at(60) } })));
-    const p = only(r);
-    expect(p.bandLow).toBeCloseTo(0.6, 6);    // 800_000 × 0.75
-    expect(p.bandHigh).toBeCloseTo(1.0, 6);   // 800_000 × 1.25
-  });
-
-  it("measures room from the price, not from the anchor", async () => {
-    // What matters is how far the PRICE may still move before a post reverts.
-    const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 1_000_000, anchor: 1_000_000, ts: at(60) } })));
-    const p = only(r);
-    expect(p.roomUpPct).toBeCloseTo(25, 4);
-    expect(p.roomDownPct).toBeCloseTo(25, 4);
-  });
-
-  it("flags a price closing on its ceiling BEFORE it freezes", async () => {
-    // The state U/tALGO was in for hours with nothing on screen saying so.
-    const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 1_240_000, anchor: 1_000_000, ts: at(60) } })));
-    const p = only(r);
-    expect(p.level).toBe("ok");        // still posting
-    expect(p.nearBand).toBe(true);     // but about to stop
-    expect(p.roomUpPct!).toBeLessThan(5);
-  });
-
-  it("reports no band when no anchor is set", async () => {
-    // anchor 0 disables the on-chain guard; claiming a band would be inventing one.
-    const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 0, ts: at(60) } })));
-    const p = only(r);
-    expect(p.bandLow).toBeNull();
-    expect(p.roomUpPct).toBeNull();
-    expect(p.nearBand).toBe(false);
-  });
-});
+/*
+ * The ±25% anchor-band tests lived here and were deleted with the band on
+ * 2026-10-17 (ORACLE_LEAN_SPEC.md §6 step 8). They covered bandLow/bandHigh,
+ * room measured from the price rather than the anchor, and the nearBand
+ * leading indicator that would have caught the 2026-10-07 freeze hours early.
+ *
+ * They are gone because the mechanism is, not because the behaviour stopped
+ * mattering: the lean oracle has no band, implements no set_price_anchor, and
+ * stores no lp_anchor_ keys, so every one of those fields was permanently
+ * null. Keeping tests green against a type that no longer carries the data
+ * would have been theatre.
+ *
+ * What the band gave us was the ONLY on-chain bound on a posted price. Nothing
+ * replaces it on chain. The remaining pre-post checks are the bot's own
+ * min/max and CompX divergence in config.json, covered in
+ * oracle_bot/tests/test_oracle_bot.py, plus the independent cross-check in
+ * magnetfiPriceCheck.test.ts. If a bounded oracle is ever reintroduced, the
+ * deleted cases are in git history at this commit.
+ */
 
 describe("pools are reported independently", () => {
   it("one dead feed does not hide behind a healthy one", async () => {
@@ -118,8 +98,8 @@ describe("pools are reported independently", () => {
     if (POOLS.length < 2) return;
     const [, second] = POOLS[1];
     const r = await withClock(() => getOracleHealth(fakeAlgod({
-      [FIRST.poolId]: { price: 900_000, anchor: 870_000, ts: at(23_000) },
-      [second.poolId]: { price: 2_480_000, anchor: 2_400_000, ts: at(180) },
+      [FIRST.poolId]: { price: 900_000_000, ts: at(23_000) },
+      [second.poolId]: { price: 2_480_000_400_000, ts: at(180) },
     })));
     expect(r.find((x) => x.poolId === FIRST.poolId)!.level).toBe("critical");
     expect(r.find((x) => x.poolId === second.poolId)!.level).toBe("ok");

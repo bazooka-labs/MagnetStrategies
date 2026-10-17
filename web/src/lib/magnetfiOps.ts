@@ -119,8 +119,8 @@ export const setTreasury = (al: AlgorandClient, s: string, psm: bigint, treasury
   call(al, "psm", psm, s, "set_treasury", [treasury]);
 
 // ── Oracle ───────────────────────────────────────────────────────────────────────
-export const setPriceAnchor = (al: AlgorandClient, s: string, oracle: bigint, poolId: bigint, price: bigint) =>
-  call(al, "oracle", oracle, s, "set_price_anchor", [poolId, price]);
+// No setPriceAnchor: the lean oracle has no band and does not implement
+// set_price_anchor (ORACLE_LEAN_SPEC.md §6 step 8, retired 2026-10-17).
 export const setAuthorizedUpdater = (al: AlgorandClient, s: string, oracle: bigint, bot: string) =>
   call(al, "oracle", oracle, s, "set_authorized_updater", [bot]);
 export const addPool = (al: AlgorandClient, s: string, oracle: bigint, poolId: bigint, price: bigint) =>

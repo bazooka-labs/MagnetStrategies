@@ -1,5 +1,16 @@
 # MagnetFi v2 — LP Oracle
 
+> ⚠️ **DESCRIBES THE RETIRED ORACLE (2026-10-17).** This page documents the
+> **banded** oracle `3644230020`, which the vault stopped reading at
+> 2026-10-17 19:01Z and which nothing posts to any more. The live oracle is
+> the **lean** one, `3741272132`: no `lp_anchor_` state, no ±25% band, no
+> ±50%-vs-prior deviation guard, and no `set_price_anchor` method. Everything
+> below about anchors, bands, re-anchoring and band-derived bot bounds is
+> history. The bot-compromise paragraph near the end is specifically
+> superseded — see ADMIN.md's compromise row and
+> [STATUS.md](./STATUS.md) §1b. Kept as the record of how the banded oracle
+> worked; see [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) for what replaced it.
+
 ## Purpose
 
 The LP oracle values Tinyman LP positions in mUSD (≈ USDC). It does not price individual assets — it prices LP tokens directly as a share of their underlying pool value. Vaults read LP token prices to compute borrower LTVs and health factors.
@@ -322,7 +333,9 @@ Three-key model:
 | Admin wallet (hot) | `add_pool()`, `remove_pool()`, `set_authorized_updater()`, `set_price_anchor()` — hardware wallet |
 | Guardian wallet (cold) | admin recovery (`propose_admin`), guardian rotation — cold multisig |
 
-**Bot-compromise blast radius (corrected — P19-03):** a compromised bot key can post bad prices only within ±50% of the prior post **and** ±25% of the admin anchor. Worst case is therefore *bounded* mispricing plus staleness — not arbitrary drift, and not unbounded fund loss. The earlier claim that bot compromise carries "no fund risk" was too strong: within the ±25% band a bad price can still enable some over-borrow, which is why the band is tight and the admin holds the re-anchor key. To move price beyond the band an attacker needs the admin key (to re-anchor), not just the bot key.
+**Bot-compromise blast radius (P19-03) — SUPERSEDED 2026-10-17.** As written below this was true of the banded oracle and is **false of the live one**, so it is marked rather than silently corrected: a compromised bot key can now post an arbitrary price, because `update_lp_price` on the lean oracle validates only sender, price > 0 and pool-active. The *loss* remains bounded — mUSD issuance is capped at the PSM's real-USDC backing, and all three liquidation triggers are admin-gated — but the *price* is not. Current statement of record: ADMIN.md's "Compromise impact" row.
+
+> _Historical (banded oracle):_ a compromised bot key can post bad prices only within ±50% of the prior post **and** ±25% of the admin anchor. Worst case is therefore *bounded* mispricing plus staleness — not arbitrary drift, and not unbounded fund loss. The earlier claim that bot compromise carries "no fund risk" was too strong: within the ±25% band a bad price can still enable some over-borrow, which is why the band is tight and the admin holds the re-anchor key. To move price beyond the band an attacker needs the admin key (to re-anchor), not just the bot key.
 
 ---
 

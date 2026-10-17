@@ -25,9 +25,6 @@ export const priceIsFresh = (ts: number, nowSec: number): boolean =>
   ts > 0 && nowSec - ts <= ORACLE_FRESHNESS;
 /** Half the window: two missed 5-minute cycles, with time left to act. */
 const ORACLE_WARN_AGE = 900;
-/** lp_oracle/contract.py ANCHOR_BAND_LOW / _HIGH. A post outside this reverts. */
-const ANCHOR_BAND_LOW = 75;
-const ANCHOR_BAND_HIGH = 125;
 
 export const MUSD_ID = ACTIVE.musd;
 export const USDC_ID = ACTIVE.usdc;
@@ -118,28 +115,29 @@ export async function getOracle(
  * indicator: it shrinks for hours before anything breaks, and nothing in the
  * product showed it.
  *
- * The bot's own min/max live in its config.json and cannot be read from chain.
- * This reports the CONTRACT's anchor band, which is the limit that survives a
- * bot restart and the one a re-anchor moves.
+ * The anchor band is GONE from this type as of 2026-10-17. It described the
+ * banded oracle's ±25% guard, which was retired with that oracle
+ * (ORACLE_LEAN_SPEC.md §6 step 8); the lean oracle stores no `lp_anchor_` keys
+ * and implements no `set_price_anchor`, so every band field was permanently
+ * null and the "re-anchor to escape it" advice pointed at a control that no
+ * longer exists.
+ *
+ * That removal changes what this panel is FOR. The band used to reject a wrong
+ * price on chain, so staleness was the main hazard and a freeze was the band
+ * doing its job. The lean oracle rejects nothing: a wrong price posts and the
+ * vault prices collateral off it. The bot's own bounds in config.json are now
+ * the only pre-post check, and they cannot be read from chain — which is why
+ * the independent cross-check strip below is no longer a nice-to-have.
  */
 export type PoolOracleHealth = {
   id: string;
   poolId: number;
   price: number;
-  anchor: number;
   ts: number;
   ageSec: number;
-  /** Null when the pool has no anchor set, in which case the band is not enforced. */
-  bandLow: number | null;
-  bandHigh: number | null;
-  /** Percent the price may still rise / fall before a post reverts. Null without an anchor. */
-  roomUpPct: number | null;
-  roomDownPct: number | null;
   /** False for a pool the oracle prices but the vault cannot lend against yet. */
   vaultWired: boolean;
   level: "ok" | "warn" | "critical";
-  /** Within 5% of either edge — the state that precedes a freeze. */
-  nearBand: boolean;
 };
 
 /**
@@ -199,22 +197,15 @@ export async function getOracleHealth(
   return ACTIVE_ORACLE_POOLS.map((w) => {
     const id = w.id;
     const price = (globalUint(app, poolKey("lp_price_", w.poolId)) ?? 0) / 1_000_000;
-    const anchor = (globalUint(app, poolKey("lp_anchor_", w.poolId)) ?? 0) / 1_000_000;
     const ts = globalUint(app, poolKey("lp_ts_", w.poolId)) ?? 0;
     const ageSec = ts > 0 ? now - ts : 0;
-    const bandLow = anchor > 0 ? (anchor * ANCHOR_BAND_LOW) / 100 : null;
-    const bandHigh = anchor > 0 ? (anchor * ANCHOR_BAND_HIGH) / 100 : null;
-    const roomUpPct = bandHigh !== null && price > 0 ? (bandHigh / price - 1) * 100 : null;
-    const roomDownPct = bandLow !== null && price > 0 ? (1 - bandLow / price) * 100 : null;
     // A pool that has never posted is not stale — add_pool has not run.
     const level: PoolOracleHealth["level"] =
       ts === 0 ? "ok"
         : ageSec >= ORACLE_FRESHNESS ? "critical"
         : ageSec >= ORACLE_WARN_AGE ? "warn"
         : "ok";
-    const nearBand = (roomUpPct !== null && roomUpPct < 5) || (roomDownPct !== null && roomDownPct < 5);
-    return { id, poolId: w.poolId, vaultWired: w.vaultWired, price, anchor, ts, ageSec,
-             bandLow, bandHigh, roomUpPct, roomDownPct, level, nearBand };
+    return { id, poolId: w.poolId, vaultWired: w.vaultWired, price, ts, ageSec, level };
   });
 }
 

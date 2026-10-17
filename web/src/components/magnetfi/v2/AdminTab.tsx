@@ -83,9 +83,12 @@ export function AdminTab() {
         <PositionsPanel />
       </section>
 
-      {/* Oracle health — ABOVE Operations, because the remedy for everything it
-          reports ("Re-anchor price", "Rotate bot key") lives in the panel
-          directly below it. Diagnosis then fix, in reading order. */}
+      {/* Oracle health — ABOVE Operations, because the remedies for what it
+          reports live in the panel directly below. Diagnosis then fix, in
+          reading order.
+          Thinner than it was: "Re-anchor price" went with the banded oracle on
+          2026-10-17, so "Rotate bot key" is the only in-panel remedy left. A
+          stale feed is now fixed on the bot host, not here. */}
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
           Oracle Health

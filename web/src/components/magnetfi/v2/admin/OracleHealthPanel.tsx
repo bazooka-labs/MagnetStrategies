@@ -11,23 +11,34 @@
  *
  * A panel is a PULL mechanism and the failure was that nobody pulled. The
  * webhook in the oracle bot is what wakes someone; this is what they read once
- * awake, and it sits beside "Re-anchor price", which is the remedy. Detection
- * and fix in one place.
+ * awake.
  *
- * ── The band is the part worth staring at ─────────────────────────────────
- * Age is the symptom. The band is the cause, and it is a LEADING indicator:
- * the last U/tALGO post was 0.13% under its ceiling and had been closing on it
- * for hours. Nothing in the product showed that. "Room up 1.2%" a morning
- * earlier would have turned an outage into a two-minute chore.
+ * ── What the band used to do, and what replaced it ────────────────────────
+ * This panel once led with the ±25% anchor band, because it was a LEADING
+ * indicator: the last U/tALGO post before that outage was 0.13% under its
+ * ceiling and had been closing on it for hours.
  *
- * The bot's own min/max bounds live in its config.json and cannot be read from
- * chain, so what is shown is the CONTRACT's ±25% anchor band — the limit that
- * survives a bot restart, and the one the button below moves.
+ * The band went with the banded oracle on 2026-10-17 (ORACLE_LEAN_SPEC.md §6
+ * step 8). That is a real loss of signal and worth being honest about: the
+ * chain no longer bounds the posted price at all. The lean oracle writes
+ * whatever the bot computes.
+ *
+ * Be precise about what still gates a post, because two plausible answers are
+ * wrong. The per-pool `min_price`/`max_price` in config.lean.json are NOT one
+ * of them: `effective_bounds_with_anchor` returns (0,0,0) when the oracle has
+ * no anchor (oracle_bot.py:1012), which is deliberate — a bot-side bound that
+ * refuses to post is the same halt as a band that refuses to accept. And the
+ * §2.2b TVL-balance invariant is NOT one either: it logs and keeps posting
+ * ("this is a warning, not a gate", oracle_bot.py:887).
+ *
+ * What actually gates: `asset_price_bounds` on the underlying assets, the
+ * CompX divergence check, and the spot-vs-TWAP upward spike block — all in
+ * the bot, none readable from chain, none visible here.
  *
  * ── "Is it right", not just "is it fresh" ─────────────────────────────────
- * Age and band both answer liveness. Neither can see a price that is WRONG but
- * fresh, and the band — the only non-age signal here — disappears with the lean
- * oracle, which has no anchor to measure against.
+ * Age answers liveness and cannot see a price that is WRONG but fresh. With
+ * the band gone it is the only on-chain signal there is, which makes the
+ * independent read below the substitute rather than a supplement.
  *
  * So each row also carries an independent price: third-party pool TVL divided
  * by on-chain issued LP tokens, which shares none of the bot's asset prices,
@@ -44,7 +55,6 @@ import { crossCheckPools, type PriceCrossCheck } from "@/lib/magnetfiPriceCheck"
 import { Panel, collateralGlow } from "../shared";
 
 const age = (s: number) => (s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
-const pct = (n: number | null) => (n === null ? "—" : `${n >= 0 ? "" : "−"}${Math.abs(n).toFixed(1)}%`);
 const px = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
 const divergeTone = (l: PriceCrossCheck["level"]) =>
   l === "critical" ? "text-red-300" : l === "warn" ? "text-amber-300" : l === "ok" ? "text-green-400" : "text-white/50";
@@ -54,7 +64,6 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
   const tone =
     p.level === "critical" ? "border-red-400/30 bg-red-500/[0.07]"
       : p.level === "warn" ? "border-amber-400/30 bg-amber-500/[0.07]"
-      : p.nearBand ? "border-amber-400/20 bg-amber-500/[0.04]"
       : "border-white/10 bg-black/20";
   const ageTone =
     p.level === "critical" ? "text-red-300" : p.level === "warn" ? "text-amber-300" : "text-green-400";
@@ -79,11 +88,11 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
 
       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-4">
         {([
+          /* Anchor / Room up / Room down lived here until 2026-10-17. They
+             measured the banded oracle's ±25% guard, retired with it — the
+             lean oracle has no anchor, so all three were permanently blank. */
           ["Price", px(p.price)],
-          ["Anchor", p.anchor > 0 ? px(p.anchor) : "unset"],
-          /* The two numbers that move before anything breaks. */
-          ["Room up", pct(p.roomUpPct)],
-          ["Room down", pct(p.roomDownPct)],
+          ["Pool", String(p.poolId)],
         ] as const).map(([k, v]) => (
           <div key={k}>
             <dt className="text-white/35">{k}</dt>
@@ -119,10 +128,12 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
             different things look like this: a fault in the bot&apos;s inputs (a decimals slip, a
             distorted reference pool), or a <strong>genuine move in a thin pool</strong> that the
             TWAP has not caught up with — the independent leg is spot and ours is smoothed.{" "}
-            <strong>Confirm against a third source before acting.</strong> If the move is real,
-            re-anchoring is the correct remedy and withholding it is what freezes the pool; if it
-            is not, re-anchoring only makes a wrong price postable. Re-anchor to a price you have
-            confirmed, not to this one.
+            <strong>Confirm against a third source before acting.</strong>{" "}
+            <strong>This price is already live.</strong> The banded oracle would have rejected a
+            far-off post on chain; the lean oracle has no band, so whatever the bot computes is
+            what the vault prices collateral against. There is nothing to re-anchor and nothing
+            to wait for — if the price is wrong, stop the bot, and rotate the updater key if the
+            bot itself is not trusted.
           </span>
         </p>
       )}
@@ -133,8 +144,10 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
           {p.vaultWired ? (
             <span>
               Past the vault&apos;s 30-minute window. Borrowing <strong>and all liquidations</strong>{" "}
-              are reverting on this pool. Check the bot log for &quot;refusing to post&quot;, then
-              re-anchor below if the price has genuinely moved.
+              are reverting on this pool. Check the bot process is alive first — a power cut
+              left it down 48h on 2026-10-15. If it is running, look for &quot;refusing to
+              post&quot;: with the band gone that can only come from `asset_price_bounds`, the
+              CompX divergence check, or the spot-vs-TWAP spike block — never from the chain.
             </span>
           ) : (
             /* Nothing can be borrowed or liquidated here yet, so the vault
@@ -147,12 +160,6 @@ function Row({ p, x }: { p: PoolOracleHealth; x?: PriceCrossCheck }) {
               vault-side at the migration.
             </span>
           )}
-        </p>
-      )}
-      {p.level !== "critical" && p.nearBand && (
-        <p className="mt-2 text-[11px] text-amber-200/90">
-          Within 5% of a band edge. When the price crosses it every post reverts and this pool
-          freezes — re-anchor before that, not after.
         </p>
       )}
     </div>
@@ -265,11 +272,10 @@ export function OracleHealthPanel() {
 
       <p className="mt-3 text-[10px] leading-relaxed text-white/30">
         Read from the oracle contract, not from the bot — a feed can stop while the process stays
-        healthy. The bot&apos;s own min/max bounds live in its config and are not on chain; the band
-        shown is the contract&apos;s ±25% anchor band, which is what &quot;Re-anchor price&quot;
-        below moves. <span className="text-white/40">Independent</span> is pool TVL ÷ issued LP
+        healthy. The lean oracle enforces no price band, so nothing on chain bounds what gets
+        posted, and the bot-side checks that remain are not readable here. <span className="text-white/40">Independent</span> is pool TVL ÷ issued LP
         tokens, from sources outside this protocol — it answers whether the price is <em>right</em>,
-        which age and band cannot. While a feed is stale the numbers are still shown but left{" "}
+        which age cannot. While a feed is stale the numbers are still shown but left{" "}
         <em>unjudged</em> — an old price diverging is expected, and the staleness alarm above has
         already fired.
       </p>

@@ -156,7 +156,7 @@ at $100k.
 ### Deployment sequencing
 - [ ] Follow the [ADMIN.md deployment procedure](./ADMIN.md#deployment-procedure-v2) exactly (order matters).
 - [ ] **Plan the genesis 48h timelock window:** registering the vault on the PSM is now `propose_vault_contract` → wait 48h → `confirm_vault_contract`. Schedule this gap before public launch (e.g., run it during the rest of setup).
-- [ ] Confirm initial oracle prices for each pool — passed to `add_pool(pool_id, initial_price)`, which sets both the live price and the ±25% drift anchor.
+- [ ] Confirm initial oracle prices for each pool — passed to `add_pool(pool_id, initial_price)`. On the lean oracle this is a SEED only (no anchor exists), and it sets `lp_ts_`, so the pool reads "fresh" for 30 minutes whether or not a bot has posted.
 - [ ] Prepare risk params per pool: `rate_bps`, `liq_threshold_bps` (set **before** `set_ltv`), `ltv_bps`, `lp_asa_id`.
 
 ---
@@ -190,7 +190,7 @@ at $100k.
 
 - [x] **MagnetFi app** at `/magnetfi`: Overview / Single Token Markets / LP Collateral Vaults / mUSD (deep-links to the standalone `/musd` page) + gated Admin panel. Plus standalone `/musd` and `/about` pages. Full site map: [web/README.md](../../web/README.md).
 - [x] **Network-aware config** (`lib/magnetfi` `ACTIVE` / `DEPLOYMENTS`) replaces hand-edited constants; resolves app + asset IDs per network via `NEXT_PUBLIC_ALGO_NETWORK`.
-- [x] **Admin panel** (gated to the admin wallet): Create mUSD / testnet asset factory, the **operations console** (rates, liquidations, pause/unpause, reserves & fees, oracle re-anchor, governance/rotation + timelocked repoints), and the **Productive Reserves** panel. The step-wizards (full-stack deploy + vault redeploy) were removed from the live panel post-launch — retained in `admin/` + git; re-add to `AdminTab.tsx` if needed.
+- [x] **Admin panel** (gated to the admin wallet): Create mUSD / testnet asset factory, the **operations console** (rates, liquidations, pause/unpause, reserves & fees, bot-key rotation, governance/rotation + timelocked repoints; oracle re-anchor was removed with the banded oracle on 2026-10-17), and the **Productive Reserves** panel. The step-wizards (full-stack deploy + vault redeploy) were removed from the live panel post-launch — retained in `admin/` + git; re-add to `AdminTab.tsx` if needed.
 - [x] **Borrower tabs wired to live data + transactions** with correct atomic-group ordering (incl. the pay-interest transfer-before-call fix, P22-01), live health factors, and oracle-freshness gating on borrows.
 - [x] **CompX single-token markets** integrated (live read + deep-link).
 - [x] After mainnet deploy: filled `DEPLOYMENTS.mainnet` in `web/src/lib/magnetfi.ts` (Oracle/PSMv3/Vault + U/tALGO LP/pool IDs), oracle bot config, and redeployed the site.

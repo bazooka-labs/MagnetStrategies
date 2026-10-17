@@ -125,7 +125,7 @@ pool_TVL       = (asset_A_reserves × price_A) + (asset_B_reserves × price_B)
 ```
 
 Data sources: **on-chain Tinyman v2 pool reserves**, cross-checked against CompX's on-chain Flux oracle. There is no dependency on an external price API — the original Vestige integration was removed after its endpoint was retired, which was also the P19-02 single-point-of-failure. See [LP_ORACLE.md](./LP_ORACLE.md) and [AUDIT.md](./AUDIT.md).
-Circuit breakers: reject price updates with >50% deviation from prior reading (on-chain guard in LP Oracle contract).
+Circuit breakers: **none on chain** since the lean oracle replaced the banded one on 2026-10-17. The contract accepts any price from the authorized updater; the remaining checks (per-asset price bounds, CompX divergence, a spot-vs-TWAP spike block) all run in the oracle bot. See [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) and ADMIN.md's bot-key compromise row.
 
 → [`LP_ORACLE.md`](./LP_ORACLE.md)
 

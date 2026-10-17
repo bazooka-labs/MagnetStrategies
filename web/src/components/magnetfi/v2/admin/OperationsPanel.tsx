@@ -306,32 +306,27 @@ export function OperationsPanel() {
           </Section>
 
           {/* Oracle */}
-          {/* These actions target the oracle that is DEPLOYED today — the banded
-              one. Two of them exist only because it has a band, and both go away
-              when the lean oracle is swapped in. They must NOT be removed before
-              that: the banded oracle remains the vault's oracle for the whole 48h
-              timelock, and "Re-anchor price" is the only remedy for a band
-              rejection during it (STATUS.md §5). */}
+          {/* "Re-anchor price" lived here until 2026-10-17 and is gone with the
+              banded oracle (ORACLE_LEAN_SPEC.md §6 step 8). It was never
+              optional cleanup: the lean oracle does not implement
+              set_price_anchor at all, so the button would have called a method
+              that does not exist on the live app. The band it existed to escape
+              is gone with it — the lean oracle stores no lp_anchor_ keys. */}
           <Section
             title="Oracle"
             note={
               <>
-                Targets the <strong className="text-white/60">banded</strong> oracle now live.{" "}
-                <strong className="text-white/60">Re-anchor price</strong> exists only because that
-                oracle has a ±25% band, and the anchor set by <strong className="text-white/60">Add
-                pool</strong> is the same mechanism — both become meaningless once the lean oracle
-                is swapped in, and neither is removed before then, because re-anchoring is the only
-                way out of a band rejection during the 48h window.
+                Targets the <strong className="text-white/60">lean</strong> oracle, live since
+                2026-10-17. It has no price band, so there is no anchor to set and no band
+                rejection to escape — <strong className="text-white/60">Add pool</strong>&apos;s
+                price is only a seed.
               </>
             }
           >
-            <ActionForm title="Re-anchor price" desc="Follow a genuine large move (price as mUSD/LP). Banded oracle only."
-              fields={[{ key: "p", label: "Pool ID" }, { key: "pr", label: "Price (mUSD/LP)" }]} button="Set anchor"
-              onRun={(v) => ops.setPriceAnchor(a(), me(), oracle(), BigInt(v.p), base(v.pr))} />
             <ActionForm title="Rotate bot key" desc="Authorize a new oracle bot wallet."
               fields={[{ key: "addr", label: "New bot address" }]} button="Set updater"
               onRun={(v) => ops.setAuthorizedUpdater(a(), me(), oracle(), v.addr)} />
-            <ActionForm title="Add pool" desc="Register a new pool. On the banded oracle the price also sets the ±25% anchor; on the lean oracle it is only a seed."
+            <ActionForm title="Add pool" desc="Register a new pool. The price is a seed only — the lean oracle has no anchor band."
               fields={[{ key: "p", label: "Pool ID" }, { key: "pr", label: "Initial price (mUSD/LP)" }]} button="Add pool"
               onRun={(v) => ops.addPool(a(), me(), oracle(), BigInt(v.p), base(v.pr))} />
             <ActionForm title="Remove pool" desc="Delist a pool. Ensure no open vaults first." fields={[{ key: "p", label: "Pool ID" }]}
