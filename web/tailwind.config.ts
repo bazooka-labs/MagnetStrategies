@@ -29,9 +29,13 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        display: ["Sora", "Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        // The variables come from next/font in layout.tsx. Naming the families
+        // directly (as this did) only worked if the font happened to be
+        // installed locally — it never loaded over the network, so it never was.
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        // Same face as body, by choice — see the note in layout.tsx.
+        display: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
     },
   },
