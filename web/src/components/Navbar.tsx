@@ -9,7 +9,11 @@ import { XIcon, DiscordIcon, SOCIALS } from "@/components/SocialIcons";
 
 const navLinks = [
   { href: "/tokens", label: "Tokens", external: false },
-  { href: "/magnetfi", label: "Bank", external: false },
+  // "Finance", not "Bank": the route is a lending protocol with collateral
+  // vaults and a PSM, and "Bank" promised something more custodial than what is
+  // actually there. The path stays /magnetfi — the label is the product's name
+  // to a visitor, the path is its name to the codebase, and they need not match.
+  { href: "/magnetfi", label: "Finance", external: false },
   /**
    * "Trade", not "Strategy".
    *
