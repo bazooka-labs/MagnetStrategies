@@ -42,7 +42,10 @@ import { useEffect, useState, type ReactNode } from "react";
  * this value drives the CSS instead of being mirrored by it. Mirroring is what
  * put the fee table out of step with the group it described, twice.
  */
-const DEFAULT_MS = 2000;
+// All three arrivals run the same length. The Trading Terminal used to hold
+// 2500 for a fourth element it no longer has; the others ran 2000. One number
+// now, so "how long is the splash" has a single answer.
+export const DEFAULT_MS = 2500;
 
 export function ArrivalSplash({
   mark,
@@ -81,34 +84,44 @@ export function ArrivalSplash({
 
   if (!show) return null;
 
+  // `top-16` is the navbar's height: the blur starts under it, so the nav
+  // stays legible and usable throughout. `--splash-dur` drives every `splash-*`
+  // keyframe, set on both layers so the timeout and the animations cannot
+  // disagree about how long this lasts.
+  const frame = "pointer-events-none fixed inset-x-0 bottom-0 top-16 z-40";
+  const dur = { ["--splash-dur" as string]: `${durationMs}ms` };
+
   return (
-    <div
-      aria-hidden="true"
-      // `top-16` is the navbar's height: the blur starts under it, so the nav
-      // stays legible and usable throughout.
-      className="animate-splash pointer-events-none fixed inset-x-0 bottom-0 top-16 z-40 flex items-center justify-center overflow-hidden"
-      // Drives every `splash-*` keyframe. Set here so the timeout above and the
-      // animations cannot disagree about how long this lasts.
-      style={{ ["--splash-dur" as string]: `${durationMs}ms` }}
-    >
-      {/* ── The scrim owns the backdrop blur, and nothing renders inside it ──
-          It used to be the container, so the mark was a DESCENDANT of a
-          backdrop-filtered element. Every mark carries a filter of its own
-          (`magnet-glow-soft`, or a drop-shadow utility) plus a scale animation,
-          which promotes it to its own compositing layer — and a browser samples
-          the backdrop per layer, so the sampling changes at that layer's edge
-          and paints a faint rectangle exactly the size of the image's box.
+    <>
+      {/* ── Scrim and content are SIBLINGS, and that is load-bearing twice ──
+          The scrim carries the blur and holds nothing, because every mark has a
+          filter of its own (`magnet-glow-soft`, or a drop-shadow utility) plus a
+          scale animation. A filtered element is promoted to its own compositing
+          layer, the backdrop is sampled per layer, and the sampling changes at
+          that layer's edge — painting a faint rectangle exactly the size of the
+          image. Phones show it, desktops usually do not: mobile GPUs composite
+          at lower precision, so the seam survives rounding there.
 
-          Phones show it and desktops usually do not: mobile GPUs composite at
-          lower precision and tile differently, so the seam survives rounding
-          there and vanishes here. It was never screen brightness.
+          But the scrim also must not be a CHILD of anything running an opacity
+          animation, which is the trap described at the top of this file: such an
+          element is a backdrop root, and a descendant's `backdrop-filter` then
+          samples only the transparent subtree and silently does nothing. Nesting
+          the scrim inside the animated wrapper is precisely how the desktop blur
+          was lost while fixing the mobile box.
 
-          Keeping the blur on a SIBLING behind the content removes the
-          precondition rather than masking the symptom — no filtered element is
-          a descendant of a backdrop-filtered one any more. The parent keeps the
-          opacity animation, so all three layers still fade together. */}
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
+          Two fixed siblings, each animating its own opacity, satisfies both: the
+          scrim has no filtered descendants, and no animated ancestor. */}
+      <div
+        aria-hidden="true"
+        className={`animate-splash ${frame} bg-black/55 backdrop-blur-md`}
+        style={dur}
+      />
 
+      <div
+        aria-hidden="true"
+        className={`animate-splash ${frame} flex items-center justify-center overflow-hidden`}
+        style={dur}
+      >
       {/* The glow is its own element so it can breathe on a different curve — a
           single animated group makes the light and the mark move together like
           a flat sticker. */}
@@ -125,6 +138,7 @@ export function ArrivalSplash({
           {subtext}
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

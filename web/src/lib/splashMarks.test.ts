@@ -5,6 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_MS } from "@/components/ArrivalSplash";
 
 const tokens = readFileSync("src/components/tokens/TokensSplash.tsx", "utf8");
 const trade = readFileSync("src/components/strategy/TradeSplash.tsx", "utf8");
@@ -50,13 +51,20 @@ describe("each arrival is its own image", () => {
 });
 
 describe("timings stay deliberate", () => {
-  it("holds the terminal longer than the default", () => {
-    expect(trade).toContain("durationMs={2500}");
+  it("runs all three arrivals on the one shared duration", () => {
+    // The terminal used to hold 2500 against the others' 2000, for a fourth
+    // element it no longer has. Nobody reading three splashes wants to discover
+    // that one is longer, so there is a single number now and no overrides —
+    // which is what these assertions guard.
+    for (const src of [tokens, magnetfi, trade]) {
+      expect(src).not.toContain("durationMs");
+    }
   });
 
-  it("leaves the other two on the shared default", () => {
-    // A mark, a rule and one line — the weight ArrivalSplash's 2s was set for.
-    expect(tokens).not.toContain("durationMs");
-    expect(magnetfi).not.toContain("durationMs");
+  it("keeps that duration at 2.5s", () => {
+    // The VALUE, imported — not a grep for the literal in the source. A comment
+    // mentioning the number would satisfy a text match while the constant said
+    // something else entirely.
+    expect(DEFAULT_MS).toBe(2500);
   });
 });
