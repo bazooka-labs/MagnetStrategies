@@ -73,9 +73,19 @@ step 8 retires the banded oracle by shutting down its bot and removing its UI.
 That stays open through the stabilisation window, because the same spec's
 rollback paragraph depends on it: rollback is `propose_lp_oracle` + another 48h
 — there is no `set_lp_oracle`, no emergency path, and `cancel_pending_lp_oracle`
-acts only on a *pending* proposal — and it is only worth having if the feed
-behind it is alive. Keeping `3644230020` fed means a rollback proposal arrives
-at a working oracle rather than a cold one. **Do not stop that bot instance.**
+acts only on a *pending* proposal.
+
+How much the standby needs to be *running* is weaker than first written here.
+Rollback is gated by the same 48h timelock, so a proposal gives 48 hours of
+notice to revive a feed that warms up in ~10 minutes, and the bot, its config
+and the launcher are all in this repo. The banded instance died silently at
+2026-10-17 18:56Z and it cost nothing.
+
+What does degrade while it sits cold is the **band**: ±25% against a stored
+anchor and ±50% against the last price, both frozen at 18:56Z. The longer the
+gap, the likelier a restart is band-rejected and needs the admin re-anchor
+action first. That is the argument for keeping it fed — not staleness itself,
+and not protocol safety.
 
 Step 8 becomes correct once we are not going to roll back. Until then:
 
