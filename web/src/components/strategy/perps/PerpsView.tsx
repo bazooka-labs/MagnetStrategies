@@ -7,6 +7,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { RAISED_AMBER } from "@/components/raisedButton";
 import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
 import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
@@ -141,23 +142,20 @@ export function PerpsView() {
         earlier and at full attention, so repeating them in a card the user
         scrolls past is the chrome that makes a product feel like a brochure.
 
-        What was load-bearing in it were the two controls, and they keep their
-        colours: teal for live status, amber for the thing that opens the risk
-        disclosure. Right-aligned, out of the reading path, and a quiet top edge
-        rather than a full-width card competing with the terminal under it.
+        One control survives it. "Live on MainNet" went: a status badge styled
+        as a pill sat beside a button styled as a pill, so the clickable thing
+        and the label looked alike — the same confusion the token headers had —
+        and the terminal showing live prices already says it is live.
       */}
       <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
-        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-200">
-          <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-          Live on MainNet
-        </span>
-
         {/* Amber, matching the risk warnings it opens. A help-link grey would
             read as optional; this is where "you can lose everything you put in"
-            lives, and it is now the only route to it — so it had to stay a pill
-            and stay visible rather than becoming a footnote. */}
-        <button onClick={() => setInfoOpen(true)} aria-haspopup="dialog"
-          className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:border-amber-400/50 hover:bg-amber-500/15 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500">
+            lives, and it is the only route to it — which is exactly why it is
+            now the raised button used on Tokens and Finance rather than a pill.
+            The earlier note said it had to "stay a pill and stay visible": the
+            goal was visibility, and a button that looks pressable serves that
+            better than a pill that looks like a label. */}
+        <button onClick={() => setInfoOpen(true)} aria-haspopup="dialog" className={RAISED_AMBER}>
           <Info className="h-3.5 w-3.5" />
           More info
         </button>
