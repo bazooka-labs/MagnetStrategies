@@ -12,20 +12,25 @@ const trade = readFileSync("src/components/strategy/TradeSplash.tsx", "utf8");
 const magnetfi = readFileSync("src/components/magnetfi/MagnetFiSplash.tsx", "utf8");
 
 describe("each arrival is its own image", () => {
-  it("gives the Magnet mark to /tokens and the wordmark to MagnetFi", () => {
-    expect(tokens).toContain('src="/magnet-mark.png"');
+  it("gives the $U mark to /tokens and the wordmark to MagnetFi", () => {
+    // /tokens leads with the token's own artwork, not the organisation's "m".
+    expect(tokens).toContain('src="/tokens/u-mark.png"');
     expect(magnetfi).toContain('src="/magnetfi-logo.png"');
   });
 
-  it("uses the TIGHT crop on the splash and leaves the square one alone", () => {
-    // /magnet-icon.png is 56% transparent by height. At splash scale that
-    // padding became a visible gap between the mark and the rule; the navbar
-    // and footer still want the padded square.
-    // The comment NAMES the square file to record why it is not used, so this
-    // checks the src attribute rather than the path.
+  it("uses a TIGHT crop on the splash and leaves the padded files alone", () => {
+    // Both candidates for this slot ship with transparent padding —
+    // /magnet-icon.png is 56% transparent by height, and the ASA png is
+    // 307x365 of content on a 521x479 canvas. At splash scale that padding
+    // becomes a visible gap between the mark and the rule, so the splash gets
+    // a cropped asset while the navbar keeps the padded square.
+    // The comments NAME the files not used, so this checks src, not the path.
     expect(tokens).not.toContain('src="/magnet-icon.png"');
-    expect(tokens).toContain("width={316}");
-    expect(tokens).toContain("height={222}");
+    expect(tokens).not.toContain('src="/tokens/u.png"');
+    // The crop's own dimensions — wrong numbers here mean a padded canvas crept
+    // back in and the intrinsic aspect no longer matches the file.
+    expect(tokens).toContain("width={307}");
+    expect(tokens).toContain("height={365}");
   });
 
   it("leaves the Trading Terminal as type alone", () => {

@@ -2,12 +2,16 @@
 
 // /tokens' arrival: the Magnet mark and the promise, nothing else.
 //
-// ── Why the parent mark and not a token icon ───────────────────────────────
-// This page holds two assets — $U and mUSD — so leading with either one's icon
-// would announce the wrong half. The parent mark covers both, and the subtext
-// is the line the landing page already uses to say what Magnet is for, so a
-// visitor arriving here from there sees a promise they have just been made
-// rather than a new claim.
+// ── Why the $U mark ────────────────────────────────────────────────────────
+// This previously used the Magnet Strategies "m", on the reasoning that the
+// page holds two assets — $U and mUSD — so leading with either one's icon
+// would announce the wrong half.
+//
+// Overruled deliberately: $U is the page's default tab and the asset the
+// subtext is about, and the parent mark had the opposite problem — it said
+// "Magnet Strategies" on a page about tokens, which is the one thing a visitor
+// arriving from the landing page has just been shown. The subtext still carries
+// the promise; the mark now names what the page is for.
 //
 // ── Why the Magnet Strategies banner is NOT used ───────────────────────────
 // It is reserved for the Strategy page. Spending the organisation's full
@@ -30,32 +34,31 @@ export function TokensSplash() {
       subtext="Attract Yield, Attract Liquidity"
       mark={
         <Image
-          // The TIGHT crop, not /magnet-icon.png.
+          // The $U ASA mark, not the Magnet Strategies "m".
           //
-          // That file is a 500-square canvas holding a 316x222 glyph — 139px of
-          // transparent padding above and below, 56% of its height invisible.
-          // Scaling it to 14rem scaled the padding too, leaving ~62px of nothing
-          // between the mark and the rule where MagnetFi's wordmark, which is
-          // 91% glyph, leaves none. The gap was in the asset, not the layout.
+          // This page is about the token, so it leads with the token's own
+          // artwork. The "m" is the organisation's mark and still opens
+          // /magnetfi and the navbar.
           //
-          // A separate file rather than a recrop of the original: the navbar and
-          // the footer use the square one, where the padding is what keeps the
-          // mark off its own edges.
-          src="/magnet-mark.png"
+          // Cropped to its opaque pixels (307x365 out of a 521x479 canvas with
+          // asymmetric padding) for the same reason the "m" was: scaling a
+          // padded canvas scales the padding, and the gap to the rule below
+          // would come from the asset rather than the layout.
+          src="/tokens/u-mark.png"
           alt=""
-          width={316}
-          height={222}
+          width={307}
+          height={365}
           priority
-          // 15% down from the 8rem / 9rem that matched the old square's glyph.
-          // Arbitrary values rather than the nearest step because w-28 and w-32
-          // are a 12.5% and an 11% cut, not the 15% asked for.
+          // Sized by AREA, not by width or height.
           //
-          // The gap to the rule needs no matching adjustment: the asset is
-          // cropped to the glyph, so height falls with width and the rule's own
-          // margin is all that sits between them. That is the whole point of
-          // the crop — on the square original this change would have shrunk
-          // 56% worth of invisible padding along with it.
-          className="magnet-glow-soft h-auto w-[6.8rem] sm:w-[7.65rem]"
+          // The "m" is landscape (316x222) and the magnet is portrait
+          // (307x365), so the two rules disagree badly: matching height makes
+          // the magnet read as a minor element, matching width makes it clearly
+          // larger than the mark it replaces. Equal area at 5.23rem puts its
+          // visual mass where the "m" was, which is what "about the same size"
+          // means for shapes this different. Compared side by side before
+          // choosing.
+          className="magnet-glow-soft h-auto w-[5.2rem] sm:w-[5.88rem]"
         />
       }
     />
