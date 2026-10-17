@@ -8,7 +8,10 @@ __pycache__/
 .env
 .env.local
 deployment.json
-twap_state.json
+# Per-bot TWAP history. The glob matters: each oracle's bot needs its OWN
+# state file (two bots sharing one corrupts it), so the lean bot writes
+# twap_state.lean.json and a bare `twap_state.json` rule would miss it.
+twap_state*.json
 *.egg-info/
 .venv/
 contracts/.venv/
