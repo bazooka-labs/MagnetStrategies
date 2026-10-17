@@ -59,6 +59,13 @@ const POOL_WIRING: Record<"mainnet" | "testnet", Record<string, PoolWiring>> = {
   mainnet: {
     "u-talgo": { poolId: 3163770927, lpAsaId: 3163770927 },
     "u-usdc": { poolId: 3673941603, lpAsaId: 3673941603 },  // live 2026-08-19 (oracle posting, vault configured)
+    // Wired 2026-10-17, after the lean-oracle cutover. Both pools had been
+    // priced by the oracle since 2026-10-09 and were deliberately left
+    // unwired until the migration landed, so each was registered once rather
+    // than twice. Vault-side params verified on chain against VAULT.md:
+    // U/ALGO 6000/7500/800, ALGO/USDC 6500/7500/800, both LP ASAs opted in.
+    "u-algo": { poolId: 3617313492, lpAsaId: 3617313492 },
+    "algo-usdc": { poolId: 1002590888, lpAsaId: 1002590888 },
   },
   testnet: {
     "u-talgo": { poolId: 765095900, lpAsaId: 765095900 },
@@ -94,8 +101,8 @@ const ORACLE_POOLS: Record<"mainnet" | "testnet", OraclePool[]> = {
     { id: "u-usdc", poolId: 3673941603, lpAsaId: 3673941603, vaultWired: true },
     // Oracle-only. Queued 2026-10-13; the bot prices them, the vault cannot lend
     // against them until the migration registers them vault-side.
-    { id: "u-algo", poolId: 3617313492, lpAsaId: 3617313492, vaultWired: false },
-    { id: "algo-usdc", poolId: 1002590888, lpAsaId: 1002590888, vaultWired: false },
+    { id: "u-algo", poolId: 3617313492, lpAsaId: 3617313492, vaultWired: true },
+    { id: "algo-usdc", poolId: 1002590888, lpAsaId: 1002590888, vaultWired: true },
   ],
   testnet: [
     { id: "u-talgo", poolId: 765095900, lpAsaId: 765095900, vaultWired: true },
@@ -176,17 +183,26 @@ export const VAULT_TYPES: VaultType[] = [
     // liquidate — $1.72M of Tinyman TVL against U/tALGO's, where unwinding a
     // large seizure would move the price against the liquidator.
     //
-    // 65/78 is deliberately conservative for what this is. An ALGO/USDC LP is
+    // 65/75. The LTV is the generous half and it is earned: an ALGO/USDC LP is
     // roughly HALF as volatile as a volatile/volatile pair, because half the
-    // position is a stablecoin and LP value tracks sqrt(P_ALGO): ALGO -50%
-    // moves the LP only -29%. The tighter threshold buys room while liquidation
-    // is still manual; both are admin-adjustable and should rise to ~70/80 once
-    // the liquidation bot is proven.
+    // position is a stablecoin and LP value tracks sqrt(P_ALGO), so ALGO -50%
+    // moves the LP only -29%.
+    //
+    // The THRESHOLD is not a risk judgement and must not be tuned like one.
+    // 7500 is a firm protocol-wide cap: TIER1_SEIZE_BPS/TIER2_SEIZE_BPS are
+    // hardcoded at 35%/77% and restore HF >= 1.06 only at 7500 (audit M1,
+    // LIQUIDATION.md:483). `set_liq_threshold` still accepts up to 9000, so a
+    // higher value lands on chain and silently breaks partial-liquidation
+    // health restoration — nothing reverts, the maths just stops working.
+    //
+    // This read 7800 until 2026-10-17 and was caught before the pool was
+    // wired. Raising it needs recalibrated seize percentages and a vault
+    // redeploy, not an admin call.
     id: "algo-usdc",
     pair: "ALGO / USDC",
     tokens: ["ALGO", "USDC"],
     ltvBps: 6500,
-    liqThresholdBps: 7800,
+    liqThresholdBps: 7500,
     rateBps: 800,
     status: "soon",
     blurb: "The deepest pool on Algorand, half of it a stablecoin — the safest collateral here, and the first that is not $U.",
