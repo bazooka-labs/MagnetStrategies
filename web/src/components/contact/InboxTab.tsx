@@ -9,9 +9,8 @@ import {
   fetchAccountContactMessages, buildThreads,
   type ContactMessage, type Thread,
 } from "@/lib/contact";
-import { SecurityNotice, formatTimestamp } from "./shared";
+import { SecurityNotice, formatTimestamp, APP_LABEL } from "./shared";
 
-const APP_LABEL: Record<string, string> = { Token: "Magnet Token", Bank: "Bank", Farm: "Farm", General: "General" };
 
 function ThreadCard({ thread }: { thread: Thread }) {
   return (

@@ -7,7 +7,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { Panel, PrimaryButton } from "@/components/magnetfi/v2/shared";
 import { CONTACT_ADMIN_ADDRESS, MSG_MAX, explorerTxUrl, type SupportApp } from "@/lib/contact";
 import { makeAlgorand, sendTicket } from "@/lib/contactClient";
-import { SecurityNotice, APP_OPTIONS } from "./shared";
+import { SecurityNotice, APP_OPTIONS, APP_LABEL } from "./shared";
 
 export function CreateTab() {
   const { address, isConnected, algodClient, transactionSigner, network } = useWallet();
@@ -112,7 +112,8 @@ export function CreateTab() {
               onChange={(e) => setApp(e.target.value as SupportApp)}
               className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none focus:border-magnet-500/50"
             >
-              {APP_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+              {/* value = what is stored, text = what is read. */}
+              {APP_OPTIONS.map((a) => <option key={a} value={a}>{APP_LABEL[a]}</option>)}
             </select>
           </div>
         </div>
