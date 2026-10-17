@@ -1,6 +1,5 @@
 import Image from "next/image";
 import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 
 /** Each stage fills the hero box and centres itself inside it.
  *
@@ -109,8 +108,6 @@ export default function LandingPage() {
 
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 }
