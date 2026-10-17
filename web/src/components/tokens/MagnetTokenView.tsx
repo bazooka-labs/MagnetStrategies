@@ -38,7 +38,10 @@ export function MagnetTokenView({
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-magnet-900/50">
-              <Image src="/tokens/u.png" alt="$U" width={56} height={56} className="h-full w-full scale-[1.2] object-cover" priority />
+              {/* No scale. The 1.2x zoom was there to make the OLD mark — a small glyph on
+                  a padded canvas — fill this tile. The ASA artwork is framed to its own
+                  edges, so the same zoom clipped the magnet's feet. */}
+              <Image src="/tokens/u.png" alt="$U" width={56} height={56} className="h-full w-full object-cover" priority />
             </div>
             <div>
               <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
