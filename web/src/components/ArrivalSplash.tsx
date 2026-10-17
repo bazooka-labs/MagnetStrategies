@@ -1,6 +1,6 @@
 "use client";
 
-// A 2-second arrival for a product page.
+// A 2.5-second arrival for a product page.
 //
 // ── Why this is shared ─────────────────────────────────────────────────────
 // /magnetfi had the only one, and /trade needed the same thing with a different
@@ -32,19 +32,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 /**
- * Total duration, in ms. Per page, because the two are not the same read.
+ * Total duration, in ms, for all three arrivals.
  *
- * MagnetFi's is a wordmark — one object, taken in at a glance. The Trading
- * Terminal's is a mark, a line of type, a rule and a subtitle: four things to
- * read, so the same 2s felt hurried there while being right for MagnetFi.
+ * This was once per-page — MagnetFi's wordmark is one object taken in at a
+ * glance, while the Trading Terminal's was a mark, a rule and a subtitle, so
+ * 2000 there read as hurried against 2500. The terminal has since lost its
+ * icon and the three arrivals are now the same shape, so they run the same
+ * length: "how long is the splash" has a single answer, and no page overrides
+ * it.
  *
  * The keyframes are written against `--splash-dur` rather than a literal, so
  * this value drives the CSS instead of being mirrored by it. Mirroring is what
  * put the fee table out of step with the group it described, twice.
  */
-// All three arrivals run the same length. The Trading Terminal used to hold
-// 2500 for a fourth element it no longer has; the others ran 2000. One number
-// now, so "how long is the splash" has a single answer.
 export const DEFAULT_MS = 2500;
 
 export function ArrivalSplash({
@@ -110,10 +110,29 @@ export function ArrivalSplash({
           was lost while fixing the mobile box.
 
           Two fixed siblings, each animating its own opacity, satisfies both: the
-          scrim has no filtered descendants, and no animated ancestor. */}
+          scrim has no filtered descendants, and no animated ancestor.
+
+          ── Why both layers are promoted with `transform-gpu` ──
+          The rectangle survived the sibling split on COLD loads only: a brand
+          new browser instance showed it, and a reload or an in-app navigation
+          did not. The difference between those two is not markup, it is whether
+          the mark's PNG is already in cache.
+
+          Every mark carries a filter, so it composites on its own layer — but
+          on a cold load that layer materialises when the image DECODES, which is
+          after the scrim has already rasterised its backdrop. A layer appearing
+          over an existing backdrop-filter region does not reliably make mobile
+          WebKit re-sample the backdrop beneath its bounds, and what shows
+          through is a rectangle exactly the size of the image.
+
+          `transform-gpu` makes both layers exist from the first frame instead:
+          the scrim's backdrop sampling is established before any content paints,
+          and the mark's box is reserved by next/image's width/height, so its
+          layer has stable bounds before the pixels arrive. Nothing appears
+          late, so nothing composites over a stale backdrop. */}
       <div
         aria-hidden="true"
-        className={`animate-splash ${frame} bg-black/55 backdrop-blur-md`}
+        className={`animate-splash transform-gpu ${frame} bg-black/55 backdrop-blur-md`}
         style={dur}
       />
 
@@ -132,7 +151,7 @@ export function ArrivalSplash({
           rule and subtext land AFTER the mark: together reads as one image
           appearing, staggered reads as a thing being introduced. */}
       <div className="relative flex flex-col items-center px-6 text-center">
-        <div className="animate-splash-mark">{mark}</div>
+        <div className="animate-splash-mark transform-gpu">{mark}</div>
         <div className="animate-splash-rule mt-5 h-px w-32 bg-gradient-to-r from-transparent via-white/50 to-transparent" />
         <p className="animate-splash-sub font-display mt-4 max-w-md text-sm font-semibold leading-relaxed text-white/80 sm:text-base">
           {subtext}

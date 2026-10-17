@@ -29,9 +29,6 @@ const markets = Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).joi
 export function TradeSplash() {
   return (
     <ArrivalSplash
-      // 2.5s rather than the 2s default. It was set when this splash carried an
-      // icon too, and it stays: the product name is the longest line of type in
-      // any of the three arrivals, and 2s read as hurried against it.
       subtext={`Go long or short on ${markets} with leverage`}
       mark={
         <span className="glow-text font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
