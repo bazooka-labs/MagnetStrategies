@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import algosdk from "algosdk";
-import { getActiveOracleId, getOracle, getOracleHealth, getOracleRoles, getOracleSwapState } from "./magnetfiReads";
+import { ORACLE_FRESHNESS, getActiveOracleId, getOracle, getOracleHealth, getOracleRoles, getOracleSwapState, priceIsFresh } from "./magnetfiReads";
 import { ACTIVE, ACTIVE_ORACLE_POOLS, ACTIVE_POOL_WIRING } from "./magnetfi";
 
 // Keyed off the ORACLE's pool set, which is what getOracleHealth iterates.
@@ -386,5 +386,46 @@ describe("the fallback announces itself", () => {
       await getActiveOracleId(algod);
       expect(warn).not.toHaveBeenCalled();
     } finally { warn.mockRestore(); }
+  });
+});
+
+describe("freshness is a function of the clock, not a snapshot", () => {
+  it("decays: the SAME reading answers differently as time passes", async () => {
+    // This is the regression. OracleInfo used to carry a boolean computed at
+    // fetch, so a liquidation console left open kept reporting "fresh", a
+    // confident HF and enabled buttons from an hours-old price. One fetched
+    // reading, two clocks, two answers — that property is the whole fix.
+    const { algod } = routedAlgod({
+      [ACTIVE.vault]: { [VAULT_KEY]: REPOINTED },
+      [REPOINTED]: { [key("lp_ts_", FIRST.poolId)]: 1_000_000 },
+    });
+    const o = await getOracle(algod, FIRST.poolId);
+    expect(priceIsFresh(o.ts, 1_000_060)).toBe(true);    // a minute later
+    expect(priceIsFresh(o.ts, 1_003_600)).toBe(false);   // an hour later
+  });
+
+  it("puts the boundary exactly where the vault does", () => {
+    // vault/contract.py: ts + ORACLE_FRESHNESS >= Global.latest_timestamp.
+    // Inclusive at the edge, so the UI must not call stale what the contract
+    // would still accept — that would disable a liquidation that works.
+    const ts = 1_000_000;
+    expect(priceIsFresh(ts, ts + ORACLE_FRESHNESS)).toBe(true);
+    expect(priceIsFresh(ts, ts + ORACLE_FRESHNESS + 1)).toBe(false);
+  });
+
+  it("treats a never-posted pool as not fresh", () => {
+    // ts === 0 is "no price ever", and the `ts > 0` guard is what says so.
+    //
+    // The clock here is deliberately SMALL. With a realistic epoch nowSec,
+    // `nowSec - 0` is ~1.8e9 and already exceeds the window, so the guard is
+    // unreachable and a test using one would pass whether or not the guard
+    // exists — which is how the first version of this test was written. Only
+    // a clock inside the window of zero can tell the two apart.
+    expect(priceIsFresh(0, 100)).toBe(false);
+    expect(priceIsFresh(1, 100)).toBe(true);   // a real ts at the same clock IS fresh
+  });
+
+  it("matches the constant the vault enforces", () => {
+    expect(ORACLE_FRESHNESS).toBe(1_800);
   });
 });

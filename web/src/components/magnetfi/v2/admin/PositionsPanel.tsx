@@ -8,7 +8,7 @@ import {
   ACTIVE, VAULT_TYPES, poolWiring, healthFactor, liquidationBuffer,
   projectedAccruedInterest, formatUsd, pct,
 } from "@/lib/magnetfi";
-import { getAllPositions, getActiveOracleId, getOracle, type AdminPosition, type OracleInfo } from "@/lib/magnetfiReads";
+import { getAllPositions, getActiveOracleId, getOracle, priceIsFresh, type AdminPosition, type OracleInfo } from "@/lib/magnetfiReads";
 import * as ops from "@/lib/magnetfiOps";
 import { Panel } from "../shared";
 
@@ -128,7 +128,7 @@ export function PositionsPanel() {
     const vt = vtByPool(p.poolId);
     const oracle = oracles[p.poolId];
     const price = oracle?.price ?? 0;
-    const hfKnown = !!oracle && oracle.fresh && price > 0;
+    const hfKnown = !!oracle && priceIsFresh(oracle.ts, nowSec) && price > 0;
     const liqBps = vt?.liqThresholdBps ?? 7500;
     const liveInterest = p.vaultState !== 2
       ? projectedAccruedInterest(p.accruedInterest, p.musdBorrowed, p.rateBps, p.lastAccrualTs, nowSec)
@@ -255,7 +255,7 @@ export function PositionsPanel() {
                         onRun={() => run(() => ops.markOverdue(algorand!, address!, BigInt(ACTIVE.vault), p.borrower, BigInt(p.poolId)), "Marked overdue")} />
                     )}
                     {p.vaultState === 1 && (
-                      <LiqButton label="Micro-liquidate (overdue interest)" tone="warn" disabled={!ready || !oracle?.fresh}
+                      <LiqButton label="Micro-liquidate (overdue interest)" tone="warn" disabled={!ready || !oracle || !priceIsFresh(oracle.ts, nowSec)}
                         onRun={() => run(() => ops.triggerMicro(algorand!, address!, BigInt(ACTIVE.vault), p.borrower, BigInt(p.poolId)), "Micro-liquidation")} />
                     )}
                     {hfKnown && hf >= 1.0 && !pastDue && p.vaultState === 0 && (
@@ -263,7 +263,7 @@ export function PositionsPanel() {
                     )}
                   </>
                 )}
-                {oracle && !oracle.fresh && !inSettlement && (
+                {oracle && !priceIsFresh(oracle.ts, nowSec) && !inSettlement && (
                   <span className="text-[11px] text-gray-600">oracle {Math.floor((nowSec - oracle.ts) / 60)}m old</span>
                 )}
               </div>

@@ -49,6 +49,8 @@
  * rather than affecting the protocol.
  */
 import algosdk from "algosdk";
+// The vault's own window, declared once in magnetfiReads rather than twice here.
+import { ORACLE_FRESHNESS } from "./magnetfiReads";
 
 /** Tinyman v2 validator app — pools keep `issued_pool_tokens` in local state under it. */
 export const TINYMAN_VALIDATOR_APP = 1_002_541_853;
@@ -81,8 +83,7 @@ const TINYMAN_POOLS_API = "https://mainnet.analytics.tinyman.org/api/v1/pools";
  */
 export const DIVERGE_WARN_PCT = 5;
 export const DIVERGE_CRITICAL_PCT = 15;
-/** vault/contract.py ORACLE_FRESHNESS — past this, staleness explains divergence. */
-const ORACLE_FRESHNESS = 1_800;
+// ORACLE_FRESHNESS (imported above) — past this, staleness explains divergence.
 
 export type CrossCheckLevel = "ok" | "warn" | "critical" | "unknown";
 

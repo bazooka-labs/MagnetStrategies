@@ -19,8 +19,17 @@ import {
   type PoolRef,
 } from "@/lib/magnetfiClient";
 import {
-  getOracle, getVaultPosition, getBalances, getProtocolStats, getTotalVaultDebt,
-  MUSD_ID, type OracleInfo, type VaultPosition, type Balances,
+  MUSD_ID,
+  getActiveOracleId,
+  getBalances,
+  getOracle,
+  getProtocolStats,
+  getTotalVaultDebt,
+  getVaultPosition,
+  priceIsFresh,
+  type Balances,
+  type OracleInfo,
+  type VaultPosition,
 } from "@/lib/magnetfiReads";
 import { Panel, PairGlyph, PrimaryButton, SoonBadge, collateralGlow } from "./shared";
 
@@ -188,7 +197,7 @@ function PendingVaultPanel({ vt }: { vt: VaultType }) {
   );
 }
 
-function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
+function VaultPanel({ vt, pool, oracleId }: { vt: VaultType; pool: PoolRef; oracleId?: number }) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
   const [pos, setPos] = useState<VaultPosition | null>(null);
@@ -205,21 +214,35 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
     () => (algodClient && transactionSigner ? makeAlgorand(algodClient, transactionSigner) : null),
     [algodClient, transactionSigner]);
 
+  // Waits for the parent's `oracleId`. Without it each card resolves the
+  // vault's oracle for itself — four cards, four extra reads of the same
+  // global, repeated on mount, on wallet connect and after every action.
+  // Holding off one round trip is cheaper, and the stat boxes already render
+  // "…" until a read lands.
   const refresh = useCallback(async () => {
-    if (!PROTOCOL_LIVE || !algodClient) return;
+    if (!PROTOCOL_LIVE || !algodClient || !oracleId) return;
     try {
       const [o, p, b] = await Promise.all([
-        getOracle(algodClient, pool.poolId),
+        getOracle(algodClient, pool.poolId, oracleId),
         address ? getVaultPosition(algodClient, address, pool.poolId) : Promise.resolve(null),
         address ? getBalances(algodClient, address, pool.lpAsaId) : Promise.resolve(null),
       ]);
       setOracle(o); setPos(p); setBal(b);
     } catch { /* ignore */ }
-  }, [algodClient, address, pool.poolId, pool.lpAsaId]);
+  }, [algodClient, address, pool.poolId, pool.lpAsaId, oracleId]);
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Local clock so the live interest estimate progresses without a network
+  // call, and so oracle freshness DECAYS rather than being frozen at fetch.
+  // 60s is pure client-side math (no RPC); interest barely moves in a minute.
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const price = oracle?.price ?? 0;
-  const fresh = !!oracle?.fresh;
+  const fresh = !!oracle && priceIsFresh(oracle.ts, nowSec);
 
   // open-form math
   const lpAmt = Math.max(0, Number(lp) || 0);
@@ -252,14 +275,6 @@ function VaultPanel({ vt, pool }: { vt: VaultType; pool: PoolRef }) {
       toast.error(msg.includes("rejected") ? "Signing cancelled" : msg.slice(0, 140));
     } finally { setBusy(null); }
   }
-
-  // Local clock so the live interest estimate visibly progresses without any network call.
-  // 60s is pure client-side math (no RPC); interest on a loan barely moves in a minute.
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 60_000);
-    return () => clearInterval(t);
-  }, []);
 
   // ── position math ──
   // Live-projected accrued interest — the stored field is lazy (only written on a vault
@@ -455,11 +470,16 @@ export function VaultsTab() {
   const { algodClient } = useWallet();
   const [ceiling, setCeiling] = useState<number | null>(null);
   const [borrowed, setBorrowed] = useState<number | null>(null);
+  // Resolved once here and handed to every card.
+  const [oracleId, setOracleId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (!PROTOCOL_LIVE || !algodClient) return;
     getProtocolStats(algodClient).then((s) => setCeiling(s.ceiling)).catch(() => {});
     getTotalVaultDebt(algodClient).then(setBorrowed).catch(() => {});
+    let cancelled = false;
+    getActiveOracleId(algodClient).then((id) => { if (!cancelled) setOracleId(id); });
+    return () => { cancelled = true; };
   }, [algodClient]);
 
   const capacity = (borrowed ?? 0) + (ceiling ?? 0);
@@ -532,7 +552,7 @@ export function VaultsTab() {
         <div className="grid gap-5 md:grid-cols-2">
           {VAULT_CARDS.map((c) =>
             c.kind === "live" ? (
-              <VaultPanel key={c.vt.id} vt={c.vt} pool={c.pool} />
+              <VaultPanel key={c.vt.id} vt={c.vt} pool={c.pool} oracleId={oracleId} />
             ) : (
               <PendingVaultPanel key={c.vt.id} vt={c.vt} />
             ),

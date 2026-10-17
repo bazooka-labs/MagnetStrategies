@@ -4,7 +4,25 @@
 import algosdk from "algosdk";
 import { ACTIVE, ACTIVE_ORACLE_POOLS, PSM_REDEEM_FEE_BPS } from "./magnetfi";
 
-const ORACLE_FRESHNESS = 1_800; // 30 min — MUST match vault/contract.py ORACLE_FRESHNESS
+export const ORACLE_FRESHNESS = 1_800; // 30 min — MUST match vault/contract.py ORACLE_FRESHNESS
+
+/**
+ * Is a posted price still inside the vault's window, AS OF `nowSec`?
+ *
+ * Takes the clock as an argument on purpose. `OracleInfo` used to carry a
+ * boolean `fresh` computed at fetch time, which froze: a liquidation console
+ * left open for hours kept reporting "fresh", a confident health factor and
+ * enabled liquidation buttons, all derived from an hours-old price. The chain
+ * rejected the resulting transaction — ORACLE_FRESHNESS is enforced in
+ * open_vault, borrow_more and all three trigger_*_liquidation — so it misled
+ * the operator rather than losing money. Misleading them at the moment they
+ * decide to liquidate is still the worst place to do it.
+ *
+ * Both call sites already tick a `nowSec` every 60s for the interest
+ * projection, so passing it costs nothing and the answer now decays on screen.
+ */
+export const priceIsFresh = (ts: number, nowSec: number): boolean =>
+  ts > 0 && nowSec - ts <= ORACLE_FRESHNESS;
 /** Half the window: two missed 5-minute cycles, with time left to act. */
 const ORACLE_WARN_AGE = 900;
 /** lp_oracle/contract.py ANCHOR_BAND_LOW / _HIGH. A post outside this reverts. */
@@ -35,7 +53,8 @@ function globalUint(app: algosdk.modelsv2.Application, keyBytes: Uint8Array): nu
 const poolKey = (prefix: string, poolId: number = ACTIVE.poolId) =>
   new Uint8Array([...Buffer.from(prefix), ...algosdk.encodeUint64(BigInt(poolId))]);
 
-export type OracleInfo = { price: number; ts: number; fresh: boolean };
+/** No `fresh` field by design — it would be a snapshot. Use `priceIsFresh(ts, nowSec)`. */
+export type OracleInfo = { price: number; ts: number };
 
 /**
  * The oracle the VAULT is reading, asked of the vault rather than assumed.
@@ -85,7 +104,7 @@ export async function getOracle(
   const price = globalUint(app, poolKey("lp_price_", poolId)) ?? 0;
   const ts = globalUint(app, poolKey("lp_ts_", poolId)) ?? 0;
   const now = Math.floor(Date.now() / 1000);
-  return { price: price / 1_000_000, ts, fresh: ts > 0 && now - ts <= ORACLE_FRESHNESS };
+  return { price: price / 1_000_000, ts };
 }
 
 /**
