@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { Github } from "lucide-react";
+import { XIcon, DiscordIcon } from "@/components/SocialIcons";
 import { Navbar } from "@/components/Navbar";
 
 /** Each stage fills the hero box and centres itself inside it.
@@ -98,14 +100,39 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="w-32 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent mb-8 animate-hero-outro-1" />
+          {/* Scaled to the wordmark above it rather than left at a flat w-32.
+              The mark runs 15.8 / 24.16 / 31.6rem, so a fixed 8rem rule read as
+              a quarter of it at lg — the proportion that made it look like it
+              had shrunk when the type changed. These are ~2/3 of the mark at
+              every breakpoint, so the relationship holds as the page resizes. */}
+          <div className="w-[10.5rem] sm:w-[16rem] lg:w-[21rem] h-px bg-gradient-to-r from-transparent via-white/50 to-transparent mb-8 animate-hero-outro-1" />
 
           {/* Tagline */}
           <p className="font-display max-w-2xl text-xl sm:text-2xl font-semibold text-white leading-relaxed mb-5 animate-hero-outro-2">
             Exploring the Possibilities &amp; Opportunities within Decentralized Finance
           </p>
 
-
+          {/* Arrives last, a beat behind the tagline. The page ends here now
+              that the footer is gone, so this is the only way off it besides
+              the nav — hence real hit areas rather than bare 20px glyphs. */}
+          <div className="mt-2 flex items-center gap-2 animate-hero-outro-3">
+            {([
+              ["https://x.com/Bazooka_Labs", "X / Twitter", <XIcon key="x" className="h-5 w-5" />],
+              ["https://discord.gg/XyTPkN2e", "Discord", <DiscordIcon key="d" className="h-5 w-5" />],
+              ["https://github.com/bazooka-labs/MagnetStrategies", "GitHub", <Github key="g" className="h-5 w-5" />],
+            ] as const).map(([href, label, icon]) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={label}
+                className="rounded-xl border border-white/15 bg-white/5 p-2.5 text-white/70 backdrop-blur-sm transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+              >
+                {icon}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>

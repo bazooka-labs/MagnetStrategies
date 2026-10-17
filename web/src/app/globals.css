@@ -148,7 +148,7 @@ body {
   100% { opacity: 0; }
 }
 .animate-logo-fade-out {
-  animation: logo-fade-out 4s ease-in-out forwards;
+  animation: logo-fade-out 3.2s ease-in-out forwards;
 }
 
 @keyframes headline-fade-in {
@@ -163,9 +163,14 @@ body {
    Two stages. Every stage holds at full opacity for 2s and every transition
    takes 2s, which is the grammar this has kept through every version.
 
-     stage               fades in   holds     fades out
-     Magnet logo         —          0–2s      2–4s
-     Magnet Strategies   4–6s       stays     —
+     stage               fades in     holds       fades out
+     Magnet logo         —            0–1.6s      1.6–3.2s
+     Magnet Strategies   3.2–4.8s     stays       —
+
+   Every figure here is the original x0.8: the whole sequence was cut by 20%
+   on feedback that it dragged. The 2s grammar below describes the shape it
+   was built to, not the numbers now in the rules — the proportions are
+   untouched, only the clock.
 
    It grew to five — the mark, "Attract Yield", "Attract Liquidity", "Attract
    Leverage", then the banner — and came back. The three middle lines said in
@@ -187,7 +192,7 @@ body {
    where the utility lands at byte 36502 and `.animate-fade-up` at 38907. */
 
 /* Final stage — fades in and stays, the same reveal the headline used. */
-.animate-stage-final { animation: headline-fade-in 2s ease-in-out 4s both; }
+.animate-stage-final { animation: headline-fade-in 1.6s ease-in-out 3.2s both; }
 
 /* The divider and tagline — the 6050ms and 6150ms the markup always asked for,
    now actually applied. These were chosen while the hero ran 24s, deliberately
@@ -195,8 +200,10 @@ body {
    a stagger read as a stall. At two stages the hero finishes at 6s and they
    land just behind the banner settling, which is what they were always timed
    against: the first thing arriving, not the last. */
-.animate-hero-outro-1 { animation: fade-up 0.6s ease-out 6.05s both; }
-.animate-hero-outro-2 { animation: fade-up 0.6s ease-out 6.15s both; }
+.animate-hero-outro-1 { animation: fade-up 0.48s ease-out 4.84s both; }
+.animate-hero-outro-2 { animation: fade-up 0.48s ease-out 4.92s both; }
+/* The social row, last in. Same 0.8x scaling as everything above it. */
+.animate-hero-outro-3 { animation: fade-up 0.48s ease-out 5.04s both; }
 
 /* ── Ambient magnetic field lines ──────────────────────────────────────────
    Drives <AmbientField />, which mounts once in the root layout. The loop
