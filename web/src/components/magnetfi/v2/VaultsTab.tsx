@@ -16,6 +16,7 @@ import {
 } from "@/lib/magnetfi";
 import {
   makeAlgorand, optIn, openVault, payInterest, repayPrincipal, borrowMore, addCollateral,
+  rescueZeroDebtVault,
   type PoolRef,
 } from "@/lib/magnetfiClient";
 import {
@@ -97,9 +98,14 @@ function hfColor(hf: number): string {
 
 // Hoisted to module scope (not declared inside a panel) so the 60s live-interest tick —
 // or any parent re-render — does NOT remount its <input> and steal focus mid-typing.
-function ManageAction({ id, title, buttonLabel, unit, onRun, disabled, max, maxFill, hint, m, setM, run, busy }: {
+function ManageAction({ id, title, buttonLabel, unit, onRun, disabled, disabledNote, max, maxFill, hint, m, setM, run, busy }: {
   id: string; title: string; buttonLabel: string; unit: string; onRun: (v: number) => Promise<void>;
-  disabled?: boolean; max?: number; maxFill?: number; hint?: ReactNode;
+  disabled?: boolean;
+  /** Why it is disabled. The placeholder used to assume unpaid interest was the
+      only reason, which told a zero-principal vault owner to clear interest
+      they do not owe. */
+  disabledNote?: string;
+  max?: number; maxFill?: number; hint?: ReactNode;
   m: Record<string, string>;
   setM: Dispatch<SetStateAction<Record<string, string>>>;
   run: (id: string, fn: () => Promise<void>, optAsset?: number) => Promise<void>;
@@ -116,7 +122,7 @@ function ManageAction({ id, title, buttonLabel, unit, onRun, disabled, max, maxF
         <div className="relative w-full">
           <input value={v} disabled={disabled}
             onChange={(e) => setM((s) => ({ ...s, [id]: e.target.value }))}
-            placeholder={disabled ? "clear interest first" : `0.00 ${unit}`}
+            placeholder={disabled ? (disabledNote ?? "clear interest first") : `0.00 ${unit}`}
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 pr-12 font-mono text-sm text-white outline-none focus:border-magnet-500/50 disabled:opacity-40" />
           {showMax && (
             <button type="button" onClick={() => setM((s) => ({ ...s, [id]: String(maxFill) }))}
@@ -272,7 +278,12 @@ function VaultPanel({ vt, pool, oracleId }: { vt: VaultType; pool: PoolRef; orac
       await refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Transaction failed";
-      toast.error(msg.includes("rejected") ? "Signing cancelled" : msg.slice(0, 140));
+      // 140 was cutting our own guidance in half. The overdue message ran 211
+      // characters and the toast ended at "...send any small amount of mUSD to
+      // this wal" — losing every word of the actual remedy, while the unit
+      // test asserting the string contained it still passed. Raised to fit the
+      // longest message we deliberately write; chain errors are still clipped.
+      toast.error(msg.includes("rejected") ? "Signing cancelled" : msg.slice(0, 260));
     } finally { setBusy(null); }
   }
 
@@ -375,7 +386,53 @@ function VaultPanel({ vt, pool, oracleId }: { vt: VaultType; pool: PoolRef; orac
               maxFill={liveInterest > 0 ? liveInterest * 1.01 + 0.001 : 0}
               hint={`Accrued interest to date: ${formatUsd(liveInterest, 4)} mUSD`}
               onRun={(v) => payInterest(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
+            {/* ── A vault with collateral and no debt ─────────────────────
+                The contract gives it no exit: closing runs through
+                pay_interest's close branch, which needs principal to pay down.
+                The UI no longer creates one, but open_vault(pool, 0) is public
+                and reachable from any client, so the way out is offered here
+                rather than left as folklore.
+
+                It borrows 1 micro-mUSD and repays it in the same atomic group.
+                No contract change and no new capability — see
+                rescueZeroDebtVault for why that matters. */}
+            {/* vaultState === 0 matters: trigger_partial_liquidation's clamp
+                (contract.py:758) can leave musd_borrowed 0 with lp_amount > 0
+                while state stays 2 until the admin settles. Without this the
+                panel would show "In liquidation" and "This vault has no debt
+                — unlock it" at the same time. */}
+            {pos.musdBorrowed <= 0 && pos.lpAmount > 0 && pos.vaultState === 0 && (
+              <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.06] p-3.5">
+                <p className="text-xs leading-relaxed text-amber-200/90">
+                  <strong className="text-amber-200">This vault has no debt.</strong> Closing a
+                  vault works by repaying principal, so with nothing borrowed there is nothing
+                  to repay and the collateral stays locked. Unlock it by borrowing and
+                  immediately repaying one millionth of an mUSD, in a single transaction.
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-amber-200/60">
+                  Needs a fresh oracle and borrowing unpaused, because it does briefly borrow.
+                  Your {formatUsd(pos.lpAmount)} LP and the 0.0465 ALGO deposit come back in the
+                  same transaction.
+                </p>
+                <div className="mt-2.5">
+                  <PrimaryButton
+                    onClick={() => run("rescue", () => rescueZeroDebtVault(algorand!, address!, pool), MUSD_ID)}
+                    disabled={!isConnected || busy !== null || !fresh}>
+                    {busy === "rescue"
+                      ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…</span>
+                      : !fresh ? "Oracle stale — try again shortly"
+                      : "Unlock collateral & close"}
+                  </PrimaryButton>
+                </div>
+              </div>
+            )}
+
+            {/* Disabled at zero principal: pay_interest cannot close a vault
+                without principal to pay down, so the action would confirm and
+                change nothing. See repayPrincipal's guard. */}
             <ManageAction id="repay" title="Interest + Principal Payment (mUSD)" buttonLabel="Repay & Close" unit="mUSD"
+              disabled={pos.musdBorrowed <= 0}
+              disabledNote={pos.musdBorrowed <= 0 ? "no principal to repay" : undefined}
               max={pos.musdBorrowed} maxFill={pos.musdBorrowed}
               hint={<>Principal {formatUsd(pos.musdBorrowed)} + interest {formatUsd(liveInterest, 4)} = <span className="text-gray-300">≈ {formatUsd(pos.musdBorrowed + liveInterest, 4)} mUSD</span> total. Max fills principal — interest is added automatically.</>}
               onRun={(v) => repayPrincipal(algorand!, address!, v, pool)} m={m} setM={setM} run={run} busy={busy} />
@@ -447,17 +504,48 @@ function VaultPanel({ vt, pool, oracleId }: { vt: VaultType; pool: PoolRef; orac
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-400" />
                 <p className="text-xs leading-relaxed text-gray-500">Liquidation starts below a 1.00 health factor. Repay or add collateral to stay above it.</p>
               </div>
+              {/* ── Why a borrow is REQUIRED, not optional ──────────────────
+                  The contract has no withdraw_collateral and no close_vault.
+                  The only path that returns LP is pay_interest's close branch,
+                  which needs `principal_paid > 0` (vault/contract.py:473). A
+                  vault opened with borrow 0 therefore has NO exit: every
+                  liquidation trigger also asserts debt > 0, so it cannot even
+                  be liquidated out.
+
+                  This form previously said "Depositing collateral with 0 borrow
+                  is allowed", which was true of the contract and a trap for the
+                  user — the most cautious depositor, the one who wanted
+                  collateral down without leverage, is exactly who loses access
+                  to it. Audited 2026-10-17; no such vault exists on chain yet.
+
+                  Escaping one is borrow_more(1) then repay, which needs
+                  borrowing unpaused, a fresh oracle AND PSM headroom — the
+                  three things that are least likely to hold during the kind of
+                  incident that makes someone want their collateral back. So
+                  this is blocked at the door rather than rescued later. */}
               <PrimaryButton
-                onClick={() => run("open", () => openVault(algorand!, address!, lpAmt, borrowAmt, pool), borrowAmt > 0 ? MUSD_ID : undefined)}
-                disabled={!isConnected || busy !== null || lpAmt <= 0 || (borrowAmt > 0 && !fresh) || (!!bal && bal.lp < lpAmt)}>
+                onClick={() => run("open", () => openVault(algorand!, address!, lpAmt, borrowAmt, pool), MUSD_ID)}
+                disabled={!isConnected || busy !== null || lpAmt <= 0 || borrowAmt <= 0 || !fresh || (!!bal && bal.lp < lpAmt)}>
                 {busy === "open" ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…</span>
                   : !isConnected ? "Connect wallet to borrow"
                   : (!!bal && bal.lp < lpAmt) ? "Insufficient LP"
-                  : borrowAmt > 0 && !fresh ? "Oracle stale — borrow blocked"
+                  /* !fresh is tested FIRST on purpose. borrowAmt is clamped to
+                     `cap`, and cap derives from the oracle price — so a stale or
+                     unread oracle forces borrowAmt to 0 no matter what the user
+                     typed. Testing the zero first told someone who had entered
+                     500 to "enter an amount to borrow". */
+                  : !fresh ? "Oracle stale — borrow blocked"
+                  : lpAmt > 0 && borrowAmt <= 0 ? "Enter an amount to borrow"
                   : "Open vault"}
               </PrimaryButton>
+              {lpAmt > 0 && borrowAmt <= 0 && fresh && (
+                <p className="text-center text-[11px] text-amber-300/80">
+                  A vault must borrow something. Collateral deposited against a zero borrow
+                  cannot be withdrawn — closing a vault requires repaying principal.
+                </p>
+              )}
               {borrowAmt > 0 && !fresh && (
-                <p className="text-center text-[11px] text-gray-500">A borrow needs a fresh oracle price. Depositing collateral with 0 borrow is allowed.</p>
+                <p className="text-center text-[11px] text-gray-500">A borrow needs a fresh oracle price.</p>
               )}
             </div>
           </div>

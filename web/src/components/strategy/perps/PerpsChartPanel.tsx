@@ -113,6 +113,17 @@ const SCRIPT_SRC =
  * height on it as well is what left the iframe fighting a box that was already
  * constrained.
  */
+/**
+ * The sandbox tokens for the TradingView frame.
+ *
+ * `allow-same-origin` MUST NOT be added. With `srcdoc`, that token makes the
+ * frame inherit this document's origin, which hands a third-party CDN script
+ * access to the realm that signs transactions — the exact thing the frame
+ * exists to prevent. Exported so the rule is a test against the value, not a
+ * comment someone can read past (see PerpsChartPanel.test.ts).
+ */
+export const TV_SANDBOX = "allow-scripts";
+
 const HEIGHT = 560;
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
@@ -189,6 +200,18 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
    * deliberate step up rather than the thing you land on.
    */
   const [advanced, setAdvanced] = useState(false);
+  // A failed load must not retire the feature for the session. `blocked` hides
+  // the view toggle, so without this a single slow load (or one transient
+  // network blip) left the user on the basic chart permanently.
+  //
+  // The first attempt at this was dead code: `canSwitch` included `!blocked`,
+  // so the instant `blocked` went true the toggle unmounted, `setAdvanced`
+  // lost its only call site, and `advanced` froze at true — meaning this
+  // effect's dependency never changed again and it never re-ran. The toggle
+  // now stays mounted for any supported market, and a failure explicitly
+  // returns the user to the basic view (see `fallBackToBasic`), so flipping
+  // back to advanced is a real state change that clears `blocked` and retries.
+  useEffect(() => { if (advanced) setBlocked(false); }, [advanced]);
   /** Owned here so one interval control drives whichever chart is showing. */
   const [range, setRange] = useState<ChartRange>("1d");
   const holder = useRef<HTMLDivElement>(null);
@@ -243,23 +266,47 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
     // bails. Without `advanced` in the deps it never ran again, so switching to
     // the advanced view produced an empty panel every time.
     if (!advanced) return;
+    // Once blocked the toggle is hidden and nothing is on screen; rebuilding
+    // here would re-fetch the third-party script into a hidden container on
+    // every market or range change.
+    if (blocked) return;
     const el = holder.current;
     const symbol = SYMBOL[marketId];
     if (!el || !symbol) return;
 
-    // The embed reads its configuration from the script tag's own text, so the
-    // element has to be built by hand rather than rendered.
-    el.innerHTML = "";
-    const inner = document.createElement("div");
-    inner.className = "tradingview-widget-container__widget";
-    // Deliberately unsized: the widget sets the iframe from the config below.
-    el.appendChild(inner);
-
-    const script = document.createElement("script");
-    script.src = SCRIPT_SRC;
-    script.async = true;
-    script.type = "text/javascript";
-    script.innerHTML = JSON.stringify({
+    /**
+     * ── Why this runs in a sandboxed iframe and not on the page ────────────
+     *
+     * This used to append TradingView's loader straight into the document.
+     * That script then executed in OUR realm — the same realm that builds and
+     * signs perps transactions. `perpsGroup.ts` re-decodes every transaction
+     * field against what the screen displayed, but a script sharing the realm
+     * can patch the signer AFTER those assertions pass, or patch the
+     * assertions themselves. `perpsGroup.ts`'s own header says it is "NOT a
+     * defence against full frontend compromise" and names the missing
+     * controls; this closes the one concrete path into that realm.
+     *
+     * `srcdoc` + `sandbox="allow-scripts"` WITHOUT `allow-same-origin` gives
+     * the frame an opaque origin: no access to window.parent, our DOM, our
+     * storage, or the wallet. Those two tokens must never appear together
+     * here — with both, the frame inherits our origin and the isolation is
+     * worth nothing.
+     *
+     * Cost: the widget cannot reach localStorage, so saved drawings and
+     * indicator layouts do not persist between sessions. Acceptable for an
+     * opt-in chart; not acceptable is a third-party CDN able to rewrite a
+     * signed transaction.
+     *
+     * ⚠️ VERIFY IN A REAL BROWSER AFTER ANY CHANGE HERE. An opaque origin makes
+     * localStorage/cookies/IndexedDB THROW SecurityError rather than return
+     * empty, so "degrades gracefully" was an assumption, not a fact — a widget
+     * that threw during init would render an empty 560px box, and the tv-ok
+     * signal (which only proves the loader script fetched) would have already
+     * disarmed the fallback. Confirmed rendering candles on 2026-10-18; jsdom
+     * and a headless fetch cannot check this, so it needs a human looking at
+     * the panel.
+     */
+    const config = JSON.stringify({
       symbol,
       interval: TV_INTERVAL[range],
       timezone: "Etc/UTC",
@@ -280,15 +327,99 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
       gridColor: "rgba(255, 255, 255, 0.06)",
       support_host: "https://www.tradingview.com",
     });
-    // Ad blockers block this embed routinely. A dead panel in the middle of the
-    // page is a worse outcome than a simpler chart, so failure falls back.
-    script.onerror = () => setBlocked(true);
-    el.appendChild(script);
 
-    return () => { el.innerHTML = ""; };
-  }, [marketId, advanced, range]);
+    // `config` is JSON.stringify of values we control (a fixed symbol from
+    // SYMBOL, an interval from TV_INTERVAL, literals) — no user input reaches
+    // it. It is still escaped for a <script> context: a literal "</script>"
+    // inside JSON would end the tag early.
+    const safeConfig = config.replace(/<\//g, "<\\/");
 
-  const canSwitch = !blocked && !!SYMBOL[marketId];
+    const srcdoc = `<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style>
+</head><body>
+<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>
+<script>
+  var s=document.createElement('script');
+  s.src=${JSON.stringify(SCRIPT_SRC)};
+  s.async=true;
+  s.onerror=function(){try{parent.postMessage('tv-fail','*')}catch(e){}};
+  s.onload=function(){try{parent.postMessage('tv-ok','*')}catch(e){}};
+  s.text=${JSON.stringify(safeConfig)};
+  document.querySelector('.tradingview-widget-container').appendChild(s);
+<\/script>
+</body></html>`;
+
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", TV_SANDBOX);
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.setAttribute("title", "TradingView advanced chart");
+    frame.style.width = "100%";
+    frame.style.height = `${HEIGHT}px`;
+    frame.style.border = "0";
+    frame.srcdoc = srcdoc;
+
+    /**
+     * Ad blockers block this embed routinely, and a dead panel mid-page is a
+     * worse outcome than a simpler chart — so failure falls back, as before.
+     *
+     * The signal has to cross the sandbox now: `script.onerror` fired in our
+     * realm before, and cannot any more. The frame reports via postMessage and
+     * a timer covers the case where nothing reports at all (blocked at the
+     * network layer, so neither handler runs).
+     */
+    // A failed load must return to the basic chart, not sit on a blank panel:
+    // `showAdvanced` is `advanced && canSwitch`, and canSwitch no longer
+    // tracks `blocked`, so without clearing `advanced` the user would stare at
+    // an empty frame with the toggle still reading "advanced".
+    const fallBackToBasic = () => { setBlocked(true); setAdvanced(false); };
+
+    let settled = false;
+    const onMessage = (ev: MessageEvent) => {
+      // Only this frame, and only the two strings it can send. The frame has
+      // an opaque origin so ev.origin is "null" and cannot be matched on;
+      // identity comes from the source window instead.
+      if (ev.source !== frame.contentWindow) return;
+      if (ev.data !== "tv-ok" && ev.data !== "tv-fail") return;
+      settled = true;
+      if (ev.data === "tv-fail") fallBackToBasic();
+    };
+    window.addEventListener("message", onMessage);
+    /**
+     * The timeout is a LAST resort, not a latency budget.
+     *
+     * At 8s this fired on slow mobile connections where the loader was merely
+     * late, and `blocked` is never reset — which hides the view toggle
+     * entirely, so the advanced chart was gone for the rest of the session
+     * with no way back short of a reload. 20s is past any plausible load and
+     * still bounded, and `blocked` now clears whenever the user re-enters the
+     * advanced view (see the reset effect below) so a false positive costs one
+     * toggle rather than the feature.
+     *
+     * Honest limit: `tv-ok` fires on the LOADER's onload, which proves the
+     * script fetched — not that candles drew. The loader then creates its own
+     * frame to www.tradingview-widget.com, and if THAT is blocked (filter
+     * lists commonly block the widget host rather than the loader) the panel
+     * shows an empty box with the fallback already disarmed. Detecting that
+     * needs the nested frame's own ready event relayed out, which is not
+     * something this can verify without a real browser.
+     */
+    const timer = window.setTimeout(() => { if (!settled) fallBackToBasic(); }, 20_000);
+
+    el.innerHTML = "";
+    el.appendChild(frame);
+
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.clearTimeout(timer);
+      el.innerHTML = "";
+    };
+  }, [marketId, advanced, range, blocked]);
+
+  // Deliberately NOT gated on `blocked` — see the reset effect above. A
+  // blocked load drops back to the basic chart and leaves the toggle in place
+  // so the user can retry; hiding it is what made a single slow load
+  // permanent.
+  const canSwitch = !!SYMBOL[marketId];
   // TradingView only when chosen AND available; otherwise the basic chart fills
   // the same frame rather than the panel changing shape.
   const showAdvanced = advanced && canSwitch;

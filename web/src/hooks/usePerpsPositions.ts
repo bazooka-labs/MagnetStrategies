@@ -82,10 +82,22 @@ export type PositionsStatus = {
 /**
  * Slower than the card's ten seconds, deliberately.
  *
- * Nothing here is used to build a transaction — it is a status view, and the
- * close preview is re-quoted fresh at the moment it matters. Four box reads plus
- * a market read and an oracle fetch per market is a lot to repeat every ten
- * seconds for a number nobody is about to sign.
+ * Four box reads plus a market read and an oracle fetch per market is a lot to
+ * repeat every ten seconds for a status view.
+ *
+ * ⚠️ This comment used to claim "nothing here is used to build a transaction —
+ * the close preview is re-quoted fresh at the moment it matters". That is
+ * FALSE and was false when written. PositionsPanel passes this hook's cached
+ * `p.close` quote straight into `closePosition`, where it becomes the slippage
+ * anchor (`perpsClient.ts:1712`) and the yield-recall caps (`:1688`).
+ * `quoteClose` is never called anywhere in `perpsClient.ts`.
+ *
+ * So a quote up to REFRESH_MS old does reach a signed transaction. The damage
+ * is bounded — the acceptable price is a floor, not the fill, so a stale
+ * anchor produces either a rejected close or a correct fill under a looser
+ * floor than the user believes — but "nobody is about to sign this" is the one
+ * thing it is not. The open path closed this circularity with explicit
+ * display-drift limits; the close path has no equivalent yet.
  */
 const REFRESH_MS = 30_000;
 

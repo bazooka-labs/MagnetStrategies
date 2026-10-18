@@ -255,7 +255,20 @@ export const MAX_TAKE_PROFIT_MULTIPLE = 10;
  */
 export const OI_HEADROOM_SHARE = 0.5;
 
-/** User-adjustable, disclosed. Anchored to the QUOTED EXECUTION PRICE, not the index. */
+/**
+ * Slippage tolerance, anchored to the QUOTED EXECUTION PRICE, not the index.
+ *
+ * FIXED, not user-adjustable. The docstring here claimed "user-adjustable,
+ * disclosed" until 2026-10-17 and it was neither — every call site passes this
+ * constant and there is no control. It is now at least disclosed: the card's
+ * cost breakdown states the tolerance, so a fill up to 0.5% worse than the
+ * quote is something the user was told about rather than something they
+ * discover afterwards.
+ *
+ * Exposing a control is a product decision, not a correctness one. Until then
+ * this stays a single reviewed number rather than an input someone can widen
+ * to 50% on a volatile market.
+ */
 export const DEFAULT_SLIPPAGE_BPS = 50;
 
 /**

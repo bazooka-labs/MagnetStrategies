@@ -23,6 +23,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { CHILD_KEEPER_FEE_USDC, DEFAULT_SLIPPAGE_BPS } from "@/lib/perps";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -138,9 +139,19 @@ export function PerpsInfoModal({ open, onClose }: Props) {
             <h3 className="font-display text-base font-semibold text-white">What leaves your wallet</h3>
             <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-gray-300">
               <li>
-                <span className="text-white/90">Your collateral in USDC</span>, plus a small
-                keeper fee for each automatic trigger you attach — about five cents. Attach
-                none and you pay no keeper fee.
+                <span className="text-white/90">Your collateral in USDC</span>, plus a{" "}
+                ${CHILD_KEEPER_FEE_USDC.toFixed(2)} keeper fee for each automatic trigger you
+                attach. Attach none and you pay no keeper fee.
+                {/* Read from the constant, not typed out. This line said "about five
+                    cents" against a 0.1 USDC fee until 2026-10-17 — wrong by 2x in the
+                    one place that exists to disclose costs. */}
+              </li>
+              <li>
+                <span className="text-white/90">Up to {(DEFAULT_SLIPPAGE_BPS / 100).toFixed(2)}%
+                of slippage</span> against the price you were quoted — or, on a limit order, against
+                the trigger price you set. The tolerance is fixed and
+                there is no control for it; past that band the trade is rejected rather than
+                filled at a worse price.
               </li>
               <li>
                 <span className="text-white/90">A little ALGO for on-chain storage.</span> PEX

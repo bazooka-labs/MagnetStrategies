@@ -1925,6 +1925,17 @@ export function PerpsCard({
             <> {" "}Nothing is traded yet — this places a resting order, and the
             money stays escrowed with PEX until it fills or you cancel it.</>
           )}
+          {/* Slippage applies to BOTH order types and was shown for neither —
+              the word appeared in no user-facing string at all. The first fix
+              here gated this on `!view.isLimit`, which was backwards: a limit
+              order passes DEFAULT_SLIPPAGE_BPS too (PerpsCard:1149 →
+              perpsClient:941 → acceptableForOpen at :1164 against the TRIGGER
+              price), so the one user who believes they named their own price
+              was the one not told. Unconditional now, anchored to whichever
+              price the band is actually measured from. */}
+          {" "}Your fill can be up to {(DEFAULT_SLIPPAGE_BPS / 100).toFixed(2)}% worse than
+          the {view.isLimit ? "trigger price you set" : "quoted price"} — past that the trade
+          is rejected instead of filled.
         </p>
       )}
 
