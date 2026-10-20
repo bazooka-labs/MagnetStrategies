@@ -20,10 +20,7 @@ import { ArrivalSplash } from "@/components/ArrivalSplash";
 export function StrategySplash() {
   return (
     <ArrivalSplash
-      // Says what the page is FOR, not what it contains. "Liquidity pools"
-      // would describe today's single tab and be wrong the moment a second
-      // strategy lands beside it.
-      subtext="Put capital to work across Magnet's strategies"
+      subtext="Explore the Opportunities in DeFi"
       mark={
         <Image
           // The TIGHT crop, as the landing page uses. /magnet-wordmark.png is
@@ -35,11 +32,26 @@ export function StrategySplash() {
           width={815}
           height={226}
           priority
-          // Wider than MagnetFi's because the wordmark is a long horizontal
-          // lockup rather than a compact logo; matched to the landing page's
-          // own scale so the two arrivals read as the same brand at the same
-          // size rather than two sizes of it.
-          className="w-[16rem] max-w-[76vw] sm:w-[24rem] lg:w-[30rem] h-auto drop-shadow-[0_0_28px_rgba(168,85,247,0.45)]"
+          /**
+           * ── Sizing: MagnetFi's classes, exactly ──
+           * These are the two wordmark arrivals, so equal width reads as equal
+           * prominence. This was w-[16rem]/24/30 with max-w-[76vw], which was
+           * both wider than MagnetFi's and — because the wordmark is 815x226
+           * (3.61:1) against the logo's 1011x247 (4.09:1) — 21% taller at lg.
+           * Matched on width; the residual height difference from the aspect
+           * ratio is ~13% and reads as the same size.
+           *
+           * ── Glow: the shared class, not an inline one-off ──
+           * `magnet-glow-soft` is what the landing page puts on THIS asset and
+           * what TokensSplash uses. MagnetFi's inline
+           * drop-shadow-[0_0_28px_...] is the outlier, so this follows the two
+           * that agree rather than the one that does not.
+           *
+           * The radial bloom BEHIND the mark is not here at all — it is
+           * `animate-splash-glow` in ArrivalSplash, an absolute sibling painted
+           * before the mark, shared by all four arrivals.
+           */
+          className="magnet-glow-soft w-[17rem] max-w-[72vw] sm:w-[23rem] lg:w-[28rem] h-auto"
         />
       }
     />

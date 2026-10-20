@@ -10,6 +10,7 @@ import { DEFAULT_MS } from "@/components/ArrivalSplash";
 const tokens = readFileSync("src/components/tokens/TokensSplash.tsx", "utf8");
 const trade = readFileSync("src/components/strategy/TradeSplash.tsx", "utf8");
 const magnetfi = readFileSync("src/components/magnetfi/MagnetFiSplash.tsx", "utf8");
+const strategy = readFileSync("src/components/liquidity/StrategySplash.tsx", "utf8");
 
 describe("each arrival is its own image", () => {
   it("gives the $U mark to /tokens and the wordmark to MagnetFi", () => {
@@ -71,5 +72,65 @@ describe("timings stay deliberate", () => {
     // mentioning the number would satisfy a text match while the constant said
     // something else entirely.
     expect(DEFAULT_MS).toBe(2500);
+  });
+});
+
+describe("the Strategy arrival", () => {
+  it("uses the house banner, not a product mark", () => {
+    // /tokens leads with the $U mark and /magnetfi with its wordmark because
+    // each stands for one asset or protocol we wrote. Strategy is a shelf —
+    // PEX pools today, more sections behind its tab bar — so it carries the
+    // organisation's own banner instead.
+    expect(strategy).toContain('src="/magnet-wordmark-tight.png"');
+  });
+
+  it("uses the TIGHT crop, not the padded canvas", () => {
+    // /magnet-wordmark.png is an 877x284 canvas holding an 815x226 mark,
+    // padded unevenly. At splash scale that dead space becomes a visible gap
+    // between the mark and the rule — the same defect /tokens hit.
+    expect(strategy).not.toContain('src="/magnet-wordmark.png"');
+    expect(strategy).toContain("width={815}");
+    expect(strategy).toContain("height={226}");
+  });
+
+  /**
+   * The className of the mark, not the whole file.
+   *
+   * These assertions are about what the <Image> actually carries, and a
+   * whole-file grep cannot tell that from prose ABOUT it — the first version
+   * of the glow test below failed because this file's own comment explains why
+   * MagnetFi's inline `drop-shadow-[...]` is the outlier, and the grep matched
+   * the explanation. Same defect this repo has hit four times now.
+   */
+  const markClass = (src: string): string => {
+    const m = /className="([^"]*)"\s*\/>/.exec(src);
+    if (!m) throw new Error("no mark className found — did the splash stop rendering an Image?");
+    return m[1];
+  };
+
+  it("sizes to MagnetFi's arrival exactly", () => {
+    // The two wordmark arrivals. Equal width reads as equal prominence; this
+    // shipped 7% wider and 21% taller because the aspect ratios differ
+    // (3.61:1 against 4.09:1). Asserted against MagnetFi's own classes so the
+    // two cannot drift apart silently.
+    const mine = markClass(strategy);
+    const theirs = markClass(magnetfi);
+    for (const cls of ["w-[17rem]", "max-w-[72vw]", "sm:w-[23rem]", "lg:w-[28rem]"]) {
+      expect(mine, `strategy: ${cls}`).toContain(cls);
+      expect(theirs, `magnetfi: ${cls}`).toContain(cls);
+    }
+  });
+
+  it("glows with the shared class rather than an inline one-off", () => {
+    // magnet-glow-soft is what the landing page puts on this exact asset and
+    // what TokensSplash uses. MagnetFi's inline drop-shadow is the outlier.
+    const mine = markClass(strategy);
+    expect(mine).toContain("magnet-glow-soft");
+    expect(markClass(tokens)).toContain("magnet-glow-soft");
+    expect(mine).not.toContain("drop-shadow-[");
+  });
+
+  it("runs on the shared duration with no override", () => {
+    expect(strategy).not.toContain("durationMs");
   });
 });
