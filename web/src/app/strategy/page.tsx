@@ -4,20 +4,21 @@ import dynamic from "next/dynamic";
 /**
  * Strategy — liquidity provision into PEX's pools.
  *
- * ── Why the route is /liquidity and not /strategy ─────────────────────────
- * `/strategy` is a permanent (301) redirect to `/trade`, because it was the
- * trading terminal's former name. Two problems with reusing it, either of them
- * disqualifying:
+ * ── The route, and the one residual risk in it ────────────────────────────
+ * This briefly lived at `/liquidity`, because `/strategy` was a PERMANENT (301)
+ * redirect to `/trade` — the terminal's former name. That redirect is now
+ * removed and the page owns `/strategy`, which is what the product is called.
  *
- *   1. Browsers cache 301s indefinitely. Anyone who has ever hit /strategy
- *      could not reach a page here — not even by typing the URL — and we cannot
- *      clear their cache.
- *   2. Every existing link, bookmark and cached redirect pointing at /strategy
- *      wants the TERMINAL. Repurposing the path sends those people to the wrong
- *      product. `src/components/strategy/` likewise still means "perps".
+ * The residual risk is real but small and bounded: browsers cache 301s, so
+ * anyone who visited `/strategy` before 2026-10-20 keeps landing on `/trade`
+ * until their cache expires, and nothing we ship can clear it. That population
+ * is whoever hit a path that existed only as an internal rename, so it is
+ * close to empty — and the destination they reach is a working page, not an
+ * error.
  *
- * The page is still called Strategy in the nav; only the path differs, which is
- * unremarkable. See web/STRATEGY_SPEC.md §2.
+ * Note the components live under `src/components/liquidity/`, not
+ * `src/components/strategy/`, which still holds the perps components. Renaming
+ * that would touch the terminal for no benefit.
  */
 
 export const metadata: Metadata = {

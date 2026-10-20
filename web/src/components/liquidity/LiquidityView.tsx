@@ -20,9 +20,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Coins, Layers, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Coins, Droplets, Layers, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
+import { StrategySplash } from "./StrategySplash";
 import { FEE_YIELD_DISCLAIMER, capitalStableDays } from "@/lib/pexLiquidity";
 import {
   cvaShareOfMarket, readStrategyLiquidity, type StrategyLiquidity,
@@ -52,6 +53,35 @@ const usd = (v: number | null, dp = 0) =>
 const pct = (v: number | null, dp = 1) => (v === null ? "—" : `${v.toFixed(dp)}%`);
 const num = (v: number | null, dp = 0) =>
   v === null ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+/** The page's sections. One today; the track exists because more are coming. */
+type Tab = "pools";
+
+/**
+ * One pill, identical to the Finance and Tokens tracks.
+ *
+ * Deliberately a real segmented control rather than a heading, even with a
+ * single option: a track that gains its second tab is a one-line change, and a
+ * heading that has to become a track later is a rewrite. The active pill still
+ * reads as selected, so it looks like a chosen view rather than a dead control.
+ */
+function TabButton({ active, onClick, icon: Icon, label }: {
+  active: boolean; onClick: () => void; icon: typeof Droplets; label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+        active
+          ? "bg-gradient-to-r from-magnet-600 to-magnet-500 text-white shadow-lg shadow-magnet-900/40"
+          : "text-white/60 hover:text-white"
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {label}
+    </button>
+  );
+}
 
 /** A yield figure that is NOT a return gets a muted tone, never green-as-reward. */
 function YieldFigure({ value, caption }: { value: number | null; caption: string }) {
@@ -160,9 +190,15 @@ export function LiquidityView() {
   useEffect(() => { void load(); }, [load]);
 
   const m = (id: "algo-usd" | "btc-usd") => data?.markets.find((x) => x.id === id) ?? null;
+  const [tab, setTab] = useState<Tab>("pools");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      {/* A SIBLING of the content, never a parent of it: the splash blurs the
+          live page behind it, and an ancestor with a running opacity animation
+          becomes a backdrop root, leaving it blurring nothing. Same placement
+          as /magnetfi — see ArrivalSplash's header. */}
+      <StrategySplash />
       <div className="animate-enter mb-8 flex flex-wrap items-end justify-between gap-5">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-white">Strategy</h1>
@@ -213,7 +249,16 @@ export function LiquidityView() {
         </div>
       )}
 
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Self managed</p>
+      <div className="animate-enter mb-7 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
+          <TabButton
+            active={tab === "pools"}
+            onClick={() => setTab("pools")}
+            icon={Droplets}
+            label="Pools"
+          />
+        </div>
+      </div>
 
       <div className="grid gap-5 md:grid-cols-3">
         {/* ── C-Vault ── */}

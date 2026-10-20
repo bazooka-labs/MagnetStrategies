@@ -33,31 +33,49 @@ shippable without a new audited contract.
 
 ---
 
-## 2. Route: NOT `/strategy`
+## 2. Route: `/strategy`
 
-The obvious path is poisoned, in two independent ways:
+The page lives at `/strategy` and the nav label is "Strategy".
 
-1. **`/strategy` is a permanent (301) redirect to `/trade`** (`next.config.js`). It
-   exists because `/strategy` was the *former name of the trading terminal*.
-   Browsers cache 301s indefinitely, so any user who has ever hit `/strategy`
-   cannot reach a new page there — not even by typing the URL. That failure is
-   silent and we cannot fix it from our side.
-2. **Every existing link, bookmark and cached redirect pointing at `/strategy`
-   wants the trading terminal.** Repurposing the path sends those users to the
-   wrong product. `src/components/strategy/` likewise already means "perps" —
-   putting liquidity components there would be actively misleading.
+This spec originally argued for `/liquidity`, because `/strategy` was a
+**permanent (301) redirect to `/trade`** — the trading terminal's former name.
+That redirect is removed and the page owns the path, which is what the product
+is called.
 
-**Decision: route is `/liquidity`.** It is unused, has no redirect history, and
-describes what the page does.
+**The one residual risk, stated rather than buried.** Browsers cache 301s
+indefinitely, so anyone who visited `/strategy` before 2026-10-20 keeps landing
+on `/trade` until their cache expires, and nothing we ship can clear it. That
+population is whoever hit a path which existed only as an internal rename, so it
+is close to empty — and where they land is a working page, not an error. Weighed
+against a permanent mismatch between the product's name and its URL, this is the
+better trade.
 
-The *nav label* is a separate, branding-only call. "Strategy" is fine if that is
-the word we want; a label that differs from its path is unremarkable. Recommend
-"Liquidity" for honesty, but this is the user's choice and does not affect the build.
+**Components stay under `src/components/liquidity/`.** `src/components/strategy/`
+still holds the perps components; renaming it would touch the terminal for no
+benefit.
 
-Paths already consumed by legacy redirects, for the record — none of these are
-available either: `/earn`, `/pools`, `/dao`, `/vote`, `/token`, `/musd`, `/strategy`.
+**Paths still consumed by legacy redirects**, none available: `/earn`, `/pools`,
+`/dao`, `/vote`, `/token`, `/musd`.
 
----
+### 2.1 Page chrome
+
+The root layout renders **no navbar** — every route supplies its own
+`layout.tsx` (`contact`, `magnetfi`, `predict`, `trade`, `tokens` all do). The
+first build of this page shipped a `page.tsx` with no layout, so it rendered
+with no navigation at all and no way off it but the back button.
+`src/app/strategy/layout.tsx` is required, not optional.
+
+### 2.2 Splash and tabs
+
+- **Splash**: `StrategySplash`, the fourth `ArrivalSplash`, using the house
+  banner (`/magnet-wordmark-tight.png`) rather than a product mark. /tokens
+  leads with the $U mark and /magnetfi with its wordmark because each stands for
+  one asset or protocol; Strategy is a shelf, so it carries the organisation's
+  own mark. Mounted as a SIBLING of the content — an ancestor running an opacity
+  animation becomes a backdrop root and the blur silently does nothing.
+- **Tabs**: a pill segmented control matching Finance and Tokens, one tab
+  ("Pools") today. A real track rather than a heading, because a track gains its
+  second tab in one line and a heading becomes a rewrite.
 
 ## 3. What PEX actually offers
 

@@ -2,6 +2,13 @@
 const nextConfig = {
   reactStrictMode: true,
   async redirects() {
+    // NOTE: /strategy is NOT here. It redirected to /trade, because that was
+    // the Trading Terminal's former name — the terminal now owns /trade only,
+    // and /strategy is the liquidity page. Anyone whose browser cached the old
+    // PERMANENT redirect will still land on /trade until that cache expires;
+    // nothing can be done about that from here, and the population is whoever
+    // visited /strategy before 2026-10-20.
+
     // /earn was renamed to /pools, since folded into /tokens — keep old links/bookmarks working.
     // /dao (v1 MagnetDAO) was retired in favor of /vote (UVote), which has since
     // folded into the $U side of /tokens as a Governance section.
@@ -20,7 +27,6 @@ const nextConfig = {
       { source: "/token", destination: "/tokens", permanent: true },
       { source: "/musd", destination: "/tokens?tab=musd", permanent: true },
       { source: "/pools", destination: "/tokens", permanent: true },
-      { source: "/strategy", destination: "/trade", permanent: true },
     ];
   },
   /**

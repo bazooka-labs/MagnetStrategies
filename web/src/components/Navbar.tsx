@@ -27,14 +27,11 @@ const navLinks = [
   /**
    * "Strategy" rejoins the nav — the condition the comment above set.
    *
-   * It has something to show now: the three PEX liquidity destinations, which
-   * are the supply side of the terminal sitting next to it in this bar. The
-   * PATH is /liquidity, not /strategy, because /strategy is a cached 301 to
-   * /trade from the terminal's former name — see src/app/liquidity/page.tsx and
-   * STRATEGY_SPEC.md §2. Label and path need not match, as Finance already
-   * establishes above.
+   * It has something to show now: the PEX liquidity pools, which are the
+   * supply side of the terminal sitting next to it in this bar. More sections
+   * will join them behind the page's own tab bar.
    */
-  { href: "/liquidity", label: "Strategy", external: false },
+  { href: "/strategy", label: "Strategy", external: false },
   /**
    * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest
    * surface on the site — every item there costs attention the ones beside it
