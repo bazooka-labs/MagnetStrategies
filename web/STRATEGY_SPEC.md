@@ -174,72 +174,92 @@ exists to make credible. This gets a test.
 
 ---
 
-## 5. APR — the honest treatment
+## 5. APR — PEX's feed, not our derivation
 
-**PEX publishes no APR.** Zero occurrences of `apr`/`apy` anywhere in the SDK's
-type surface. `quoteV2LpNavV1` and `quoteV2CvaNav` return NAV, not a rate. Every
-rate on this page is therefore **derived by us**, and the derivation must be stated.
+**Superseded 2026-10-21.** Ultrade published the daily pool-statistics bundle
+the day after this spec was written, and SDK 0.6.10 added
+`loadPoolPerformanceBundleFromR2`. The page now reads PEX's own figures.
 
-### 5.1 What we show
+### 5.1 Why our derivation was removed, not refined
 
-**Fee yield**, annualised from fees accrued on chain since the **first deposit**
-into each pool.
+It was wrong, and wrong in the direction this spec claimed it was not:
 
-> ⚠️ **Date corrected 2026-10-20 after audit.** This said the pools went live
-> 2026-08-31, taken from the first transaction on the markets app — which is the
-> app's **creation** (2026-08-31T14:55:26Z), not a deposit. The pools sat empty
-> for nearly two more days. The first `deposit_liquidity` call is round
-> **64,643,818, 2026-09-02T01:29:07Z**. Dating accrual from creation overstated
-> the window by 2.06 days and understated every rate by ~4%. The test for this
-> was self-confirming — it asserted `poolAgeDays` against the same constant the
-> implementation used — and now pins the round's real timestamp instead.
+| | derived | PEX fee APR | PEX yield APR | **PEX total** |
+|---|---|---|---|---|
+| ALGO/USD | 15.3% | 4.83% | 6.39% | **11.22%** |
+| BTC/USD | 0.88% | 0.00% | 6.14% | **6.14%** |
+| C-Vault | 11.0% | 2.79% | 6.29% | **9.08%** |
 
-| | fees accrued | % of pool | annualised (corrected) |
-|---|---|---|---|
-| ALGO/USD | $53.18 | 2.045% | **~15.3%** |
-| BTC/USD | $2.56 | 0.117% | **~0.88%** |
-| C-Vault | — | — | **~11.0%** (holdings-weighted) |
+Two independent errors, compounding:
 
-### 5.2 What we do NOT show as the headline
+1. **Inception average, not a current rate.** It annualised fees since the
+   pool opened. Trading has since slowed **4.1x** — $1.088/day over the first
+   48.9 days against $0.268/day over the last seven — so the figure overstated
+   what a depositor would earn today by **3.2x**. §5.3 of this spec argued the
+   derivation "errs low". That was true of the historical realised rate and
+   false of the current one, which is the only one a prospective depositor acts
+   on.
+2. **It omitted yield income**, which on these pools is the LARGER half
+   (6.39% against 4.83% on ALGO/USD). BTC/USD earns 6.14% with zero trading at
+   all, so a fee-only page called a working pool worthless.
 
-> ⚠️ **Relabelled 2026-10-20 after audit.** What this spec and the first build
-> called "NAV/share" is pool value ÷ shares, which is **not** PEX's NAV per
-> share: PEX's includes trader P&L, lent quantity and the position-impact pool.
-> It was 2.4% low when checked (1.1063 shown vs ~1.1334 true) **and the sign
-> flips** — with traders up it would read high, on the one stat a depositor uses
-> to judge whether LPs have earned. Renamed `poolValuePerShare` and labelled
-> "Pool / share" in the UI. The copy claiming "share prices above $1.00 mean
-> traders have been losing" is removed: the figure contains no trader P&L, so it
-> was not evidence of that.
+The arithmetic is deleted rather than deprecated, so it cannot be reached for
+again. `MarketLiquidity.feesSinceInceptionUsd` keeps the cumulative fee total,
+which is a true stock.
 
-Pool value per share is $1.1064 and $1.1299. Against a $1.00 launch that is +10.6% and +13.0%
-in 50 days — ~77% and ~94% annualised. Those numbers are **much larger and much
-more misleading**, because an LP here is the counterparty to every trade:
+### 5.2 What the page shows
 
-> **LP return = fees + trader P&L**, and the second term dominates and can be negative.
+- **Headline: `total_apr_7d_bps`**, labelled "Fees + yield APR (past 7d)" —
+  PEX's own wording — with the fee/yield split beneath.
+- **Beneath it: `vs_holding_bps`**, the pool's return against a benchmark of
+  holding the two assets. This is the genuinely useful number: it **includes**
+  trader P&L, which the APR explicitly excludes. Negative means holding would
+  have beaten depositing.
 
-Market 2 earned **$2.56** of fees while its share price rose **13%**. Essentially
-all of that is traders losing. It can invert. A card reading "94% APR" would be the
-most misleading element on the site.
+### 5.3 Rules taken from PEX's own guidance, each one tested
 
-So: fee yield is the headline, NAV/share is shown as a stat, and the page carries an
-explicit note that neither is an expected return.
+- `bps / 100` for a percentage — 1250 is 12.5%, not 0.125%.
+- Display the APR **only** when `apr_status === "ready"` **and**
+  `apr_basis === "historical_capital_v1"`. Anything else is unavailable, never 0%.
+- `insufficient_history` / `no_valid_completed_samples` are valid RESULTS to
+  surface as "Insufficient history", and a `reason` wins even if points are
+  present.
+- Fewer than two points is insufficient history.
+- `vs_holding_bps` is additive percentage **points**, not a ratio.
+- The paired benchmark is `geometric_mean_50_50` and is **not** buy-and-hold —
+  one asset doubling while the other is flat gains ~41.42%, not 50% — so it is
+  labelled "vs 50/50 geometric benchmark", never "vs holding".
+- `expires_at` is 36h after the cutoff; an expired bundle is shown **with its
+  date and a stale label**, not hidden and not zeroed.
+- A 404 is not zero performance.
+- Never add the APR to the period return; never call either APY.
 
-### 5.3 Caveats that must appear in the UI, not just here
+### 5.4 The trust model, which differs from everything else on the site
 
-1. Assumes **today's** pool size across the whole period. If pools grew, the real
-   yield was higher; if they shrank, lower.
-2. Excludes any fees already withdrawn — these are current accrued balances, so
-   it is a floor.
-3. The $1.00 launch share price is an **assumption**, not verified.
+PEX documents this feed as **unsigned**, "trusted through HTTPS/storage
+delivery", and states that `manifest_sha256` "identifies the deployment
+context; it is not a signature or integrity proof for the data". Our oracle
+bundle *is* signed and the terminal verifies it per-payload; this cannot be.
 
-### 5.4 Not derivable, do not attempt
+That is acceptable because **nothing here reaches a transaction** — these
+figures are displayed, never signed against. It is not acceptable to present
+them as equal in confidence to a chain read, so: the UI attributes them to PEX,
+says plainly that they are unsigned while the price feed is verified, and the
+envelope checks (network, type, self-declared path, expiry) are the only
+integrity available. Pool sizes, composition and the viewer's own position
+remain chain reads and do not depend on the feed.
 
-`cva_market_allocation.last_deposit_mark_value_usd` resets on every deposit (the
-live mark was taken 0.0 days ago), so "return since deposit" is noise over minutes,
-not a performance figure. It read −0.06% and −0.04% when checked.
+Asking Ultrade to sign it remains worthwhile and was declined for now.
 
----
+### 5.5 Why the bundle is fetched here rather than via the SDK
+
+`vendor/README.md` is explicit — *"Do not bump this in isolation"*:
+`PEX_SDK_VERSION`, the pinned program hashes and the solver verification all
+move with the SDK, and the closed-form solver is checked against
+`quoteV2OpenPosition`. Bumping 0.6.6 → 0.6.10 to read a JSON file would put the
+terminal's trading maths in scope for a liquidity-page feature. The loader is a
+fetch plus validation, reimplemented in `pexPerformance.ts` against the same
+documented contract, with a captured real response as a test fixture.
 
 ## 6. Styling
 

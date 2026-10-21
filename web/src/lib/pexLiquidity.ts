@@ -147,145 +147,29 @@ export function poolValuePerShare(totalUsd: number, shareSupply: number): number
   return shareSupply > 0 ? totalUsd / shareSupply : null;
 }
 
-// ── fee yield ─────────────────────────────────────────────────────────────────
-
-/**
- * The fee APR, derived on chain — and why that is defensible.
- *
- * ── Correcting an earlier claim in this file ──
- * This said "PEX publishes no APR". Wrong. `v2Pool()` returns
- * `fee_apr_7d_bps`, `yield_apr_7d_bps` and `total_apr_7d_bps`, documented in
- * SDK 0.6.9's INTEGRATION_GUIDE. What IS true is that those come from a
- * backend the INTEGRATOR operates: "Bring your own backend… Do not point
- * `baseUrl` at a PEX-operated API" (BACKEND_INTEGRATION.md). Getting PEX's own
- * figures means indexing daily history ourselves — roadmap, not today.
- *
- * ── Why this derivation matches PEX's definition on THESE pools ──
- * PEX defines income APR as each income contribution divided by the pool
- * capital valued WHEN THAT INCOME WAS CREDITED, summed over the window and
- * annualised ×365/7 without compounding, and warns: "It is not seven-day
- * income divided by today's TVL."
- *
- * That warning is about a denominator that MOVED during the window. On these
- * pools it has not: all 27 LP capital events on PDexV2AdminOps fall between
- * 2026-09-02 and 2026-09-18, and there have been **none in the last 32 days**.
- * With constant capital, "income ÷ today's TVL" and "income ÷ capital at
- * credit time" are the same number. `capitalStableDays()` is how the page
- * checks that assumption still holds instead of trusting this comment.
- *
- * ── Which direction this errs ──
- * Across the full since-inception window capital was still arriving for the
- * first 16 days, so average capital was LOWER than today's; dividing by
- * today's TVL therefore **understates** the realised rate. It also omits
- * `yield_apr` — external-yield income PEX credits to the pool, which we do not
- * read — understating total income APR again. Both errors are conservative,
- * which is the right direction for a number meant to attract deposits.
- *
- * ── Why this is the fee component and NOT a return ──
- * An LP here is the counterparty to every trade, so
- *
- *     LP return = fees + trader P&L
- *
- * and the second term dominates and can be negative. Market 2 earned $2.56 of
- * fees over 50 days while its share price rose 13% — essentially all of that is
- * traders losing, and it can invert. Presenting the NAV-implied figure (~94%
- * annualised) as an APR would be the most misleading number on the site.
- *
- * Callers MUST label this as the fee component. `FeeYield.isReturn` is false
- * and exists to make that hard to forget.
- */
-export const FEE_YIELD_DISCLAIMER =
-  "Fee component only — your return is fees plus trader P&L, which is larger and can be negative.";
-
-export type FeeYield = {
-  /** Fees accrued since the pool opened, USD. */
-  feesUsd: number;
-  /**
-   * What was actually computed, so a label cannot drift from the maths. PEX
-   * prescribes "Fees + yield APR (past 7d)" for THEIR figure and forbids
-   * labelling either value APY; ours is fee-only and since-inception, so it
-   * must not borrow their wording.
-   */
-  basis: "fees-since-inception";
-  /** Those fees as a fraction of pool value, 0..1. */
-  periodFraction: number;
-  /** Annualised, as a percentage. Null when it cannot be computed. */
-  annualisedPct: number | null;
-  days: number;
-  /** Always false. This is not an expected return — see above. */
-  isReturn: false;
-};
-
-/**
- * Annualise accrued fees.
- *
- * Deliberately simple interest, not compounded: the fees are a measured stock
- * over a known window, and compounding them would invent a reinvestment that
- * did not happen.
- *
- * Returns `annualisedPct: null` rather than 0 or Infinity when the inputs
- * cannot support a rate — an empty pool, a zero-length window, or a
- * non-finite input. A card must render "—" there, never "0.0% APR", which
- * reads as a measured result.
- */
-export function feeYield(input: {
-  /** Accrued fee amounts, in their own units. */
-  longFeeAmount: number;
-  shortFeeAmount: number;
-  poolTotalUsd: number;
-  algoUsd: number;
-  days: number;
-}): FeeYield {
-  const { longFeeAmount, shortFeeAmount, poolTotalUsd, algoUsd, days } = input;
-  const feesUsd = longFeeAmount * algoUsd + shortFeeAmount;
-  const ok = Number.isFinite(feesUsd) && poolTotalUsd > 0 && days > 0;
-  const periodFraction = ok ? feesUsd / poolTotalUsd : 0;
-  return {
-    feesUsd: Number.isFinite(feesUsd) ? feesUsd : 0,
-    basis: "fees-since-inception",
-    periodFraction,
-    annualisedPct: ok ? periodFraction * (365 / days) * 100 : null,
-    days,
-    isReturn: false,
-  };
-}
-
-/**
- * When liquidity provision actually began: the first `deposit_liquidity` call
- * on PDexV2AdminOps, round **64,643,818**, 2026-09-02T01:29:07Z. Market 2's
- * first deposit followed 55 seconds later in round 64,643,838.
- *
- * ⚠️ This was 2026-08-31T00:00Z until 2026-10-20, taken from the first
- * transaction on the markets app — which is the app's CREATION, not a deposit.
- * The apps were created 2026-08-31T14:55:26Z and sat with empty pools for
- * nearly two days. Dating fee accrual from then overstated the window by 2.06
- * days and so understated every rate on the page by ~4%.
- *
- * It is the exact deposit timestamp rather than midnight for the same reason:
- * fees cannot accrue before there is capital to charge against.
- */
-export const PEX_POOLS_OPENED_MS = Date.UTC(2026, 8, 2, 1, 29, 7);
-
-/**
- * Last time LP capital entered or left either pool: 2026-09-18T19:23Z, the
- * final of 27 such events.
- *
- * This is what licenses `feeYield`'s denominator (see above). If capital starts
- * moving again, a since-inception rate against today's TVL stops being
- * equivalent to PEX's definition and becomes an approximation — so the page
- * reports how long capital has been stable rather than burying the assumption
- * in a comment.
- */
-export const LP_CAPITAL_LAST_CHANGED_MS = Date.UTC(2026, 8, 18, 19, 23);
-
-/** How long the denominator has been trustworthy, in days. */
-export function capitalStableDays(nowMs: number = Date.now()): number {
-  return Math.max(0, (nowMs - LP_CAPITAL_LAST_CHANGED_MS) / 86_400_000);
-}
-
-export function poolAgeDays(nowMs: number = Date.now()): number {
-  return Math.max(0, (nowMs - PEX_POOLS_OPENED_MS) / 86_400_000);
-}
+// ── fee yield: REMOVED 2026-10-21 ──
+//
+// A `feeYield()` / `blendedFeeYieldPct()` / `poolAgeDays()` /
+// `capitalStableDays()` block lived here, deriving a fee APR from on-chain
+// accrued fees. It is gone, not deprecated, because it was WRONG and its
+// wrongness was invisible:
+//
+//     ALGO/USD   it read 15.3%   PEX's actual fee APR is 4.83%
+//
+// It annualised fees since inception against the current pool. Trading has
+// slowed 4.1x ($1.088/day over the first 48.9 days, $0.268/day over the last
+// seven), so an inception average overstates what a depositor earns today by
+// 3.2x — and it omitted yield income, which on these pools is the larger half
+// (6.39% against 4.83%). The comment here argued the figure "errs low", which
+// was true of the historical realised rate and false of the current one, the
+// only one that matters to someone deciding to deposit.
+//
+// Ultrade now publishes both the income APR and the pool return on R2; see
+// `pexPerformance.ts`. The arithmetic is deleted rather than kept behind a
+// warning so nobody can reach for it again.
+//
+// `MarketLiquidity.feesSinceInceptionUsd` keeps the cumulative fee total,
+// which is a true stock and cannot be mistaken for a rate.
 
 // ── the C-Vault, and the double-counting it causes ───────────────────────────
 

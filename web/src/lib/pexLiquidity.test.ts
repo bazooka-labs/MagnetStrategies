@@ -8,10 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   LEG_ASSETS, LIQUIDITY_DESTINATIONS, NOT_LIQUIDITY_DESTINATIONS, PEX_LIQUIDITY_MARKETS,
-  LP_CAPITAL_LAST_CHANGED_MS, PEX_POOLS_OPENED_MS,
-  assertDepositTarget, capitalStableDays, destinationGlowKind,
-  blendedFeeYieldPct, cvaOwnershipFraction, feeYield, liquidityTotals,
-  poolAgeDays, poolValue, poolValuePerShare,
+  assertDepositTarget, cvaOwnershipFraction, destinationGlowKind, liquidityTotals,
+  poolValue, poolValuePerShare,
 } from "./pexLiquidity";
 import { PEX_APPS, PEX_ASSETS } from "./perps";
 
@@ -70,95 +68,6 @@ describe("the deduplication rule", () => {
   it("has no opinion on ownership of a pool with no shares", () => {
     expect(cvaOwnershipFraction(
       { marketId: 1, lpShareAmount: 0, markUsd: 0, targetWeightBps: 0 }, 0)).toBeNull();
-  });
-});
-
-describe("fee yield is the fee component, and says so", () => {
-  it("reproduces the measured rates for both pools", () => {
-    const days = 50.3;
-    const y1 = feeYield({ longFeeAmount: M1.longFee, shortFeeAmount: M1.shortFee,
-                          poolTotalUsd: poolValue(M1, ALGO).totalUsd, algoUsd: ALGO, days });
-    const y2 = feeYield({ longFeeAmount: M2.longFee, shortFeeAmount: M2.shortFee,
-                          poolTotalUsd: poolValue(M2, ALGO).totalUsd, algoUsd: ALGO, days });
-    expect(y1.feesUsd).toBeCloseTo(53.18, 1);
-    expect(y1.annualisedPct!).toBeCloseTo(14.8, 0);
-    expect(y2.feesUsd).toBeCloseTo(2.56, 1);
-    expect(y2.annualisedPct!).toBeCloseTo(0.85, 1);
-  });
-
-  it("is flagged as not-a-return, structurally", () => {
-    // `isReturn: false` exists so a card cannot label this an expected return
-    // without contradicting the value it is rendering.
-    const y = feeYield({ longFeeAmount: 1, shortFeeAmount: 1, poolTotalUsd: 100, algoUsd: 1, days: 1 });
-    expect(y.isReturn).toBe(false);
-  });
-
-  it("returns null rather than 0% when no rate can be computed", () => {
-    // "0.0% APR" reads as a measured result. "—" reads as absent, which is true.
-    for (const bad of [
-      { poolTotalUsd: 0, days: 50 },
-      { poolTotalUsd: 100, days: 0 },
-      { poolTotalUsd: -5, days: 50 },
-    ]) {
-      const y = feeYield({ longFeeAmount: 1, shortFeeAmount: 1, algoUsd: ALGO, ...bad });
-      expect(y.annualisedPct, JSON.stringify(bad)).toBeNull();
-    }
-  });
-
-  it("reports zero fees as a real zero, not as unknown", () => {
-    // A live pool that has genuinely earned nothing is a fact worth showing.
-    const y = feeYield({ longFeeAmount: 0, shortFeeAmount: 0, poolTotalUsd: 1_000, algoUsd: ALGO, days: 30 });
-    expect(y.annualisedPct).toBe(0);
-    expect(y.feesUsd).toBe(0);
-  });
-
-  it("does not propagate a non-finite price into a rendered rate", () => {
-    const y = feeYield({ longFeeAmount: 1, shortFeeAmount: 1, poolTotalUsd: 100, algoUsd: Number.NaN, days: 30 });
-    expect(y.annualisedPct).toBeNull();
-    expect(Number.isFinite(y.feesUsd)).toBe(true);
-  });
-
-  it("blends the vault's rate at its own weights, skipping unusable legs", () => {
-    expect(blendedFeeYieldPct([
-      { annualisedPct: 14.84, weight: 0.7 }, { annualisedPct: 0.85, weight: 0.3 },
-    ])!).toBeCloseTo(10.64, 1);
-    // A market whose rate is unknown must not be silently counted as 0%.
-    expect(blendedFeeYieldPct([
-      { annualisedPct: 20, weight: 0.5 }, { annualisedPct: null, weight: 0.5 },
-    ])!).toBeCloseTo(20, 6);
-    expect(blendedFeeYieldPct([{ annualisedPct: null, weight: 1 }])).toBeNull();
-    expect(blendedFeeYieldPct([])).toBeNull();
-  });
-
-  it("counts days from the first deposit, not from app creation", () => {
-    /**
-     * Pinned to the CHAIN FACT, not to the constant.
-     *
-     * The previous version of this test asserted poolAgeDays against
-     * `Date.UTC(2026, 7, 31)` — the same value the implementation used — so it
-     * was self-confirming and passed happily while the date was wrong by two
-     * days. The constant was taken from the first transaction on the markets
-     * app, which is the app's CREATION; the pools were empty for nearly two
-     * more days, and fees cannot accrue against capital that is not there.
-     *
-     * 2026-09-02T01:29:07Z is round 64,643,818, the first ever
-     * `deposit_liquidity` call on PDexV2AdminOps (18 such calls exist; this is
-     * the earliest). Changing the constant without changing the chain must
-     * fail here.
-     */
-    const FIRST_DEPOSIT = Date.UTC(2026, 8, 2, 1, 29, 7);
-    expect(poolAgeDays(FIRST_DEPOSIT)).toBe(0);
-
-    // App creation was 2026-08-31T14:55:26Z. Dating from there would have the
-    // pools already live for ~1.6 days before anyone had deposited.
-    expect(poolAgeDays(Date.UTC(2026, 7, 31, 14, 55, 26))).toBe(0);
-
-    // One day after the first deposit is one day of accrual, not three.
-    expect(poolAgeDays(FIRST_DEPOSIT + 86_400_000)).toBeCloseTo(1, 6);
-
-    // A clock behind the opening date must not produce negative days, which
-    // would flip the sign of every rate on the page.
-    expect(poolAgeDays(Date.UTC(2026, 0, 1))).toBe(0);
   });
 });
 
@@ -240,29 +149,3 @@ describe("composition and share price", () => {
   });
 });
 
-describe("the denominator assumption the fee APR rests on", () => {
-  it("knows when LP capital last moved", () => {
-    // PEX: "It is not seven-day income divided by today's TVL" — a warning
-    // about a denominator that MOVED during the window. All 27 LP capital
-    // events on PDexV2AdminOps fall between 2026-09-02 and 2026-09-18, the
-    // last at 19:23Z. With capital constant since, the two definitions agree.
-    expect(LP_CAPITAL_LAST_CHANGED_MS).toBe(Date.UTC(2026, 8, 18, 19, 23));
-    // It must be AFTER the first deposit, or the window makes no sense.
-    expect(LP_CAPITAL_LAST_CHANGED_MS).toBeGreaterThan(PEX_POOLS_OPENED_MS);
-  });
-
-  it("reports stability in days, clamped at zero", () => {
-    expect(capitalStableDays(LP_CAPITAL_LAST_CHANGED_MS)).toBe(0);
-    expect(capitalStableDays(LP_CAPITAL_LAST_CHANGED_MS + 32 * 86_400_000)).toBeCloseTo(32, 6);
-    // A clock before the last event must not read as negative stability.
-    expect(capitalStableDays(Date.UTC(2026, 0, 1))).toBe(0);
-  });
-
-  it("records the basis on every computed yield", () => {
-    // So a card cannot label this "fees + yield APR" (PEX's wording for their
-    // figure, which includes external yield ours omits) or "APY", which PEX
-    // explicitly forbids for either value.
-    const y = feeYield({ longFeeAmount: 1, shortFeeAmount: 1, poolTotalUsd: 100, algoUsd: 1, days: 7 });
-    expect(y.basis).toBe("fees-since-inception");
-  });
-});

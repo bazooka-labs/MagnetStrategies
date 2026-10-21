@@ -22,9 +22,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Coins, Droplets, Layers, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
+import { PEX_APPS } from "@/lib/perps";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
-import { FEE_YIELD_DISCLAIMER, capitalStableDays } from "@/lib/pexLiquidity";
+import {
+  benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
+  type PerformanceBundle, type PoolStats,
+} from "@/lib/pexPerformance";
 import {
   cvaShareOfMarket, readStrategyLiquidity, type StrategyLiquidity,
 } from "@/lib/pexLiquidityReads";
@@ -83,22 +87,61 @@ function TabButton({ active, onClick, icon: Icon, label }: {
   );
 }
 
-/** A yield figure that is NOT a return gets a muted tone, never green-as-reward. */
-function YieldFigure({ value, caption }: { value: number | null; caption: string }) {
+/**
+ * PEX's income APR, with its own split and the benchmark beneath it.
+ *
+ * Labelled "Fees + yield APR" because that is what PEX calls it and what it
+ * contains; they explicitly forbid calling either figure APY, and forbid adding
+ * the APR to the period return. `stats === null` renders "—", never 0% — their
+ * instruction and the failure mode that matters most here.
+ */
+function YieldFigure({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
+  const i = stats?.income ?? null;
+  const r = stats?.ret ?? null;
   return (
     <div>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Fee APR</div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+          Fees + yield APR
+        </span>
+        <span className="text-[9.5px] text-gray-600">past 7d · PEX</span>
+      </div>
       <div className="mt-0.5 flex items-baseline gap-2">
         <span className="font-mono text-[32px] font-semibold leading-none tracking-tight text-white">
-          {pct(value)}
+          {pct(i?.totalPct ?? null)}
         </span>
-        {/* "fees only" sits AT the number. The callout below is three
-            card-heights past the first deposit button on a phone — too late to
-            qualify a 32px figure. PEX forbids labelling this APY, and theirs is
-            "fees + yield"; ours omits yield, so it says fees. */}
-        <span className="text-[11px] text-gray-400">fees only</span>
+        {stale && (
+          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+            STALE
+          </span>
+        )}
       </div>
-      <p className="mt-1.5 text-[11px] text-gray-400">{caption}</p>
+      <p className="mt-1.5 text-[11px] text-gray-400">
+        {i
+          ? <>{pct(i.feePct)} fees + {pct(i.yieldPct)} yield{i.missingEvents > 0 && (
+              <span className="text-amber-300/90"> · {i.missingEvents} unvalued events</span>
+            )}</>
+          : "PEX has not published a rate for this pool"}
+      </p>
+      {/* The benchmark: the one number that answers "would I have been better
+          off just holding the two assets?" It includes trader P&L, which the
+          APR above explicitly does not. */}
+      {r ? (
+        <p className="mt-1 text-[11px] text-gray-400">
+          <span className={r.vsHoldingPoints >= 0 ? "text-gray-200" : "text-amber-300/90"}>
+            {r.vsHoldingPoints >= 0 ? "+" : ""}{r.vsHoldingPoints.toFixed(2)}pp
+          </span>{" "}
+          {benchmarkLabel(r.benchmarkKind)} over {r.period}
+          {r.hasGaps && <span className="text-amber-300/90"> · gaps in history</span>}
+        </p>
+      ) : (
+        <p className="mt-1 text-[11px] text-gray-500">
+          {stats?.retUnavailableReason === "insufficient_history"
+            || stats?.retUnavailableReason === "no_valid_completed_samples"
+            ? "Insufficient history for a return"
+            : "Return unavailable"}
+        </p>
+      )}
     </div>
   );
 }
@@ -162,6 +205,7 @@ function GoToPex({ label }: { label: string }) {
 export function LiquidityView() {
   const { algodClient, address } = useWallet();
   const [data, setData] = useState<StrategyLiquidity | null>(null);
+  const [perf, setPerf] = useState<PerformanceBundle | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -174,6 +218,26 @@ export function LiquidityView() {
       if (!Number.isFinite(algoUsd) || algoUsd <= 0) throw new Error("no ALGO price");
       setData(await readStrategyLiquidity(algodClient, algoUsd, address));
       setErr(null);
+      /**
+       * PEX's own statistics, fetched separately and allowed to fail alone.
+       *
+       * This is the authoritative APR and the only source of the benchmark
+       * comparison. It replaced a figure we derived on chain which read 15.3%
+       * against a real 4.83% — that derivation annualised fees since inception
+       * while trading had slowed 4.1x, and omitted yield income, which is the
+       * larger half here.
+       *
+       * Unsigned by design ("trusted through HTTPS/storage delivery"), so it is
+       * attributed to PEX in the UI and never mixed with chain reads. Its own
+       * failure does not blank the pool sizes, which ARE chain reads.
+       */
+      try {
+        setPerf(await fetchPerformanceBundle("30d"));
+      } catch {
+        // A 404 "must not be presented as zero performance" — so the figure is
+        // absent, and the pool data stands on its own.
+        setPerf(null);
+      }
     } catch (e) {
       // `data` is CLEARED, not left standing.
       //
@@ -184,6 +248,7 @@ export function LiquidityView() {
       // because `address` is a dependency, the ALGO price fetch 429s, and every
       // pool size and share price on screen is now from before.
       setData(null);
+      setPerf(null);
       setErr(e instanceof Error ? e.message : "Could not read pool state");
     }
   }, [algodClient, address]);
@@ -233,10 +298,18 @@ export function LiquidityView() {
               </div>
             )}
           </div>
+          {/* Fees the pools have earned to date — a cumulative fact, which is
+              what the chain can tell us. The RATE comes from PEX; this is the
+              stock behind it, and it is the number our own derived APR got
+              wrong by annualising. */}
           <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Live</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Fees to date
+            </div>
             <div className="mt-0.5 font-mono text-lg font-semibold text-white">
-              {data ? `${Math.round(data.days)} days` : "—"}
+              {data
+                ? usd(data.markets.reduce((a, m) => a + m.feesSinceInceptionUsd, 0), 2)
+                : "—"}
             </div>
           </div>
         </div>
@@ -277,14 +350,13 @@ export function LiquidityView() {
               </span>
             </div>
 
+            {/* PEX publishes the vault's own APR under its own key, so no
+                blending of ours is needed — and theirs follows the vault's
+                historical ownership and counts idle capital in the
+                denominator, which ours could not. */}
             <YieldFigure
-              value={data?.cva.blendedFeeYieldPct ?? null}
-              caption={data && data.cva.ratedMarkets < data.cva.totalMarkets
-                // The blend renormalises onto the markets it can rate, which
-                // is upward-biased — so say so rather than present a partial
-                // blend as the whole picture.
-                ? `Only ${data.cva.ratedMarkets} of ${data.cva.totalMarkets} markets could be rated`
-                : "Weighted by what the vault holds in each pool"}
+              stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
+              stale={!!perf?.stale}
             />
 
             <div className="h-px bg-white/[0.07]" />
@@ -344,10 +416,8 @@ export function LiquidityView() {
                 </div>
 
                 <YieldFigure
-                  value={mk?.fees.annualisedPct ?? null}
-                  caption={mk
-                    ? `${usd(mk.fees.feesUsd, 2)} of fees over ${Math.round(mk.fees.days)} days`
-                    : "Fees not read"}
+                  stats={mk ? (perf?.byKey[marketKey(mk.marketId)] ?? null) : null}
+                  stale={!!perf?.stale}
                 />
 
                 <div className="h-px bg-white/[0.07]" />
@@ -423,20 +493,31 @@ export function LiquidityView() {
         <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-amber-300" aria-hidden="true" />
         <div>
           <p className="text-[12.5px] font-semibold text-amber-300">
-            These are fee yields, not expected returns
+            The APR is income only — it is not your expected return
           </p>
           <p className="mt-1.5 max-w-4xl text-[11.5px] leading-relaxed text-gray-300">
-            These annualise trading fees accrued on chain since the first deposit into each pool,
-            against the pool&apos;s current capital. No LP has added or removed capital for{" "}
-            {Math.floor(capitalStableDays())} days, so that denominator is the capital that earned
-            those fees — but capital was still arriving over the first two weeks, which makes the
-            figure <em className="text-gray-200">understate</em> the realised rate. It also excludes
-            the external-yield income PEX credits to these pools, understating it again.
-            {" "}{FEE_YIELD_DISCLAIMER} As an LP you are the counterparty to every trade, so a quiet market with winning traders can leave you down while the fee line
-            still reads positive. &quot;Pool / share&quot; above is pool value divided by shares — it is
-            <em className="text-gray-200"> not</em> PEX&apos;s NAV per share, which also carries trader
-            profit and loss, so do not read it as a performance figure. Figures use today&apos;s pool
-            size across the whole period and exclude any fees already withdrawn.
+            Both figures are published by PEX, not computed here. The APR is trailing-seven-day
+            fee and yield income annualised against the capital that earned it, and PEX is explicit
+            that it excludes asset price moves and net trader profit and loss — so{" "}
+            <em className="text-gray-200">a positive APR can sit alongside a negative pool
+            return</em>. As an LP you are the counterparty to every trade.
+            {" "}
+            The percentage-point figure beneath each APR is the different and more useful number:
+            the pool&apos;s own return against a benchmark of simply holding the two assets, which
+            does include trader P&amp;L. Negative means holding would have beaten depositing over
+            that window. Neither figure is a promised future rate, and neither is APY.
+            {perf && (
+              <> Statistics as of{" "}
+                {new Date(perf.asOf * 1000).toISOString().slice(0, 10)}
+                {perf.stale && <span className="text-amber-300"> — expired, shown with its date</span>}.
+              </>
+            )}
+          </p>
+          <p className="mt-2 max-w-4xl text-[11px] leading-relaxed text-gray-400">
+            PEX publishes these statistics <em className="text-gray-300">unsigned</em>, trusted
+            through HTTPS delivery rather than a signature — unlike its price feed, which this site
+            verifies cryptographically. Pool sizes, composition and your own position above are read
+            directly from the chain and do not depend on them.
           </p>
           <p className="mt-2 text-[11px] text-gray-500">
             Capital goes to PEX, a third-party protocol by Ultrade. Magnet Strategies holds no funds and

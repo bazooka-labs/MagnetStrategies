@@ -16,8 +16,8 @@ import { PEX_APPS, PEX_ASSETS } from "./perps";
 import { readMarketCore, readMarketPool, readMarketRisk, readOpenInterest } from "./perpsReads";
 import {
   LEG_ASSETS, PEX_LIQUIDITY_MARKETS, type CvaAllocation, type LiquidityDestinationId,
-  blendedFeeYieldPct, cvaOwnershipFraction, feeYield, liquidityTotals,
-  poolAgeDays, poolValue, poolValuePerShare, type FeeYield, type PoolValue,
+  cvaOwnershipFraction, liquidityTotals,
+  poolValue, poolValuePerShare, type PoolValue,
 } from "./pexLiquidity";
 
 const MICRO = 1_000_000;
@@ -140,7 +140,18 @@ export type MarketLiquidity = {
   shareSupply: number;
   /** Pool value ÷ shares — NOT PEX's NAV, which includes trader P&L. */
   poolValuePerShare: number | null;
-  fees: FeeYield;
+  /**
+   * Cumulative trading fees the pool has earned since it opened, USD.
+   *
+   * A STOCK, not a rate. The rate that used to live here annualised this
+   * against the current pool and read 15.3% where PEX's actual fee APR is
+   * 4.83% — trading has slowed 4.1x since inception, so an inception average
+   * is not what a depositor would earn today. The APR now comes from PEX's
+   * published feed (pexPerformance.ts); this stays because "the pool has
+   * earned $53 since it opened" is true and worth knowing, and no arithmetic
+   * here can turn it back into a misleading rate.
+   */
+  feesSinceInceptionUsd: number;
   /** The viewer's shares, null when not connected or never deposited. */
   yourShares: number | null;
   /** True when both legs really are ALGO/USDC, read from chain not assumed. */
@@ -155,14 +166,11 @@ export type StrategyLiquidity = {
   cva: {
     navUsd: number | null;
     allocations: CvaAllocation[];
-    blendedFeeYieldPct: number | null;
-    ratedMarkets: number;
     totalMarkets: number;
     yourShares: number | null;
   };
   totals: ReturnType<typeof liquidityTotals>;
   algoUsd: number;
-  days: number;
 };
 
 /**
@@ -174,7 +182,6 @@ export type StrategyLiquidity = {
 export async function readStrategyLiquidity(
   algod: algosdk.Algodv2, algoUsd: number, address?: string | null,
 ): Promise<StrategyLiquidity> {
-  const days = poolAgeDays();
   const ids = ["algo-usd", "btc-usd"] as const;
 
   const markets = await Promise.all(ids.map(async (id): Promise<MarketLiquidity> => {
@@ -195,12 +202,8 @@ export async function readStrategyLiquidity(
       id, marketId, label, synthetic, legs, value,
       shareSupply: micro(pool.market_share_supply),
       poolValuePerShare: poolValuePerShare(value.totalUsd, micro(pool.market_share_supply)),
-      fees: feeYield({
-        longFeeAmount: micro(pool.long_fee_amount),
-        shortFeeAmount: micro(pool.short_fee_amount),
-        poolTotalUsd: value.totalUsd,
-        algoUsd, days,
-      }),
+      feesSinceInceptionUsd:
+        micro(pool.long_fee_amount) * algoUsd + micro(pool.short_fee_amount),
       yourShares,
       oi: (() => {
         const longUsd = micro(oi.long_oi_usd_with_long_collateral)
@@ -263,27 +266,15 @@ export async function readStrategyLiquidity(
       allocations,
       // Weighted by what the vault actually holds, not by its target weights —
       // targets are an intent, holdings are the position earning the fees.
-      // Weighted by what the vault actually holds, not by its target weights —
-      // targets are intent, holdings are the position earning the fees.
-      blendedFeeYieldPct: blendedFeeYieldPct(allocations.map((a) => ({
-        annualisedPct: byMarketPre.get(a.marketId)?.fees.annualisedPct ?? null,
-        weight: a.markUsd,
-      }))),
-      /**
-       * How many of the vault's markets contributed a usable rate.
-       * `blendedFeeYieldPct` renormalises onto the legs it can compute, which
-       * is upward-biased if one pool reads empty while the vault still holds
-       * marked shares in it — so the card can say "1 of 2" instead of
-       * presenting a partial blend as complete.
-       */
-      ratedMarkets: allocations.filter(
-        (a) => byMarketPre.get(a.marketId)?.fees.annualisedPct != null).length,
+      // No blended rate here any more: PEX publishes the vault's own APR under
+      // its own key, following the vault's historical ownership and counting
+      // idle capital in the denominator — neither of which a blend of ours
+      // could do.
       totalMarkets: allocations.length,
       yourShares: address ? await readCvaUserShares(algod, address) : null,
     },
     totals: liquidityTotals(markets.map((m) => m.value), navUsd ?? 0),
     algoUsd,
-    days,
   };
 }
 
