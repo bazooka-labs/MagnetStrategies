@@ -1,6 +1,12 @@
 # Strategy page — PEX liquidity provision
 
-**Status:** spec, not built. Written 2026-10-20.
+**Status:** built, **HIDDEN from the nav 2026-10-21.** Written 2026-10-20.
+
+> The page reads correctly but can only READ — its cards link out to Ultrade to
+> deposit. The product this is for signs the deposit **on our own UI**, so §7.1's
+> link-out decision was wrong for the brief, not merely minimal. `/strategy`
+> still builds and serves; the nav entry returns when §7.2 is built and asserted.
+> §12 is the plan for that.
 **Scope:** self-managed liquidity provision into PEX's three capital destinations.
 **Explicitly out of scope:** "Smart Stake" / Magnet-managed fund — shelved by decision 2026-10-20.
 
@@ -252,7 +258,13 @@ the ALGO market and was wrong for exactly that reason.
 
 ## 7. Deposit flows
 
-### 7.1 v1: link out, do not construct
+### 7.1 v1: link out — SUPERSEDED, see §12
+
+> ⚠️ **This decision was wrong for the brief.** The point of the page is to let
+> someone deposit through Magnet Strategies; handing them to Ultrade's app to
+> finish is a different product. Kept here because the risk reasoning below is
+> still the reason §12 is sized the way it is, not because the conclusion
+> stands.
 
 **v1 does not build deposit transactions.** Each card's action links out to
 Ultrade's app.
@@ -346,3 +358,61 @@ C-Vault               NAV ~$1,625   7 depositors
 ```
 
 These are a snapshot for sanity-checking the read layer, **not** values to hardcode.
+
+---
+
+## 12. Signing on our own UI — what it takes
+
+The page returns to the nav when a deposit can be completed here. Scope, in the
+order it has to be built:
+
+### 12.1 Three group shapes
+
+| Destination | Method | Shape |
+|---|---|---|
+| Direct LP | `deposit_liquidity` | 2 asset transfers (ALGO + USDC) + storage `pay` + `min_market_shares` |
+| Single-token | `deposit_liquidity_single` | 1 asset transfer + storage `pay` + `min_market_shares` |
+| C-Vault | `CvaVault.deposit` | 2 asset transfers + `pay` + `min_cva_shares` |
+
+SDK builders exist for all three (`buildV2DepositLiquidityTransactions`,
+`buildV2SingleTokenDepositLiquidityTransactions`, `buildV2CvaDepositTransactions`)
+with matching quote functions, so the construction is not the hard part.
+
+**Still unresolved:** whether either live market exposes the single-token route.
+`singleToken` is a derived flag in the read model, not a field in `market_core`.
+If both are false there is no one-asset door and every form is two-asset.
+
+### 12.2 The assertion layer — the actual work
+
+`perpsGroup.ts` is ~2,200 lines of field-by-field decode-and-compare for the
+terminal's **four** group shapes: every receiver, amount, asset, app arg and
+`onComplete` checked against what the screen displayed, with
+`ALLOWED_TXN_TYPES` failing anything else by count. Three more shapes need
+equivalent treatment or they do not ship — the trade page set that standard and
+a liquidity deposit moves more of a user's money in one signature than a perps
+open does.
+
+Specifically each shape needs: both anchors on every value-moving leg (equal to
+displayed **and** equal to a pinned constant), `flatFee` at `minFee` so
+congestion cannot inflate the group, a display-drift guard between quote and
+signature as the open path has, and the `SubmissionUnknownError` handling that
+makes a dropped response recoverable rather than a silent double-deposit.
+
+### 12.3 Yield-recall preamble
+
+The market routes need `prepareV2ActionRecall` ahead of the deposit, as the
+close path already does. Reuses existing code; the caps come from
+`v2MarketYieldActionRecallPlan`.
+
+### 12.4 Withdrawals
+
+**A deposit UI without a withdrawal UI is a trap.** The C-Vault has a ~1 hour
+cooldown, a 0.2% burn spread and a $5 minimum; the direct pools have their own
+cooldown (`quoteV2DirectLpWithdrawCooldown`). Someone who can deposit here and
+must leave to withdraw will assume their capital is stuck. Ship both or neither.
+
+### 12.5 What stays as built
+
+The read layer, the dedup logic, the fee APR and its capital-stability
+justification, the OI cap display, the splash and the tab bar all stand. Only
+the three cards' call-to-action changes.

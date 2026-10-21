@@ -25,13 +25,22 @@ const navLinks = [
    */
   { href: "/trade", label: "Trade", external: false },
   /**
-   * "Strategy" rejoins the nav — the condition the comment above set.
+   * No "Strategy" entry — HIDDEN, NOT REMOVED, like Predict below.
    *
-   * It has something to show now: the PEX liquidity pools, which are the
-   * supply side of the terminal sitting next to it in this bar. More sections
-   * will join them behind the page's own tab bar.
+   * `/strategy` still builds and still serves, so a link keeps working and
+   * bringing it back is this line rather than a rebuild. It was in the nav
+   * from 2026-10-20 until 2026-10-21.
+   *
+   * Why it came out: the page can only READ. Its three cards link out to
+   * Ultrade's app to actually deposit, and the product this is meant to be
+   * signs the deposit on our own UI. A nav slot pointing at a page that hands
+   * the user to someone else's site to finish the job is worse than no slot —
+   * it spends the scarcest surface on the site to advertise an incomplete
+   * product. It returns when the deposit groups are built and asserted here.
+   *
+   * See web/STRATEGY_SPEC.md §7: v1 was deliberately read-only, which was the
+   * wrong call for what this is for.
    */
-  { href: "/strategy", label: "Strategy", external: false },
   /**
    * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest
    * surface on the site — every item there costs attention the ones beside it
