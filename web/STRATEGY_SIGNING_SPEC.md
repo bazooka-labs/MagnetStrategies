@@ -43,9 +43,13 @@ market 2 (BTC/USD)    long=0 (ALGO)   short=31566704 (USDC)
 Neither is a single-token market, so `deposit_liquidity_single` and
 `withdraw_liquidity_single` are **not available on either pool**.
 
-**Every form is two-asset: ALGO + USDC.** There is no USDC-only deposit, and the
-UI must not imply one. This removes a whole group shape from the build and is
-the single biggest scope reduction available.
+This removes a whole group shape from the build.
+
+⚠️ **But it does NOT follow that every form must be two-asset** — see §9.5.
+`deposit_liquidity` accepts a zero leg (`allowZero = true` in the builder;
+`&&` not `||` in the quote), so a one-sided deposit is the same group shape with
+one amount at zero. It also carries a price-impact consequence of up to ±1.1%
+depending on which leg, which the preview must show.
 
 ---
 
@@ -91,25 +95,103 @@ exit is sufficient to not trap anyone.
 
 ---
 
-## 4. The yield-recall preamble
+## 4. Yield recall — NOT a backend dependency
 
-Market-pool withdrawals must run `prepareV2ActionRecall` first, as the
-terminal's close path already does: PEX holds idle market cash in external
-venues, and a withdrawal may need it recalled in the same atomic group.
+> **Corrected after audit, 2026-10-21.** The first version of this section said
+> market-pool withdrawals must run `prepareV2ActionRecall` "as the terminal's
+> close path already does", and called the backend route it needs "the one hard
+> dependency". Both halves were false, and §9.1 built a blocking question to
+> Dan on top of them.
 
-Reuses existing machinery. Two things carried over from the terminal:
+`grep -rn "prepareV2ActionRecall" src/` returns **zero hits.** The terminal
+never calls it. What `closePositionInner` does instead:
 
-- `prepareV2ActionRecall` **throws** when metadata is missing or inconsistent —
-  "missing or inconsistent metadata is an error, never evidence that yield is
-  off". Do not treat a throw as "no recall needed".
-- The `capsByAsset` it returns bound the recall. The terminal's close path
-  derives those caps from a possibly-stale quote
-  (`perpsClient.ts:1688`); **re-quote here**, do not inherit that defect.
+- `readYieldRegistry(algod, marketId, …)` — built entirely from boxes
+  (`perpsClient.ts:1673`)
+- `yieldRecallMode: 1`, hardcoded (`:1753`)
+- two candidate recall shapes, each asserted then simulated, first that passes
+  wins (`:1707-1734`)
 
-Recall needs a backend route (`v2MarketYieldActionRecallPlan`) which we do not
-operate. **This is the one hard dependency — see §9.1.**
+And `perpsReads.ts:925` records the decision deliberately: *"We do not take that
+dependency… It turns out not to be necessary."*
 
----
+`prepareV2ActionRecall` could not be fed chain data even if we wanted it:
+`marketYield.js` requires `registry.registry_version === plan.registry_version
+&& registry.registry_hash === plan.registry_hash`, and our chain-derived
+`YieldRegistry` has neither field. It is a **verifier of a backend-issued plan**,
+not a planner — every one of its ~40 assertions reads a field off
+`v2MarketYieldActionRecallPlan()`'s response.
+
+**So withdrawals reuse `readYieldRegistry` verbatim**, set `yieldRecallMode: 1`,
+and keep the simulate-and-fallback loop. Roughly 40 lines, not a blocked
+release.
+
+Two things that still carry over:
+
+- `yieldRecallMode: 0` is not an escape. `INTEGRATION_GUIDE.md:190` — *"Recall
+  authorization is included even when idle cash currently covers the quote; the
+  contract checks the actual shortfall at execution"* — and `perpsClient.ts:1595`
+  records that mode 0 "builds fine and then fails at `inner tx 0` on a live
+  position."
+- The terminal derives its recall caps from a possibly-stale quote
+  (`perpsClient.ts:1688`). **Re-quote here**; do not inherit that defect.
+
+## 4b. Oracle payloads — required by every method, omitted from the first draft
+
+Every method in §3 ends in two `byte[]` args: `oracle_message` and
+`oracle_signature`. `OracleCallArgs` is **non-optional** on
+`V2DepositLiquidityGroupInput`, `V2WithdrawLiquidityInput`, `V2CvaDepositInput`,
+`V2CvaWithdrawInput` and `V2CvaWithdrawFromMarketInput`. The first draft elided
+them as "…" in the signatures and omitted them from every input list and from
+§5.2's anchor table.
+
+AdminOps validates the payload itself — 133 bytes, 64-byte signature, `"PDX2"`
+magic, version 3, genesis hash at offset 5, **target app id at offset 37** and
+**market id at offset 45**. Offset 37 is exactly `ORACLE_TARGET_APP_OFFSET` in
+`perpsGroup.ts:94`, so the terminal's assertion transfers verbatim.
+
+The payloads exist today: the live bundle carries `app-3690309162/market-{1,2}`
+and `app-3690309167/market-{1,2}`, so `getOraclePayload(PEX_APPS.adminOps,
+marketId)` works with no new code.
+
+Consequences the first draft never derived:
+
+- **`ORACLE_MAX_AGE_SEC = 20`** applies to every group. The close path aborts
+  before opening the wallet when `budgetLeft < MIN_SIGNING_BUDGET_SEC` (8s,
+  `perpsClient.ts:1796`). Copy that gate — a display-drift guard does not
+  address freshness.
+- **Verify the signature before display**, as `perpsClient.ts:1667` does.
+- **The C-Vault needs three payloads**, not one — see §4c.
+
+## 4c. The C-Vault needs a mark preamble, and that makes it the HARDEST shape
+
+`buildV2CvaDepositCall` begins with `buildV2CvaActiveMarkCalls(input)`, which
+**throws** `missing active CVA mark oracle for market N` unless
+`activeMarketOracles[N]` is supplied for every active market.
+
+Live state forces it: `active_market_0 = 1`, `active_market_1 = 2`,
+`max_nav_age_rounds = 5` (~14 s, enforced at `cva.teal:33, 515, 662, 875,
+1043`), and `gm2:` marks are **~230 rounds stale** right now. A C-Vault deposit
+built today must carry `mark_market(1)` and `mark_market(2)` plus their own Math
+carriers.
+
+Real shape — 8-10 transactions of Algorand's 16, and three oracle payloads:
+
+```
+[mark carriers] + mark_market(1) + mark_market(2)
++ transfer long (zero allowed) + transfer short (zero allowed)
++ pay storage (note "pdex-v2-cva-deposit-storage")
++ appl CvaVault.deposit + resource carriers
+```
+
+That note **fails** the terminal's `LINKED_NOTE_RE`
+(`/^pdex-v2-linked-(escrow|storage)-\d+$/`, `perpsGroup.ts:117`), so a copied
+note rule rejects every C-Vault deposit.
+
+§3.2's input list also omits, from the type: `oracleMessage`,
+`oracleSignature`, `longAssetId`, `shortAssetId`, `activeMarketIds`,
+`activeMarketOracles`, `v2CvaVaultAppId`, `v2MarketsAppId`, `v2MathAppId`,
+`v2AdminControlAppId`.
 
 ## 5. The assertion layer
 
@@ -117,6 +199,12 @@ operate. **This is the one hard dependency — see §9.1.**
 terminal's four group shapes. Four new shapes need equivalent treatment, and a
 liquidity deposit moves more of a user's money in one signature than a perps
 open does.
+
+**Shape count: five or six, not four.** C-Vault withdraw is two distinct shapes
+(`withdraw`, 5 args, no recall fields; `withdraw_from_market`, 9 args with
+`yield_recall_mode` and two receipt caps), plus `mark_market` as a preamble
+shape that itself carries a signed payload and needs decode-and-compare. Sizing
+against `perpsGroup.ts`'s 2,219 lines for four shapes under-counts by ~40%.
 
 Build `liquidityGroup.ts` to the same contract:
 
@@ -131,8 +219,14 @@ Build `liquidityGroup.ts` to the same contract:
   `closeRemainderTo`, `assetCloseTo`, `assetSender`, `genesisHash`.
 - `foreignApps` ⊆ pinned PEX ids; `foreignAssets` ⊆ {0, USDC}; every sender is
   the connected wallet.
-- `boxes` is the one field the terminal leaves unbounded. Bound it here:
-  deposits touch `lp_state` / `cva_user_state` keys we can derive ourselves.
+- **Bound `boxes`** — and the model exists: `assertCancelGroup`
+  (`perpsGroup.ts:2193`) already bounds them exhaustively (length 43, `o2:`
+  prefix, owner pubkey, id in the displayed set). The open and close paths do
+  not; the cancel path does. ⚠️ Do NOT copy its owner-equals-sender rule:
+  `buildV2CvaWithdrawFromMarketCall` references `v2LpBoxKey(cvaAddress,
+  marketId)` — keyed by the **vault's** address, not the user's — so that rule
+  rejects every legitimate C-Vault market withdrawal. Deposits also reference
+  `m2:`/`mp2:`/`mr2:`/`mo2:`/`mf2:`/`my2:` when no resource carrier is present.
 
 ### 5.2 Per value-moving leg — two anchors each
 
@@ -144,15 +238,48 @@ derived independently:
 | ALGO long transfer | displayed long amount | quote's `longAmount` |
 | USDC short transfer | displayed short amount | quote's `shortAmount` |
 | storage `pay` | displayed storage figure | pinned SDK constant |
-| receiver, every leg | — | `getApplicationAddress(pinned id)`, never a manifest value |
+| receiver, every leg | — | the **correct** pinned app address, never a manifest value — see below |
 
-`checkStoragePayment` (`perpsGroup.ts:790`) is the model.
+⚠️ **The money does not go to the app being called.** `deposit_liquidity` calls
+AdminOps `3690309162` but the transfers go to
+`getApplicationAddress(v2MarketsAppId)` = `3690309159`. The C-Vault's go to its
+own address. Asserting "receiver == the called app's address" rejects every
+direct-LP deposit.
+
+⚠️ **The storage payment has two legal values, not one.** `V2_LP_BOX_MBR = 26_500`
+and `V2_CVA_USER_BOX_MBR = 32_900` on a first deposit, **0 on a top-up** when
+the box already exists. Assert "0 or the pinned MBR", which is the shape
+`checkStoragePayment` (`perpsGroup.ts:788`) already uses — and read `ml2:`/`gu2:`
+before building to know which applies.
+
+Also required, all present in the terminal and missing from the first draft:
+
+- **Pinned method selectors.** `deposit_liquidity` = `115498d8`,
+  `withdraw_liquidity` = `cc72508e` — both confirmed in AdminOps' live dispatch
+  table. `perpsGroup.ts`'s header says why: checking the encoder's output
+  against the same manifest proves only self-consistency.
+- **A call budget**, not just `foreignApps ⊆ pinned`. The terminal's own comment
+  records that the weaker rule let "an extra call to cvaVault, swapOps,
+  adminOps or adminControl pass the assertion untouched."
+- **Resource-carrier contents** — all four shapes emit them; assert each is a
+  bare `Math.noop` naming nothing the asserted calls do not. `v2MathAppId` is
+  required, not optional: the builder throws without it.
+- **One validity window** across the group, so no leg can be replayed alone.
+- **Simulate before signing.** For a withdrawal whose entire payout is inner
+  transactions, simulation is the only pre-signature evidence that the recall
+  caps and reference budget suffice.
 
 ### 5.3 Group-level
 
-- `flatFee` at `sp.minFee` on every transaction, with a stated cap per shape.
-  Without it a congested `suggestedParams` inflates the group — the terminal
-  measured 8.4 ALGO at a 10,000 suggestion.
+- **`sp.fee = sp.minFee; sp.flatFee = true` on suggestedParams**, with a stated
+  numeric cap per shape. NOT "fee === minFee on every transaction" — that would
+  fail every legitimate group here. The SDK sets per-method flat fees:
+  `deposit_liquidity` and `withdraw_liquidity` 50,000 µALGO, `CvaVault.deposit`/
+  `withdraw`/`mark_market` 23,000 each, Math carriers 1,000. Pinning
+  suggestedParams stops the transfer legs and carriers inflating; the per-method
+  fee stands where the method needs inner-transaction budget; the group total is
+  capped (cf. `MAX_CLOSE_GROUP_FEE_MICRO_ALGO = 200_000`). Rough floors: direct
+  deposit ≈ 55k, C-Vault deposit with marks ≈ 75–80k.
 - Display-drift guard between quote and signature, as the open path has
   (`MAX_DISPLAY_DRIFT_BPS` etc.). **The close path lacks one and that is a known
   defect** — do not copy the close path here.
@@ -163,10 +290,18 @@ derived independently:
 
 ### 5.4 What makes this bounded
 
-`min_market_shares` / `min_cva_shares` are the slippage floors. They must be
-**computed from the quote and asserted in the group**, never defaulted to 0 — a
-zero floor means any share count is acceptable, which is the single worst
-parameter on this surface.
+`min_market_shares` / `min_cva_shares` are the deposit floors. They must be
+**computed from the quote and asserted in the group**, never defaulted to 0 —
+the SDK's `?? 0n` means a zero floor accepts any share count.
+
+⚠️ **And the withdrawal floors matter more, because withdrawals have no legs to
+anchor.** `buildV2WithdrawLiquidityTransactions` emits **no value-moving
+transactions at all** — PEX returns assets by inner transaction. So §5.2's
+two-anchor table has nothing to bind on any exit, and the only protection is
+`min_long_amount` / `min_short_amount` in the app args, which the SDK also
+defaults to `?? 0`. A zero there means "accept any payout" on the side where
+the user is trying to get their capital back. Treat these as the worst
+parameters on this surface, ahead of the deposit floors.
 
 ---
 
@@ -181,8 +316,36 @@ Read live, not hardcoded. Current values on app `3690309167`:
 | `cva_withdraw_cooldown_rounds` | 1200 | ~55 min cool-down from deposit (see §6b for wording) |
 | `min_cva_withdraw_usd` | 5000000 | $5 minimum withdrawal |
 
-Direct pools have their own cooldown via
+Direct pools have their own, also consensus-enforced (§9.3), surfaced via
 `quoteV2DirectLpWithdrawCooldown({ lastDepositTimestamp, currentTimestamp })`.
+
+**The cooldown restarts on every top-up, on both destinations.**
+`markets.teal:2632` rewrites `lp_state.updated_at` to now on each user deposit,
+re-locking the *entire existing position* for a fresh hour; the C-Vault measures
+from `last_deposit_round` the same way. A user with $10,000 in for a month who
+adds $10 cannot withdraw anything for 55 minutes. "~1 hour after depositing"
+reads as a one-time onboarding cost; it is not.
+
+### 6a. Five more live gates, all on chain, none checked by any SDK quote
+
+| gate | live | enforced |
+|---|---|---|
+| `deposit_paused` / `withdraw_paused` | 0 / 0 | `cva.teal:42, 45, 524, 527…` |
+| `max_nav_age_rounds` | **5** (~14 s) | `cva.teal:33, 515, 662…` |
+| allocation `status` | 1 (3 = WITHDRAW_ONLY) | contract |
+| per-market `max_deposit_usd_per_call` / `…withdraw…` | **$10,000** each | contract |
+| `max_pnl_factor_for_withdrawals_bps` | **7000** mkt 1 / **6000** mkt 2 | contract |
+
+The pause flags, the NAV window and the cooldown are **not checked by
+`quoteV2CvaIdleWithdraw` or `quoteV2CvaMarketWithdraw`** — those return
+`ok: true` while the chain rejects. Reading them live is mandatory, not a
+nicety.
+
+Note `max_pnl_factor_for_withdrawals_bps` is *tighter* than the deposit
+equivalent, so a pool with traders deep in profit blocks withdrawals before
+deposits. `maximumV2LpWithdrawableShares` binary-searches against exactly these
+— it is the right instrument, but needs the market record merged with `mo2:` OI
+fields or it silently understates trader PnL.
 
 **Disclose the cool-down before the deposit signature, not at withdrawal.** A
 user who learns of it when trying to leave has been misled, even if every number
@@ -244,12 +407,14 @@ it a countdown, not a state:
 
 > Withdrawals open in 43 minutes
 
-**If a withdrawal is attempted during it** — concrete remaining time, never a
-bare refusal. `quoteV2DirectLpWithdrawCooldown` returns `remaining_seconds`
-and the C-Vault's is derived from `last_deposit_round`, so the number is always
-available:
+**During the cool-down, the Withdraw action is UNAVAILABLE, not offered.**
+Both cooldowns are `assert`ed on chain (§9.3), so a button that submits inside
+the window fails at consensus — "offered, then refuses" is the precise failure
+`perpsPreflight.ts` exists to prevent. Disable it and put the countdown in its
+place, with the remaining time, which is always available
+(`remaining_seconds`, or derived from `last_deposit_round`):
 
-> This deposit is still in its cool-down — withdrawals open in 12 minutes.
+> Withdrawals open in 12 minutes
 
 **In the costs list**, beside the spread and the minimum, in the modal's voice:
 
@@ -279,7 +444,30 @@ action.
   audits found three instances of that defect; do not write a second parser.
 - **Withdraw takes shares or a percentage**, clamped by
   `maximumV2LpWithdrawableShares` — not a USD amount, which would need a
-  reverse quote.
+  reverse quote. Below $10 on the C-Vault, offer **full exit only** (§9.4).
+- **Price impact per leg** must be in the preview: up to ±1.1% depending on
+  which asset you send (§9.5). Omitting it hides a charge five times the size of
+  the C-Vault's whole spread.
+
+### 7a. Preflight, which the terminal already wrote
+
+`openPosition` (`perpsClient.ts:341-371`) does all of this before building, and
+none of it was in the first draft:
+
+- **Spendable-ALGO check** — `amount - minBalance` must cover the ALGO leg plus
+  ~50-80k µALGO of fees plus the 26.5k/32.9k storage payment. Without it, a user
+  depositing near their whole balance gets a chain rejection.
+- **USDC held and sufficient**, with named errors rather than a revert.
+- **USDC opt-in for the EXIT.** Withdrawals arrive by inner transaction, so the
+  receiver must be opted in. A C-Vault depositor whose allocation later pays out
+  USDC may not be.
+- **No LP-token opt-in needed** — `market_share_asset_id = 0` on both markets,
+  so shares are box-tracked and never an ASA. Worth stating so nobody adds a
+  spurious step.
+- **Program pins.** `PEX_PROGRAM_SHA256` pins six apps; **AdminOps `3690309162`
+  and CvaVault `3690309167` are not among them**, and `verifyProgramPins` does
+  not read them. The two apps this entire feature runs on have no upgrade
+  detection. Two more digests is a one-line change.
 
 ---
 
@@ -301,87 +489,173 @@ action.
 6. **Recall throw is not "off".** A `prepareV2ActionRecall` throw must abort,
    not proceed with no recall.
 7. **Unknown-submission.** A dropped response must surface the txId, not retry.
+8. **On-chain gates refuse in the UI, not at consensus.** One test per gate:
+   `withdraw_paused = 1`, inside either cooldown, allocation `status = 3`, a
+   `max_nav_age_rounds` breach, and the per-call $10,000 cap. Each must disable
+   the action rather than build a group — these are the failures that reach a
+   user as "it just failed".
+9. **Mark preamble present when stale.** A C-Vault deposit built while
+   `last_mark_round` is older than `max_nav_age_rounds` must carry
+   `mark_market` for every active market, or fail to build.
+10. **Signing budget.** A payload older than `ORACLE_MAX_AGE_SEC - MIN_SIGNING_BUDGET_SEC`
+    must abort before the wallet opens.
+11. **Withdrawal floors non-zero.** `min_long_amount`/`min_short_amount` of 0
+    must throw, same as the deposit floors (§5.4).
 
 ---
 
-## 9. What I need answered
+## 9. Decisions, after audit
 
-### 9.1 From Dan — blocking the market-pool withdrawal path
+> Four claims in the first draft were wrong and three of them changed a
+> decision. Corrected here; the originals are named so the reasoning is
+> traceable.
 
-`prepareV2ActionRecall` needs `v2MarketYieldActionRecallPlan` and
-`v2MarketYieldResourceRegistry`, which are **backend routes we do not operate**,
-and `BACKEND_INTEGRATION.md` says not to proxy a PEX-operated API.
+### 9.1 Release order — REVERSED
 
-- **Can the recall plan be derived entirely from chain state?** The terminal's
-  close path calls `readYieldRegistry` from boxes, so possibly yes — if so, this
-  is a reimplementation like `pexPerformance.ts` and nothing is blocked.
-- **If not, is a public recall-plan route or R2 artifact possible?** Same shape
-  as the performance bundle he just shipped.
-- **Does a withdrawal that needs no recall work without it?** `idle_long_amount`
-  / `idle_short_amount` on the vault are both 0 today, and market 2 has no OI —
-  so the common case may need nothing.
+**Market pools first. C-Vault second.** The first draft led with the C-Vault
+on the grounds that it was "the easiest deposit (no `marketId`, no recall on the
+idle path)". It is the hardest of the three:
 
-Deposits do **not** need recall, so a deposit-only v1 is possible if this
-answer is slow. That trades against §1's rule about not shipping deposits alone.
+| | market pool | C-Vault |
+|---|---|---|
+| oracle payloads | 1 | **3** (deposit + 2 marks) |
+| mark preamble | none | **required** — marks are ~230 rounds stale against a 5-round window (§4c) |
+| group size | ~6 txns | **8–10 of 16** |
+| freshness window | 20 s (payload) | **~14 s** (`max_nav_age_rounds = 5`) |
+| exit routes | one | two + a route decision we must make ourselves (§3.4) |
+| pause flags on chain | — | `deposit_paused`, `withdraw_paused`, allocation `status` |
+| dust floor | none | **$5 trap** (§9.4) |
 
-### 9.2 Product decisions — ANSWERED 2026-10-21
+With the recall dependency gone (§4), `deposit_liquidity` is six transactions
+with one payload, and `withdraw_liquidity` is one app call plus carriers reusing
+`readYieldRegistry` verbatim. That is the cheaper half **and** the only
+destination with a clean exit.
 
-1. **Deposits and withdrawals ship together.** Confirmed. No deposit-only
-   release. If §9.1 blocks market-pool withdrawals, the answer is to ship
-   C-Vault alone (decision 2), not to ship deposits without an exit.
+This also removes the reason the first draft accepted a C-Vault-only v1. Both
+pools plus their withdrawals is now the smaller piece of work.
 
-2. **C-Vault leads, and a C-Vault-only v1 is acceptable.** The market pools
-   follow if feasible in the same release. This happens to resolve §9.1's risk:
-   the C-Vault's idle withdrawal path needs no market recall
-   (`idle_long_amount`/`idle_short_amount` are both 0 today, so
-   `planV2CvaWithdraw` would route through `withdraw_from_market`, which does
-   need recall — see §9.1, still open).
+### 9.2 The idle-withdrawal premise was wrong, and self-refuting
 
-3. **The withdrawal lock cannot be removed — it is PEX's, not ours.**
+The first draft said `idle_long_amount`/`idle_short_amount` "are both 0 today"
+and concluded the C-Vault's idle path needs no recall — in a sentence whose own
+parenthesis then said the opposite.
 
-   The instinct was that a lock is unnecessary, and it would be if it were our
-   design. It is not:
+Live: `idle_long_amount = 385716` (0.386 ALGO), `idle_short_amount = 131264`
+(0.131 USDC) — **≈ $0.18 total**. `quoteV2CvaIdleWithdraw` pushes
+`insufficient_idle` when idle < withdrawal, and `min_cva_withdraw` below $5. So
+with $0.18 of idle against a $5 floor, **the idle route cannot satisfy any legal
+withdrawal.** Every C-Vault exit goes through `withdraw_from_market`.
 
-   | | Value | Enforced where |
-   |---|---|---|
-   | C-Vault | `cva_withdraw_cooldown_rounds` = 1200 ≈ **55 min** at 2.77 s/block | **PEX's deployed bytecode** — the strings `cva_withdraw_cooldown_rounds` and `cooldown` are both present in app `3690309167`'s approval program |
-   | Direct pools | `V2_DIRECT_LP_WITHDRAW_COOLDOWN_SECONDS` = 3600 = **1 hour** | **SDK constant only** — `cooldown` appears in neither AdminOps `3690309162` nor Markets `3690309159` bytecode |
+Leading with the C-Vault would have *maximised* exposure to the dependency the
+draft called blocking. It is the only destination with no recall-free exit.
 
-   So:
-   - On the **C-Vault** the cooldown is a consensus rule. A withdrawal inside it
-     fails on chain. Nothing we build can change that, and the pool we are
-     leading with is the one that has it.
-   - On the **direct pools** it is advisory. We *could* ignore it. **We should
-     not.** PEX put it there — most plausibly to stop a deposit/withdraw
-     sandwich around fee accrual or a price move — and shipping a path their own
-     SDK says should not exist makes us the reason their pool gets gamed.
+### 9.3 Both cooldowns are consensus rules — CORRECTED
 
-   **There is therefore no lock-free option on PEX**, and both are ~1 hour. The
-   decision available is not whether to have one, but whether to disclose it
-   well. This spec discloses it **before the deposit signature** (§6), which is
-   the only honest handling.
+The first draft said the direct-pool cooldown was an "SDK constant only",
+advisory, and that we "could ignore it… we should not". **It is enforced on
+chain.** Markets app `3690309159`, two sites:
 
-4. **Minimum deposit: $5**, matching the terminal — and the match is exact
-   rather than approximate. `min_collateral_usd` and `min_position_size_usd` are
-   both `5000000` (= $5.00) on both markets, so this is PEX's own floor, not a
-   number we invented. It also lines up with `min_cva_withdraw_usd` ($5), so a
-   user cannot deposit an amount they are then unable to withdraw.
+```
+global LatestTimestamp ; extract_uint64 (lp_state.updated_at, offset 8)
+pushint 3600 ; + ; >= ; assert
+```
 
-   Deposit ceilings are not a concern: `max_pool_usd_for_deposit_long/short`
-   are $1 trillion on both markets.
+(`markets.teal:2824-2831`, guarded by a `CallerApplicationID` carve-out, and
+`:3149-3156`, unconditional.)
 
-5. **No link-out to Ultrade, in any form.** Removed as an option, including as a
-   fallback if this slips. The three cards' current call-to-action goes away
-   when this ships; until then the page stays hidden. STRATEGY_SPEC.md §7.1 is
-   fully superseded and the `PEX_APP_URL` constant should be deleted, not
-   repointed.
+The draft's grep for the string `cooldown` could never have found `pushint
+3600`. **This is the fourth time in this repo a behavioural fact has been
+asserted from a string search** — see `feedback_assert_behaviour_not_source_text`.
 
-### 9.3 Still open, and worth telling users
+So there is no choice to make on either destination, and §9.3's policy
+paragraph about honouring an advisory is void. The consequence for the UI is
+bigger than wording: **the Withdraw action must be unavailable inside the
+window, not offered and refused.** Offering a button that fails at `assert` is
+the exact failure `perpsPreflight.ts` exists to prevent.
 
-Market 1 has ~$4 of OI headroom against a PEX-set cap of $2,200. Capital
-deposited there earns fees on size that cannot currently be traded against.
-Not a blocker and not ours to fix, but the deposit preview should say so rather
-than let someone discover it — the same reasoning as the cooldown.
+| | duration | enforced |
+|---|---|---|
+| direct pools | 3600 s = 1 h | Markets bytecode, `assert` |
+| C-Vault | 1200 rounds ≈ **55 min** (measured 2.75 s/block) | CvaVault bytecode |
+
+### 9.4 Minimum deposit — $5 is a trap; use $5.25
+
+The first draft set $5 and claimed it "lines up with `min_cva_withdraw_usd`
+($5), so a user cannot deposit an amount they are then unable to withdraw."
+Exactly backwards. At the live 20/20 bps spreads:
+
+```
+deposit $5.000000  ->  withdrawable $4.980038   BELOW the $5 exit floor
+deposit $5.020000  ->  withdrawable $4.999960   BELOW
+deposit $5.021000  ->  withdrawable $5.000956   OK
+```
+
+A $5.00 C-Vault deposit is **permanently below the exit floor**. Minimum
+fully-exitable is ≈ **$5.0201** before any NAV decline.
+
+Worse, the floor applies to the withdrawal *value*, not the residual: a user
+with $7 can withdraw $5–$7 but not $2, so **any partial exit leaves ≤ $5 of
+permanent dust.**
+
+**Decision: $5.25 minimum on the C-Vault**, which clears the floor with ~4.5%
+of headroom for NAV movement, and the withdraw UI offers **full exit only**
+below $10 so nobody strands a residual. Market pools keep no minimum — they
+have no exit floor.
+
+The draft also mis-sourced the number: `min_collateral_usd` and
+`min_position_size_usd` ($5 each) are **perps** parameters. `quoteV2LpDeposit`
+reads neither; its only size gates are `empty_deposit` and
+`deposit_value_too_small`. "PEX's own floor" was true of a different product.
+
+### 9.5 One-sided deposits ARE possible — §2's conclusion was too strong
+
+§2's chain facts are right: `deposit_liquidity_single` is genuinely unavailable
+on both markets. But the conclusion "**every form is two-asset**" does not
+follow, and the SDK is built the other way:
+
+- `quoteV2LpDeposit`: `if (longAmount <= 0n && shortAmount <= 0n)
+  reasons.push("empty_deposit")` — **`&&`, not `||`**. One leg at zero quotes ok.
+- `buildV2DepositLiquidityTransactions` passes `allowZero = true` to both
+  transfer builders, and `makeTokenTransferTxn` throws on zero *unless* that
+  flag — so it exists specifically to permit a zero leg.
+
+**This is economically significant, not just a form option.** `depositImpact`
+prices deposits against pool balance. Live market 1 is **$650 of ALGO against
+$1,952 of USDC**, so an ALGO-only deposit *reduces* the imbalance and earns
+positive impact, while a USDC-only deposit widens it and pays up to
+`max_swap_impact_bps = 110` — **1.1%, five times the C-Vault's entire round
+trip.** The bonus is capped by a ~$1.45 impact pool; the penalty is not.
+
+So the preview must show price impact per leg, and test-plan item 4 ("a
+single-asset group must fail") would have locked in a false invariant.
+
+**Open, settleable by one simulate:** whether the contract accepts a zero leg.
+The SDK's quote and builder both say yes. Worth confirming before building the
+form.
+
+### 9.6 The OI headroom claim was one-sided
+
+Market 1: long OI **$2,195.60** against a $2,200 cap — $4.40 free, as stated.
+But short OI is **$162.26** against the same $2,200 cap — **$2,037.74 free**. A
+deposit backs both sides, so "the market has ~$4 of headroom" overstates it by
+~460× on the short side. The honest line: *long-side OI is at its cap; the short
+side has ~$2,038 free.*
+
+### 9.7 Questions for Dan — narrowed
+
+§9.1's three blocking questions are answered in our own repo (§4). What is
+actually worth asking:
+
+1. Is the direct-LP cooldown's `CallerApplicationID` carve-out stable? It is why
+   the C-Vault's own `ml2:` rows carry `updated_at = 0` while third-party rows
+   carry real timestamps.
+2. Do `withdraw_liquidity`'s two TEAL cooldown sites differ deliberately — one
+   guarded, one not?
+3. Does `lp_state.updated_at` move on **withdrawal** as well as deposit? The
+   field name suggests yes, which would restart the cooldown on a remainder
+   after a partial exit.
+4. Would he lower `cva_withdraw_cooldown_rounds`? Worth asking once, given the
+   product view that ~1 h is unnecessary — but it is his contract.
 
 ## 10. Explicitly out of scope for v1
 
