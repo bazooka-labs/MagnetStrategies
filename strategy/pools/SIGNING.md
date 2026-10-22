@@ -1,9 +1,14 @@
 # Strategy — deposits and withdrawals signed on our own UI
 
-**Status:** spec, not built. Written 2026-10-21.
+**Status:** **BUILT** for all three destinations, 2026-10-21/22. Written as a
+spec 2026-10-21; §§1-10 are that original spec and §11 is what MainNet corrected
+about it. Where the two disagree, **§11 is current** — and they disagree about
+nine separate things, which is the main reason to read §11 first.
 **Supersedes:** SPEC.md §7.1, which shipped a read-only page linking out
-to Ultrade. That was the wrong product, not a smaller one, and the page is
-hidden from the nav until this is built.
+to Ultrade. That was the wrong product, not a smaller one. The link-out is
+removed, URL included.
+**Current status and real-signature state:** [`OVERVIEW.md`](./OVERVIEW.md).
+**Code layout:** [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 **Prerequisite reading:** `src/lib/perpsGroup.ts` header, and
 `vendor/README.md` before touching the SDK pin.
 
@@ -601,10 +606,15 @@ Worse, the floor applies to the withdrawal *value*, not the residual: a user
 with $7 can withdraw $5–$7 but not $2, so **any partial exit leaves ≤ $5 of
 permanent dust.**
 
-**Decision: $5.25 minimum on the C-Vault**, which clears the floor with ~4.5%
-of headroom for NAV movement, and the withdraw UI offers **full exit only**
+**Decision: $5.25 minimum on the C-Vault** — ~~which clears the floor with ~4.5%
+of headroom for NAV movement~~, and the withdraw UI offers **full exit only**
 below $10 so nobody strands a residual. Market pools keep no minimum — they
 have no exit floor.
+
+> **REVERSED — the minimum is $5.00. See §11.11.** This treated NAV as static;
+> the shortfall is 0.40% of growth, i.e. days, not forever. $5.25 also bought
+> 4.38% of headroom where 0.01% was required. Market pools did get a $5.00
+> minimum after all, for an unrelated reason (§11.8).
 
 The draft also mis-sourced the number: `min_collateral_usd` and
 `min_position_size_usd` ($5 each) are **perps** parameters. `quoteV2LpDeposit`
@@ -806,7 +816,7 @@ cvaVault  b2fd9b6f0e6e7f9bf47ad6edfe2e367a3e1485cd40eb62d489a8053bcd50b9b1
 - `$5.00` into the C-Vault leaves `$4.98003992` withdrawable, not `$4.980038`
   as §9.4 printed. The conclusion is unchanged.
 
-### 11.7 Two freshness regimes in the C-Vault, and why it is still phase two
+### 11.7 Two freshness regimes in the C-Vault, and why it shipped second
 
 The vault enforces NAV freshness two different ways:
 
@@ -823,8 +833,10 @@ allocation holding shares.
 
 The live NAV was **36 to 257 rounds stale** across this session's runs, against
 a 5-round limit. That is the condition that makes an unprepared C-Vault deposit
-fail, and it is why the two direct pools shipped first and the C-Vault card says
-so instead of offering a button.
+fail, and it is why the two direct pools shipped first.
+
+> **Shipped 2026-10-22.** The preamble turned out to be the SDK's job, not ours
+> — see §11.12. The vault's card offers both actions.
 
 ### 11.8 Product minimum on the direct pools is $5, not $5.25
 
@@ -841,16 +853,38 @@ Not replaced — removed. `PEX_APP_URL` and `GoToPex` are deleted, per "don't us
 the URL, forget that as an option". The C-Vault card shows a disabled control
 with a reason instead of a link.
 
-### 11.10 Still open
+### 11.10 A first-time depositor could never deposit
 
-- **C-Vault deposits and withdrawals** — needs the mark preamble of §11.7.
-- `signAndSubmit` lives in `strategy/submit.ts` and is used by the liquidity path
-  only; `perpsClient.ts` still has its own copy. Rewiring the live trading
-  submit path for a hidden feature was the riskier choice today, so the trading
-  path should adopt it next time it is touched. The duplication is real.
-- The two markets' pool cards are live; **nothing has round-tripped real funds
-  through this UI yet**, which is why `/strategy` stays out of the nav.
+Shipped and then fixed the same day, and the most instructive defect in this
+product.
 
+`AdminOps.deposit_liquidity` asserts the storage payment equals the `ml2:` box
+MBR **exactly**:
+
+```
+assert failed pc=1203   opcodes=intc 17 // 26500 ; == ; assert
+```
+
+The deposit path hardcoded zero, which is correct only for a wallet that already
+holds the box. So every existing LP could deposit and **no new depositor could**
+— including the first real user of the page.
+
+**Why every test missed it.** They all used `A4YW55…`, a real market-1 LP with
+an existing box, and zero is the right answer for that wallet. A suite that only
+ever exercises the returning case cannot see the first-time case. This is the
+same gap the perps path carried across eight audits as `SHAPE_OPEN_STORAGE`.
+
+Fixed by `storagePaymentFor(hasPosition)` — exactly the MBR on a first deposit,
+exactly zero afterwards, since the contract asserts equality in both directions
+and neither value is a safe default for the other. The constant is the SDK's
+`V2_LP_BOX_MBR_MICRO_ALGO`, not a literal, so a PEX box-layout change moves with
+the vendored version. The MBR is counted toward the balance gate and the MAX
+button's reserve, both of which would otherwise build a group the gate refuses.
+
+The live test keeps the **failing** case as well as the passing one, so this
+cannot regress to zero unnoticed. The C-Vault has the same trap at a different
+value — `gu2:` is 32,900 — and that one was tested before shipping rather than
+discovered (§11.12).
 
 ### 11.11 Minimum C-Vault deposit is $5.00, not $5.25 — §9.4 overstated the trap
 
@@ -914,3 +948,128 @@ a test sweeps them rather than pinning $5.02.
 §11.1 found an SDK quote trusted without measurement, §11.2 found a dependency
 declared absent without testing it, and this found a static model of a quantity
 that grows. Each survived because it was reasoned about rather than checked.
+
+### 11.12 The C-Vault build — what it actually cost, and six more shape errors
+
+Built 2026-10-22. Both paths build, assert and simulate on MainNet:
+
+```
+deposit   $6 USDC        ->   8 txns,  74,000 µALGO  ->  5,103,278 shares
+withdraw  $10 of shares  ->  15 txns, 178,000 µALGO  ->  22.11 ALGO + 7.54 USDC
+```
+
+**§9.1's main cost estimate was wrong.** It deferred the vault partly because
+the mark preamble looked like ours to assemble. It is not: `planV2CvaWithdraw`
+picks the route, and both CVA builders emit the `mark_market` legs when given
+`activeMarketIds` and `activeMarketOracles` (`V2CvaDepositInput` extends
+`V2CvaActiveMarkOracleRefs`, so this holds on deposits too, which have no
+planner because they have no route). Deferring was still right — the vault is
+the harder shape — but for narrower reasons than stated.
+
+**Six shape errors, each failing with a misleading message.** All were found by
+running it against MainNet, none by reading the types:
+
+| what was wrong | how it surfaced |
+|---|---|
+| `oraclePayload` missing the decoded price band | `Cannot convert undefined to a BigInt`, thrown inside `oraclePrices` |
+| flat `resources` instead of nested `resources.app_ids` | `v2MathAppId is required for CVA mark_market resource carrier` — an error about the carrier, caused by the resource map |
+| hand-mapped `gm2:` words instead of `parseV2CvaMarketAllocationState` | every withdrawal refused `withdraw_cap` |
+| partial market record instead of `marketRecord()` | silently reads as zeros |
+| no `yieldRecallMode: 1` + registry | `Yield recall preparation is required` |
+| a registry for the wrong market | **throws** `xALGO strategy is required for action recall` |
+
+The third is the sharpest: the market-route check at `v2Quotes.js:578` reads
+`max_withdraw_usd_per_call` with **no `> 0n` unlimited guard**, unlike the
+vault-level check twenty lines above it. A missing key defaults to zero, and
+zero means "refuse everything" rather than "no limit". `cvaSnapshot.ts` exists
+so this assembly happens once, in one audited place.
+
+The last one is why `registries` is keyed by market: the route and the registry
+must be chosen together, and a mismatch is not a graceful no.
+
+### 11.13 Two assertion gaps, found by real groups, affecting the trading path
+
+Both were legitimate SDK behaviour that "every path measured so far" had hidden,
+and the fix to the second touches a check the live terminal uses.
+
+- The SDK marks a CVA deposit's storage leg with the note
+  `pdex-v2-cva-deposit-storage`. `checkEveryTransaction` permitted only the
+  perps linked-order note pattern, so a **correct deposit was refused**. Allowed
+  as an exact string on a `pay` leg, never as a pattern.
+- A CVA withdrawal moves no assets itself — both sides arrive by inner transfer
+  — so there is no `axfer` leg to put USDC into `checkMathCarriers`'s allowed
+  set, and a real carrier naming USDC was refused. `collateralAssetId` is now
+  passed in. `checkEveryTransaction` already permitted USDC on every call, so
+  withholding it from the carriers was an inconsistency rather than a control.
+
+Regression-checked: 705 hermetic tests and all live pool tests pass, including
+the real-bytes perps open and close assertions.
+
+### 11.14 Withdrawals are denominated in dollars, not share percentages
+
+A product decision, taken 2026-10-22, and deliberately different from the pools.
+
+The pools use a share-percentage slider because nothing about them is
+denominated in dollars. **Every** constraint on the C-Vault is: a $5 withdrawal
+floor, 0.2% entry and exit spreads, per-call caps in USD. A percentage slider
+would make the floor a surprise exactly at the low end where it bites.
+
+So: dollars primary, `MAX` for a full exit, and the share count shown
+underneath — because shares are what actually gets signed and the dollar figure
+is approximate, since NAV moves between the quote and the signature. The receipt
+afterwards is the chain's own number.
+
+### 11.15 There is no withdrawal cap, and no penalty
+
+Both claims in earlier revisions were wrong.
+
+**No cap.** §11 previously recorded `split_cva_withdrawal_required` as a live
+constraint and a product decision was raised about capping withdrawals. That
+failure only ever appeared while the snapshot was incomplete — with both routes
+ineligible, "split required" is the planner saying no single route works. With
+the snapshot correct, a sweep plans a holder's **entire $757 position** in one
+group against a $1,640 vault:
+
+```
+$   6   m1 OK   m2 OK          $ 250   m1 OK   m2 OK
+$  25   m1 OK   m2 OK          $ 500   m1 OK   m2 not eligible
+$ 100   m1 OK   m2 OK          $ 757   m1 OK   m2 not eligible
+```
+
+A single market allocation does have a ceiling, so a large exit needs a market
+big enough for it — the planner picks one, which is why this needs no product
+decision either.
+
+**No penalty.** All 27 vault globals enumerated: there is no early-withdrawal
+penalty, lockup tier, or fee that varies with holding period. The three costs
+are the 0.2% burn spread (flat, whether held an hour or a year), the ~56 minute
+cool-down after a *deposit*, and the $5 minimum. The cool-down is the only thing
+that stops a withdrawal being instant, and only in the hour after funds go in.
+
+### 11.16 First real signature
+
+`/strategy`'s first real money, 2026-10-22 03:32:39 UTC: **$5.00 into ALGO/USD**
+by a first-time depositor. Confirmed on chain — a new `ml2:` box (the tenth),
+4.278512 shares, and the 26,500 µALGO MBR paid, which is the §11.10 fix
+validated in production rather than in simulation.
+
+Five of the six paths still have no real signature. That, and not any remaining
+capability gap, is why `/strategy` is out of the nav.
+
+### 11.17 Still open
+
+- **Real signatures.** One of six paths has one (§11.16). That is the gap that
+  keeps `/strategy` out of the nav, not any missing capability.
+- **Fixtures and mutation tests for the C-Vault.** The pools have real-bytes
+  mutation tests; the vault has live tests and mounted component tests but no
+  captured fixture yet.
+- **A first-time C-Vault depositor**, live. The constant is pinned and the
+  branch is tested, but no wallet without a `gu2:` box has been simulated
+  through it — which is precisely the shape §11.10 says to check.
+- `signAndSubmit` lives in `submit.ts` and is used by the liquidity paths only;
+  `perpsClient.ts` still has its own copy. Rewiring the live trading submit path
+  for a hidden feature was the riskier choice, so the trading path should adopt
+  it next time it is touched. The duplication is real.
+- **Not a gap, recorded so it is not re-litigated:** no `Pool` interface is
+  extracted. Two implementations share their gates and their discipline, not
+  their shape — see ARCHITECTURE.md, "What the C-Vault proved about the seam".

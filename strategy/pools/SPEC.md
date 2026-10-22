@@ -1,12 +1,19 @@
 # Strategy page — PEX liquidity provision
 
-**Status:** built, **HIDDEN from the nav 2026-10-21.** Written 2026-10-20.
+**Status:** written 2026-10-20. **The read-only design below is DELIVERED and
+then superseded.** All three destinations now take deposits and withdrawals
+signed in our own UI — see [`OVERVIEW.md`](./OVERVIEW.md) for current status and
+[`SIGNING.md`](./SIGNING.md) for how, including §11, which is the list of claims
+this document and that one both got wrong before MainNet corrected them.
 
-> The page reads correctly but can only READ — its cards link out to Ultrade to
-> deposit. The product this is for signs the deposit **on our own UI**, so §7.1's
-> link-out decision was wrong for the brief, not merely minimal. `/strategy`
-> still builds and serves; the nav entry returns when §7.2 is built and asserted.
-> §12 is the plan for that.
+> **What changed, and why this file is kept anyway.** §7.1 chose to link out to
+> Ultrade to deposit. That was wrong for the brief, not merely minimal, and the
+> URL it chose did not exist. §7.2 and §12 planned the signing work; it is built.
+> The product reasoning in §§1-6 — what is shown, what is deliberately NOT
+> claimed, and the corrected open-interest and APR language — is still live and
+> still governs the page, which is why this is amended rather than replaced.
+> `/strategy` remains out of the nav: see OVERVIEW.md for the reason, which is
+> no longer "it can only read".
 **Scope:** self-managed liquidity provision into PEX's three capital destinations.
 **Explicitly out of scope:** "Smart Stake" / Magnet-managed fund — shelved by decision 2026-10-20.
 
@@ -278,7 +285,7 @@ the ALGO market and was wrong for exactly that reason.
 
 ## 7. Deposit flows
 
-### 7.1 v1: link out — SUPERSEDED, see §12
+### 7.1 v1: link out — SUPERSEDED and REMOVED, see §12 and SIGNING.md
 
 > ⚠️ **This decision was wrong for the brief.** The point of the page is to let
 > someone deposit through Magnet Strategies; handing them to Ultrade's app to
@@ -286,7 +293,8 @@ the ALGO market and was wrong for exactly that reason.
 > still the reason §12 is sized the way it is, not because the conclusion
 > stands.
 
-**v1 does not build deposit transactions.** Each card's action links out to
+~~**v1 does not build deposit transactions.**~~ (All three now do — §12.)
+Each card's action links out to
 Ultrade's app.
 
 > ⚠️ **URL was fabricated.** The first build used `https://pex.ultrade.org`,
@@ -382,6 +390,15 @@ These are a snapshot for sanity-checking the read layer, **not** values to hardc
 ---
 
 ## 12. Signing on our own UI — what it takes
+
+> **DELIVERED 2026-10-21/22.** Built for all three destinations.
+> [`SIGNING.md`](./SIGNING.md) is the implemented spec and supersedes the
+> estimates below. Three of them were wrong in ways worth reading:
+> §12.3 called the yield recall a preamble we would need "if" PEX required it —
+> it is mandatory on every withdrawal, with non-zero caps on both legs; the
+> C-Vault's mark preamble is assembled by the SDK rather than by us; and the
+> per-destination group sizes came out at 6 (pool deposit), 10 (pool withdraw),
+> 8 (vault deposit) and 15 (vault withdraw).
 
 The page returns to the nav when a deposit can be completed here. Scope, in the
 order it has to be built:

@@ -13,7 +13,7 @@ both. The umbrella is the user's intent, not who wrote the code.
 |---|---|---|---|
 | [Trading Terminal](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | **Trade** | Live on MainNet |
 | Advanced trading | Surfaces for users who want the full instrument, not the simplified one | **Trade** | Not started |
-| [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools — you earn fees and take the other side | Strategy | **Live on MainNet**, signed in our UI. Not in the nav yet |
+| [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools and its managed C-Vault — you earn fees and take the other side | Strategy | **Live on MainNet**, all three destinations signed in our UI. Not in the nav yet |
 | CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | Strategy | **Waiting on PactFi** to release the platform. Discussed, not designed |
 | Strategy vaults | Other engineered exposures — looped, structured | Strategy | Not started |
 

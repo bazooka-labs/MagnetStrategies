@@ -14,7 +14,7 @@ protocol — the same protocol the Trading Terminal trades on, approached from t
 other side of the book. Every action is a PEX call signed by the user's wallet,
 **in our UI** — the page does not hand anyone to a third-party frontend.
 
-## Status (2026-10-21)
+## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |
 |---|---|---|---|---|
@@ -24,14 +24,35 @@ other side of the book. Every action is a PEX call signed by the user's wallet,
 | CLMM pools | PactFi | Not started | — | Waiting on PactFi to release the platform |
 | Structured vaults | Ours | Not started | — | Not designed |
 
-**Read paths are live on `/strategy`** for all three PEX destinations — pool
-sizes, composition, your position, open interest against PEX's admin-set cap,
-and PEX's published APR.
+**All three destinations deposit and withdraw in our own UI.** Nothing links
+out. Measured on MainNet:
 
-**`/strategy` is deliberately not in the nav.** The two direct pools sign in our
-UI and pass their tests, but nothing has round-tripped real funds through this
-path yet. It is reached by typing the path while it is exercised. It rejoins the
-nav when the C-Vault signs here too and there are real round trips behind it.
+| action | group | fee | note |
+|---|---|---|---|
+| pool deposit | 6 txns | 55,000 µALGO | +26,500 `ml2:` box MBR on a first deposit |
+| pool withdraw | 10 txns | 117,000 µALGO | recalls both yield legs |
+| vault deposit | 8 txns | 74,000 µALGO | +32,900 `gu2:` box MBR on a first deposit |
+| vault withdraw | 15 txns | 178,000 µALGO | 2 `mark_market` legs + recall |
+
+Read paths are live too — pool sizes, composition, your position, open interest
+against PEX's admin-set cap, and PEX's published APR.
+
+### Real signatures so far
+
+Simulation is not a signature, and this repo has been caught by that distinction
+before. What has actually settled on chain:
+
+| path | status |
+|---|---|
+| ALGO/USD deposit | ✅ **$5.00, 2026-10-22 03:32 UTC**, first-time depositor — created the `ml2:` box and paid the 26,500 MBR |
+| ALGO/USD withdraw | not yet |
+| BTC/USD either way | not yet |
+| C-Vault either way | not yet |
+
+**`/strategy` is deliberately not in the nav.** Not because it cannot sign — it
+can — but because only one of six paths has a real signature behind it. It is
+reached by typing the path while it is exercised, and rejoins the nav when there
+are real round trips behind each destination.
 
 ## Why the C-Vault was second, not first
 
@@ -68,8 +89,17 @@ Stated here because the page states it and the two must not drift:
   Depositing moves a pool-derived reserve check and does nothing to the cap.
   Market 1 sat at 99.8% of its cap when this shipped.
 - **PEX has had no external audit.**
-- **A deposit restarts a 1 hour withdrawal cool-down on the whole position**,
-  not just the amount added — it is consensus-enforced, not advisory.
+- **A deposit restarts a withdrawal cool-down on the whole position**, not just
+  the amount added — 1 hour on the direct pools (`LatestTimestamp >= updated_at
+  + 3600`, asserted in the Markets app), ~56 minutes on the C-Vault (1,200
+  rounds off `last_deposit_round`). Both are consensus-enforced, not advisory.
+- **The C-Vault costs 0.2% in and 0.2% out**, flat — there is no time-based
+  penalty and no lockup beyond the cool-down. The direct pools have no spread.
+  A $5.00 vault deposit therefore sits just under the $5 withdrawal floor until
+  the vault earns ~0.40%, which the UI states rather than hides (§11.11).
+- **A full exit is possible in one transaction.** Verified by planning a
+  holder's entire $757 position against a $1,640 vault. A single market
+  allocation has a ceiling, so PEX picks a market that can serve the amount.
 
 ## Documents
 

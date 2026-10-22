@@ -49,8 +49,10 @@ product below; every action is a PEX call signed by the user's wallet.
   perpetuals protocol. Live on MainNet.
 - **Strategy Pools** (nav: **Strategy**) — liquidity into those same PEX pools, from the
   other side of the book: you earn trading fees and yield, and you are the counterparty.
-  Deposits and withdrawals are signed **in our UI**. Live on MainNet; `/strategy` is
-  deliberately not in the nav until real funds have round-tripped through it.
+  Three destinations — the ALGO/USD and BTC/USD market pools and PEX's managed **C-Vault**
+  — all depositing and withdrawing **in our own UI**, with no link-out. Live on MainNet;
+  `/strategy` is deliberately not in the nav until each path has a real signature behind
+  it (one of six does so far).
 
 CLMM pools on PactFi and structured vaults come later.
 
