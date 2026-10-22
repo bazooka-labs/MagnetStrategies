@@ -20,7 +20,7 @@ other side of the book. Every action is a PEX call signed by the user's wallet,
 |---|---|---|---|---|
 | ALGO/USD (market 1) | PEX direct LP | **Live** | **Live** | Built, asserted and simulated against MainNet |
 | BTC/USD (market 2) | PEX direct LP | **Live** | **Live** | Synthetic index — holds no BTC, backed with ALGO + USDC |
-| C-Vault | PEX managed vault | Not built | Not built | Needs a same-round mark preamble — see below |
+| C-Vault | PEX managed vault | **Live** | **Live** | Mark preamble assembled by the SDK; withdrawals denominated in USD |
 | CLMM pools | PactFi | Not started | — | Waiting on PactFi to release the platform |
 | Structured vaults | Ours | Not started | — | Not designed |
 
@@ -33,10 +33,11 @@ UI and pass their tests, but nothing has round-tripped real funds through this
 path yet. It is reached by typing the path while it is exercised. It rejoins the
 nav when the C-Vault signs here too and there are real round trips behind it.
 
-## Why the C-Vault is second, not first
+## Why the C-Vault was second, not first
 
 It looked like the easy one — it is the best-performing destination and the one
-to put in front of users. It is the hardest shape by a distance:
+to put in front of users. It is the hardest shape by a distance, and shipping it
+second was right even though the stated priority was the other way round:
 
 - the vault asserts `gm2:[40..48] == global Round`, **exact equality**, plus a
   verified `mark_market` leg for that market **in the same group**
@@ -49,6 +50,12 @@ to put in front of users. It is the hardest shape by a distance:
 
 An audit reversed the original release order on these grounds. See
 [`SIGNING.md`](./SIGNING.md) §9.1 and §11.7.
+
+The estimate was still too pessimistic in one place: the mark preamble is
+**not** ours to assemble. `planV2CvaWithdraw` picks the route and the SDK's
+builders emit the `mark_market` legs when given `activeMarketIds` and
+`activeMarketOracles`. That was the bulk of the feared cost, and it does not
+exist.
 
 ## What a depositor is actually taking on
 

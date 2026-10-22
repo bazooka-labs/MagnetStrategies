@@ -16,13 +16,17 @@
  * simulation, and `LiquidityActions` is the form. An earlier revision linked
  * out to a PEX frontend instead; that is deliberately gone, URL included.
  *
- * The C-Vault does NOT yet, and its card says so rather than offering a button
- * that fails. It is the harder of the two by a distance: the vault enforces
- * `gm2:[40..48] == global Round` exactly, plus a verified `mark_market` leg per
- * active allocation in the same group, so a deposit needs a mark preamble whose
- * length depends on vault state. Its NAV was 91 rounds stale against a 5-round
- * limit when this shipped, which is exactly the condition that makes an
- * unprepared deposit fail. See strategy/pools/SIGNING.md §4c.
+ * The C-Vault signs here too, via `cvaClient.ts`. It is the harder shape by a
+ * distance — the vault asserts `gm2:[40..48] == global Round` exactly, plus a
+ * verified `mark_market` leg per funded allocation in the SAME group, so every
+ * action carries a pricing preamble whose length depends on vault state. Its
+ * NAV ran 36-257 rounds stale against a 5-round window while this was built,
+ * which is why that preamble is the normal case and not an edge one. The SDK
+ * assembles it; strategy/pools/SIGNING.md §11.7 has the detail.
+ *
+ * Its withdrawals are denominated in DOLLARS rather than a share percentage,
+ * unlike the pools: every constraint on this vault is a dollar figure, so a
+ * percentage slider would make the $5 floor a surprise exactly where it bites.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -32,6 +36,7 @@ import { PEX_APPS } from "@/lib/perps";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
+import { CvaActions } from "./CvaActions";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
   type PerformanceBundle, type PoolStats,
@@ -192,25 +197,6 @@ function Composition({ longShare, longLabel, shortLabel }: {
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return <Panel glowClass={MAGNET_GLOW} className="p-5">{children}</Panel>;
-}
-
-/**
- * The C-Vault's placeholder.
- *
- * A disabled control with a reason, not a link and not a hidden card. Someone
- * comparing the three destinations should still see the best-performing one and
- * know why they cannot use it here yet.
- */
-function NotYetHere() {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-center">
-      <p className="text-[12px] font-semibold text-gray-300">Deposits here are not open yet</p>
-      <p className="mt-1 text-[10.5px] leading-relaxed text-gray-500">
-        This vault prices itself within a single block, so a deposit has to carry its own
-        pricing step. That is built next; the two direct pools below are live.
-      </p>
-    </div>
-  );
 }
 
 export function LiquidityView() {
@@ -403,7 +389,13 @@ export function LiquidityView() {
               </span>
             </div>
 
-            <NotYetHere />
+            <CvaActions
+              algoUsd={algoUsd}
+              algod={algodClient ?? null}
+              address={address ?? null}
+              signTransactions={signTransactions ?? null}
+              onDone={() => void load()}
+            />
           </div>
         </CardShell>
 
