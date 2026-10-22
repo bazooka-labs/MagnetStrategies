@@ -578,7 +578,7 @@ the exact failure `perpsPreflight.ts` exists to prevent.
 | direct pools | 3600 s = 1 h | Markets bytecode, `assert` |
 | C-Vault | 1200 rounds ≈ **55 min** (measured 2.75 s/block) | CvaVault bytecode |
 
-### 9.4 Minimum deposit — $5 is a trap; use $5.25
+### 9.4 Minimum deposit — ~~$5 is a trap; use $5.25~~ SUPERSEDED by §11.11
 
 The first draft set $5 and claimed it "lines up with `min_cva_withdraw_usd`
 ($5), so a user cannot deposit an amount they are then unable to withdraw."
@@ -590,8 +590,12 @@ deposit $5.020000  ->  withdrawable $4.999960   BELOW
 deposit $5.021000  ->  withdrawable $5.000956   OK
 ```
 
-A $5.00 C-Vault deposit is **permanently below the exit floor**. Minimum
-fully-exitable is ≈ **$5.0201** before any NAV decline.
+A $5.00 C-Vault deposit cannot be fully withdrawn *immediately*. Minimum
+fully-exitable is ≈ **$5.02004** before any NAV decline.
+
+> **"Permanently" was wrong — see §11.11.** This treated NAV as static. The
+> shortfall is 0.40% of vault growth, which a vault earning anything covers in
+> days. The minimum is now **$5.00**.
 
 Worse, the floor applies to the withdrawal *value*, not the residual: a user
 with $7 can withdraw $5–$7 but not $2, so **any partial exit leaves ≤ $5 of
@@ -846,3 +850,67 @@ with a reason instead of a link.
   path should adopt it next time it is touched. The duplication is real.
 - The two markets' pool cards are live; **nothing has round-tripped real funds
   through this UI yet**, which is why `/strategy` stays out of the nav.
+
+
+### 11.11 Minimum C-Vault deposit is $5.00, not $5.25 — §9.4 overstated the trap
+
+§9.4 called a $5.00 deposit "permanently below the exit floor" and set the
+minimum at $5.25 on that basis. The word *permanently* was wrong, and it was the
+word the decision rested on.
+
+Prompted by a real-world check: **Mallow run the same C-Vault and accept $5.00
+even.** That is a direct contradiction of a spec claim, so the mechanism was
+re-read in the deployed bytecode rather than argued about.
+
+**The mechanism is as described.** Mint marks the share price UP by
+`cva_mint_spread_bps` (`cva.teal:1251-1266`); `label59` subtracts
+`cva_burn_spread_bps` from the gross on exit and `min_cva_withdraw_usd` is
+asserted against the **net** (`cva.teal:5924-5931`). At the live 20/20 bps
+against a $5 floor:
+
+```
+deposit $5.0000  ->  position $4.990020  ->  net on exit $4.980040   under the floor
+deposit $5.0200  ->  position $5.009980  ->  net on exit $4.999960   still under, barely
+deposit $5.0201  ->  position $5.010080  ->  net on exit $5.000060   clears
+```
+
+**What was wrong is the conclusion.** NAV appreciates. The shortfall on a $5.00
+deposit is **0.4008% of vault growth**:
+
+| vault APR | wait before a full exit is possible |
+|---|---|
+| 5% | ~30 days |
+| 8% | ~19 days |
+| 11.22% | ~14 days |
+| 15% | ~10 days |
+
+A short wait, not a trap. And $5.25 was not even a tidy fix — it bought 4.38% of
+headroom where 0.01% was the requirement, which is the signature of a number
+picked to feel safe rather than derived.
+
+**Decision: $5.00 minimum**, matching Mallow, with the mechanic surfaced rather
+than hidden. Deposits below the immediate-exit threshold carry a **notice, not a
+gate** — `Notice` is a separate type from `Gate` precisely so it cannot disable
+a button:
+
+> This vault has a $5.00 withdrawal minimum, and after its 0.20% entry and
+> 0.20% exit costs a $5.00 deposit sits just under it. Your full exit opens once
+> the vault earns about 0.40% — roughly 14 days at its current rate, longer if
+> its value falls. Deposit $5.03 or more to be able to withdraw in full right
+> away.
+
+Three things that copy has to get right, each pinned by a test:
+
+- the **downside** is stated ("longer if its value falls"), not only the happy case
+- the day estimate is **omitted** when no APR is available, never invented
+- the threshold is rounded **up** to the cent. The true value is $5.02004, so
+  "$5.02" would name an amount that still needs a hair of growth.
+
+`cvaImmediateExitMinUsd` and `cvaGrowthNeededForExit` derive from the live
+globals. All three inputs — both spreads and the floor — are admin-mutable, and
+a test sweeps them rather than pinning $5.02.
+
+**The general lesson, which is the third time this has bitten this document:**
+§11.1 found an SDK quote trusted without measurement, §11.2 found a dependency
+declared absent without testing it, and this found a static model of a quantity
+that grows. Each survived because it was reasoned about rather than checked.

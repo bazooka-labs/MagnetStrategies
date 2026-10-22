@@ -43,8 +43,9 @@ to put in front of users. It is the hardest shape by a distance:
 - so a deposit carries a pricing preamble whose length depends on vault state
 - its NAV ran 36–257 rounds stale against a 5-round limit while this was built,
   which is exactly the condition that makes an unprepared deposit fail
-- it has a $5 withdrawal floor that an exact-$5 deposit cannot clear after two
-  20 bps spreads, so the product minimum is $5.25
+- it has a $5 withdrawal floor that an exact-$5 deposit does not clear until the
+  vault has earned ~0.40% — a wait of days, surfaced as a notice rather than
+  blocked (§11.11). The minimum is $5.00, matching Mallow.
 
 An audit reversed the original release order on these grounds. See
 [`SIGNING.md`](./SIGNING.md) §9.1 and §11.7.

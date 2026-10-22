@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   directCooldownGate, cvaCooldownGate, phrase, cvaDepositGate,
   cvaWithdrawableAfterRoundTrip, CVA_MIN_DEPOSIT_USD, CVA_COOLDOWN_ROUNDS_FALLBACK,
+  cvaDepositNotice, cvaImmediateExitMinUsd, cvaGrowthNeededForExit,
   cvaPauseGate, perCallCapGate, allocationStatusGate, marksRequired,
   balanceGates, marketGates, depositRestartsCooldown, primaryGate,
   type CvaVaultState, type Balances,
@@ -109,41 +110,64 @@ describe("cool-down copy", () => {
   }
 });
 
-describe("the $5 dust trap", () => {
-  it("reproduces the exact shortfall that motivated the $5.25 minimum", () => {
-    const out = cvaWithdrawableAfterRoundTrip(5, 20, 20);
-    expect(out).toBeCloseTo(4.98003992, 8);
-    expect(out).toBeLessThan(5);
+describe("the C-Vault exit floor", () => {
+  const live = { minWithdrawUsd: 5, mintSpreadBps: 20, burnSpreadBps: 20 };
+
+  it("reproduces the round trip exactly", () => {
+    // Mint marks the price up 20 bps, burn takes 20 bps off the gross, and the
+    // floor is asserted against the net (cva.teal:1251-1266 and :5924-5931).
+    expect(cvaWithdrawableAfterRoundTrip(5, 20, 20)).toBeCloseTo(4.98004, 5);
+    expect(cvaWithdrawableAfterRoundTrip(5, 20, 20)).toBeLessThan(5);
   });
 
-  it("refuses a deposit that could never be fully withdrawn", () => {
-    const g = cvaDepositGate({ depositUsd: 5, minWithdrawUsd: 5, mintSpreadBps: 20, burnSpreadBps: 20 });
-    expect(g?.code).toBe("below_minimum");
+  it("ALLOWS a $5.00 deposit — it is a short wait, not a trap", () => {
+    // $5.25 was refused here on the grounds that $5.00 was "permanently" below
+    // the floor. NAV appreciates, so it is not permanent, and Mallow accept
+    // $5 even on the same vault.
+    expect(cvaDepositGate({ depositUsd: 5, ...live })).toBeNull();
+    expect(CVA_MIN_DEPOSIT_USD).toBe(5);
   });
 
-  it("clears the floor at the product minimum, with headroom", () => {
-    expect(cvaDepositGate({
-      depositUsd: CVA_MIN_DEPOSIT_USD, minWithdrawUsd: 5, mintSpreadBps: 20, burnSpreadBps: 20,
-    })).toBeNull();
-    const out = cvaWithdrawableAfterRoundTrip(CVA_MIN_DEPOSIT_USD, 20, 20);
-    expect(out / 5 - 1).toBeGreaterThan(0.04);
+  it("blocks only below the product minimum", () => {
+    expect(cvaDepositGate({ depositUsd: 4.99, ...live })?.code).toBe("below_minimum");
+    expect(cvaDepositGate({ depositUsd: 1, ...live })?.code).toBe("below_minimum");
   });
 
-  it("still catches the trap if PEX widens the spreads", () => {
-    // $5.25 only clears a $5 floor while the round trip costs under ~4.5%. At
-    // 300 bps each way it does not, and the gate must notice rather than rely
-    // on the constant.
-    const g = cvaDepositGate({
-      depositUsd: CVA_MIN_DEPOSIT_USD, minWithdrawUsd: 5, mintSpreadBps: 300, burnSpreadBps: 300,
-    });
-    expect(g?.code).toBe("below_exit_floor");
+  it("tells a $5.00 depositor what their exit actually depends on", () => {
+    const n = cvaDepositNotice({ depositUsd: 5, ...live, aprPct: 11.22 })!;
+    expect(n.code).toBe("delayed_exit");
+    expect(n.message).toContain("0.40%");
+    // ceil(13.04) — a wait estimate rounds up, never down.
+    expect(n.message).toContain("14 days");
+    // The downside case must be stated, not just the happy one.
+    expect(n.message).toContain("longer if its value falls");
+    // And the way out of the wait.
+    expect(n.message).toContain("$5.03");
   });
 
-  it("still catches the trap if PEX raises the floor", () => {
-    const g = cvaDepositGate({
-      depositUsd: 6, minWithdrawUsd: 10, mintSpreadBps: 20, burnSpreadBps: 20,
-    });
-    expect(g?.code).toBe("below_exit_floor");
+  it("omits the day estimate rather than inventing one with no APR", () => {
+    const n = cvaDepositNotice({ depositUsd: 5, ...live, aprPct: null })!;
+    expect(n.message).toContain("0.40%");
+    expect(n.message).not.toMatch(/\d+ days/);
+  });
+
+  it("says nothing at all once the deposit can exit immediately", () => {
+    expect(cvaDepositNotice({ depositUsd: 5.25, ...live, aprPct: 11.22 })).toBeNull();
+    expect(cvaDepositNotice({ depositUsd: 100, ...live, aprPct: 11.22 })).toBeNull();
+  });
+
+  it("derives the immediate-exit threshold from the live globals", () => {
+    expect(cvaImmediateExitMinUsd(live)).toBeCloseTo(5.02004, 5);
+    // All three inputs are admin-mutable, so the threshold must move with them
+    // rather than stay pinned at $5.02.
+    expect(cvaImmediateExitMinUsd({ ...live, mintSpreadBps: 300, burnSpreadBps: 300 }))
+      .toBeCloseTo(5.3093, 3);
+    expect(cvaImmediateExitMinUsd({ ...live, minWithdrawUsd: 25 })).toBeCloseTo(25.1002, 3);
+  });
+
+  it("quantifies the growth needed, and reports zero when none is", () => {
+    expect(cvaGrowthNeededForExit({ depositUsd: 5, ...live })).toBeCloseTo(0.004008, 6);
+    expect(cvaGrowthNeededForExit({ depositUsd: 5.25, ...live })).toBe(0);
   });
 });
 

@@ -136,18 +136,31 @@ export function phrase(seconds: number): string {
 // ── minimums, and the C-Vault dust trap ───────────────────────────────────────
 
 /**
- * The C-Vault's exit floor bites an exact-$5 deposit.
+ * C-Vault minimum deposit, USD.
  *
- * `min_cva_withdraw_usd` is $5 (live: 5000000) and applies to the withdrawal
- * VALUE. Both spreads are 20 bps, so $5.00 in leaves $4.98003992 withdrawable —
- * permanently under the floor, with no way out but depositing more. The minimum
- * fully-exitable deposit is ≈ $5.0201.
+ * **$5.00, matching Mallow**, who run the same vault and accept $5 even. An
+ * earlier revision set $5.25 on the grounds that $5.00 was "permanently below
+ * the exit floor". That was wrong in the one way that mattered: it treated NAV
+ * as static.
  *
- * $5.25 is the product minimum: it clears the floor with ~4.5% of headroom,
- * which matters because the floor is checked at withdrawal time against a NAV
- * that may have fallen since.
+ * ── The mechanic, confirmed in the vault's bytecode ──
+ * The mint spread marks the share price UP by `cva_mint_spread_bps`
+ * (`cva.teal:1251-1266`), and `label59` subtracts `cva_burn_spread_bps` from the
+ * gross on the way out, with `min_cva_withdraw_usd` asserted against the NET
+ * (`cva.teal:5924-5931`). At the live 20/20 bps:
+ *
+ *     deposit $5.0000  ->  position $4.990020  ->  net on exit $4.980040
+ *
+ * which is under the $5 withdrawal floor. So a $5.00 depositor cannot exit
+ * *immediately* — but the shortfall is **0.40% of NAV growth**, which a vault
+ * earning anything at all covers in days (≈13 at an 11% APR, ≈29 at 5%). It is
+ * a short wait, not a trap, and calling it permanent overstated it badly.
+ *
+ * Deposits are therefore allowed from $5.00, and anything under
+ * `cvaImmediateExitMinUsd()` carries `CVA_DELAYED_EXIT` — a notice, not a gate.
+ * If the vault's NAV *falls*, the wait lengthens, which the notice says.
  */
-export const CVA_MIN_DEPOSIT_USD = 5.25;
+export const CVA_MIN_DEPOSIT_USD = 5;
 
 /** Below this, offer full exit only — a partial would strand sub-floor dust. */
 export const CVA_FULL_EXIT_BELOW_USD = 10;
@@ -156,9 +169,44 @@ export const CVA_FULL_EXIT_BELOW_USD = 10;
 export function cvaWithdrawableAfterRoundTrip(
   depositUsd: number, mintSpreadBps: number, burnSpreadBps: number,
 ): number {
-  const gross = depositUsd * 10_000 / (10_000 + mintSpreadBps);
-  return gross * (10_000 - burnSpreadBps) / 10_000;
+  const position = depositUsd * 10_000 / (10_000 + mintSpreadBps);
+  return position * (10_000 - burnSpreadBps) / 10_000;
 }
+
+/**
+ * The smallest deposit that can be fully withdrawn *straight away*.
+ *
+ * Derived from the live globals rather than written down: ≈$5.0201 at 20/20 bps
+ * against a $5 floor, but all three move independently and an admin can change
+ * any of them.
+ */
+export function cvaImmediateExitMinUsd(v: {
+  minWithdrawUsd: number; mintSpreadBps: number; burnSpreadBps: number;
+}): number {
+  const perDollar = cvaWithdrawableAfterRoundTrip(1, v.mintSpreadBps, v.burnSpreadBps);
+  return perDollar <= 0 ? Infinity : v.minWithdrawUsd / perDollar;
+}
+
+/** Fraction of NAV growth a deposit needs before it can be fully withdrawn. */
+export function cvaGrowthNeededForExit(input: {
+  depositUsd: number; minWithdrawUsd: number;
+  mintSpreadBps: number; burnSpreadBps: number;
+}): number {
+  const net = cvaWithdrawableAfterRoundTrip(
+    input.depositUsd, input.mintSpreadBps, input.burnSpreadBps);
+  if (net <= 0) return Infinity;
+  return Math.max(0, input.minWithdrawUsd / net - 1);
+}
+
+/**
+ * Something true the user should know, which does NOT stop the action.
+ *
+ * Kept distinct from `Gate` on purpose. A gate disables the button; a notice
+ * sits beside an enabled one. Collapsing the two is how a $5 deposit ended up
+ * refused outright when the honest answer was "yes, and your exit opens in
+ * about two weeks".
+ */
+export type Notice = { code: "delayed_exit"; message: string };
 
 export function cvaDepositGate(input: {
   depositUsd: number;
@@ -166,27 +214,44 @@ export function cvaDepositGate(input: {
   mintSpreadBps: number;
   burnSpreadBps: number;
 }): Gate | null {
-  const { depositUsd, minWithdrawUsd, mintSpreadBps, burnSpreadBps } = input;
-  if (depositUsd < CVA_MIN_DEPOSIT_USD) {
+  if (input.depositUsd < CVA_MIN_DEPOSIT_USD) {
     return {
       code: "below_minimum",
       message: `Minimum deposit is $${CVA_MIN_DEPOSIT_USD.toFixed(2)}`,
     };
   }
-  const out = cvaWithdrawableAfterRoundTrip(depositUsd, mintSpreadBps, burnSpreadBps);
-  if (out < minWithdrawUsd) {
-    // Belt and braces: CVA_MIN_DEPOSIT_USD already clears the live floor, but
-    // both the floor and the spreads are admin-mutable, so this recomputes
-    // rather than trusting the constant to stay sufficient.
-    return {
-      code: "below_exit_floor",
-      message:
-        `A $${depositUsd.toFixed(2)} deposit would leave $${out.toFixed(2)} withdrawable, `
-        + `under this vault's $${minWithdrawUsd.toFixed(2)} withdrawal minimum. `
-        + `Deposit a little more to keep a clean exit.`,
-    };
-  }
   return null;
+}
+
+/** The delayed-exit notice, or null when the deposit can exit immediately. */
+export function cvaDepositNotice(input: {
+  depositUsd: number;
+  minWithdrawUsd: number;
+  mintSpreadBps: number;
+  burnSpreadBps: number;
+  /** PEX's published total APR for the vault, percent. Null when unavailable. */
+  aprPct?: number | null;
+}): Notice | null {
+  const growth = cvaGrowthNeededForExit(input);
+  if (growth <= 0) return null;
+  // Rounded UP to the cent. The true threshold is $5.02004, and telling
+  // someone "$5.02" would name an amount that still needs a hair of growth.
+  const threshold = Math.ceil(cvaImmediateExitMinUsd(input) * 100) / 100;
+  const days = input.aprPct && input.aprPct > 0
+    ? Math.ceil(growth * 100 / input.aprPct * 365)
+    : null;
+  return {
+    code: "delayed_exit",
+    message:
+      `This vault has a $${input.minWithdrawUsd.toFixed(2)} withdrawal minimum, and after `
+      + `its ${(input.mintSpreadBps / 100).toFixed(2)}% entry and `
+      + `${(input.burnSpreadBps / 100).toFixed(2)}% exit costs a `
+      + `$${input.depositUsd.toFixed(2)} deposit sits just under it. Your full exit opens `
+      + `once the vault earns about ${(growth * 100).toFixed(2)}%`
+      + (days !== null ? ` — roughly ${days} ${days === 1 ? "day" : "days"} at its current rate, ` : ", ")
+      + `longer if its value falls. Deposit $${threshold.toFixed(2)} or more to be able to `
+      + `withdraw in full right away.`,
+  };
 }
 
 // ── C-Vault state, none of which any quote reports ───────────────────────────
@@ -380,9 +445,11 @@ export function balanceGates(input: {
  * $0.04 of the two round-tripped. On $1 that is 4%, which no APR on this page
  * would recover in a reasonable holding period.
  *
- * Deliberately NOT the $5.25 the C-Vault needs: that extra quarter exists only
- * to clear the vault's $5 withdrawal floor after two 20 bps spreads, and neither
- * applies here. Using one number for both would misstate why it exists.
+ * The same $5.00 as the C-Vault, but for an unrelated reason — and that is the
+ * point of keeping two constants. The vault's floor exists because PEX asserts
+ * a $5 minimum WITHDRAWAL; this one exists because fees are a large share of a
+ * tiny deposit. Neither pool has an exit floor, so nothing here needs the
+ * delayed-exit notice the vault carries.
  */
 export const MARKET_MIN_DEPOSIT_USD = 5;
 
