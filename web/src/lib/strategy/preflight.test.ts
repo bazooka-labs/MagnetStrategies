@@ -8,6 +8,7 @@ import {
   type CvaVaultState, type Balances,
 } from "./preflight";
 import { storagePaymentFor, LP_BOX_MBR_MICRO_ALGO } from "./group";
+import { cvaStoragePaymentFor, CVA_USER_BOX_MBR_MICRO_ALGO } from "./cvaGroup";
 
 // The live vault on 2026-10-21, so a drift in these shows up as a test failure
 // rather than as a wrong gate.
@@ -335,5 +336,18 @@ describe("the first-deposit box MBR", () => {
       groupFeeMicro: 55_000, storagePayMicro: 0,
     });
     expect(returning).toEqual([]);
+  });
+});
+
+describe("the C-Vault's own first-deposit box MBR", () => {
+  it("is 32,900 and charged once — a different number from the pools'", () => {
+    // Same trap, different place: the pools' `ml2:` box is 26,500 and the
+    // vault's `gu2:` box is 32,900. Using one for the other would fail the
+    // contract's equality check in whichever direction was wrong.
+    expect(CVA_USER_BOX_MBR_MICRO_ALGO).toBe(BigInt(32_900));
+    expect(LP_BOX_MBR_MICRO_ALGO).toBe(BigInt(26_500));
+    expect(CVA_USER_BOX_MBR_MICRO_ALGO).not.toBe(LP_BOX_MBR_MICRO_ALGO);
+    expect(cvaStoragePaymentFor(false)).toBe(CVA_USER_BOX_MBR_MICRO_ALGO);
+    expect(cvaStoragePaymentFor(true)).toBe(BigInt(0));
   });
 });

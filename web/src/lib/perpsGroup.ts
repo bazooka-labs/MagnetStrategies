@@ -118,6 +118,17 @@ const noteText = (t: AnyTxn): string => (t.note && t.note.length > 0 ? td.decode
 const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
 
 /**
+ * Notes the CVA flows attach, exact rather than patterned.
+ *
+ * The SDK marks a C-Vault deposit's storage-payment leg
+ * `pdex-v2-cva-deposit-storage`. Found by a real group failing the assertion,
+ * which is the right way round — but it means "no notes" was never therule,
+ * only the rule for the paths measured so far. Pinned as an exact string on a
+ * `pay` leg, so it cannot become a channel for arbitrary bytes.
+ */
+const CVA_NOTE_RE = /^pdex-v2-cva-(deposit|withdraw)-storage$/;
+
+/**
  * Math carriers exist to buy opcode budget; they must do nothing else.
  *
  * They were counted and never inspected — selector, arguments, accounts,
@@ -129,7 +140,7 @@ const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
 export function checkMathCarriers(
   txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
   /** The close path's enumerated recall resources — see `checkEveryTransaction`. */
-  allow?: { accounts?: Set<string>; assets?: Set<number> },
+  allow?: { accounts?: Set<string>; assets?: Set<number>; collateralAssetId?: number },
 ): void {
   /**
    * What an asserted call in this group already makes available.
@@ -182,6 +193,16 @@ export function checkMathCarriers(
   }
   for (const a of allow?.accounts ?? []) allowedAccounts.add(a);
   for (const a of allow?.assets ?? []) allowedAssets.add(a);
+  /**
+   * The group's collateral asset, when the caller names one.
+   *
+   * A C-Vault withdrawal moves no assets itself — both sides arrive by inner
+   * transfer — so there is no `axfer` leg to put USDC into the allowed set, and
+   * a real group's carrier naming USDC was refused. USDC is the vault's own
+   * short asset and `checkEveryTransaction` already permits it on every call;
+   * withholding it from the carriers was an inconsistency, not a control.
+   */
+  if (allow?.collateralAssetId !== undefined) allowedAssets.add(allow.collateralAssetId);
 
   txns.forEach((t, i) => {
     const call = t.applicationCall;
@@ -722,7 +743,7 @@ export function checkEveryTransaction(
     // never on an app call or on the collateral leg.
     if (t.note && t.note.length > 0) {
       const text = td.decode(t.note);
-      if (t.type === "appl" || !LINKED_NOTE_RE.test(text)) {
+      if (t.type === "appl" || !(LINKED_NOTE_RE.test(text) || CVA_NOTE_RE.test(text))) {
         fail("note", `txn ${i} (${t.type}) carries a ${t.note.length}-byte note: "${text.slice(0, 40)}"`);
       }
     }
