@@ -12,13 +12,13 @@
  */
 
 import algosdk from "algosdk";
-import { PEX_APPS, PEX_ASSETS } from "./perps";
-import { readMarketCore, readMarketPool, readMarketRisk, readOpenInterest } from "./perpsReads";
+import { PEX_APPS, PEX_ASSETS } from "../perps";
+import { readMarketCore, readMarketPool, readMarketRisk, readOpenInterest } from "../perpsReads";
 import {
   LEG_ASSETS, PEX_LIQUIDITY_MARKETS, type CvaAllocation, type LiquidityDestinationId,
   cvaOwnershipFraction, liquidityTotals,
   poolValue, poolValuePerShare, type PoolValue,
-} from "./pexLiquidity";
+} from "./totals";
 
 const MICRO = 1_000_000;
 const micro = (v: bigint) => Number(v) / MICRO;
@@ -95,22 +95,50 @@ export async function readCvaUserShares(
   }
 }
 
-/** `ml2:` — one LP's shares in one market. Key is marketId THEN address. */
-export async function readLpShares(
-  algod: algosdk.Algodv2, marketId: number, address: string,
-): Promise<number | null> {
-  const name = new Uint8Array([
+/** `ml2:` box name. Key is marketId THEN address. */
+export const lpStateBoxName = (marketId: number, address: string) =>
+  new Uint8Array([
     ...new TextEncoder().encode("ml2:"),
     ...algosdk.encodeUint64(BigInt(marketId)),
     ...algosdk.decodeAddress(address).publicKey,
   ]);
+
+/**
+ * `ml2:` — one LP's position in one market.
+ *
+ * Two words, confirmed against the deployed bytecode AND a live box:
+ *
+ *     word 0  share_amount   micro
+ *     word 1  updated_at     unix seconds
+ *
+ * `updated_at` is not decoration — the Markets app asserts
+ * `LatestTimestamp >= updated_at + 3600` before it will let shares out
+ * (`markets.teal:2824-2831`, `:3149-3156`), so this word IS the withdrawal
+ * cooldown. It is read here rather than in the preflight because this is the
+ * module that owns box layout.
+ */
+export type LpState = { shares: number; updatedAtSec: number };
+
+export async function readLpState(
+  algod: algosdk.Algodv2, marketId: number, address: string,
+): Promise<LpState | null> {
   try {
-    const box = await algod.getApplicationBoxByName(PEX_APPS.markets, name).do();
-    return micro(WORDS(box.value, 1, "lp_state")[0]);
+    const box = await algod
+      .getApplicationBoxByName(PEX_APPS.markets, lpStateBoxName(marketId, address)).do();
+    const w = WORDS(box.value, 2, "lp_state");
+    return { shares: micro(w[0]), updatedAtSec: Number(w[1]) };
   } catch (e) {
     if (isNotFound(e)) return null;
     throw e;
   }
+}
+
+/** Shares only. Null when this wallet has never provided to this market. */
+export async function readLpShares(
+  algod: algosdk.Algodv2, marketId: number, address: string,
+): Promise<number | null> {
+  const st = await readLpState(algod, marketId, address);
+  return st === null ? null : st.shares;
 }
 
 // ── assembled view ────────────────────────────────────────────────────────────

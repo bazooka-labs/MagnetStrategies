@@ -1,7 +1,7 @@
 /**
  * The two numbers on the Strategy page that can be wrong without anyone noticing.
  *
- * STRATEGY_SPEC.md §10. A double-counted total and a fabricated APR both render
+ * strategy/pools/SPEC.md §10. A double-counted total and a fabricated APR both render
  * perfectly plausibly, so they are bound here on values rather than left to a
  * reviewer spotting a `+`.
  */
@@ -10,10 +10,10 @@ import {
   LEG_ASSETS, LIQUIDITY_DESTINATIONS, NOT_LIQUIDITY_DESTINATIONS, PEX_LIQUIDITY_MARKETS,
   assertDepositTarget, cvaOwnershipFraction, destinationGlowKind, liquidityTotals,
   poolValue, poolValuePerShare,
-} from "./pexLiquidity";
-import { PEX_APPS, PEX_ASSETS } from "./perps";
+} from "./totals";
+import { PEX_APPS, PEX_ASSETS } from "../perps";
 
-/** Live snapshot, 2026-10-20 — see STRATEGY_SPEC.md §11. */
+/** Live snapshot, 2026-10-20 — see strategy/pools/SPEC.md §11. */
 const ALGO = 0.1134;
 const M1 = { longAmount: 5_717.05, shortAmount: 1_952.05, shares: 2_350.4244,
              longFee: 0.6532, shortFee: 53.1041 };
@@ -116,7 +116,7 @@ describe("what the page may and may not touch", () => {
   });
 
   it("glows purple for every destination, with none left unmapped", () => {
-    // STRATEGY_SPEC.md §10 item 6. All three hold the same collateral, so a
+    // strategy/pools/SPEC.md §10 item 6. All three hold the same collateral, so a
     // gold card would assert a risk distinction that does not exist.
     expect(LIQUIDITY_DESTINATIONS).toHaveLength(3);
     for (const id of LIQUIDITY_DESTINATIONS) {

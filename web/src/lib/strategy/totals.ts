@@ -1,14 +1,14 @@
 /**
  * PEX liquidity provision — the arithmetic, with no network in it.
  *
- * See STRATEGY_SPEC.md. Three destinations for capital, and the numbers that
+ * See strategy/pools/SPEC.md. Three destinations for capital, and the numbers that
  * describe them. Everything here is pure so it can be tested against values
  * rather than mocked clients: the two things most likely to be wrong on this
  * page are a double-counted total and a fabricated APR, and neither needs a
  * chain to get wrong.
  */
 
-import { PEX_APPS, PEX_ASSETS } from "./perps";
+import { PEX_APPS, PEX_ASSETS } from "../perps";
 
 /** The three places capital can go. Destinations, not deposit methods. */
 export type LiquidityDestinationId = "c-vault" | "algo-usd" | "btc-usd";
@@ -165,7 +165,7 @@ export function poolValuePerShare(totalUsd: number, shareSupply: number): number
 // only one that matters to someone deciding to deposit.
 //
 // Ultrade now publishes both the income APR and the pool return on R2; see
-// `pexPerformance.ts`. The arithmetic is deleted rather than kept behind a
+// `strategy/performance.ts`. The arithmetic is deleted rather than kept behind a
 // warning so nobody can reach for it again.
 //
 // `MarketLiquidity.feesSinceInceptionUsd` keeps the cumulative fee total,

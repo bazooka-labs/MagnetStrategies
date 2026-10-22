@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Strategy — PEX liquidity provision. See web/STRATEGY_SPEC.md.
+ * Strategy — PEX liquidity provision. See strategy/pools/SPEC.md.
  *
  * ── Why all three cards glow purple ───────────────────────────────────────
  * On the Finance page gold means "this collateral is not $U" — it marks a
@@ -10,47 +10,52 @@
  * card would assert a distinction that does not exist. An early mockup used gold
  * for the ALGO market and was wrong for exactly that reason.
  *
- * ── Why there is no deposit button ────────────────────────────────────────
- * v1 reads and links out; it constructs no transaction. The three PEX deposit
- * groups are materially harder than the four perps groups we already sign — two
- * asset legs, storage payments, min-share bounds and a yield-recall preamble —
- * and `perpsGroup.ts` is 2,200 lines of assertion for those four. Shipping the
- * read layer with honest numbers tells us whether anyone deposits before we
- * build signing for it. STRATEGY_SPEC.md §7.
+ * ── Signing happens here, not on PEX ──────────────────────────────────────
+ * The two direct market pools take deposits and withdrawals in this UI:
+ * `strategy/client.ts` composes the gates, the build, the assertion and the
+ * simulation, and `LiquidityActions` is the form. An earlier revision linked
+ * out to a PEX frontend instead; that is deliberately gone, URL included.
+ *
+ * The C-Vault does NOT yet, and its card says so rather than offering a button
+ * that fails. It is the harder of the two by a distance: the vault enforces
+ * `gm2:[40..48] == global Round` exactly, plus a verified `mark_market` leg per
+ * active allocation in the same group, so a deposit needs a mark preamble whose
+ * length depends on vault state. Its NAV was 91 rounds stale against a 5-round
+ * limit when this shipped, which is exactly the condition that makes an
+ * unprepared deposit fail. See strategy/pools/SIGNING.md §4c.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Coins, Droplets, Layers, TrendingUp } from "lucide-react";
+import { AlertTriangle, Coins, Droplets, Layers, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PEX_APPS } from "@/lib/perps";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
+import { LiquidityActions } from "./LiquidityActions";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
   type PerformanceBundle, type PoolStats,
-} from "@/lib/pexPerformance";
+} from "@/lib/strategy/performance";
 import {
   cvaShareOfMarket, readStrategyLiquidity, type StrategyLiquidity,
-} from "@/lib/pexLiquidityReads";
+} from "@/lib/strategy/reads";
 
 /**
- * ⚠️ VERIFY THIS BEFORE SHIPPING.
+ * ── There is deliberately no PEX URL in this file ──
  *
- * This read `https://pex.ultrade.org` until 2026-10-20, which **does not
- * exist** — no A record, no AAAA, HTTP fails to resolve. I invented the
- * hostname. Nothing in this repo references a PEX frontend, so there was
- * nothing to check it against, and every call-to-action on the page pointed at
- * a browser DNS error.
+ * It used to hold one, and the history is worth keeping because it is the
+ * reason the product decision went the way it did. The constant read
+ * `https://pex.ultrade.org` until 2026-10-20, a hostname that **does not
+ * exist** — no A record, no AAAA, no resolution. It was invented, nothing in
+ * this repo could contradict it, and so every call to action on the page
+ * pointed at a browser DNS error. Its replacement, `app.ultrade.org`, resolved
+ * but was never confirmed to be where PEX liquidity provision lives.
  *
- * `https://app.ultrade.org` is verified live (HTTP 200, titled "ULTRADE"). It
- * is Ultrade's app, which is the right destination family, but I have NOT
- * confirmed it is where PEX liquidity provision lives or that a deeper link
- * exists — so this is the host and not a guessed path. Replace with the
- * correct deep link once confirmed, and the spec's "destination preselected"
- * goal (§7.1) stays open until then: all three cards necessarily point at the
- * same place.
+ * The decision was to stop linking out altogether: "don't use the URL, forget
+ * that as an option — I wanted to have the signing happen directly on the
+ * Magnet UI." So the market pools sign here, and the C-Vault says it is not
+ * ready rather than sending anyone anywhere.
  */
-const PEX_APP_URL = "https://app.ultrade.org";
 
 const usd = (v: number | null, dp = 0) =>
   v === null ? "—" : `$${v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
@@ -189,23 +194,37 @@ function CardShell({ children }: { children: React.ReactNode }) {
   return <Panel glowClass={MAGNET_GLOW} className="p-5">{children}</Panel>;
 }
 
-function GoToPex({ label }: { label: string }) {
+/**
+ * The C-Vault's placeholder.
+ *
+ * A disabled control with a reason, not a link and not a hidden card. Someone
+ * comparing the three destinations should still see the best-performing one and
+ * know why they cannot use it here yet.
+ */
+function NotYetHere() {
   return (
-    <a
-      href={PEX_APP_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-magnet-600 to-magnet-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-magnet-900/40 transition-all hover:from-magnet-500 hover:to-magnet-400"
-    >
-      {label} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-    </a>
+    <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-center">
+      <p className="text-[12px] font-semibold text-gray-300">Deposits here are not open yet</p>
+      <p className="mt-1 text-[10.5px] leading-relaxed text-gray-500">
+        This vault prices itself within a single block, so a deposit has to carry its own
+        pricing step. That is built next; the two direct pools below are live.
+      </p>
+    </div>
   );
 }
 
 export function LiquidityView() {
-  const { algodClient, address } = useWallet();
+  const { algodClient, address, signTransactions } = useWallet();
   const [data, setData] = useState<StrategyLiquidity | null>(null);
   const [perf, setPerf] = useState<PerformanceBundle | null>(null);
+  /**
+   * Held in state because the deposit form needs it for the $5 minimum.
+   *
+   * Cleared on a failed read alongside `data`, for the same reason: the minimum is
+   * better not enforced than enforced against a stale price, and a dollar hint
+   * from before is worse than none.
+   */
+  const [algoUsd, setAlgoUsd] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -216,6 +235,7 @@ export function LiquidityView() {
       const r = await fetch("https://api.exchange.coinbase.com/products/ALGO-USD/ticker");
       const algoUsd = Number((await r.json()).price);
       if (!Number.isFinite(algoUsd) || algoUsd <= 0) throw new Error("no ALGO price");
+      setAlgoUsd(algoUsd);
       setData(await readStrategyLiquidity(algodClient, algoUsd, address));
       setErr(null);
       /**
@@ -249,6 +269,7 @@ export function LiquidityView() {
       // pool size and share price on screen is now from before.
       setData(null);
       setPerf(null);
+      setAlgoUsd(null);
       setErr(e instanceof Error ? e.message : "Could not read pool state");
     }
   }, [algodClient, address]);
@@ -382,7 +403,7 @@ export function LiquidityView() {
               </span>
             </div>
 
-            <GoToPex label="Deposit on PEX" />
+            <NotYetHere />
           </div>
         </CardShell>
 
@@ -481,7 +502,18 @@ export function LiquidityView() {
                     : <>Takes <strong className="font-semibold text-gray-300">ALGO + USDC</strong>, both legs.</>}
                 </div>
 
-                <GoToPex label="Add liquidity on PEX" />
+                {mk && (
+                  <LiquidityActions
+                    marketId={mk.marketId}
+                    label={mk.label}
+                    algoUsd={algoUsd}
+                    poolValuePerShare={mk.poolValuePerShare}
+                    algod={algodClient ?? null}
+                    address={address ?? null}
+                    signTransactions={signTransactions ?? null}
+                    onDone={() => void load()}
+                  />
+                )}
               </div>
             </CardShell>
           );

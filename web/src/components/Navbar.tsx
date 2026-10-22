@@ -31,15 +31,19 @@ const navLinks = [
    * bringing it back is this line rather than a rebuild. It was in the nav
    * from 2026-10-20 until 2026-10-21.
    *
-   * Why it came out: the page can only READ. Its three cards link out to
-   * Ultrade's app to actually deposit, and the product this is meant to be
-   * signs the deposit on our own UI. A nav slot pointing at a page that hands
-   * the user to someone else's site to finish the job is worse than no slot —
-   * it spends the scarcest surface on the site to advertise an incomplete
-   * product. It returns when the deposit groups are built and asserted here.
+   * Why it came out (2026-10-21): the page could only READ, and its cards
+   * linked out to Ultrade's app to actually deposit. A nav slot pointing at a
+   * page that hands the user to someone else's site to finish the job spends
+   * the scarcest surface on the site to advertise an incomplete product.
    *
-   * See web/STRATEGY_SPEC.md §7: v1 was deliberately read-only, which was the
-   * wrong call for what this is for.
+   * Why it is STILL out, now that the two direct pools do sign here: it is
+   * being exercised with real funds by its author first, reached by typing the
+   * path, while the rest of the protocol is live. Signing someone else's money
+   * into a third-party protocol on a path nobody has used end to end yet is not
+   * something to put in front of visitors on the strength of passing tests.
+   *
+   * It rejoins the nav when the C-Vault signs here too and the direct pools
+   * have real round trips behind them.
    */
   /**
    * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest

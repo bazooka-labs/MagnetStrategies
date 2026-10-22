@@ -2,7 +2,7 @@
  * PEX's pool statistics bundle, parsed against a REAL captured response.
  *
  * The fixture is the live mainnet bundle from 2026-10-21T00:00Z
- * (`__fixtures__/pexPerformance.sample.json`, 50 KB), not a hand-written
+ * (`__fixtures__/performance.sample.json`, 50 KB), not a hand-written
  * sample — so these pin the shape Ultrade actually publishes rather than the
  * shape I assumed. Every rule asserted here is one PEX states in SDK 0.6.9/
  * 0.6.10's INTEGRATION_GUIDE, because the expensive mistakes on this data are
@@ -12,10 +12,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   PerformanceBundleError, benchmarkLabel, cvaKey, marketKey, parsePerformanceBundle,
-} from "./pexPerformance";
+} from "./performance";
 
 const RAW = JSON.parse(
-  readFileSync("src/lib/__fixtures__/pexPerformance.sample.json", "utf8")) as unknown;
+  readFileSync("src/lib/strategy/__fixtures__/performance.sample.json", "utf8")) as unknown;
 /** Inside the fixture's 36h validity, so `stale` is false unless a test says otherwise. */
 const FRESH = 1792550100;
 
