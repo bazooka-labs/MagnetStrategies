@@ -37,6 +37,7 @@ import {
   buildV2DepositLiquidityTransactions,
   buildV2WithdrawLiquidityTransactions,
   decodeReceipt,
+  V2_LP_BOX_MBR_MICRO_ALGO,
 } from "@pdex/sdk";
 import {
   PEX_APPS, PEX_ASSETS, ORACLE_MAX_AGE_SEC, MIN_SIGNING_BUDGET_SEC,
@@ -101,6 +102,37 @@ const LIQUIDITY_CALLABLE = new Set(LIQUIDITY_CALL_BUDGET.map((c) => c.app));
  * operation — only extra fee, which is what this bounds.
  */
 export const MAX_LIQUIDITY_GROUP_FEE_MICRO_ALGO = 200_000;
+
+/**
+ * The `ml2:` box MBR a FIRST-TIME depositor must pay, µALGO.
+ *
+ * ── Found the hard way, on the only path that matters ──
+ * Every live test of this flow used a wallet that already held a position, and
+ * they all passed with a storage payment of zero. A wallet with no `ml2:` box
+ * is a different group: AdminOps asserts the payment equals this exact value —
+ *
+ *     assert failed pc=1203   opcodes=intc 17 // 26500 ; == ; assert
+ *
+ * — so hardcoding zero meant **no new depositor could ever deposit**, while
+ * every test stayed green. That is the same gap the perps path carried for
+ * eight audits as `SHAPE_OPEN_STORAGE`: the first-time shape is its own shape.
+ *
+ * Taken from the SDK's own constant rather than written as 26500, so a PEX
+ * change to the box layout moves this with the vendored version instead of
+ * silently disagreeing with the contract. `storagePaymentFor` is the rule, and
+ * `assertDepositGroup` pins whichever value was used into the signed bytes.
+ */
+export const LP_BOX_MBR_MICRO_ALGO = BigInt(V2_LP_BOX_MBR_MICRO_ALGO);
+
+/**
+ * What this wallet must pay for box storage on this deposit.
+ *
+ * Exactly the MBR on a first deposit, exactly zero afterwards — the contract
+ * asserts equality in both directions, so neither value is a safe default for
+ * the other. `hasPosition` comes from an `ml2:` read, never from a guess.
+ */
+export const storagePaymentFor = (hasPosition: boolean): bigint =>
+  hasPosition ? BigInt(0) : LP_BOX_MBR_MICRO_ALGO;
 
 const big = (v: bigint | number | undefined): bigint => BigInt(v ?? 0);
 const hex = (b: Uint8Array): string =>

@@ -6,6 +6,7 @@ import {
   balanceGates, marketGates, depositRestartsCooldown, primaryGate,
   type CvaVaultState, type Balances,
 } from "./preflight";
+import { storagePaymentFor, LP_BOX_MBR_MICRO_ALGO } from "./group";
 
 // The live vault on 2026-10-21, so a drift in these shows up as a test failure
 // rather than as a wrong gate.
@@ -280,5 +281,35 @@ describe("market-pool gates", () => {
       state: { shares: 5, updatedAtSec: now - 10 },
     });
     expect(primaryGate(g)?.code).toBe("cooldown");
+  });
+});
+
+describe("the first-deposit box MBR", () => {
+  it("is charged exactly once, and never to a returning depositor", () => {
+    // AdminOps asserts equality in BOTH directions — the MBR on a first
+    // deposit, zero afterwards — so neither value is a safe default.
+    expect(storagePaymentFor(false)).toBe(LP_BOX_MBR_MICRO_ALGO);
+    expect(storagePaymentFor(true)).toBe(BigInt(0));
+    expect(LP_BOX_MBR_MICRO_ALGO).toBe(BigInt(26_500));
+  });
+
+  it("is counted toward the ALGO a first-time depositor needs", () => {
+    // 1 ALGO spendable, depositing 0.93. With the 55,000 fee that is 0.985 and
+    // fits; adding the 26,500 MBR makes it 1.0115 and does not. So the MBR is
+    // the deciding term, which is the point of the test.
+    const balances = { algoSpendableMicro: 1_000_000, usdcMicro: 50_000_000, usdcOptedIn: true };
+    const withBox = marketGates({
+      action: "deposit", state: { shares: 0, updatedAtSec: 0 }, balances,
+      nowSec: 1_789_000_000, algoLegMicro: 930_000, usdcLegMicro: 0,
+      groupFeeMicro: 55_000, storagePayMicro: Number(LP_BOX_MBR_MICRO_ALGO),
+    });
+    expect(withBox.map((g) => g.code)).toEqual(["insufficient_algo"]);
+    // The same deposit by someone who already holds the box fits.
+    const returning = marketGates({
+      action: "deposit", state: { shares: 5, updatedAtSec: 1 }, balances,
+      nowSec: 1_789_000_000, algoLegMicro: 930_000, usdcLegMicro: 0,
+      groupFeeMicro: 55_000, storagePayMicro: 0,
+    });
+    expect(returning).toEqual([]);
   });
 });

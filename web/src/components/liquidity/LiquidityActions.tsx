@@ -38,6 +38,7 @@ import {
   type Balances, type Gate,
 } from "@/lib/strategy/preflight";
 import type { LpState } from "@/lib/strategy/reads";
+import { storagePaymentFor } from "@/lib/strategy/group";
 
 type Mode = "deposit" | "withdraw";
 
@@ -226,10 +227,13 @@ export function LiquidityActions({
           <AmountField
             label="ALGO" value={algoText} onChange={setAlgoText}
             max={bal ? BigInt(bal.algoSpendableMicro) : null}
-            /* Leave room for fees and min-balance: `algoSpendableMicro` is
-               already net of min-balance, so only the group fee is subtracted.
-               Max that spends the fee too would fail the balance gate. */
-            reserveMicro={BigInt(60_000)}
+            /* Leave room for what else comes out of the same pot.
+               `algoSpendableMicro` is already net of min-balance, so this is
+               the group fee (55,000) plus the `ml2:` box MBR on a FIRST
+               deposit (26,500) — a MAX that spent either would build a group
+               the balance gate then refuses. The MBR is zero once the box
+               exists, so a returning depositor is not asked to reserve it. */
+            reserveMicro={BigInt(55_000) + storagePaymentFor(!!lp && (lp.shares > 0 || lp.updatedAtSec > 0))}
             hint={bal ? `${fmt(BigInt(bal.algoSpendableMicro), 3)} spendable` : "—"}
           />
           <AmountField

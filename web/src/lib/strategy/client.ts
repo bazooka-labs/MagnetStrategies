@@ -26,7 +26,8 @@
 import algosdk from "algosdk";
 import { verifyProgramPins } from "../perpsReads";
 import {
-  buildDeposit, buildWithdraw, type BuildResult, type Stage,
+  buildDeposit, buildWithdraw, storagePaymentFor,
+  type BuildResult, type Stage,
 } from "./group";
 import {
   readQuoteContext, readRecallContext, quoteWithdraw, recallCaps,
@@ -111,6 +112,13 @@ export async function depositToMarket(input: {
     readBalances(algod, sender),
     readMarketGateState(algod, marketId, sender),
   ]);
+  /**
+   * A first deposit creates the `ml2:` box and must pay its MBR exactly; a
+   * later one must pay exactly zero. The contract asserts equality both ways,
+   * so this is read from the box rather than defaulted.
+   */
+  const storagePaymentMicro = storagePaymentFor(state.shares > 0 || state.updatedAtSec > 0);
+
   const gates = marketGates({
     action: "deposit", state, balances,
     nowSec: Math.floor(Date.now() / 1000),
@@ -118,9 +126,9 @@ export async function depositToMarket(input: {
     usdcLegMicro: Number(input.usdcMicro),
     groupFeeMicro: DEPOSIT_FEE_MICRO,
     depositUsd: input.depositUsd,
-    // No storage payment on a direct LP deposit: the `ml2:` box MBR is covered
-    // by the pool, and a real group builds this leg at zero. Asserted.
-    storagePayMicro: 0,
+    // Counted toward the ALGO the wallet needs: it comes out of the same
+    // spendable balance as the leg and the fees.
+    storagePayMicro: Number(storagePaymentMicro),
   });
   const blocked = primaryGate(gates);
   if (blocked) throw new GatedError(blocked);
@@ -129,7 +137,7 @@ export async function depositToMarket(input: {
     algod, sender, marketId,
     algoMicro: input.algoMicro,
     usdcMicro: input.usdcMicro,
-    storagePaymentMicro: BigInt(0),
+    storagePaymentMicro,
     slippageBps: input.slippageBps ?? DEFAULT_LIQUIDITY_SLIPPAGE_BPS,
     stage: onStage as Stage,
   });
