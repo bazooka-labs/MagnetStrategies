@@ -136,4 +136,88 @@ describe("live: can the SDK plan a C-Vault withdrawal from chain data alone?", (
       console.log("plan written to tmp/cvaplan.json");
     }
   }, 120_000);
+
+  it("sweeps withdrawal sizes to find the real ceiling", async () => {
+    await installProtocolManifest();
+    const v = await readCvaVaultState(algod);
+    const vaultApp = await algod.getApplicationByID(PEX_APPS.cvaVault).do();
+    const vault: Record<string, unknown> = { vault_id: PEX_APPS.cvaVault };
+    for (const kv of vaultApp.params.globalState ?? []) {
+      vault[Buffer.from(kv.key as unknown as Uint8Array).toString("utf8")] =
+        BigInt(kv.value?.uint ?? 0);
+    }
+    const allocations: Record<string, unknown>[] = [];
+    const pools: Record<string, unknown>[] = [];
+    const markets: Record<string, unknown>[] = [];
+    const activeMarketOracles: Record<string, unknown> = {};
+    for (const marketId of v.activeMarkets) {
+      const name = new Uint8Array([
+        ...new TextEncoder().encode("gm2:"), ...algosdk.encodeUint64(BigInt(marketId)),
+      ]);
+      const box = await algod.getApplicationBoxByName(PEX_APPS.cvaVault, name).do();
+      allocations.push({
+        vault_id: PEX_APPS.cvaVault,
+        ...parseV2CvaMarketAllocationState(box.value) as Record<string, unknown>,
+      });
+      const st = await readMarketState(algod, marketId);
+      pools.push({ market_id: marketId, ...st.pool });
+      markets.push({ market_id: marketId, ...marketRecord(st) });
+      const o = await getOraclePayload(PEX_APPS.cvaVault, marketId);
+      activeMarketOracles[String(marketId)] = {
+        message: o.message, signature: o.signature, ...priceInput(o),
+      };
+    }
+    const oracle = await getOraclePayload(PEX_APPS.cvaVault, v.activeMarkets[0]);
+    // One registry PER MARKET. A mismatch does not fail gracefully — the
+    // planner THROWS "xALGO strategy is required for action recall" — so the
+    // route and the registry must be chosen together.
+    const registries: Record<number, unknown> = {};
+    for (let i = 0; i < v.activeMarkets.length; i++) {
+      registries[v.activeMarkets[i]] = await readYieldRegistry(
+        algod, v.activeMarkets[i], 31566704,
+        Number((markets[i] as Record<string, unknown>).index_asset_id));
+    }
+
+    const navPerShare = Number(vault.total_nav_usd) / Number(vault.total_cva_shares);
+    const holderShares = 646_808_544; // ALUYA…'s gu2: balance
+    console.log(`holder holds ${(holderShares / 1e6).toFixed(2)} shares `
+      + `≈ $${(holderShares / 1e6 * navPerShare).toFixed(2)} at $${navPerShare.toFixed(6)}/share`);
+    console.log(`vault NAV $${(Number(vault.total_nav_usd) / 1e6).toFixed(2)}`);
+
+    const plan = (shares: number, preferred: number) => planV2CvaWithdraw({
+      sender: HOLDER, vaultId: PEX_APPS.cvaVault, shareAmount: BigInt(shares),
+      stateSnapshot: { cva: { vaults: [vault], allocations }, pools, markets },
+      resources: {
+        app_ids: {
+          PDexV2AdminControl: PEX_APPS.adminControl, PDexV2Markets: PEX_APPS.markets,
+          PDexV2Math: PEX_APPS.math, PDexV2CvaVault: PEX_APPS.cvaVault,
+        },
+        market_yield_resource_registry: registries[preferred],
+      },
+      preferredMarketId: preferred,
+      yieldRecallMode: 1,
+      maxLongReceiptAmount: BigInt(500_000_000),
+      maxShortReceiptAmount: BigInt(500_000_000),
+      oraclePayload: {
+        message: oracle.message, signature: oracle.signature,
+        ...priceInput(oracle), activeMarketOracles,
+      },
+    }) as unknown as Record<string, unknown>;
+
+    for (const usd of [6, 25, 100, 250, 500, 757]) {
+      const shares = Math.min(holderShares, Math.ceil(usd / navPerShare * 1e6));
+      const line: string[] = [];
+      for (const mkt of v.activeMarkets) {
+        let r: Record<string, unknown>;
+        try { r = plan(shares, mkt); }
+        catch (e) { line.push(`m${mkt}:THREW`); continue; }
+        const q = ((r.details as Record<string, unknown>)?.quote
+          ?? (r.route as Record<string, unknown>)?.quote) as Record<string, unknown> | undefined;
+        line.push(r.ok
+          ? `m${mkt}:OK(${q?.route_type ?? "?"})`
+          : `m${mkt}:${r.code}${q?.failure_reasons ? JSON.stringify(q.failure_reasons) : ""}`);
+      }
+      console.log(`$${String(usd).padStart(4)} (${String(shares).padStart(10)} µsh)  ${line.join("  ")}`);
+    }
+  }, 180_000);
 });
