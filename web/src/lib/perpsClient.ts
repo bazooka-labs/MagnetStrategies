@@ -42,6 +42,7 @@ import {
   MAX_LIQUIDATION_DRIFT_BPS,
   MAX_NET_COLLATERAL_DRIFT_BPS,
   ORACLE_MAX_AGE_SEC,
+  MIN_SIGNING_BUDGET_SEC,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
@@ -231,15 +232,6 @@ const minAlgoMicro = (storagePayment: bigint, legs: number): bigint =>
   storagePayment + BigInt(legs) * ORDER_BOX_MBR_MICRO_ALGO
   + groupFeeHeadroomMicro(legs);
 
-/**
- * Seconds of oracle validity that must remain when the wallet is prompted.
- *
- * A wallet round trip is a human action: read the prompt, approve it, maybe
- * unlock a device. Under this, the signature would very likely land against an
- * expired price and be rejected on chain — after approval, which is the worst
- * moment to discover it.
- */
-const MIN_SIGNING_BUDGET_SEC = 8;
 
 /**
  * One open at a time, per tab.

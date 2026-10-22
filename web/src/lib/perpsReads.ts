@@ -290,15 +290,28 @@ export type PinCheck = { ok: boolean; drifted: string[] };
  * On drift: block opens, keep exits live. A redeploy leaves existing positions in
  * the old app, so a blanket halt strands whoever is holding one.
  */
-export async function verifyProgramPins(algod: algosdk.Algodv2): Promise<PinCheck> {
-  const targets: Array<[keyof typeof PEX_PROGRAM_SHA256, number]> = [
-    ["trading", PEX_APPS.trading],
-    ["orderOps", PEX_APPS.orderOps],
-    ["tradingRiskOps", PEX_APPS.tradingRiskOps],
-    ["markets", PEX_APPS.markets],
-    ["math", PEX_APPS.math],
-    ["adminControl", PEX_APPS.adminControl],
-  ];
+type PinName = keyof typeof PEX_PROGRAM_SHA256;
+
+/**
+ * Which programs each path signs against.
+ *
+ * Split per path rather than checked as one set: every entry is a full approval
+ * program over the wire, the trading set alone took 11 seconds sequentially, and
+ * the trade button waits on this. A trade touches no vault, so making traders
+ * pay for the vault hashes would slow the hot path to cover apps it never calls.
+ */
+export const PIN_SETS = {
+  trading: ["trading", "orderOps", "tradingRiskOps", "markets", "math", "adminControl"],
+  // `adminOps` signs the oracle-bearing call on a direct LP deposit; `cvaVault`
+  // custodies the C-Vault's capital.
+  liquidity: ["markets", "math", "adminControl", "adminOps", "cvaVault"],
+} as const satisfies Record<string, readonly PinName[]>;
+
+export async function verifyProgramPins(
+  algod: algosdk.Algodv2, set: keyof typeof PIN_SETS = "trading",
+): Promise<PinCheck> {
+  const targets: Array<[PinName, number]> = PIN_SETS[set].map(
+    (name) => [name, PEX_APPS[name as keyof typeof PEX_APPS]]);
   // In parallel. Sequentially this took 11 seconds against MainNet — six round
   // trips, each pulling a whole approval program — which is long enough that a
   // user reaches the trade button before the check that gates it has returned.
@@ -851,6 +864,78 @@ export async function listOrderIds(
     if (!next) break;
   }
   return ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * Every open position in one market, decoded.
+ *
+ * ── Why the LP quotes cannot do without this ──
+ * A pool's value is not its balances. PEX's own LP NAV is pool value plus lent
+ * quantity, minus the impact pool, **plus trader losses and minus trader
+ * profits**, and that last term is what prices a deposit's shares and an exit's
+ * payout. Quoting without it is not approximately right: market 1's traders
+ * were $66.41 down when measured, which moved value per share by 2.4% — and the
+ * sign flips when traders are up, so the error is not even consistently
+ * conservative.
+ *
+ * Verified in the worst way available: a deposit quoted without positions, with
+ * a 1% floor, was rejected by MainNet at `AdminOps pc=1541` (`dig 18; >=;
+ * assert`) — the on-chain minimum-shares check. The quote was outside its own
+ * slippage tolerance, so the group failed after the preflight passed.
+ *
+ * ── Fails closed on a truncated listing ──
+ * Eight positions existed across both markets when this was written, so one
+ * page covers it many times over. But a quote built on SOME of the positions is
+ * a wrong quote that looks right, so a listing that does not complete throws
+ * rather than returning what it got.
+ */
+export async function readMarketPositions(
+  algod: algosdk.Algodv2, marketId: number,
+): Promise<PositionState[]> {
+  const prefix = new TextEncoder().encode("p2:");
+  const b64 = typeof btoa === "function"
+    ? btoa(String.fromCharCode(...Array.from(prefix)))
+    : Buffer.from(prefix).toString("base64");
+
+  const names: Uint8Array[] = [];
+  let next: string | undefined;
+  let complete = false;
+  for (let page = 0; page < 50; page++) {
+    const q = algod.getApplicationBoxes(PEX_APPS.trading);
+    (q as unknown as { query: Record<string, unknown> }).query.prefix = `b64:${b64}`;
+    if (next) (q as unknown as { query: Record<string, unknown> }).query.next = next;
+    const res = (await q.do()) as unknown as {
+      boxes?: { name: Uint8Array }[]; nextToken?: string; ["next-token"]?: string;
+    };
+    for (const box of res.boxes ?? []) {
+      // p2: | marketId:8 | collateralAssetId:8 | side:8 | owner:32
+      if (box.name.length !== 3 + 8 + 8 + 8 + 32) continue;
+      if (algosdk.decodeUint64(box.name.slice(3, 11), "bigint") !== BigInt(marketId)) continue;
+      names.push(box.name);
+    }
+    next = res.nextToken ?? res["next-token"];
+    if (!next) { complete = true; break; }
+  }
+  if (!complete) {
+    throw new Error(
+      "perps: position listing did not complete, so a pool quote would be priced on only "
+      + "part of the open interest");
+  }
+
+  const out: PositionState[] = [];
+  for (const name of names) {
+    const owner = algosdk.encodeAddress(name.slice(27));
+    try {
+      const res = await algod.getApplicationBoxByName(PEX_APPS.trading, name).do();
+      out.push(decodePosition(res.value, owner));
+    } catch (e) {
+      // A position closing between the listing and the read is normal, and is
+      // the one case where a 404 genuinely means "no longer there". Anything
+      // else would silently drop a position from the valuation.
+      if (!isNotFound(e)) throw e;
+    }
+  }
+  return out;
 }
 
 /**

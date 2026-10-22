@@ -125,7 +125,8 @@ const LINKED_NOTE_RE = /^pdex-v2-linked-(escrow|storage)-\d+$/;
  * account holds exactly its own minimum balance and no ASAs, so this costs fees
  * rather than funds), but "the target happens to be empty" is not a control.
  */
-function checkMathCarriers(
+/** Exported for the liquidity flow — see the note on `checkEveryTransaction`. */
+export function checkMathCarriers(
   txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
   /** The close path's enumerated recall resources — see `checkEveryTransaction`. */
   allow?: { accounts?: Set<string>; assets?: Set<number> },
@@ -525,7 +526,7 @@ function checkCallBudget(
 export type GroupFinding = { code: string; detail: string };
 export type GroupAssertion = { ok: boolean; findings: GroupFinding[]; checked: string[] };
 
-type AnyTxn = {
+export type AnyTxn = {
   type: string;
   sender: unknown;
   fee?: bigint | number;
@@ -640,7 +641,8 @@ function acceptableWithin(
   return { ok: true, why: "" };
 }
 
-function abiBytes(arg: Uint8Array): Uint8Array | null {
+/** Exported for the liquidity flow — see the note on `checkEveryTransaction`. */
+export function abiBytes(arg: Uint8Array): Uint8Array | null {
   if (arg.length < 2) return null;
   const declared = (arg[0] << 8) | arg[1];
   const body = arg.slice(2);
@@ -661,7 +663,21 @@ function abiBytes(arg: Uint8Array): Uint8Array | null {
  *
  * Returns the group's total fee, which the caller bounds against its own cap.
  */
-function checkEveryTransaction(
+/**
+ * Exported so the LIQUIDITY flow reuses it rather than copying it.
+ *
+ * Nothing in here is trade-specific — sender, rekey, close-to, clawback,
+ * onComplete, notes, leases, resource references, genesis hash and one shared
+ * validity window are the baseline for any group this app asks a user to sign.
+ * `strategy/group.ts` passes its own `allowApps` for AdminOps and the C-Vault,
+ * which the trading `CALL_BUDGET` deliberately excludes.
+ *
+ * The alternative was a second copy, and the note on `checkStoragePayment`
+ * below records what a second copy cost last time: 50 ALGO moved inside a group
+ * presented as a $20 open, because the check that would have caught it lived
+ * twelve hundred lines away on the other path.
+ */
+export function checkEveryTransaction(
   txns: AnyTxn[],
   /**
    * `allowAccounts` / `allowAssets` are the CLOSE path's yield-recall
@@ -1014,7 +1030,7 @@ export function assertOpenGroup(
 export async function simulateGroup(
   algod: algosdk.Algodv2,
   txnsIn: unknown[],
-): Promise<{ ok: boolean; failureAt?: number; message?: string }> {
+): Promise<{ ok: boolean; failureAt?: number; message?: string; logs?: Uint8Array[] }> {
   const txns = txnsIn.map((t) => ((t as { txn?: algosdk.Transaction }).txn ?? t) as algosdk.Transaction);
   // txns wants SignedTransaction objects, not encoded bytes; allowEmptySignatures
   // is what lets the group run without real signatures.
@@ -1057,7 +1073,26 @@ export async function simulateGroup(
     if (units.length !== txns.length) {
       return { ok: false, message: `simulation returned ${units.length} results for ${txns.length} transactions` };
     }
-    return { ok: true };
+    /**
+     * Logs, for callers that need the contract's OWN answer.
+     *
+     * The liquidity path uses these: PEX's apps return an ABI receipt naming
+     * `shares_minted` / `long_out` / `short_out`, and that receipt is what the
+     * chain will actually do. The SDK's `quoteV2LpDeposit` was measured 1.65%
+     * off it, which is more than any sane slippage tolerance — so a floor set
+     * from the quote is unsatisfiable, and the number shown to the user would
+     * be wrong by more than the fee.
+     *
+     * Returned rather than decoded here: this module knows nothing about PEX's
+     * receipt formats, and `strategy/group.ts` does.
+     */
+    const logs: Uint8Array[] = [];
+    for (const u of units) {
+      for (const l of u.txnResult?.logs ?? []) {
+        logs.push(Uint8Array.from(l as unknown as ArrayLike<number>));
+      }
+    }
+    return { ok: true, logs };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

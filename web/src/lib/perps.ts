@@ -82,6 +82,12 @@ export const PEX_PROGRAM_SHA256 = {
   markets: "67f4cc4550abdfe1ef537976efcd89dcf49aee3548dbad47ef289951a6c4f49d",
   math: "1c2e5a3e1c8f2fb2492fcbf6f63facf8de84766b804b63f347c2a71486af79ae",
   adminControl: "08e7101a01485c84efe6d741a6e577c37dfb346e46644207f6b7d1e57c2f10d0",
+  // Added 2026-10-21 for the liquidity path. These two were unpinned while the
+  // terminal only traded: a deposit calls AdminOps and the C-Vault, so a
+  // redeploy of either would otherwise be invisible to us right up to the point
+  // where a user signs funds into it.
+  adminOps: "ac8d667ce2396d783c02ae968dbb041400bd600d590ba606d71362140f2a212f",
+  cvaVault: "b2fd9b6f0e6e7f9bf47ad6edfe2e367a3e1485cd40eb62d489a8053bcd50b9b1",
 } as const;
 
 /**
@@ -140,6 +146,20 @@ export const PEX_ORACLE_SIGNER_PUBKEY_HEX =
 
 /** Trailing bytes of the same entry read 0x1e (30), matching the observed payload window. */
 export const ORACLE_MAX_AGE_SEC = 20;
+
+/**
+ * Seconds of oracle validity that must remain when the wallet is prompted.
+ *
+ * A wallet round trip is a human action: read the prompt, approve it, maybe
+ * unlock a device. Under this, the signature would very likely land against an
+ * expired price and be rejected on chain — after approval, which is the worst
+ * moment to discover it.
+ *
+ * Lives here rather than in `perpsClient` because the liquidity path needs the
+ * same budget, and the same reasoning: a deposit signed against an expired
+ * price fails after the user has approved it.
+ */
+export const MIN_SIGNING_BUDGET_SEC = 8;
 
 /**
  * PEX's published oracle bundle. Read-only, keyless, served from R2.

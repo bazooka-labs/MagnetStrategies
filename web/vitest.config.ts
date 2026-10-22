@@ -24,6 +24,18 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    /**
+     * `.live.test.ts` needs MainNet and is excluded here.
+     *
+     * Those tests build real groups and simulate them against a node, which is
+     * the only way to prove PEX accepts them — three separate defects in the
+     * liquidity path were invisible to hermetic tests and obvious to a
+     * simulation. But a suite that fails when the network is down is a suite
+     * people stop trusting, so they are run deliberately:
+     *
+     *   npx vitest run --config vitest.live.config.ts
+     */
+    exclude: ["**/node_modules/**", "**/*.live.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
   },
 });
