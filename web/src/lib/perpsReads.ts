@@ -15,7 +15,10 @@ import {
   V2_POSITION_BOX_MBR_MICRO_ALGO,
 } from "@pdex/sdk";
 import manifestJson from "./pexProtocolManifest.json";
-import { PEX_APPS, PEX_PROGRAM_SHA256 } from "./perps";
+import {
+  PEX_APPS, PEX_PROGRAM_SHA256, ORACLE_SIGNER_SOURCES,
+  PEX_ORACLE_SIGNER_PUBKEY_HEX,
+} from "./perps";
 
 // ── Box layouts ───────────────────────────────────────────────────────────────
 // All boxes are big-endian uint64 words in declaration order.
@@ -326,6 +329,79 @@ export async function verifyProgramPins(
   }));
   const drifted = results.filter((r): r is string => r !== null);
   return { ok: drifted.length === 0, drifted };
+}
+
+/**
+ * Is the pinned oracle signer still the one the CHAIN will verify against?
+ *
+ * ── Why this exists ──
+ * PEX rotated the signer on 2026-10-22 with no notice, on chain and in the
+ * signed bundle together. Our pin then refused every fresh payload — correct,
+ * fail-closed — but a client holding a cached pre-rotation bundle got through
+ * the local check and was rejected on chain at
+ * `ed25519verify_bare; assert`, after the wallet prompt. A real user hit that
+ * on a withdrawal.
+ *
+ * A stale pin is therefore not only an availability problem; it is a *confusing*
+ * one, because the failure surfaces as an opaque TEAL assert inside a third
+ * party's app. This turns it into one sentence, before anything is built.
+ *
+ * ── Why it does not adopt the chain's key ──
+ * The pin exists because the SDK verifies a payload against a pubkey carried
+ * inside that same payload. Auto-adopting whatever a node reports would hand a
+ * compromised node the ability to choose which signer we accept — exactly what
+ * the pin prevents. So this REPORTS drift; adopting a key needs a release.
+ */
+export type SignerCheck = {
+  ok: boolean;
+  /** The key the chain holds, when every source agrees. */
+  onChain: string | null;
+  /** Apps whose stored key differs from the pin. */
+  drifted: { app: number; onChain: string }[];
+  /** Apps that could not be read. Not drift — unknown. */
+  unreadable: number[];
+};
+
+export async function verifyOracleSignerPin(
+  algod: algosdk.Algodv2,
+): Promise<SignerCheck> {
+  const drifted: { app: number; onChain: string }[] = [];
+  const unreadable: number[] = [];
+  const seen = new Set<string>();
+
+  await Promise.all(ORACLE_SIGNER_SOURCES.map(async ({ app, key }) => {
+    try {
+      const info = await algod.getApplicationByID(app).do();
+      const entry = (info.params.globalState ?? []).find((kv) =>
+        Buffer.from(kv.key as unknown as Uint8Array).toString("utf8") === key);
+      const raw = entry?.value?.bytes as unknown as Uint8Array | undefined;
+      if (!raw || raw.length < 32) { unreadable.push(app); return; }
+      // Key is the first 32 bytes; the tail is a max-age and a zero.
+      const hex = Array.from(Uint8Array.from(raw).slice(0, 32))
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+      seen.add(hex);
+      if (hex !== PEX_ORACLE_SIGNER_PUBKEY_HEX) drifted.push({ app, onChain: hex });
+    } catch {
+      unreadable.push(app);
+    }
+  }));
+
+  return {
+    ok: drifted.length === 0,
+    onChain: seen.size === 1 ? [...seen][0] : null,
+    drifted,
+    unreadable,
+  };
+}
+
+/** The message to show when the pin is stale. Names the fix, not just the fault. */
+export function signerDriftMessage(check: SignerCheck): string {
+  const k = check.onChain ?? check.drifted[0]?.onChain ?? "unknown";
+  return (
+    "PEX has rotated its oracle signing key, so this site cannot verify prices "
+    + "until it is updated. Nothing was sent. "
+    + `(on chain ${k.slice(0, 16)}…, pinned ${PEX_ORACLE_SIGNER_PUBKEY_HEX.slice(0, 16)}…)`
+  );
 }
 
 // ── Composite ─────────────────────────────────────────────────────────────────

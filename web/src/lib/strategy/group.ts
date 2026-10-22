@@ -572,6 +572,17 @@ export async function buildDeposit(input: {
   stage("pricing");
   const oracleFetchedAt = Date.now();
   const oracle = await getOraclePayload(PEX_APPS.adminOps, marketId);
+  /**
+   * Local verification is not optional.
+   *
+   * `getOraclePayload` records the result rather than throwing, and this path
+   * did not check it — so a payload whose signature does not verify would be
+   * built, asserted, and refused on chain at `ed25519verify_bare`, after the
+   * wallet prompt. The close path has always checked; these two did not.
+   */
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
 
   const sp = await algod.getTransactionParams().do();
   // Pin the fee. algod's suggestion scales with congestion, and the cap above
@@ -698,6 +709,17 @@ export async function buildWithdraw(input: {
   stage("pricing");
   const oracleFetchedAt = Date.now();
   const oracle = await getOraclePayload(PEX_APPS.adminOps, marketId);
+  /**
+   * Local verification is not optional.
+   *
+   * `getOraclePayload` records the result rather than throwing, and this path
+   * did not check it — so a payload whose signature does not verify would be
+   * built, asserted, and refused on chain at `ed25519verify_bare`, after the
+   * wallet prompt. The close path has always checked; these two did not.
+   */
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
 
   const sp = await algod.getTransactionParams().do();
   sp.fee = sp.minFee;

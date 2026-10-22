@@ -134,15 +134,44 @@ export const PEX_PROTOCOL_MANIFEST_CANONICAL_SHA256 =
   "3bbce88472676525d208094ee8157a175b75f451d6c70781956be97c837a3b8f";
 
 /**
- * Oracle signer public key, read from PDexV2OrderOps global key "oc" and
- * cross-checked against PDexV2Trading global key "q" (identical 48 bytes).
+ * Oracle signer public key, stored on chain as the first 32 bytes of
+ * PDexV2OrderOps / AdminOps / CvaVault / SingleTokenOps global key "oc", and of
+ * PDexV2Trading global key "q". The trailing 16 bytes are a max-age and a zero.
  *
- * Pin it. The SDK verifies a payload's signature against a pubkey carried INSIDE
- * that same payload, which is not verification — it only checks a message signed
- * itself. There is no SDK path that reads this from chain.
+ * Pin it. The SDK verifies a payload's signature against a pubkey carried
+ * INSIDE that same payload, which is not verification — it only checks that a
+ * message signed itself. There is no SDK path that reads this from chain.
+ *
+ * ── ROTATED by PEX on 2026-10-22 ──
+ * The previous key was
+ * `4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb`. PEX
+ * rotated it on chain and in the signed bundle together, across all five apps
+ * that store it, with no notice to us.
+ *
+ * What that looked like: `getOraclePayload` began refusing every payload with
+ * "payload signer is not the pinned PEX signer" — the pin doing its job,
+ * fail-closed. A client holding a CACHED pre-rotation bundle instead got
+ * through our check and was rejected on chain at
+ * `AdminOps pc=6785, uncover 2; ed25519verify_bare; assert`, which is what a
+ * real user hit on a withdrawal.
+ *
+ * **Do not auto-adopt the key the bundle advertises.** That is the thing the
+ * pin exists to prevent. `verifyOracleSignerPin` compares this constant against
+ * the CHAIN and fails loudly so the next rotation is a clear local refusal
+ * rather than a chain rejection after a wallet prompt — but adopting a key
+ * requires a release, deliberately.
  */
 export const PEX_ORACLE_SIGNER_PUBKEY_HEX =
-  "4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb";
+  "ac4b7131e62f4a715e4357f237b996d335b96b2127731cc44b6d34eb932ec9b6";
+
+/** Apps that store the signer, and under which global key. */
+export const ORACLE_SIGNER_SOURCES: ReadonlyArray<{ app: number; key: "oc" | "q" }> = [
+  { app: 3690309160, key: "q" },   // Trading
+  { app: 3690309166, key: "oc" },  // OrderOps
+  { app: 3690309162, key: "oc" },  // AdminOps      — the liquidity paths
+  { app: 3690309167, key: "oc" },  // CvaVault
+  { app: 3690309164, key: "oc" },  // SingleTokenOps
+];
 
 /** Trailing bytes of the same entry read 0x1e (30), matching the observed payload window. */
 export const ORACLE_MAX_AGE_SEC = 20;

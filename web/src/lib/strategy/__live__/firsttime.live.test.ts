@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
 import { buildDeposit, storagePaymentFor, LP_BOX_MBR_MICRO_ALGO } from "../group";
 import { readMarketGateState, readBalances } from "../preflight";
+import { verifyOracleSignerPin, signerDriftMessage } from "../../perpsReads";
+import { PEX_ORACLE_SIGNER_PUBKEY_HEX, ORACLE_SIGNER_SOURCES } from "../../perps";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /** A real funded account with NO `ml2:` box in either market — a first-time LP. */
@@ -46,5 +48,19 @@ describe("live: a FIRST-TIME depositor", () => {
     console.log(`first deposit: ${r.txns.length} txns, ${fee} µALGO fee, `
       + `${storagePaymentMicro} µALGO box MBR, `
       + `${r.receipt.fields.shares_minted} shares minted`);
+  }, 90_000);
+});
+
+describe("live: the pinned oracle signer still matches the chain", () => {
+  it("agrees with every app that stores it", async () => {
+    // The check that would have turned the 2026-10-22 rotation into one
+    // sentence instead of a TEAL assert after a wallet prompt.
+    const r = await verifyOracleSignerPin(algod);
+    if (!r.ok) console.log(signerDriftMessage(r));
+    expect(r.drifted).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(r.onChain).toBe(PEX_ORACLE_SIGNER_PUBKEY_HEX);
+    console.log(`signer pin matches chain across `
+      + `${ORACLE_SIGNER_SOURCES.length - r.unreadable.length} apps: ${r.onChain?.slice(0, 16)}…`);
   }, 90_000);
 });

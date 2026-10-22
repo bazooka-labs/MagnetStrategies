@@ -24,7 +24,7 @@
  */
 
 import algosdk from "algosdk";
-import { verifyProgramPins } from "../perpsReads";
+import { verifyProgramPins, verifyOracleSignerPin, signerDriftMessage } from "../perpsReads";
 import {
   buildDeposit, buildWithdraw, storagePaymentFor,
   type BuildResult, type Stage,
@@ -70,20 +70,39 @@ export class GatedError extends Error {
  * is to stop offering deposits until someone looks.
  */
 export class PinDriftError extends Error {
-  constructor(readonly drifted: string[]) {
+  constructor(readonly drifted: string[], message?: string) {
     super(
-      "PEX's deployed contracts no longer match the versions this site verified, "
-      + "so nothing was sent. Withdrawals remain available.",
+      message
+      ?? "PEX's deployed contracts no longer match the versions this site verified, "
+         + "so nothing was sent. Withdrawals remain available.",
     );
     this.name = "PinDriftError";
   }
 }
 
 async function assertPins(algod: algosdk.Algodv2, action: "deposit" | "withdraw") {
-  const pins = await verifyProgramPins(algod, "liquidity");
+  const [pins, signer] = await Promise.all([
+    verifyProgramPins(algod, "liquidity"),
+    verifyOracleSignerPin(algod),
+  ]);
+
+  /**
+   * The signer pin blocks BOTH directions, unlike program drift.
+   *
+   * A stale signer is not a risk judgement, it is an impossibility: every
+   * payload we can verify locally is one the chain will reject at
+   * `ed25519verify_bare`. Keeping exits "open" would mean offering a button
+   * that fails after the wallet prompt, which is strictly worse than saying so.
+   * PEX rotated the key on 2026-10-22 and a real user hit exactly that.
+   */
+  if (!signer.ok) {
+    console.warn("liquidity: oracle signer pin drift", signer);
+    throw new PinDriftError([], signerDriftMessage(signer));
+  }
+
   if (pins.ok) return;
   console.warn("liquidity: program pin drift", pins.drifted);
-  // Exits stay open. See the module note.
+  // Exits stay open on PROGRAM drift. See the module note.
   if (action === "deposit") throw new PinDriftError(pins.drifted);
 }
 

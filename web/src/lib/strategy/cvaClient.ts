@@ -17,7 +17,7 @@
  */
 
 import algosdk from "algosdk";
-import { verifyProgramPins } from "../perpsReads";
+import { verifyProgramPins, verifyOracleSignerPin, signerDriftMessage } from "../perpsReads";
 import { readCvaSnapshot, readCvaUserShares } from "./cvaSnapshot";
 import {
   buildCvaDeposit, buildCvaWithdraw, cvaStoragePaymentFor, CvaRouteError,
@@ -182,10 +182,19 @@ export function cvaWithdrawGates(s: CvaFormState, withdrawUsd: number): Gate[] {
 }
 
 async function assertPins(algod: algosdk.Algodv2, action: "deposit" | "withdraw") {
-  const pins = await verifyProgramPins(algod, "liquidity");
+  const [pins, signer] = await Promise.all([
+    verifyProgramPins(algod, "liquidity"),
+    verifyOracleSignerPin(algod),
+  ]);
+  // A stale signer blocks both directions: every payload we could verify is one
+  // the chain will reject. See the note in `client.ts`.
+  if (!signer.ok) {
+    console.warn("cva: oracle signer pin drift", signer);
+    throw new PinDriftError([], signerDriftMessage(signer));
+  }
   if (pins.ok) return;
   console.warn("cva: program pin drift", pins.drifted);
-  // Exits stay open on drift; entries do not. Same rule as the pools.
+  // Exits stay open on PROGRAM drift; entries do not. Same rule as the pools.
   if (action === "deposit") throw new PinDriftError(pins.drifted);
 }
 

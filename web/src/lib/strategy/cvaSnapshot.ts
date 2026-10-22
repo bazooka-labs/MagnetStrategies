@@ -129,6 +129,10 @@ export async function readCvaSnapshot(algod: algosdk.Algodv2): Promise<CvaSnapsh
     throw new Error("The vault lists no active markets, so nothing can be deposited or withdrawn.");
   }
   const oracle = await getOraclePayload(PEX_APPS.cvaVault, state.activeMarkets[0]);
+  // See the note in `group.ts`: recorded, not thrown, so it must be checked.
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
 
   const shares = Number(vault.total_cva_shares ?? 0);
   const nav = Number(vault.total_nav_usd ?? 0);
