@@ -13,6 +13,7 @@ both. The umbrella is the user's intent, not who wrote the code.
 |---|---|---|---|
 | [Trading Terminal](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | **Trade** | Live on MainNet |
 | Advanced trading | Surfaces for users who want the full instrument, not the simplified one | **Trade** | Not started |
+| [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools — you earn fees and take the other side | Strategy | **Live on MainNet**, signed in our UI. Not in the nav yet |
 | CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | Strategy | **Waiting on PactFi** to release the platform. Discussed, not designed |
 | Strategy vaults | Other engineered exposures — looped, structured | Strategy | Not started |
 
@@ -41,7 +42,7 @@ not have to match.** [Predict](../predict/OVERVIEW.md) already proves it: by the
 definition above, prediction markets are a position and so belong to this arm's
 logic, and they are a top-level nav item because that is how people shop.
 
-Strategy rejoins the nav when CLMM pools or vaults ship. Trade does not move,
+Strategy rejoins the nav once a pool product is exercised, not merely built: [Strategy Pools](./pools/OVERVIEW.md) is live on MainNet and deliberately still out of the nav, because no real funds have round-tripped through it yet. Trade does not move,
 rename or lose anything when that happens — which is the point of doing it this
 way round rather than letting Trade borrow the slot and hand it back.
 

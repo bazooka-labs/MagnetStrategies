@@ -1,7 +1,7 @@
 # Strategy — deposits and withdrawals signed on our own UI
 
 **Status:** spec, not built. Written 2026-10-21.
-**Supersedes:** STRATEGY_SPEC.md §7.1, which shipped a read-only page linking out
+**Supersedes:** SPEC.md §7.1, which shipped a read-only page linking out
 to Ultrade. That was the wrong product, not a smaller one, and the page is
 hidden from the nav until this is built.
 **Prerequisite reading:** `src/lib/perpsGroup.ts` header, and
@@ -30,7 +30,7 @@ Two consequences that are easy to under-scope:
 
 ## 2. Resolved: there is no single-asset deposit route
 
-Previously open across three revisions of STRATEGY_SPEC.md. **Closed.**
+Previously open across three revisions of SPEC.md. **Closed.**
 
 `isSingleTokenMarket` (`@pdex/sdk` `v2Quotes.js:2576`) requires
 `long_asset_id === short_asset_id`. Live `market_core`:
@@ -206,7 +206,7 @@ open does.
 shape that itself carries a signed payload and needs decode-and-compare. Sizing
 against `perpsGroup.ts`'s 2,219 lines for four shapes under-counts by ~40%.
 
-Build `liquidityGroup.ts` to the same contract:
+Build `strategy/group.ts` to the same contract:
 
 ### 5.1 Per transaction
 
@@ -585,7 +585,7 @@ The first draft set $5 and claimed it "lines up with `min_cva_withdraw_usd`
 Exactly backwards. At the live 20/20 bps spreads:
 
 ```
-deposit $5.000000  ->  withdrawable $4.980038   BELOW the $5 exit floor
+deposit $5.000000  ->  withdrawable $4.980040   BELOW the $5 exit floor
 deposit $5.020000  ->  withdrawable $4.999960   BELOW
 deposit $5.021000  ->  withdrawable $5.000956   OK
 ```
@@ -668,3 +668,181 @@ actually worth asking:
   isolation" — `PEX_SDK_VERSION`, the pinned program hashes and the solver
   verification all move with it. 0.6.6 has every builder and quote this spec
   needs.
+
+---
+
+## 11. What the build found — corrections to this spec
+
+Written after implementing §§4–7 against MainNet, 2026-10-21. Everything below
+contradicts something stated earlier in this document, and the implementation
+follows this section, not the earlier text.
+
+### 11.1 The SDK's LP quotes are too inaccurate to set a floor from
+
+§7 assumed the slippage floors would come from `quoteV2LpDeposit` /
+`quoteV2LpWithdraw`. Measured against MainNet, on market 1:
+
+```
+deposit  0.5 ALGO + 0.5 USDC   quote 492,740 shares   chain 484,711   quote 1.656% HIGH
+withdraw 0.092902 shares       quote 230,829 µALGO    chain 234,657   quote 1.742% LOW
+```
+
+Consistent, and in mirror directions: the quotes value the pool below what the
+chain does, almost certainly by the quantity lent into the yield vaults. The
+error is insensitive to the price input — every variant of the index, long and
+short band edges, and every `pnlContext`, returns the identical figure — and
+passing the market's eight open positions changes nothing either.
+
+**This was a shipping bug, not a rounding note.** A 1% floor derived from the
+deposit quote is *unsatisfiable*: MainNet rejected exactly that group at
+`AdminOps pc=1541` (`dig 18; >=; assert`), the on-chain minimum-shares check. A
+Deposit button that always fails.
+
+**Resolution: the chain is the source of truth.** Both apps return an ABI
+receipt whose field names the vendored manifest supplies, and `decodeReceipt`
+reads them:
+
+```
+v2_lp_deposited   market_id long_amount short_amount shares_minted
+                  long_pool_amount_after short_pool_amount_after
+                  market_share_supply_after
+v2_lp_withdrawn   market_id shares_burned long_out short_out
+                  long_pool_amount_after short_pool_amount_after
+                  market_share_supply_after storage_refund_microalgo
+```
+
+So both builders run **two passes**: simulate with a floor of zero, read the
+receipt, apply the tolerance to the chain's own figure, rebuild, assert,
+simulate again. The floor then protects against what it should — state moving
+between now and the signature — and the figure shown to the user is the
+contract's, not an estimate. The SDK quotes remain only as a live estimate
+while someone is typing, labelled as such.
+
+`strategy/quote.ts` deliberately exports no `floorOf`; an earlier revision did
+and it was a trap.
+
+### 11.2 A withdrawal needs the yield registry and BOTH receipt caps
+
+§4 said recall was "NOT a dependency". For a withdrawal that is wrong — and the
+SDK's types accept all three mistakes without complaint:
+
+| shape | outcome |
+|---|---|
+| `yieldRecallMode: 0` | builds, then fails at `inner tx 0` |
+| mode 1, no `marketYieldRegistry` | SDK throws `marketYieldRegistry is required` |
+| mode 1, caps `0/0` | builds; MainNet rejects at Markets `pc=12259` (`frame_dig -1; <=; assert`) |
+| mode 1, long cap only | same rejection |
+| mode 1, both caps | **accepted** — 10 txns, 117,000 µALGO |
+
+The close path's "index leg only, then both legs" fallback is therefore *wrong
+here* and is not used: a withdrawal pays out both assets, so the tighter shape
+cannot satisfy the contract rather than merely being unlikely to fit.
+
+### 11.3 Measured group shapes and the fee cap
+
+```
+deposit    6 txns   pay(ALGO) axfer(USDC) pay(storage) + AdminOps + 2 Math    55,000 µALGO
+withdraw  10 txns   AdminOps + 9 Math carriers (both recall legs)            117,000 µALGO
+```
+
+The first fee cap written here was 120,000, from shapes measured *without* the
+registry. A correct withdrawal sits at 117,000 — on the lip of it. Raised to
+**200,000** on that evidence, which keeps ~1.7x headroom; the carriers are
+individually asserted to be bare noops, so the headroom cannot hide an
+operation, only fee.
+
+### 11.4 The withdrawal assertion needs the recall's own allow-set
+
+A real withdrawal's recall names the Folks pool and its manager, the xALGO
+consensus app, the proposer set, and the fUSDC and xALGO assets — **fifteen
+findings** on the first live group, every one of them a legitimate resource.
+
+The fix is not to relax `checkEveryTransaction`. `readYieldRegistry` already
+derives a closed `recall: { accounts, assets, apps }` set from chain, and that
+set is passed in, so anything outside it still fails. This leaves the check
+*tighter* than a blanket "PEX apps are fine" rule. `readRecallContext` returns
+the registry and the recall set together so a caller cannot take one without
+the other.
+
+### 11.5 Trading's call budget was NOT widened
+
+A liquidity group calls AdminOps, which the trading `CALL_BUDGET` excludes
+deliberately — audit 8 found that including it let an extra call ride along
+inside a trade. `strategy/group.ts` has its **own** budget and its own shapes.
+`PIN_SETS` likewise splits the program pins per path, so a trade does not pay
+for the vault hashes it never calls.
+
+Program pins added for the two apps this path signs against, previously
+unpinned:
+
+```
+adminOps  ac8d667ce2396d783c02ae968dbb041400bd600d590ba606d71362140f2a212f
+cvaVault  b2fd9b6f0e6e7f9bf47ad6edfe2e367a3e1485cd40eb62d489a8053bcd50b9b1
+```
+
+### 11.6 Confirmed on chain, not inferred
+
+- `ml2:` lp_state is **16 bytes**: `share_amount` at 0, `updated_at` at 8.
+  Confirmed in the Markets bytecode (`intc_2 // 8; extract_uint64`) and against
+  two live boxes.
+- The direct cool-down is `>=`, so the boundary second itself is allowed, and
+  `updated_at == 0` is not gated. `quoteV2DirectLpWithdrawCooldown` matches the
+  bytecode exactly, including the zero case, so it owns the arithmetic and the
+  3600 constant — §9.3's correction stands and now has a shared implementation.
+- The C-Vault cool-down reads `cva_user_state[8..16]` (`last_deposit_round`),
+  confirmed at `cva.teal label58`, and is skipped entirely when the global is 0.
+  Corroborated by a live user who deposited at round 65,154,825 and withdrew
+  1,433 rounds later — just past the 1,200 cool-down.
+- Every C-Vault global the gates read exists under the name assumed:
+  `cva_withdraw_cooldown_rounds` 1200, `min_cva_withdraw_usd` 5000000, both
+  spreads 20 bps, `max_nav_age_rounds` 5, both per-call caps 0 (unlimited),
+  both pause flags 0, `active_market_{0,1}` = 1, 2.
+- The oracle payload goes to **AdminOps** on both paths, matching the signed
+  bundle's own key `app-3690309162/market-N`.
+- `$5.00` into the C-Vault leaves `$4.98003992` withdrawable, not `$4.980038`
+  as §9.4 printed. The conclusion is unchanged.
+
+### 11.7 Two freshness regimes in the C-Vault, and why it is still phase two
+
+The vault enforces NAV freshness two different ways:
+
+```
+lenient   Round <= mark_round + max_nav_age_rounds   (5 rounds, ~14s)   cva.teal label143
+strict    gm2:[40..48] == global Round, exact, AND a verified mark_market
+          (selector 0x7eda6c29) for that market in the same group          cva.teal:5160-5205
+```
+
+Under the strict path waiting cannot help: the mark must land in the same round
+as the action, which is only possible inside the group. So a stale NAV is never
+something to tell a user to retry — it is a leg to add, one per active
+allocation holding shares.
+
+The live NAV was **36 to 257 rounds stale** across this session's runs, against
+a 5-round limit. That is the condition that makes an unprepared C-Vault deposit
+fail, and it is why the two direct pools shipped first and the C-Vault card says
+so instead of offering a button.
+
+### 11.8 Product minimum on the direct pools is $5, not $5.25
+
+The $5.25 in §9.4 exists only to clear the C-Vault's $5 withdrawal floor after
+two 20 bps spreads. Neither applies to the direct pools: the Markets app
+enforces no minimum deposit and has no exit floor. $5 is kept anyway, because a
+round trip costs ~0.17 ALGO in fees (~$0.02) and on a $1 deposit that is a
+share no APR on the page would recover. Using one number for both would misstate
+why either exists.
+
+### 11.9 The PEX URL is gone
+
+Not replaced — removed. `PEX_APP_URL` and `GoToPex` are deleted, per "don't use
+the URL, forget that as an option". The C-Vault card shows a disabled control
+with a reason instead of a link.
+
+### 11.10 Still open
+
+- **C-Vault deposits and withdrawals** — needs the mark preamble of §11.7.
+- `signAndSubmit` lives in `strategy/submit.ts` and is used by the liquidity path
+  only; `perpsClient.ts` still has its own copy. Rewiring the live trading
+  submit path for a hidden feature was the riskier choice today, so the trading
+  path should adopt it next time it is touched. The duplication is real.
+- The two markets' pool cards are live; **nothing has round-tripped real funds
+  through this UI yet**, which is why `/strategy` stays out of the nav.

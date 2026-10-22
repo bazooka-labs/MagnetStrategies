@@ -42,12 +42,19 @@ tokens to signal a preference; the founder acts on the mandate. **Live on mainne
 ### Strategy
 The DeFi strategy arm — products where a user **takes a position or deploys capital into
 an engineered strategy**, as opposed to accepting a posted rate (that is the Bank). Some
-run on our contracts, some on a third party's. First product is **Perps**: leveraged
-positions on **PEX**, Ultrade's Algorand perpetuals protocol, where Magnet writes no
-contract and every action is a PEX call signed by the user's wallet. Strategy vaults and
-advanced trading surfaces come later.
+run on our contracts, some on a third party's. Magnet writes no contract on either
+product below; every action is a PEX call signed by the user's wallet.
 
-→ [`strategy/OVERVIEW.md`](./strategy/OVERVIEW.md)
+- **Perps** (nav: **Trade**) — leveraged positions on **PEX**, Ultrade's Algorand
+  perpetuals protocol. Live on MainNet.
+- **Strategy Pools** (nav: **Strategy**) — liquidity into those same PEX pools, from the
+  other side of the book: you earn trading fees and yield, and you are the counterparty.
+  Deposits and withdrawals are signed **in our UI**. Live on MainNet; `/strategy` is
+  deliberately not in the nav until real funds have round-tripped through it.
+
+CLMM pools on PactFi and structured vaults come later.
+
+→ [`strategy/OVERVIEW.md`](./strategy/OVERVIEW.md) · [`strategy/perps/OVERVIEW.md`](./strategy/perps/OVERVIEW.md) · [`strategy/pools/OVERVIEW.md`](./strategy/pools/OVERVIEW.md)
 
 ### Predict
 **VPL — Volatility Prediction Ladder.** mUSD-denominated, user-to-user price markets:

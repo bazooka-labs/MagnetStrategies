@@ -258,7 +258,7 @@ Asking Ultrade to sign it remains worthwhile and was declined for now.
 move with the SDK, and the closed-form solver is checked against
 `quoteV2OpenPosition`. Bumping 0.6.6 → 0.6.10 to read a JSON file would put the
 terminal's trading maths in scope for a liquidity-page feature. The loader is a
-fetch plus validation, reimplemented in `pexPerformance.ts` against the same
+fetch plus validation, reimplemented in `strategy/performance.ts` against the same
 documented contract, with a captured real response as a test fixture.
 
 ## 6. Styling
