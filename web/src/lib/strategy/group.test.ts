@@ -377,6 +377,8 @@ it("pins the selectors against the vendored manifest's own hashes", () => {
   expect(LIQUIDITY_SELECTORS).toEqual({
     depositLiquidity: "115498d8",
     withdrawLiquidity: "cc72508e",
+    // The all-USDC path: one call that swaps the ALGO leg inside the pool.
+    withdrawLiquidityWithSwap: "0729c57a",
     cvaDeposit: "b2eea014",
     cvaMarkMarket: "7eda6c29",
     mathNoop: "e83a87ab",

@@ -97,7 +97,26 @@ export async function readCvaSnapshot(algod: algosdk.Algodv2): Promise<CvaSnapsh
   const activeMarketOracles: Record<string, Record<string, unknown>> = {};
   const registries: Record<number, Record<string, unknown>> = {};
 
-  const fetchedAt = Date.now();
+  if (state.activeMarkets.length === 0) {
+    throw new Error("The vault lists no active markets, so nothing can be deposited or withdrawn.");
+  }
+
+  /**
+   * ── Order matters: every slow read happens BEFORE the oracle ──
+   * The payloads live `ORACLE_MAX_AGE_SEC` (20s) and the build that follows
+   * needs `MIN_SIGNING_BUDGET_SEC` (8s) left when the wallet is prompted — so
+   * everything between fetching a payload and handing over the group has to fit
+   * in about twelve seconds. A C-Vault withdrawal spends that on route
+   * planning plus two simulations.
+   *
+   * An earlier version fetched each market's payload inside this loop,
+   * interleaved with its box and market-state reads, which spent the budget on
+   * reads that do not need to be fresh. Under load it ran out and refused with
+   * "Preparing this took longer than the price is valid for" — correct
+   * behaviour, avoidable cause. The boxes, market states and registries are
+   * read first; the clock starts after them, and the payloads are fetched in
+   * parallel.
+   */
   for (const marketId of state.activeMarkets) {
     const box = await algod
       .getApplicationBoxByName(PEX_APPS.cvaVault, cvaAllocationBoxName(marketId)).do();
@@ -113,22 +132,23 @@ export async function readCvaSnapshot(algod: algosdk.Algodv2): Promise<CvaSnapsh
     // The full record: core + adaptive + risk + oi + doi.
     markets.push({ market_id: marketId, ...marketRecord(st) });
 
-    // Targeted at the C-Vault, not at AdminOps: the vault is the app that will
-    // verify these, and the signed bundle keys them `app-3690309167/market-N`.
-    const o = await getOraclePayload(PEX_APPS.cvaVault, marketId);
-    activeMarketOracles[String(marketId)] = {
-      message: o.message, signature: o.signature, ...priceInput(o),
-    };
-
     registries[marketId] = await readYieldRegistry(
       algod, marketId, PEX_ASSETS.usdc, Number(st.core.index_asset_id),
     ) as unknown as Record<string, unknown>;
   }
 
-  if (state.activeMarkets.length === 0) {
-    throw new Error("The vault lists no active markets, so nothing can be deposited or withdrawn.");
-  }
-  const oracle = await getOraclePayload(PEX_APPS.cvaVault, state.activeMarkets[0]);
+  const fetchedAt = Date.now();
+  // Targeted at the C-Vault, not at AdminOps: the vault is the app that will
+  // verify these, and the signed bundle keys them `app-3690309167/market-N`.
+  const payloads = await Promise.all(
+    state.activeMarkets.map((m) => getOraclePayload(PEX_APPS.cvaVault, m)));
+  state.activeMarkets.forEach((m, i) => {
+    const o = payloads[i];
+    activeMarketOracles[String(m)] = {
+      message: o.message, signature: o.signature, ...priceInput(o),
+    };
+  });
+  const oracle = payloads[0];
   // See the note in `group.ts`: recorded, not thrown, so it must be checked.
   if (!oracle.signatureVerified) {
     throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");

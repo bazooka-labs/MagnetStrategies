@@ -36,6 +36,7 @@ import algosdk from "algosdk";
 import {
   buildV2DepositLiquidityTransactions,
   buildV2WithdrawLiquidityTransactions,
+  buildV2WithdrawLiquidityWithSwapTransactions,
   decodeReceipt,
   V2_LP_BOX_MBR_MICRO_ALGO,
 } from "@pdex/sdk";
@@ -51,6 +52,15 @@ import { installProtocolManifest } from "../perpsManifest";
 
 // ── Pinned selectors, each verified against the vendored manifest ────────────
 export const LIQUIDITY_SELECTORS = {
+  /**
+   * `PDexV2AdminOps.withdraw_liquidity_with_swap(uint64,uint64,uint64,uint64,uint64,byte[],byte[],uint64,uint64,uint64)byte[]`
+   *
+   * Pays a withdrawal out in ONE asset. Only usable on market 1 — market 2
+   * refuses every mode, including NONE, and the C-Vault has no swap method at
+   * all. See `__live__/swapmode.live.test.ts`, which asserts both refusals so
+   * that a PEX fix shows up as a failing test.
+   */
+  withdrawLiquidityWithSwap: "0729c57a",
   /** `PDexV2AdminOps.deposit_liquidity(uint64,txn,txn,pay,uint64,byte[],byte[])byte[]` */
   depositLiquidity: "115498d8",
   /** `PDexV2AdminOps.withdraw_liquidity(uint64,uint64,uint64,uint64,byte[],byte[],uint64,uint64,uint64)byte[]` */
@@ -420,6 +430,133 @@ function assertOracleArgs(
   did("the group carries exactly the oracle price we verified against the pinned PEX signer");
 }
 
+/**
+ * Markets where a withdrawal can be paid out entirely in USDC in ONE group.
+ *
+ * ── Measured, not assumed ──
+ * Market 1 only. Market 2 refuses `withdraw_liquidity_with_swap` in every mode
+ * including `NONE` — it is a synthetic BTC index holding no BTC, so there is
+ * nothing to swap against — and the C-Vault has no swap method among its
+ * twenty. PEX's standalone `SwapOps.swap_exact_in` works on both markets and
+ * could convert the ALGO afterwards, but Algorand caps a group at 16 and
+ * withdraw+swap comes to 17 for the pools and 19 for the vault, so that route
+ * is a second signature rather than part of this one.
+ *
+ * `__live__/swapmode.live.test.ts` asserts the refusals. If PEX fixes either
+ * case that test fails, which is the signal to widen this set.
+ */
+export const ALL_USDC_MARKETS: readonly number[] = [1];
+
+export const supportsAllUsdc = (marketId: number): boolean =>
+  ALL_USDC_MARKETS.includes(marketId);
+
+/**
+ * `output_mode` for an all-USDC payout.
+ *
+ * ⚠️ The SDK's `V2_OUTPUT_SWAP` names are borrowed from the position-close path
+ * and read BACKWARDS here: the mode that pays everything in USDC is the one
+ * called `COLLATERAL_TO_PNL`. Determined by simulating and reading the receipt.
+ * Written as a number with this note rather than as the misleading name.
+ */
+export const OUTPUT_MODE_ALL_USDC = BigInt(2);
+export const OUTPUT_MODE_BOTH = BigInt(0);
+
+export type DisplayedWithdrawAllUsdc = {
+  sender: string;
+  marketId: number;
+  shareAmount: bigint;
+  /**
+   * Floor on the USDC received.
+   *
+   * `min_primary_amount` is the arg that protects it — established by sweeping
+   * both floors against MainNet: a primary floor just under the expected USDC
+   * is accepted and one above it is refused, while **any** non-zero secondary
+   * floor is refused, because the secondary (ALGO) output is zero by
+   * definition in this mode.
+   */
+  minUsdcMicro: bigint;
+  maxLongReceipt: bigint;
+  maxShortReceipt: bigint;
+  oracleMessage: Uint8Array;
+  oracleSignature: Uint8Array;
+  recall: { accounts: string[]; assets: number[]; apps: number[] };
+};
+
+/** Assert an all-USDC withdrawal against what was displayed. */
+export function assertWithdrawAllUsdcGroup(
+  txnsIn: unknown[], shown: DisplayedWithdrawAllUsdc,
+): GroupAssertion {
+  const txns = normalise(txnsIn);
+  const findings: GroupFinding[] = [];
+  const checked: string[] = [];
+  const fail = (code: string, detail: string) => findings.push({ code, detail });
+  const did = (name: string) => checked.push(name);
+
+  // Nothing leaves the wallet; the payout arrives by inner transfer.
+  shapeAndBudget(txns, { pay: 0, axfer: 0, applMin: 1, applMax: 13 }, fail, did);
+
+  const totalFee = checkEveryTransaction(txns, {
+    sender: shown.sender,
+    collateralAssetId: PEX_ASSETS.usdc,
+    allowAccounts: new Set(shown.recall.accounts),
+    allowAssets: new Set(shown.recall.assets),
+    allowApps: new Set<number>([
+      PEX_APPS.adminOps, PEX_APPS.cvaVault, PEX_APPS.swapOps, ...shown.recall.apps,
+    ]),
+  }, fail, did);
+  if (totalFee > BigInt(MAX_LIQUIDITY_GROUP_FEE_MICRO_ALGO)) {
+    fail("fee_cap", `group fee ${totalFee} µALGO exceeds ${MAX_LIQUIDITY_GROUP_FEE_MICRO_ALGO}`);
+  } else {
+    did(`group fee is within ${MAX_LIQUIDITY_GROUP_FEE_MICRO_ALGO} µALGO`);
+  }
+  checkMathCarriers(txns, fail, did, {
+    accounts: new Set(shown.recall.accounts),
+    assets: new Set(shown.recall.assets),
+    collateralAssetId: PEX_ASSETS.usdc,
+  });
+  did("the recall touches only the accounts, assets and apps our own registry names");
+
+  const calls = txns.filter((t) => Number(t.applicationCall?.appIndex) === PEX_APPS.adminOps);
+  if (calls.length !== 1) {
+    fail("adminops_calls", `expected exactly 1 AdminOps call, found ${calls.length}`);
+    return { ok: false, findings, checked };
+  }
+  const args = (calls[0].applicationCall?.appArgs ?? []) as Uint8Array[];
+  if (args.length !== 11 || hex(args[0]) !== LIQUIDITY_SELECTORS.withdrawLiquidityWithSwap) {
+    fail("withdraw_swap_selector",
+      `AdminOps call is selector ${hex(args[0] ?? new Uint8Array())} with ${args.length} args, `
+      + `expected ${LIQUIDITY_SELECTORS.withdrawLiquidityWithSwap} with 11`);
+    return { ok: false, findings, checked };
+  }
+  // (market_id, share_amount, output_mode, min_primary, min_secondary,
+  //  msg, sig, recall_mode, max_long_receipt, max_short_receipt)
+  const pairs: Array<[string, bigint, bigint]> = [
+    ["market_id", u64(args[1]), BigInt(shown.marketId)],
+    ["share_amount", u64(args[2]), shown.shareAmount],
+    // The mode IS the promise that one asset comes back. If it were 0 the user
+    // would receive ALGO as well, having been told otherwise.
+    ["output_mode", u64(args[3]), OUTPUT_MODE_ALL_USDC],
+    ["min_usdc", u64(args[4]), shown.minUsdcMicro],
+    // Must be zero: this mode pays no ALGO, and the chain refuses any non-zero
+    // secondary floor outright.
+    ["min_secondary", u64(args[5]), BigInt(0)],
+    ["yield_recall_mode", u64(args[8]), BigInt(1)],
+    ["max_long_receipt", u64(args[9]), shown.maxLongReceipt],
+    ["max_short_receipt", u64(args[10]), shown.maxShortReceipt],
+  ];
+  for (const [name, got, want] of pairs) {
+    if (got !== want) fail(name, `${name} in the call is ${got}, displayed ${want}`);
+  }
+  // args: 0 selector | 1 market | 2 shares | 3 mode | 4 minPrimary |
+  //       5 minSecondary | 6 message | 7 signature | 8 recallMode |
+  //       9 maxLongReceipt | 10 maxShortReceipt
+  assertOracleArgs(args[6], args[7], shown.oracleMessage, shown.oracleSignature, fail, did);
+  did(`the call burns exactly ${shown.shareAmount} shares of market ${shown.marketId}`);
+  did(`the payout is USDC only, at no less than ${shown.minUsdcMicro} µUSDC`);
+
+  return { ok: findings.length === 0, findings, checked };
+}
+
 // ── Building ─────────────────────────────────────────────────────────────────
 
 /** Everything both builders need, assembled once. */
@@ -643,6 +780,132 @@ export async function buildDeposit(input: {
   const receipt = receiptFromLogs(trial.logs, "v2_lp_deposited");
   if (!receipt) {
     throw new Error("PEX did not report what this deposit would mint, so nothing was sent.");
+  }
+
+  const signingBudgetSec =
+    ORACLE_MAX_AGE_SEC - oracle.ageSeconds - (Date.now() - oracleFetchedAt) / 1000;
+  if (signingBudgetSec < MIN_SIGNING_BUDGET_SEC) {
+    throw new Error("Preparing this took longer than the price is valid for. Nothing was sent — try again.");
+  }
+  return { txns, assertion, signingBudgetSec, receipt };
+}
+
+/**
+ * Build, assert and simulate an ALL-USDC withdrawal.
+ *
+ * One group, one signature: `withdraw_liquidity_with_swap` pays the whole
+ * withdrawal out in USDC, swapping the ALGO leg inside the pool. Market 1 only
+ * — `supportsAllUsdc` has the measured reasons.
+ *
+ * Two passes as everywhere else: simulate with a zero floor to read the
+ * contract's own `v2_lp_withdraw_with_swap` receipt, then set the real floor on
+ * `final_short_amount`. The swap's fee AND its price impact are both already
+ * inside that figure, so the user sees what they actually receive rather than a
+ * pre-swap estimate minus a fee we computed ourselves.
+ */
+export async function buildWithdrawAllUsdc(input: {
+  algod: algosdk.Algodv2;
+  sender: string;
+  marketId: number;
+  shareAmount: bigint;
+  /**
+   * Receipt caps for the recall.
+   *
+   * A swap concentrates the payout into one asset, so it recalls MORE than a
+   * proportional exit does — caps derived from the plain withdrawal quote are
+   * refused at the yield vaults' `>=` asserts. These must be generous; they are
+   * maxima, and the assertion pins whatever is used into the signed bytes.
+   */
+  maxLongReceipt: bigint;
+  maxShortReceipt: bigint;
+  registry: Record<string, unknown>;
+  recall: { accounts: string[]; assets: number[]; apps: number[] };
+  slippageBps: number;
+  stage?: Stage;
+}): Promise<BuildResult> {
+  const { algod, sender, marketId, stage = () => {} } = input;
+  if (!supportsAllUsdc(marketId)) {
+    throw new Error("PEX cannot pay this pool out in a single asset.");
+  }
+  await installProtocolManifest();
+
+  stage("pricing");
+  const oracleFetchedAt = Date.now();
+  const oracle = await getOraclePayload(PEX_APPS.adminOps, marketId);
+  if (!oracle.signatureVerified) {
+    throw new Error("The price could not be verified against PEX's signing key. Nothing was sent.");
+  }
+
+  const sp = await algod.getTransactionParams().do();
+  sp.fee = sp.minFee;
+  sp.flatFee = true;
+
+  // `appRefs(marketId)` already supplies marketId and the asset ids.
+  const build = (minUsdc: bigint) => buildV2WithdrawLiquidityWithSwapTransactions({
+    sender,
+    shareAmount: input.shareAmount,
+    outputMode: OUTPUT_MODE_ALL_USDC,
+    minPrimaryAmount: minUsdc,
+    // Mandatory zero: this mode pays no ALGO, and the chain refuses ANY
+    // non-zero secondary floor — even 1.
+    minSecondaryAmount: BigInt(0),
+    minOutputAmount: BigInt(0),
+    yieldRecallMode: 1,
+    maxLongReceiptAmount: input.maxLongReceipt,
+    maxShortReceiptAmount: input.maxShortReceipt,
+    marketYieldRegistry: input.registry,
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+    v2SwapOpsAppId: PEX_APPS.swapOps,
+    v2MarketYieldVaultAppId: PEX_APPS.marketYieldVault,
+    ...appRefs(marketId),
+  } as never, sp) as algosdk.Transaction[];
+
+  const displayed = (minUsdc: bigint): DisplayedWithdrawAllUsdc => ({
+    sender, marketId,
+    shareAmount: input.shareAmount,
+    minUsdcMicro: minUsdc,
+    maxLongReceipt: input.maxLongReceipt,
+    maxShortReceipt: input.maxShortReceipt,
+    oracleMessage: oracle.message,
+    oracleSignature: oracle.signature,
+    recall: input.recall,
+  });
+
+  const probe = await simulateGroup(algod, build(BigInt(0)));
+  if (!probe.ok) {
+    throw new Error(`The pre-flight check did not pass, so nothing was sent: ${probe.message ?? "unknown"}`);
+  }
+  const probeReceipt = receiptFromLogs(probe.logs, "v2_lp_withdraw_with_swap");
+  if (!probeReceipt) {
+    throw new Error("PEX did not report what this withdrawal would pay out, so nothing was sent.");
+  }
+  if (field(probeReceipt, "final_long_amount") !== BigInt(0)) {
+    // The mode promises a single asset. If the contract says otherwise, the UI
+    // is about to tell the user something untrue.
+    throw new Error("PEX reported an ALGO payout on a USDC-only withdrawal. Nothing was sent.");
+  }
+  const minUsdc = withTolerance(field(probeReceipt, "final_short_amount"), input.slippageBps);
+
+  stage("building");
+  const txns = build(minUsdc);
+
+  stage("checking");
+  const assertion = assertWithdrawAllUsdcGroup(txns, displayed(minUsdc));
+  if (!assertion.ok) {
+    console.warn("liquidity: all-USDC withdrawal failed its assertion", assertion.findings);
+    throw new Error(
+      `The safety check did not pass, so nothing was sent: ${assertion.findings[0]?.detail ?? "unknown"}`);
+  }
+
+  stage("simulating");
+  const trial = await simulateGroup(algod, txns);
+  if (!trial.ok) {
+    throw new Error(`The pre-flight check did not pass, so nothing was sent: ${trial.message ?? "unknown"}`);
+  }
+  const receipt = receiptFromLogs(trial.logs, "v2_lp_withdraw_with_swap");
+  if (!receipt) {
+    throw new Error("PEX did not report what this withdrawal would pay out, so nothing was sent.");
   }
 
   const signingBudgetSec =

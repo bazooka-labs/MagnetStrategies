@@ -28,8 +28,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, Clock, ExternalLink, Loader2 } from "lucide-react";
 import algosdk from "algosdk";
 import {
-  depositToMarket, withdrawFromMarket, GatedError, PinDriftError,
-  type LiquidityStage,
+  depositToMarket, withdrawFromMarket, withdrawOutputsFor, GatedError, PinDriftError,
+  type LiquidityStage, type WithdrawOutput,
 } from "@/lib/strategy/client";
 import { SubmissionUnknownError } from "@/lib/strategy/submit";
 import {
@@ -87,6 +87,13 @@ export function LiquidityActions({
   const [algoText, setAlgoText] = useState("");
   const [usdcText, setUsdcText] = useState("");
   const [sharePct, setSharePct] = useState(100);
+  /**
+   * What the user receives. USDC where PEX can do it in one group, which is
+   * market 1 only — `withdrawOutputsFor` is the authority and market 2 gets no
+   * choice because the chain cannot honour one.
+   */
+  const outputs = withdrawOutputsFor(marketId);
+  const [output, setOutput] = useState<WithdrawOutput>(outputs[0]);
   const [bal, setBal] = useState<Balances | null>(null);
   const [lp, setLp] = useState<LpState | null>(null);
   const [stage, setStage] = useState<LiquidityStage | null>(null);
@@ -302,9 +309,48 @@ export function LiquidityActions({
               </span>
             </div>
           </div>
+          {/* What you receive. A choice only where the chain can honour it. */}
+          {outputs.length > 1 ? (
+            <div>
+              <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gray-500">
+                Receive as
+              </div>
+              <div className="inline-flex w-full rounded-lg border border-white/10 bg-black/40 p-0.5">
+                {outputs.map((o) => (
+                  <button
+                    key={o}
+                    onClick={() => setOutput(o)}
+                    className={`flex-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                      output === o
+                        ? "bg-white/[0.08] text-white"
+                        : "text-white/50 hover:text-white"
+                    }`}
+                  >
+                    {o === "usdc" ? "All USDC" : "ALGO + USDC"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <p className="text-[10.5px] leading-relaxed text-gray-500">
-            Paid out as ALGO and USDC, in the pool&apos;s current proportions. The exact
-            amounts are read from PEX before you sign and bounded in the transaction.
+            {output === "usdc" ? (
+              <>
+                Paid out entirely in <strong className="font-semibold text-gray-300">USDC</strong>.
+                PEX converts the ALGO side inside the pool, which costs a swap fee of about{" "}
+                <strong className="font-semibold text-gray-300">0.4%</strong> of the converted
+                part. The exact amount is read from PEX before you sign and bounded in the
+                transaction.
+              </>
+            ) : (
+              <>
+                Paid out as <strong className="font-semibold text-gray-300">ALGO and USDC</strong>,
+                in the pool&apos;s current proportions — no swap, so no swap fee.
+                {outputs.length === 1
+                  && " PEX cannot pay this pool out in a single asset."}
+                {" "}The exact amounts are read from PEX before you sign and bounded in the
+                transaction.
+              </>
+            )}
           </p>
         </div>
       )}
@@ -345,7 +391,9 @@ export function LiquidityActions({
         {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
         {busy
           ? STAGE_LABEL[stage!]
-          : mode === "deposit" ? `Deposit to ${label}` : `Withdraw from ${label}`}
+          : mode === "deposit"
+            ? `Deposit to ${label}`
+            : output === "usdc" ? "Withdraw as USDC" : `Withdraw from ${label}`}
       </button>
 
       <button
@@ -403,8 +451,14 @@ function Outcome({ done, mode }: {
 }) {
   const link = `https://allo.info/tx/${done.txId}`;
   const minted = done.figures.shares_minted;
-  const algoOut = done.figures.long_out;
-  const usdcOut = done.figures.short_out;
+  /**
+   * Field names differ by path. A plain withdrawal emits `v2_lp_withdrawn`
+   * with `long_out`/`short_out`; the all-USDC one emits
+   * `v2_lp_withdraw_with_swap` with `final_long_amount`/`final_short_amount`.
+   * Reading only the first pair showed "Funds paid out" with no numbers.
+   */
+  const algoOut = done.figures.long_out ?? done.figures.final_long_amount;
+  const usdcOut = done.figures.short_out ?? done.figures.final_short_amount;
 
   const tone = done.outcome === "confirmed"
     ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"

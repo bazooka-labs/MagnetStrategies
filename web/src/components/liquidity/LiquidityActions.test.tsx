@@ -100,9 +100,16 @@ async function openPanel(o: Overrides = {}, mode: "deposit" | "withdraw" = "depo
   });
 }
 
+/**
+ * The withdraw button's label depends on the chosen output — "Withdraw as USDC"
+ * on a pool that can pay one asset, "Withdraw from <pool>" otherwise. Matching
+ * either keeps these tests about the GATES rather than about the copy.
+ */
 const actionButton = (mode: "deposit" | "withdraw") =>
   screen.getByRole("button", {
-    name: mode === "deposit" ? /Deposit to ALGO\/USD/ : /Withdraw from ALGO\/USD/,
+    name: mode === "deposit"
+      ? /Deposit to ALGO\/USD/
+      : /Withdraw (as USDC|from ALGO\/USD)/,
   }) as HTMLButtonElement;
 
 beforeEach(() => {
@@ -241,5 +248,50 @@ describe("without a wallet", () => {
     });
     expect(actionButton("deposit").disabled).toBe(true);
     expect(sign).not.toHaveBeenCalled();
+  });
+});
+
+describe("what the withdrawal pays out", () => {
+  it("defaults to all-USDC on a pool that supports it", async () => {
+    // The product decision: everything back in USDC where PEX can do it.
+    await openPanel({ shares: 5, updatedAtSec: NOW / 1000 - 7200 }, "withdraw");
+    expect(screen.getByText(/Paid out entirely in/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Withdraw as USDC/ })).toBeTruthy();
+  });
+
+  it("states the swap cost rather than hiding it", async () => {
+    await openPanel({ shares: 5, updatedAtSec: NOW / 1000 - 7200 }, "withdraw");
+    // A convenience with a price; the card has to say so.
+    expect(screen.getByText(/swap fee of about/)).toBeTruthy();
+    expect(screen.getByText(/0\.4%/)).toBeTruthy();
+  });
+
+  it("lets the user take both assets instead, with no swap fee", async () => {
+    await openPanel({ shares: 5, updatedAtSec: NOW / 1000 - 7200 }, "withdraw");
+    fireEvent.click(screen.getByText("ALGO + USDC"));
+    await waitFor(() => expect(screen.getByText(/no swap, so no swap fee/)).toBeTruthy());
+    expect(screen.queryByText(/Paid out entirely in/)).toBeNull();
+    expect(actionButton("withdraw").disabled).toBe(false);
+  });
+
+  it("offers no choice on a pool that cannot pay one asset, and says why", async () => {
+    render(
+      <LiquidityActions
+        marketId={2}
+        label="BTC/USD"
+        algoUsd={0.114}
+        poolValuePerShare={1.13}
+        algod={fakeAlgod({ shares: 5, updatedAtSec: NOW / 1000 - 7200 })}
+        address={"A4YW55ZEC2TTIN2TEVN56IRVGLWQYQRUNJTPG37OTWE4EJWNAH3EUKHZKA"}
+        signTransactions={sign}
+        onDone={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByText("Add or remove liquidity"));
+    fireEvent.click(screen.getByText("Withdraw"));
+    await waitFor(() => expect(document.querySelector("input")).toBeTruthy());
+    // No toggle at all — not a disabled one.
+    expect(screen.queryByText("All USDC")).toBeNull();
+    expect(screen.getByText(/cannot pay this pool out in a single asset/)).toBeTruthy();
   });
 });

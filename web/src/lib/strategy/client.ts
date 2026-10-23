@@ -26,7 +26,7 @@
 import algosdk from "algosdk";
 import { verifyProgramPins, verifyOracleSignerPin, signerDriftMessage } from "../perpsReads";
 import {
-  buildDeposit, buildWithdraw, storagePaymentFor,
+  buildDeposit, buildWithdraw, buildWithdrawAllUsdc, storagePaymentFor, supportsAllUsdc,
   type BuildResult, type Stage,
 } from "./group";
 import {
@@ -164,6 +164,19 @@ export async function depositToMarket(input: {
   return finish(input.algod, input.signTransactions, built, onStage);
 }
 
+/** What the user receives. `usdc` needs `supportsAllUsdc(marketId)`. */
+export type WithdrawOutput = "usdc" | "both";
+
+/**
+ * Which outputs this pool can pay, so the UI states one thing and does it.
+ *
+ * Not a preference: market 2 and the C-Vault physically cannot pay a single
+ * asset in one group — see `supportsAllUsdc`. Offering a choice that silently
+ * falls back would be worse than offering one option honestly.
+ */
+export const withdrawOutputsFor = (marketId: number): WithdrawOutput[] =>
+  supportsAllUsdc(marketId) ? ["usdc", "both"] : ["both"];
+
 export async function withdrawFromMarket(input: {
   algod: algosdk.Algodv2;
   signTransactions: SignFn;
@@ -171,6 +184,8 @@ export async function withdrawFromMarket(input: {
   marketId: number;
   /** Pool shares to burn, micro. */
   shareAmount: bigint;
+  /** Defaults to USDC where the pool supports it, per the product decision. */
+  output?: WithdrawOutput;
   slippageBps?: number;
   onStage?: (s: LiquidityStage) => void;
 }): Promise<LiquidityResult> {
@@ -207,16 +222,41 @@ export async function withdrawFromMarket(input: {
   const caps = recallCaps(quoteWithdraw(ctx, input.shareAmount));
   const rc = await readRecallContext(algod, ctx);
 
-  const built = await buildWithdraw({
-    algod, sender, marketId,
-    shareAmount: input.shareAmount,
-    maxLongReceipt: caps.long,
-    maxShortReceipt: caps.short,
-    registry: rc.registry,
-    recall: rc.recall,
-    slippageBps: input.slippageBps ?? DEFAULT_LIQUIDITY_SLIPPAGE_BPS,
-    stage: onStage as Stage,
-  });
+  const output = input.output ?? (supportsAllUsdc(marketId) ? "usdc" : "both");
+  if (output === "usdc" && !supportsAllUsdc(marketId)) {
+    throw new Error("PEX cannot pay this pool out in a single asset.");
+  }
+
+  const slippageBps = input.slippageBps ?? DEFAULT_LIQUIDITY_SLIPPAGE_BPS;
+  const built = output === "usdc"
+    ? await buildWithdrawAllUsdc({
+        algod, sender, marketId,
+        shareAmount: input.shareAmount,
+        /**
+         * Generous, and deliberately not the quote's caps.
+         *
+         * A swap concentrates the payout into USDC, so it recalls more than a
+         * proportional exit — the quote-derived caps are refused at the yield
+         * vaults' `>=` asserts. These are maxima, the assertion pins them into
+         * the signed bytes, and the real payout floor comes from the receipt.
+         */
+        maxLongReceipt: caps.long * BigInt(20) + BigInt(100_000_000),
+        maxShortReceipt: caps.short * BigInt(20) + BigInt(100_000_000),
+        registry: rc.registry,
+        recall: rc.recall,
+        slippageBps,
+        stage: onStage as Stage,
+      })
+    : await buildWithdraw({
+        algod, sender, marketId,
+        shareAmount: input.shareAmount,
+        maxLongReceipt: caps.long,
+        maxShortReceipt: caps.short,
+        registry: rc.registry,
+        recall: rc.recall,
+        slippageBps,
+        stage: onStage as Stage,
+      });
 
   return finish(input.algod, input.signTransactions, built, onStage);
 }

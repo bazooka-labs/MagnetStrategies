@@ -124,12 +124,24 @@ describe("live: PEX's standalone swap can take ALGO to USDC", () => {
     expect(15 + without.txns).toBeGreaterThan(MAX_GROUP_SIZE);       // vault + swap: does not
   }, 180_000);
 
-  it("market 1 cannot host its own combined group", async () => {
-    // Market 1's swap needs the recall, so withdraw(10) + swap(7) = 17 > 16.
-    // It does not matter, because market 1 has the native one-call path.
-    const r = await swap(1, { recall: 0 });
-    expect(r.ok).toBe(false);
+  it("a recall-free swap is 4 txns, but whether one is possible moves", async () => {
+    /**
+     * Whether a market's swap needs a yield recall is a property of its idle
+     * balance, so the transaction count — and therefore whether a combined
+     * withdraw+swap group fits in 16 — changes between days. Observed on
+     * market 1: recall required on 2026-10-22, not required on 2026-10-23.
+     *
+     * The consequence for the product: a combined group can never be SIZED in
+     * advance. It has to be built and simulated per attempt, and a path that
+     * only sometimes fits is not one to put behind a button.
+     */
     const withRecall = await swap(1, { recall: 1 });
+    expect(withRecall.ok).toBe(true);
     expect(10 + withRecall.txns).toBeGreaterThan(MAX_GROUP_SIZE);
+
+    const without = await swap(1, { recall: 0 });
+    console.log(`m1 swap: ${withRecall.txns} txns with recall; `
+      + `without recall ${without.ok ? `OK at ${without.txns}` : "not possible right now"}`);
+    if (without.ok) expect(without.txns).toBeLessThan(withRecall.txns);
   }, 180_000);
 });
