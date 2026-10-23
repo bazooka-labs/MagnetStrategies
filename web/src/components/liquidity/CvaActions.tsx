@@ -29,7 +29,7 @@ import algosdk from "algosdk";
 import {
   depositToCvaVault, withdrawFromCvaVault, readCvaFormState,
   cvaDepositGates, cvaWithdrawGates, usdToShares, sharesToUsd,
-  type CvaFormState,
+  type CvaFormState, type CvaWithdrawOutput,
 } from "@/lib/strategy/cvaClient";
 import { GatedError, PinDriftError, type LiquidityStage } from "@/lib/strategy/client";
 import { SubmissionUnknownError } from "@/lib/strategy/submit";
@@ -76,11 +76,19 @@ export function CvaActions({
   const [algoText, setAlgoText] = useState("");
   const [usdcText, setUsdcText] = useState("");
   const [outText, setOutText] = useState("");
+  /**
+   * What you receive. USDC by default — the vault pays out ALGO + USDC and has
+   * no swap method of its own, so this converts the ALGO leg as a SECOND GROUP
+   * in the same signature. See swapGroup.ts.
+   */
+  const [output, setOutput] = useState<CvaWithdrawOutput>("usdc");
   const [form, setForm] = useState<CvaFormState | null>(null);
   const [stage, setStage] = useState<LiquidityStage | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState<
-    { txId: string; outcome: string; figures: Record<string, bigint> } | null>(null);
+  const [done, setDone] = useState<{
+    txId: string; outcome: string; figures: Record<string, bigint>;
+    converted?: { usdcOutMicro: bigint; dustAlgoMicro: bigint };
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!algod) { setForm(null); return; }
@@ -143,9 +151,12 @@ export function CvaActions({
           })
         : await withdrawFromCvaVault({
             algod, signTransactions, sender: address,
-            shareAmount, withdrawUsd: outUsd ?? 0, onStage: setStage,
+            shareAmount, withdrawUsd: outUsd ?? 0, output, onStage: setStage,
           });
-      setDone({ txId: r.txId, outcome: r.outcome, figures: r.figures });
+      setDone({
+        txId: r.txId, outcome: r.outcome, figures: r.figures,
+        ...("converted" in r && r.converted ? { converted: r.converted } : {}),
+      });
       setAlgoText(""); setUsdcText(""); setOutText("");
       void refresh();
       onDone();
@@ -236,8 +247,48 @@ export function CvaActions({
               before you sign.
             </p>
           )}
+          {/* What you receive. Both options are honest about their cost. */}
+          <div>
+            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gray-500">
+              Receive as
+            </div>
+            <div className="inline-flex w-full rounded-lg border border-white/10 bg-black/40 p-0.5">
+              {(["usdc", "both"] as const).map((o) => (
+                <button
+                  key={o}
+                  onClick={() => setOutput(o)}
+                  className={`flex-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    output === o ? "bg-white/[0.08] text-white" : "text-white/50 hover:text-white"
+                  }`}
+                >
+                  {o === "usdc" ? "Mostly USDC" : "ALGO + USDC"}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="text-[10.5px] leading-relaxed text-gray-500">
-            Paid out as ALGO and USDC. This vault&apos;s minimum withdrawal is $
+            {output === "usdc" ? (
+              <>
+                {/* "Mostly", not "all". The vault cannot convert everything in
+                    one action — see swapGroup.ts — and a label promising all
+                    USDC while leaving ALGO behind would be the kind of small
+                    lie that costs trust. */}
+                The vault pays out ALGO and USDC, and this converts the ALGO
+                through PEX in the <strong className="font-semibold text-gray-300">same
+                signature</strong>. About{" "}
+                <strong className="font-semibold text-gray-300">99%</strong> comes back as
+                USDC; roughly 1% of the ALGO side stays ALGO, because converting more than
+                the vault guarantees could fail after it had already paid out. The
+                conversion costs about 0.4%.
+              </>
+            ) : (
+              <>
+                Paid out as <strong className="font-semibold text-gray-300">ALGO and
+                USDC</strong>, in the vault&apos;s current proportions — no conversion, so
+                no swap cost.
+              </>
+            )}{" "}
+            This vault&apos;s minimum withdrawal is $
             {form ? form.vault.minWithdrawUsd.toFixed(2) : "5.00"}.
           </p>
         </div>
@@ -275,7 +326,11 @@ export function CvaActions({
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-magnet-600 to-magnet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-magnet-900/40 transition-all hover:from-magnet-500 hover:to-magnet-400 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-        {busy ? STAGE_LABEL[stage!] : mode === "deposit" ? "Deposit to C-Vault" : "Withdraw from C-Vault"}
+        {busy
+          ? STAGE_LABEL[stage!]
+          : mode === "deposit"
+            ? "Deposit to C-Vault"
+            : output === "usdc" ? "Withdraw as USDC" : "Withdraw from C-Vault"}
       </button>
       <button
         onClick={() => { setOpen(false); setErr(null); setDone(null); }}
@@ -327,7 +382,11 @@ function Field({ label, value, onChange, hint, onMax, prefix }: {
 }
 
 function CvaOutcome({ done, mode }: {
-  done: { txId: string; outcome: string; figures: Record<string, bigint> }; mode: Mode;
+  done: {
+    txId: string; outcome: string; figures: Record<string, bigint>;
+    converted?: { usdcOutMicro: bigint; dustAlgoMicro: bigint };
+  };
+  mode: Mode;
 }) {
   const f = done.figures;
   const minted = f.cva_shares_minted ?? f.shares_minted;
@@ -347,9 +406,19 @@ function CvaOutcome({ done, mode }: {
         <div className="min-w-0">
           {done.outcome === "confirmed" && (mode === "deposit"
             ? <span>Done. {minted !== undefined ? `${trim(Number(minted) / 1e6, 6)} vault shares` : "Shares"} added.</span>
-            : <span>Done. {algoOut !== undefined && usdcOut !== undefined
-                ? `${trim(Number(algoOut) / 1e6, 6)} ALGO and ${trim(Number(usdcOut) / 1e6, 6)} USDC`
-                : "Funds"} paid out.</span>)}
+            : done.converted
+              /* Converted: report the TOTAL USDC and NAME the dust. Claiming
+                 an all-USDC payout the group did not make is the kind of small
+                 lie that costs trust on a money screen. */
+              ? <span>
+                  Done. {trim((Number(usdcOut ?? 0) + Number(done.converted.usdcOutMicro)) / 1e6, 6)}
+                  {" "}USDC paid out
+                  {done.converted.dustAlgoMicro > BigInt(0)
+                    && `, plus ${trim(Number(done.converted.dustAlgoMicro) / 1e6, 6)} ALGO that could not be converted`}.
+                </span>
+              : <span>Done. {algoOut !== undefined && usdcOut !== undefined
+                  ? `${trim(Number(algoOut) / 1e6, 6)} ALGO and ${trim(Number(usdcOut) / 1e6, 6)} USDC`
+                  : "Funds"} paid out.</span>)}
           {done.outcome === "rejected" && <span>PEX refused this. Nothing moved.</span>}
           {done.outcome === "unknown" && (
             <span>

@@ -307,7 +307,7 @@ export const PIN_SETS = {
   trading: ["trading", "orderOps", "tradingRiskOps", "markets", "math", "adminControl"],
   // `adminOps` signs the oracle-bearing call on a direct LP deposit; `cvaVault`
   // custodies the C-Vault's capital.
-  liquidity: ["markets", "math", "adminControl", "adminOps", "cvaVault"],
+  liquidity: ["markets", "math", "adminControl", "adminOps", "cvaVault", "swapOps"],
 } as const satisfies Record<string, readonly PinName[]>;
 
 export async function verifyProgramPins(

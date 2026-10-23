@@ -107,8 +107,15 @@ async function openPanel(o: Opts = {}, mode: Mode = "deposit") {
 }
 type Mode = "deposit" | "withdraw";
 
+/**
+ * The withdraw button's label follows the chosen output — "Withdraw as USDC"
+ * by default, "Withdraw from C-Vault" when both assets are chosen. Matching
+ * either keeps these tests about the GATES rather than about the copy.
+ */
 const btn = (mode: Mode) => screen.getByRole("button", {
-  name: mode === "deposit" ? /Deposit to C-Vault/ : /Withdraw from C-Vault/,
+  name: mode === "deposit"
+    ? /Deposit to C-Vault/
+    : /Withdraw (as USDC|from C-Vault)/,
 }) as HTMLButtonElement;
 
 beforeEach(() => { sign.mockClear(); });
@@ -249,5 +256,35 @@ describe("input handling", () => {
     await waitFor(() => expect(screen.getByText("Connect a wallet to continue.")).toBeTruthy());
     expect(btn("deposit").disabled).toBe(true);
     expect(sign).not.toHaveBeenCalled();
+  });
+});
+
+describe("what the vault exit pays out", () => {
+  it("defaults to converting the ALGO leg, in the same signature", async () => {
+    await openPanel({ shares: 100, lastDepositRound: 1 }, "withdraw");
+    expect(screen.getByRole("button", { name: /Withdraw as USDC/ })).toBeTruthy();
+    expect(screen.getByText(/same/)).toBeTruthy();
+  });
+
+  it("says MOSTLY USDC, not all — and why", async () => {
+    // The vault cannot convert everything in one action. A label promising all
+    // USDC while leaving ALGO behind is the small lie this test exists to stop.
+    await openPanel({ shares: 100, lastDepositRound: 1 }, "withdraw");
+    expect(screen.getByText("Mostly USDC")).toBeTruthy();
+    expect(screen.getByText(/roughly 1% of the ALGO side stays ALGO/)).toBeTruthy();
+    expect(screen.getByText(/could fail after it had already paid out/)).toBeTruthy();
+    // And the conversion's cost is stated.
+    expect(screen.getByText(/costs about 0\.4%/)).toBeTruthy();
+  });
+
+  it("offers both assets with no conversion cost", async () => {
+    await openPanel({ shares: 100, lastDepositRound: 1 }, "withdraw");
+    // An amount, or the button is correctly disabled for having nothing to do.
+    fireEvent.change(screen.getAllByPlaceholderText("0")[0], { target: { value: "10" } });
+    fireEvent.click(screen.getByText("ALGO + USDC"));
+    await waitFor(() => expect(screen.getByText(/no conversion, so/)).toBeTruthy());
+    expect(screen.queryByText(/Mostly USDC/)).toBeTruthy();   // the toggle stays
+    expect(screen.queryByText(/stays ALGO/)).toBeNull();      // the caveat goes
+    expect(btn("withdraw").disabled).toBe(false);
   });
 });

@@ -88,6 +88,13 @@ export const PEX_PROGRAM_SHA256 = {
   // where a user signs funds into it.
   adminOps: "ac8d667ce2396d783c02ae968dbb041400bd600d590ba606d71362140f2a212f",
   cvaVault: "b2fd9b6f0e6e7f9bf47ad6edfe2e367a3e1485cd40eb62d489a8053bcd50b9b1",
+  /**
+   * Added 2026-10-23 for the single-asset C-Vault exit, which converts the ALGO
+   * leg through `SwapOps.swap_exact_in`. Pinned BEFORE anything signs against
+   * it: a redeploy of the app that moves a user's payout would otherwise be
+   * invisible to us.
+   */
+  swapOps: "a6f0f5bf19ac7357012fafa4d11c8a1faee949b3f6ab4ca6cca3852ce7403304",
 } as const;
 
 /**

@@ -30,6 +30,8 @@ import {
 } from "./preflight";
 import { DEFAULT_LIQUIDITY_SLIPPAGE_BPS } from "./quote";
 import { signAndSubmit, type SignFn, type SubmitResult } from "./submit";
+import { buildAlgoToUsdcSwap } from "./swapGroup";
+import { readQuoteContext, readRecallContext } from "./quote";
 import { GatedError, PinDriftError, type LiquidityStage } from "./client";
 
 /** Measured: deposit 74,000 µALGO, withdrawal 178,000. */
@@ -40,7 +42,18 @@ export type CvaResult = SubmitResult & {
   checks: string[];
   figures: Record<string, bigint>;
   route?: CvaRoute;
+  /**
+   * Set when the exit converted its ALGO leg to USDC in the same signature.
+   *
+   * `dustAlgoMicro` is the ALGO deliberately NOT converted — the gap between
+   * what the exit actually paid and the floor the swap was sized to. See
+   * `swapGroup.ts` for why that gap exists and why it is accepted.
+   */
+  converted?: { usdcOutMicro: bigint; dustAlgoMicro: bigint };
 };
+
+/** What the user receives from a vault exit. */
+export type CvaWithdrawOutput = "usdc" | "both";
 
 /**
  * Everything the form needs to decide what to OFFER, from cheap reads.
@@ -253,6 +266,11 @@ export async function withdrawFromCvaVault(input: {
   shareAmount: bigint;
   /** The dollar figure shown, for the gates. */
   withdrawUsd: number;
+  /**
+   * `usdc` converts the ALGO leg in the same signature, as a second group.
+   * Defaults to `usdc` — the product decision is everything back in one asset.
+   */
+  output?: CvaWithdrawOutput;
   slippageBps?: number;
   onStage?: (s: LiquidityStage) => void;
 }): Promise<CvaResult> {
@@ -292,12 +310,54 @@ export async function withdrawFromCvaVault(input: {
       slippageBps: input.slippageBps ?? DEFAULT_LIQUIDITY_SLIPPAGE_BPS,
       stage: onStage as (x: string) => void,
     });
+    const slippageBps = input.slippageBps ?? DEFAULT_LIQUIDITY_SLIPPAGE_BPS;
+    const output = input.output ?? "usdc";
+    const algoOut = built.receipt.fields.long_out ?? BigInt(0);
+
+    /**
+     * ── One signature, two groups ──
+     * The vault has no swap method, and a withdrawal (15 txns) plus a swap (7)
+     * exceeds Algorand's 16-transaction GROUP cap. But a SIGNING REQUEST has no
+     * such cap: ARC-0001 `signTxns` takes an array spanning several groups and
+     * the wallet prompts once, and `sendRawTransaction` evaluates each group
+     * independently. So the two are concatenated and signed together.
+     *
+     * The swap is sized to the exit's on-chain FLOOR, never to `algoOut`. The
+     * groups are not atomic with each other, so sizing to the simulated output
+     * would let the swap fail after the exit had already paid — whereas the
+     * floor is a figure the contract itself guarantees.
+     */
+    let swap: Awaited<ReturnType<typeof buildAlgoToUsdcSwap>> | null = null;
+    let dustAlgoMicro = BigInt(0);
+    if (output === "usdc" && algoOut > BigInt(0)) {
+      const floorAlgo = algoOut * BigInt(10_000 - slippageBps) / BigInt(10_000);
+      dustAlgoMicro = algoOut - floorAlgo;
+      // Market 1 is where the ALGO/USDC swap has liquidity; the vault's exit
+      // route is chosen separately and need not match.
+      const ctx = await readQuoteContext(algod, 1);
+      const rc = await readRecallContext(algod, ctx);
+      swap = await buildAlgoToUsdcSwap({
+        algod, sender, marketId: 1,
+        amountInMicro: floorAlgo,
+        registry: rc.registry, recall: rc.recall,
+        slippageBps,
+        stage: onStage as (x: string) => void,
+      });
+    }
+
     const r = await signAndSubmit({
-      algod, signTransactions: input.signTransactions, txns: built.txns,
+      algod, signTransactions: input.signTransactions,
+      // Two groups, one prompt. `signAndSubmit` does not re-assign group ids,
+      // so the concatenation keeps each group intact.
+      txns: swap ? [...built.txns, ...swap.txns] : built.txns,
       onStage: (s) => onStage(s),
     });
     return {
-      ...r, checks: built.assertion.checked, figures: built.receipt.fields, route: built.route,
+      ...r,
+      checks: [...built.assertion.checked, ...(swap?.assertion.checked ?? [])],
+      figures: built.receipt.fields,
+      route: built.route,
+      ...(swap ? { converted: { usdcOutMicro: swap.usdcOut, dustAlgoMicro } } : {}),
     };
   } catch (e) {
     // A routing refusal is a gate, not a crash: it means no single market can
