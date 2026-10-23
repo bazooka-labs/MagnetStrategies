@@ -342,7 +342,7 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
     if (!el || !symbol) return;
 
     /**
-     * ── Why this runs in a sandboxed iframe and not on the page ────────────
+     * ── Why this is a cross-origin frame and not a script on the page ──────
      *
      * This used to append TradingView's loader straight into the document.
      * That script then executed in OUR realm — the same realm that builds and
@@ -353,25 +353,32 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
      * defence against full frontend compromise" and names the missing
      * controls; this closes the one concrete path into that realm.
      *
-     * `srcdoc` + `sandbox="allow-scripts"` WITHOUT `allow-same-origin` gives
-     * the frame an opaque origin: no access to window.parent, our DOM, our
-     * storage, or the wallet. Those two tokens must never appear together
-     * here — with both, the frame inherits our origin and the isolation is
-     * worth nothing.
+     * It then spent five days as a `srcdoc` frame with an opaque origin, which
+     * isolated the script and also broke the widget — see TV_SANDBOX for the
+     * SecurityError and the dates. The frame now loads TradingView's own page
+     * at TradingView's own origin, so their script never enters our document
+     * at all: the hostile code is absent rather than contained, and the
+     * same-origin policy does the isolating instead of a sandbox token.
      *
-     * Cost: the widget cannot reach localStorage, so saved drawings and
-     * indicator layouts do not persist between sessions. Acceptable for an
-     * opt-in chart; not acceptable is a third-party CDN able to rewrite a
-     * signed transaction.
+     * Cost of the old approach, now recovered: the widget could not reach
+     * storage, so drawings and indicator layouts did not persist. They do now,
+     * in TradingView's own origin, where they belong.
      *
-     * ⚠️ VERIFY IN A REAL BROWSER AFTER ANY CHANGE HERE. An opaque origin makes
-     * localStorage/cookies/IndexedDB THROW SecurityError rather than return
-     * empty, so "degrades gracefully" was an assumption, not a fact — a widget
-     * that threw during init would render an empty 560px box, and the tv-ok
-     * signal (which only proves the loader script fetched) would have already
-     * disarmed the fallback. Confirmed rendering candles on 2026-10-18; jsdom
-     * and a headless fetch cannot check this, so it needs a human looking at
-     * the panel.
+     * ⚠️ VERIFY IN A REAL BROWSER AFTER ANY CHANGE HERE. jsdom and a headless
+     * fetch cannot tell a rendered chart from an empty 560px box — both return
+     * a healthy-looking frame — so this needs a human looking at the panel.
+     * Two entries, because the gap between them is the whole lesson:
+     *
+     *   2026-10-18  candles confirmed, srcdoc + opaque origin
+     *   2026-10-23  BROKEN in that configuration: TradingView moved
+     *               `document.cookie` into their WebSocket connect path, which
+     *               THROWS in an opaque origin. Chrome, no candles.
+     *   2026-10-23  candles confirmed, cross-origin frame (this code)
+     *
+     * The first entry was true when written and became false without any
+     * change on our side. A confirmation is evidence about a moment, not a
+     * property of the code — so date them, keep the failures, and re-check
+     * after anything touches the frame.
      */
     const config = JSON.stringify({
       symbol,
