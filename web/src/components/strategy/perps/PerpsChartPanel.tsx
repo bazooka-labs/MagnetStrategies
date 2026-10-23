@@ -98,8 +98,17 @@ const TV_INTERVAL: Record<ChartRange, string> = {
   "1h": "60", "4h": "240", "1d": "D", "1w": "W",
 };
 
-const SCRIPT_SRC =
-  "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+/**
+ * There is deliberately no loader-script constant here any more.
+ *
+ * It held
+ * `https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js`,
+ * which this component used to inject into a document of ours. The frame now
+ * loads TradingView's widget page directly, so that script never enters our
+ * realm — see TV_SANDBOX. Leaving the constant behind would be an invitation
+ * to use it again, and `perpsChartSandbox.test.ts` asserts no script element
+ * is created here.
+ */
 /**
  * The chart's height in pixels, passed to the widget EXPLICITLY.
  *
@@ -114,30 +123,73 @@ const SCRIPT_SRC =
  * constrained.
  */
 /**
- * The sandbox tokens for the TradingView frame.
+ * How the frame gets its document.
  *
- * `allow-same-origin` MUST NOT be added. With `srcdoc`, that token makes the
- * frame inherit this document's origin, which hands a third-party CDN script
- * access to the realm that signs transactions — the exact thing the frame
- * exists to prevent. Exported so the rule is a test against the value, not a
- * comment someone can read past (see PerpsChartPanel.test.ts).
+ * `"url"` loads TradingView's widget page directly, at its own origin.
+ * `"srcdoc"` is the old approach: an inline document of ours that then fetched
+ * their loader script. The two are NOT interchangeable, because they change
+ * what `allow-same-origin` means — see TV_SANDBOX, and the test that holds
+ * them together.
  */
-export const TV_SANDBOX = "allow-scripts";
+export const TV_FRAME_MODE: "url" | "srcdoc" = "url";
 
 /**
- * The messages the sandboxed frame may send, and what each one means.
+ * The widget page, framed DIRECTLY — not a script we load ourselves.
  *
- * `tv-ok` is informational only — see the note on the timeout below. Success is
- * `tv-drawn`; `tv-blank` is the white screen reporting itself.
+ * This is the URL TradingView's own loader builds (confirmed in a browser from
+ * the network panel); the config travels in the fragment. Taking it directly
+ * means their loader never enters our document at all, which removes the thing
+ * the old sandbox existed to contain rather than containing it.
  */
-export const TV_SIGNALS = ["tv-ok", "tv-fail", "tv-drawn", "tv-blank"] as const;
-export type TvSignal = (typeof TV_SIGNALS)[number];
+export const TV_FRAME_ORIGIN = "https://www.tradingview-widget.com";
+export const tvFrameSrc = (config: string): string =>
+  `${TV_FRAME_ORIGIN}/embed-widget/advanced-chart/?locale=en#${encodeURIComponent(config)}`;
 
-/** A laid-out child taller than this counts as drawn. */
-const DRAW_MIN_PX = 80;
-/** Poll cadence and budget inside the frame: 400ms x 35 = 14s, under the 20s timeout. */
-const DRAW_POLL_MS = 400;
-const DRAW_POLLS = 35;
+/**
+ * The sandbox tokens for the TradingView frame.
+ *
+ * ── `allow-same-origin` is here deliberately, and it is safe ONLY in "url" mode ──
+ * The token's effect depends entirely on the framed document's origin:
+ *
+ *   srcdoc + allow-same-origin     the frame inherits OUR origin. A third-party
+ *                                  CDN script would share the realm that builds
+ *                                  and signs transactions, and could patch the
+ *                                  signer after `perpsGroup.ts`'s assertions
+ *                                  pass, or patch the assertions. Catastrophic.
+ *   cross-origin URL + same token  the frame keeps ITS OWN origin
+ *                                  (tradingview-widget.com). The same-origin
+ *                                  policy isolates it from us — the normal and
+ *                                  stronger mechanism. It grants TradingView
+ *                                  its own storage and nothing of ours.
+ *
+ * ⚠️ **If `TV_FRAME_MODE` ever goes back to "srcdoc", this token must be
+ * removed in the same edit.** That pair is the loophole. It is not left to a
+ * reader to notice: `perpsChartSandbox.test.ts` asserts the two move together
+ * and fails the build otherwise. That test exists because the likely author of
+ * such a change is a future session of mine with no memory of this one — and
+ * two commits before this one, I did inject our own script into that srcdoc,
+ * which is exactly the instinct that would recreate the pairing.
+ *
+ * ── Why the token is needed at all ──
+ * Without it the document has an OPAQUE origin, where `document.cookie` THROWS
+ * rather than returning empty. TradingView reads it while building their
+ * WebSocket URL, so the data socket never opened and the panel rendered chrome
+ * with no candles. Observed in a real browser, 2026-10-23:
+ *
+ *     Uncaught SecurityError: Failed to read the 'cookie' property from
+ *     'Document': The document is sandboxed and lacks the 'allow-same-origin'
+ *     flag.   at h._prepareUrl -> h.connect -> WSBackendConnection.apiKey
+ *
+ * Candles rendered on 2026-10-18, so their init moved cookie access into the
+ * connect path between those dates. The note this replaces guessed the widget
+ * would "degrade gracefully" in an opaque origin. It does not, and that guess
+ * is what shipped a white chart.
+ *
+ * Still denied: top-level navigation, popups, forms, downloads, modals,
+ * pointer lock. Exported so the rule is a test against the value rather than a
+ * comment someone can read past.
+ */
+export const TV_SANDBOX = "allow-scripts allow-same-origin";
 
 const HEIGHT = 560;
 
@@ -343,139 +395,71 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
       support_host: "https://www.tradingview.com",
     });
 
-    // `config` is JSON.stringify of values we control (a fixed symbol from
-    // SYMBOL, an interval from TV_INTERVAL, literals) — no user input reaches
-    // it. It is still escaped for a <script> context: a literal "</script>"
-    // inside JSON would end the tag early.
-    const safeConfig = config.replace(/<\//g, "<\\/");
-
-    const srcdoc = `<!doctype html><html><head><meta charset="utf-8">
-<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style>
-</head><body>
-<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>
-<script>
-  var box=document.querySelector('.tradingview-widget-container');
-  var s=document.createElement('script');
-  s.src=${JSON.stringify(SCRIPT_SRC)};
-  s.async=true;
-  s.onerror=function(){try{parent.postMessage('tv-fail','*')}catch(e){}};
-  s.onload=function(){try{parent.postMessage('tv-ok','*')}catch(e){}};
-  s.text=${JSON.stringify(safeConfig)};
-  box.appendChild(s);
-  /* Did anything actually DRAW?
-     'tv-ok' only proves the loader script fetched. The loader then creates its
-     own frame to the widget host, and when THAT fails the panel sits blank
-     forever with the fallback already disarmed — the reported white screen.
-     This document is ours (opaque origin, but our DOM), so we can watch for a
-     laid-out child and report it. We cannot look INSIDE the nested frame, which
-     is cross-origin; a sized element is the strongest signal available here. */
-  var tries=0;
-  var poll=setInterval(function(){
-    tries++;
-    var kid=box.querySelector('iframe,canvas');
-    if(kid&&kid.clientHeight>${DRAW_MIN_PX}){
-      clearInterval(poll);
-      try{parent.postMessage('tv-drawn','*')}catch(e){}
-    } else if(tries>${DRAW_POLLS}){
-      clearInterval(poll);
-      try{parent.postMessage('tv-blank','*')}catch(e){}
-    }
-  },${DRAW_POLL_MS});
-<\/script>
-</body></html>`;
-
+    /**
+     * No inline document, and no loader script of ours.
+     *
+     * `config` is JSON.stringify of values we control (a fixed symbol from
+     * SYMBOL, an interval from TV_INTERVAL, literals) — no user input reaches
+     * it. It used to be escaped for a `<script>` context because it was
+     * interpolated into one; it now travels in a URL fragment, so it is
+     * percent-encoded by `tvFrameSrc` instead and never parsed as script by us.
+     */
     const frame = document.createElement("iframe");
+    frame.src = tvFrameSrc(config);
     frame.setAttribute("sandbox", TV_SANDBOX);
     frame.setAttribute("referrerpolicy", "no-referrer");
     frame.setAttribute("title", "TradingView advanced chart");
     frame.style.width = "100%";
     frame.style.height = `${HEIGHT}px`;
     frame.style.border = "0";
-    frame.srcdoc = srcdoc;
 
-    /**
-     * Ad blockers block this embed routinely, and a dead panel mid-page is a
-     * worse outcome than a simpler chart — so failure falls back, as before.
-     *
-     * The signal has to cross the sandbox now: `script.onerror` fired in our
-     * realm before, and cannot any more. The frame reports via postMessage and
-     * a timer covers the case where nothing reports at all (blocked at the
-     * network layer, so neither handler runs).
-     */
     // A failed load must return to the basic chart, not sit on a blank panel:
     // `showAdvanced` is `advanced && canSwitch`, and canSwitch no longer
     // tracks `blocked`, so without clearing `advanced` the user would stare at
     // an empty frame with the toggle still reading "advanced".
     const fallBackToBasic = () => { setBlocked(true); setAdvanced(false); };
 
-    let settled = false;
-    const onMessage = (ev: MessageEvent) => {
-      // Only this frame, and only the strings it can send. The frame has an
-      // opaque origin so ev.origin is "null" and cannot be matched on;
-      // identity comes from the source window instead.
-      if (ev.source !== frame.contentWindow) return;
-      if (!TV_SIGNALS.includes(ev.data as TvSignal)) return;
-      switch (ev.data as TvSignal) {
-        case "tv-fail":
-          // The loader itself did not fetch — usually a filter list.
-          settled = true;
-          fallBackToBasic();
-          break;
-        case "tv-drawn":
-          // Something is laid out. THIS is what success means.
-          settled = true;
-          break;
-        case "tv-blank":
-          // The loader fetched and then drew nothing: the white panel. Before
-          // this signal existed, `tv-ok` disarmed the fallback and the user
-          // was left on an empty box with no way back except a reload.
-          console.warn("perps: the advanced chart loaded but drew nothing; "
-            + "falling back to the basic chart");
-          settled = true;
-          fallBackToBasic();
-          break;
-        case "tv-ok":
-          /**
-           * Deliberately does NOT settle.
-           *
-           * It proves the loader script fetched and nothing more. Treating it
-           * as success is what left a blank panel permanently blank.
-           */
-          break;
-      }
-    };
-    window.addEventListener("message", onMessage);
     /**
-     * The timeout is a LAST resort, not a latency budget.
+     * Detection is simpler now, because the failure it guarded against is gone.
      *
-     * At 8s this fired on slow mobile connections where the loader was merely
-     * late, and `blocked` is never reset — which hides the view toggle
-     * entirely, so the advanced chart was gone for the rest of the session
-     * with no way back short of a reload. 20s is past any plausible load and
-     * still bounded, and `blocked` now clears whenever the user re-enters the
+     * The blank panel came from the opaque origin, not from a load failure: the
+     * page arrived and then threw on `document.cookie`. With a real origin it
+     * either loads or it does not, and `load` fires in OUR realm for a
+     * cross-origin frame — so the postMessage handshake, the `tv-*` signals and
+     * the in-frame polling are all deleted rather than carried along.
+     *
+     * Ad blockers block this embed routinely, and a dead panel mid-page is
+     * worse than a simpler chart, so a load that never lands still falls back.
+     *
+     * The timeout is a LAST resort, not a latency budget. At 8s it fired on
+     * slow mobile connections where the widget was merely late. 20s is past any
+     * plausible load, and `blocked` clears whenever the user re-enters the
      * advanced view (see the reset effect below) so a false positive costs one
      * toggle rather than the feature.
      *
-     * That limit is now covered, after a real white screen.
-     *
-     * `tv-ok` fires on the LOADER's onload, which proves the script fetched and
-     * NOT that candles drew. The loader then creates its own frame to the
-     * widget host, and when that renders nothing the panel used to sit blank
-     * with the fallback already disarmed. The frame now polls its own DOM for a
-     * laid-out child and sends `tv-drawn` or `tv-blank`, and only `tv-drawn`
-     * counts as success.
-     *
-     * Residual limit, unchanged: we cannot look INSIDE the nested frame, which
-     * is cross-origin. A sized element is the strongest signal available from
-     * here, so a frame that lays out and then paints nothing would still pass.
+     * Residual limit, stated honestly: `load` means the document arrived, not
+     * that candles drew. We cannot see inside a cross-origin frame — that is
+     * the same-origin policy doing its job — so a page that loads and then
+     * fails internally would still look fine from here. The difference is that
+     * TradingView now renders its OWN error state in that case, because it has
+     * a working origin to render one with.
      */
-    const timer = window.setTimeout(() => { if (!settled) fallBackToBasic(); }, 20_000);
+    let settled = false;
+    const onLoad = () => { settled = true; };
+    frame.addEventListener("load", onLoad);
+    const timer = window.setTimeout(() => {
+      if (!settled) {
+        console.warn("perps: the advanced chart did not load in 20s "
+          + "(commonly an ad blocker on the widget host); using the basic chart");
+        fallBackToBasic();
+      }
+    }, 20_000);
 
     el.innerHTML = "";
     el.appendChild(frame);
 
     return () => {
-      window.removeEventListener("message", onMessage);
+      frame.removeEventListener("load", onLoad);
       window.clearTimeout(timer);
       el.innerHTML = "";
     };

@@ -110,8 +110,18 @@ const nextConfig = {
       "object-src 'none'",
       "form-action 'self'",
       "frame-ancestors 'none'",
-      // s3.tradingview.com: inherited by the srcdoc frame, which loads it.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://s3.tradingview.com",
+      /**
+       * s3.tradingview.com was here because a `srcdoc` frame inherits this
+       * policy and that frame loaded TradingView's loader script. Removed
+       * 2026-10-23: the chart now frames their widget page directly, so no
+       * TradingView script is ever requested from OUR document and no
+       * third-party script origin needs allowing here at all.
+       *
+       * The scripts their page loads are governed by THEIR policy in THEIR
+       * document — a real cross-origin frame has its own. `frame-src` below
+       * still lists the widget hosts, which is what governs the frame itself.
+       */
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
