@@ -49,30 +49,30 @@ const nextConfig = {
    *     frame-src — the web wallets are IFRAMES, see below)
    *   - open a vault on /magnetfi                          (connect-src)
    *   - /tokens, both the $U and mUSD tabs                 (frame-src: vestige)
-   *   - /trade, switch to the Advanced chart               (frame-src + script-src)
+   *   - /trade, switch to the Advanced chart               (frame-src)
    *   - place and cancel a perps order                     (connect-src)
    * When the console is clean, rename the header to `Content-Security-Policy`.
    * Do that as its own change, not bundled with anything else.
    *
-   * ── srcdoc frames INHERIT this policy — they are not covered by frame-src ──
-   * This block previously claimed the TradingView loader was "governed by
-   * frame-src, not script-src" because it runs inside a sandboxed srcdoc
-   * iframe. That is wrong in both halves, and wrong in the direction that
-   * breaks things only once the policy is enforced:
+   * ── TradingView: now a plain cross-origin frame, so only frame-src applies ──
+   * As of 2026-10-23 the advanced chart frames TradingView's widget page
+   * directly. A cross-origin document carries ITS OWN policy, so our
+   * `script-src` governs nothing inside it and no third-party script origin is
+   * listed there any more. `frame-src` lists `www.tradingview-widget.com` (with
+   * `s.tradingview.com` as its documented fallback) — NOT `www.tradingview.com`,
+   * which is never framed. TradingView literally ships the string "Please
+   * update your CSP rules to allow the tradingview-widget.com origin for
+   * frame-src."
    *
-   *   - An `about:srcdoc` document is created from its parent and receives a
-   *     CLONE OF THE PARENT'S POLICY CONTAINER, CSP included. Sandboxing does
-   *     not sever that (it was the explicit fix for the old srcdoc-CSP
-   *     loophole). So `script-src` below applies INSIDE the frame, and the
-   *     frame's `s.src = s3.tradingview.com/...` needs that origin listed —
-   *     hence it appears in `script-src`, not just here in prose.
-   *   - `frame-src` governs frame NAVIGATIONS. `about:srcdoc` issues no
-   *     request, so frame-src never evaluates against it at all. What
-   *     frame-src does govern is the iframe the loader then creates, and that
-   *     one points at `www.tradingview-widget.com` (with `s.tradingview.com`
-   *     as its own CSP fallback) — NOT `www.tradingview.com`, which is never
-   *     framed. The loader literally ships the string "Please update your CSP
-   *     rules to allow the tradingview-widget.com origin for frame-src."
+   * Kept because it cost a day to learn, and because a `srcdoc` frame may
+   * return here for something else: **a srcdoc document INHERITS this policy
+   * and is NOT covered by frame-src.** It is created from its parent and
+   * receives a clone of the parent's policy container, CSP included; sandboxing
+   * does not sever that (it was the explicit fix for the old srcdoc-CSP
+   * loophole). And `frame-src` governs frame NAVIGATIONS, while `about:srcdoc`
+   * issues no request, so frame-src never evaluates against it at all. So a
+   * future srcdoc frame needs its resources listed in the per-type directives
+   * here, not in frame-src.
    *
    * `vestige.fi` is here because /tokens frames a Vestige price widget on both
    * the $U and mUSD tabs (VestigeChart.tsx). The earlier version of this
@@ -145,12 +145,36 @@ const nextConfig = {
         "https://mainnet.analytics.tinyman.org https://api.pact.fi",
         "https://api.vestigelabs.org https://hogswap-v1.liquihog.dev",
         "https://allo.info",
-        // Wallet connectors. Incomplete on purpose — this list is what
-        // Report-Only exists to finish.
+        /**
+         * Wallet connectors. This list is what Report-Only exists to finish,
+         * and on 2026-10-23 it found its first real gap:
+         *
+         *     Connecting to 'wss://wallet-connect-f.perawallet.app/?env=browser
+         *     ...' violates the following Content Security Policy directive
+         *
+         * Pera runs its OWN WalletConnect relay on its own domain, not on
+         * walletconnect.com. The https hosts were listed and the wss ones were
+         * not, so **enforcing the policy would have broken Pera connection
+         * outright** — the exact launch-day failure the note above this block
+         * warns about, caught by using the site rather than by reading the list.
+         *
+         * `wss://*.defly.app` is added at the same time on the same reasoning,
+         * NOT because a violation was observed: Defly is the other
+         * WalletConnect-based connector here, its https hosts are listed
+         * identically, and finding this twice in production would be the same
+         * bug discovered twice. If Defly turns out never to need it, an unused
+         * entry costs nothing; a missing one costs a wallet.
+         *
+         * Same trust boundary as the https entries immediately below — the same
+         * hosts, a different scheme — so this widens the scheme, not the set of
+         * parties trusted.
+         */
         "https://*.walletconnect.com https://*.walletconnect.org",
         "wss://*.walletconnect.com wss://*.walletconnect.org",
         "https://perawallet.app https://*.perawallet.app",
+        "wss://perawallet.app wss://*.perawallet.app",
         "https://defly.app https://*.defly.app",
+        "wss://defly.app wss://*.defly.app",
       ].join(" "),
     ].join("; ");
 
