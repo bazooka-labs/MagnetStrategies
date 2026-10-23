@@ -124,6 +124,21 @@ const SCRIPT_SRC =
  */
 export const TV_SANDBOX = "allow-scripts";
 
+/**
+ * The messages the sandboxed frame may send, and what each one means.
+ *
+ * `tv-ok` is informational only — see the note on the timeout below. Success is
+ * `tv-drawn`; `tv-blank` is the white screen reporting itself.
+ */
+export const TV_SIGNALS = ["tv-ok", "tv-fail", "tv-drawn", "tv-blank"] as const;
+export type TvSignal = (typeof TV_SIGNALS)[number];
+
+/** A laid-out child taller than this counts as drawn. */
+const DRAW_MIN_PX = 80;
+/** Poll cadence and budget inside the frame: 400ms x 35 = 14s, under the 20s timeout. */
+const DRAW_POLL_MS = 400;
+const DRAW_POLLS = 35;
+
 const HEIGHT = 560;
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
@@ -339,13 +354,33 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
 </head><body>
 <div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>
 <script>
+  var box=document.querySelector('.tradingview-widget-container');
   var s=document.createElement('script');
   s.src=${JSON.stringify(SCRIPT_SRC)};
   s.async=true;
   s.onerror=function(){try{parent.postMessage('tv-fail','*')}catch(e){}};
   s.onload=function(){try{parent.postMessage('tv-ok','*')}catch(e){}};
   s.text=${JSON.stringify(safeConfig)};
-  document.querySelector('.tradingview-widget-container').appendChild(s);
+  box.appendChild(s);
+  /* Did anything actually DRAW?
+     'tv-ok' only proves the loader script fetched. The loader then creates its
+     own frame to the widget host, and when THAT fails the panel sits blank
+     forever with the fallback already disarmed — the reported white screen.
+     This document is ours (opaque origin, but our DOM), so we can watch for a
+     laid-out child and report it. We cannot look INSIDE the nested frame, which
+     is cross-origin; a sized element is the strongest signal available here. */
+  var tries=0;
+  var poll=setInterval(function(){
+    tries++;
+    var kid=box.querySelector('iframe,canvas');
+    if(kid&&kid.clientHeight>${DRAW_MIN_PX}){
+      clearInterval(poll);
+      try{parent.postMessage('tv-drawn','*')}catch(e){}
+    } else if(tries>${DRAW_POLLS}){
+      clearInterval(poll);
+      try{parent.postMessage('tv-blank','*')}catch(e){}
+    }
+  },${DRAW_POLL_MS});
 <\/script>
 </body></html>`;
 
@@ -375,13 +410,39 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
 
     let settled = false;
     const onMessage = (ev: MessageEvent) => {
-      // Only this frame, and only the two strings it can send. The frame has
-      // an opaque origin so ev.origin is "null" and cannot be matched on;
+      // Only this frame, and only the strings it can send. The frame has an
+      // opaque origin so ev.origin is "null" and cannot be matched on;
       // identity comes from the source window instead.
       if (ev.source !== frame.contentWindow) return;
-      if (ev.data !== "tv-ok" && ev.data !== "tv-fail") return;
-      settled = true;
-      if (ev.data === "tv-fail") fallBackToBasic();
+      if (!TV_SIGNALS.includes(ev.data as TvSignal)) return;
+      switch (ev.data as TvSignal) {
+        case "tv-fail":
+          // The loader itself did not fetch — usually a filter list.
+          settled = true;
+          fallBackToBasic();
+          break;
+        case "tv-drawn":
+          // Something is laid out. THIS is what success means.
+          settled = true;
+          break;
+        case "tv-blank":
+          // The loader fetched and then drew nothing: the white panel. Before
+          // this signal existed, `tv-ok` disarmed the fallback and the user
+          // was left on an empty box with no way back except a reload.
+          console.warn("perps: the advanced chart loaded but drew nothing; "
+            + "falling back to the basic chart");
+          settled = true;
+          fallBackToBasic();
+          break;
+        case "tv-ok":
+          /**
+           * Deliberately does NOT settle.
+           *
+           * It proves the loader script fetched and nothing more. Treating it
+           * as success is what left a blank panel permanently blank.
+           */
+          break;
+      }
     };
     window.addEventListener("message", onMessage);
     /**
@@ -395,13 +456,18 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
      * advanced view (see the reset effect below) so a false positive costs one
      * toggle rather than the feature.
      *
-     * Honest limit: `tv-ok` fires on the LOADER's onload, which proves the
-     * script fetched — not that candles drew. The loader then creates its own
-     * frame to www.tradingview-widget.com, and if THAT is blocked (filter
-     * lists commonly block the widget host rather than the loader) the panel
-     * shows an empty box with the fallback already disarmed. Detecting that
-     * needs the nested frame's own ready event relayed out, which is not
-     * something this can verify without a real browser.
+     * That limit is now covered, after a real white screen.
+     *
+     * `tv-ok` fires on the LOADER's onload, which proves the script fetched and
+     * NOT that candles drew. The loader then creates its own frame to the
+     * widget host, and when that renders nothing the panel used to sit blank
+     * with the fallback already disarmed. The frame now polls its own DOM for a
+     * laid-out child and sends `tv-drawn` or `tv-blank`, and only `tv-drawn`
+     * counts as success.
+     *
+     * Residual limit, unchanged: we cannot look INSIDE the nested frame, which
+     * is cross-origin. A sized element is the strongest signal available from
+     * here, so a frame that lays out and then paints nothing would still pass.
      */
     const timer = window.setTimeout(() => { if (!settled) fallBackToBasic(); }, 20_000);
 
