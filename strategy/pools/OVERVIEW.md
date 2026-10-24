@@ -45,6 +45,23 @@ Two pieces of copy follow the gate rather than being written once:
 `LiquidityView.test.tsx` asserts what a visitor can *see*, not the boolean:
 drop the gate and three tests go red (verified by mutation).
 
+### The page is not PEX's page
+
+Removed 2026-10-23, because `/strategy` hosts strategies and PEX is one venue
+among the ones coming: the `Strategy` h1 and its paragraph about "traders on
+the terminal", the two headline boxes totalling PEX pool liquidity and PEX fees
+to date, and the amber caveat panel at the foot. A header describing one venue
+misdescribes the rest as they arrive, and a CLMM pool's TVL summed into one
+"total liquidity" beside PEX would be adding unlike things. The splash already
+says "Strategy", as `/magnetfi` relies on its own.
+
+**No disclosure was dropped.** The caveat panel was the only place that said
+PEX has had no external audit, that Magnet Strategies holds no funds, and that
+a positive APR can sit alongside a negative return. All three moved into the
+C-Vault's About modal under "What you carry", with tests that fail if they are
+removed again (mutation-verified). Look there before concluding something was
+lost. Per-venue figures now live on the card for that venue.
+
 ### The card layout
 
 The grid is **two per row, fixed** — not a column count that tracks how many

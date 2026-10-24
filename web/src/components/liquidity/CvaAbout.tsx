@@ -293,6 +293,28 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                     Allocations, the NAV mark and the pause switches are theirs. These figures come
                     from a PEX feed delivered over HTTPS, which PEX documents as unsigned — we
                     check the envelope, but it is not a chain read and is not presented as one.
+                    Pool sizes and your own position are read directly from the chain and do not
+                    depend on that feed.
+                  </li>
+                  {/*
+                    Moved here from the page's amber caveat panel, which was
+                    removed with the rest of the PEX-specific page chrome. The
+                    panel was the only place either of these was stated, and
+                    deleting the box is not a reason to stop saying them — so
+                    they live with the product they are about.
+                  */}
+                  <li>
+                    <strong className="font-semibold text-amber-100">PEX has had no external
+                    audit.</strong>{" "}
+                    Capital goes to a third-party protocol by Ultrade. Magnet Strategies holds no
+                    funds and operates no exchange.
+                  </li>
+                  <li>
+                    <strong className="font-semibold text-amber-100">The APR is income, not a
+                    forecast.</strong>{" "}
+                    It excludes asset price moves and net trader P&amp;L, so a positive APR can sit
+                    alongside a negative return. It is not a promised future rate, and it is not
+                    APY.
                   </li>
                 </ul>
               </div>

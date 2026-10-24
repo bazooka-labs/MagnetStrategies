@@ -395,62 +395,21 @@ export function LiquidityView() {
           becomes a backdrop root, leaving it blurring nothing. Same placement
           as /magnetfi — see ArrivalSplash's header. */}
       <StrategySplash />
-      <div className="animate-enter mb-8 flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white">Strategy</h1>
-          {/* ── Why this no longer says "depositing raises the ceiling" ──
-              It was false. Open interest is capped by TWO things: a per-market
-              `max_open_interest_long/short` risk parameter that PEX's admin
-              sets, and a pool-derived reserve check (30% of OI value must be
-              covered by the pool). Depositing moves the second and does
-              nothing to the first. When this was checked, market 1 sat at
-              $2,195.60 of long OI against a $2,200.00 admin cap — $4.40 of
-              headroom — so a $10,000 deposit would have raised tradable OI by
-              $4.40 and no further. Promising a ceiling increase a depositor
-              cannot influence is the worst thing this page could claim. */}
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-gray-400">
-            The capital here is what traders on the terminal trade against. Deposits earn a share
-            of trading fees and take the other side of every position. Open interest is separately
-            capped per market by PEX, so a deposit does not by itself raise the trading ceiling.
-          </p>
-        </div>
-        <div className="flex gap-2.5">
-          <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Total liquidity</div>
-            <div className="mt-0.5 font-mono text-lg font-semibold text-white">
-              {usd(data?.totals.totalUsd ?? null)}
-            </div>
-            {/* The split, shown because it is the proof the total is not
-                double-counted: the C-Vault's capital is a SLICE of the pools,
-                not an addition to them.
-                Worded differently when the direct pools are hidden: "direct"
-                would name a product the visitor cannot see, while the fact it
-                conveys — the vault is a part of the whole, not extra — still
-                matters to someone depositing into the vault. */}
-            {data && (
-              <div className="mt-1 text-[10px] text-gray-500">
-                {showDirect
-                  ? `${usd(data.totals.directUsd)} direct · ${usd(data.totals.viaCvaUsd)} via C-Vault`
-                  : `of which ${usd(data.totals.viaCvaUsd)} is the C-Vault`}
-              </div>
-            )}
-          </div>
-          {/* Fees the pools have earned to date — a cumulative fact, which is
-              what the chain can tell us. The RATE comes from PEX; this is the
-              stock behind it, and it is the number our own derived APR got
-              wrong by annualising. */}
-          <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              Fees to date
-            </div>
-            <div className="mt-0.5 font-mono text-lg font-semibold text-white">
-              {data
-                ? usd(data.markets.reduce((a, m) => a + m.feesSinceInceptionUsd, 0), 2)
-                : "—"}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/*
+        ── No page header, and no headline metrics ──
+        This carried an h1 reading "Strategy", a paragraph about traders on the
+        terminal, and two boxes totalling PEX pool liquidity and PEX fees to
+        date. All four were written when this page WAS the PEX liquidity page.
+
+        It is the strategies page now, and a header describing one venue
+        misdescribes the rest as they arrive: a CLMM pool on PactFi earns
+        nothing from "traders on the terminal", and adding its TVL into a single
+        "total liquidity" beside PEX would be summing unlike things. The splash
+        above already says "Strategy", exactly as /magnetfi relies on its own.
+
+        Per-venue figures belong on the card for that venue, which is where the
+        C-Vault's are.
+      */}
 
       {err && (
         <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
@@ -719,43 +678,15 @@ export function LiquidityView() {
         <NextStrategyTile />
       </div>
 
-      {/* The caveat. Not a footnote: it is the difference between a yield and a return. */}
-      <div className="mt-7 flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.055] px-5 py-4">
-        <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-amber-300" aria-hidden="true" />
-        <div>
-          <p className="text-[12.5px] font-semibold text-amber-300">
-            The APR is income only — it is not your expected return
-          </p>
-          <p className="mt-1.5 max-w-4xl text-[11.5px] leading-relaxed text-gray-300">
-            Both figures are published by PEX, not computed here. The APR is trailing-seven-day
-            fee and yield income annualised against the capital that earned it, and PEX is explicit
-            that it excludes asset price moves and net trader profit and loss — so{" "}
-            <em className="text-gray-200">a positive APR can sit alongside a negative pool
-            return</em>. As an LP you are the counterparty to every trade.
-            {" "}
-            The percentage-point figure beneath each APR is the different and more useful number:
-            the pool&apos;s own return against a benchmark of simply holding the two assets, which
-            does include trader P&amp;L. Negative means holding would have beaten depositing over
-            that window. Neither figure is a promised future rate, and neither is APY.
-            {perf && (
-              <> Statistics as of{" "}
-                {new Date(perf.asOf * 1000).toISOString().slice(0, 10)}
-                {perf.stale && <span className="text-amber-300"> — expired, shown with its date</span>}.
-              </>
-            )}
-          </p>
-          <p className="mt-2 max-w-4xl text-[11px] leading-relaxed text-gray-400">
-            PEX publishes these statistics <em className="text-gray-300">unsigned</em>, trusted
-            through HTTPS delivery rather than a signature — unlike its price feed, which this site
-            verifies cryptographically. Pool sizes, composition and your own position above are read
-            directly from the chain and do not depend on them.
-          </p>
-          <p className="mt-2 text-[11px] text-gray-500">
-            Capital goes to PEX, a third-party protocol by Ultrade. Magnet Strategies holds no funds and
-            operates no exchange. PEX has had no external audit.
-          </p>
-        </div>
-      </div>
+      {/*
+        ── The amber caveat panel is gone ──
+        It explained PEX's APR basis, the unsigned feed and the missing audit —
+        all true, all PEX-specific, and all of it under a page that now hosts
+        more than PEX. Nothing was dropped: every claim moved into the C-Vault's
+        own About modal under "What you carry", which is where a reader deciding
+        about THAT product actually is. Check there before assuming a disclosure
+        was lost.
+      */}
       </div>
     </div>
   );

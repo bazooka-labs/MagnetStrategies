@@ -125,8 +125,27 @@ describe("what it explains", () => {
 
   it("names Ultrade and says the capital is not ours", () => {
     const d = openIt();
-    expect(within(d).getByText(/Ultrade/)).toBeTruthy();
+    // Twice now — the explainer panel and the audit bullet both name it.
+    expect(within(d).getAllByText(/Ultrade/).length).toBeGreaterThan(0);
     expect(within(d).getByText(/custodies none of the money/)).toBeTruthy();
+  });
+
+  /**
+   * These three moved here when the page's amber caveat panel was removed as
+   * PEX-specific page chrome. The panel was the ONLY place each was stated, so
+   * these tests exist to make the move permanent: deleting a box is not a
+   * reason to stop saying what it said.
+   */
+  it("keeps the disclosures the removed caveat panel used to carry", () => {
+    const d = openIt();
+    expect(within(d).getByText(/no external\s+audit/)).toBeTruthy();
+    expect(within(d).getByText(/holds no\s+funds and operates no exchange/)).toBeTruthy();
+    expect(within(d).getByText(/positive APR can sit\s+alongside a negative return/)).toBeTruthy();
+  });
+
+  it("says which figures are chain reads and which are not", () => {
+    const d = openIt();
+    expect(within(d).getByText(/read directly from the chain/)).toBeTruthy();
   });
 
   it("states the downside in the body, not as a footnote", () => {

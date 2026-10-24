@@ -147,11 +147,27 @@ describe("the public page shows the C-Vault only", () => {
     expect(screen.queryByRole("button", { name: /Direct pools/ })).toBeNull();
   });
 
-  it("does not say 'direct' in the totals when those pools are hidden", async () => {
-    // "direct" would name a product the visitor cannot see.
+  it("shows no page-level totals at all", async () => {
+    /**
+     * This used to assert that the headline split did not say "direct" to a
+     * visitor who could not see the direct pools. The split is gone with the
+     * rest of the PEX-specific page chrome — the page hosts more than PEX now,
+     * so one "total liquidity" across venues would sum unlike things. The
+     * assertion is kept, aimed at the whole page rather than the box, so
+     * reintroducing a cross-venue total trips it.
+     */
+    liquidity = LIQUIDITY;
     await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
     const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).not.toMatch(/Total liquidity/i);
+    expect(body).not.toMatch(/Fees to date/i);
     expect(body).not.toMatch(/\bdirect ·/);
+  });
+
+  it("has no page heading — the splash carries the name", async () => {
+    await mount("visitor");
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
   });
 });
 
