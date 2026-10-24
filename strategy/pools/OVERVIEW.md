@@ -44,10 +44,21 @@ before. What has actually settled on chain:
 
 | path | status |
 |---|---|
-| ALGO/USD deposit | ✅ **$5.00, 2026-10-22 03:32 UTC**, first-time depositor — created the `ml2:` box and paid the 26,500 MBR |
-| ALGO/USD withdraw | not yet |
+| ALGO/USD deposit | ✅ 2026-10-22 — $5.00, first-time depositor: created the `ml2:` box and paid the 26,500 µALGO MBR |
+| ALGO/USD withdraw | ✅ 2026-10-22 — full exit, box deleted and MBR refunded (both assets; the all-USDC default shipped after) |
+| ALGO/USD all-USDC | not yet — now the default, never signed |
 | BTC/USD either way | not yet |
-| C-Vault either way | not yet |
+| C-Vault deposit | ✅ 2026-10-23 — $7.00, first-timer: `gu2:` box created, 32,900 µALGO MBR, mark preamble ran |
+| C-Vault withdraw | ✅ 2026-10-23 — full single-asset exit, **two groups in one prompt** (rounds 66273320 and 66273322) |
+
+The C-Vault exit measured, end to end: 5.874225 shares out, 15.474755 ALGO
+converted, **6.962619 USDC + 0.189211 ALGO** received, `gu2:` box deleted and
+its MBR refunded. $7.00 in, ~$6.98 out over ~1.4 hours, against two 20 bps
+spreads, the swap fee and ~0.25 ALGO of network fees.
+
+Dust landed at **1.21%**, not ≤1%: the swap is sized from the SIMULATED payout
+and the actual came in higher, so the remainder exceeds 1% of what actually
+arrived. Cosmetic at this size, and the reason the UI says "roughly 1%".
 
 **`/strategy` is deliberately not in the nav.** Not because it cannot sign — it
 can — but because only one of six paths has a real signature behind it. It is
