@@ -271,7 +271,7 @@ export function CvaActions({
                     output === o ? "bg-white/[0.08] text-white" : "text-white/50 hover:text-white"
                   }`}
                 >
-                  {o === "usdc" ? "Mostly USDC" : "ALGO + USDC"}
+                  {o === "usdc" ? "Convert to USDC" : "ALGO + USDC"}
                 </button>
               ))}
             </div>
@@ -279,23 +279,31 @@ export function CvaActions({
           <p className="text-[10.5px] leading-relaxed text-gray-500">
             {output === "usdc" ? (
               <>
-                {/* "Mostly", not "all". The vault cannot convert everything in
-                    one action — see swapGroup.ts — and a label promising all
-                    USDC while leaving ALGO behind would be the kind of small
-                    lie that costs trust. */}
-                The vault pays out ALGO and USDC, and this converts the ALGO
-                through PEX in the <strong className="font-semibold text-gray-300">same
-                signature</strong>. About{" "}
-                <strong className="font-semibold text-gray-300">99%</strong> comes back as
-                USDC; roughly 1% of the ALGO side stays ALGO, because converting more than
-                the vault guarantees could fail after it had already paid out. The
-                conversion costs about 0.4%.
+                {/* ── Why the label is "Convert to USDC", not "All USDC" ──
+                    "Convert" names what we DO; "All USDC" would promise an
+                    outcome we cannot guarantee, since roughly 1% stays ALGO
+                    and the conversion can fail. A verb is honest about a
+                    process; a noun claims a result.
+
+                    The last sentence replaces a recovery feature. A button to
+                    convert the leftover would cost 0.043 ALGO in fees against
+                    ~0.19 ALGO of dust — 23% of it — so the right answer is to
+                    tell the user plainly and let them decide, not to build a
+                    control they should not press. */}
+                The vault pays out ALGO and USDC. We&apos;ll convert the ALGO for you in
+                the <strong className="font-semibold text-gray-300">same signature</strong>,
+                so you receive close to all of it as USDC — a little under{" "}
+                <strong className="font-semibold text-gray-300">1%</strong> stays as ALGO,
+                and the conversion costs about 0.4%. If the conversion doesn&apos;t go
+                through you simply keep the ALGO and can swap it yourself whenever you
+                like; <strong className="font-semibold text-gray-300">nothing is
+                lost</strong>.
               </>
             ) : (
               <>
                 Paid out as <strong className="font-semibold text-gray-300">ALGO and
                 USDC</strong>, in the vault&apos;s current proportions — no conversion, so
-                no swap cost.
+                no conversion cost.
               </>
             )}{" "}
             This vault&apos;s minimum withdrawal is $
@@ -434,9 +442,10 @@ function CvaOutcome({ done, mode }: {
             // Half-done is its own state. Calling it success or failure would
             // both be false, and the user needs to know which half happened.
             <span>
-              Your funds left the vault, but converting the ALGO to USDC did not
-              complete. Nothing is lost — you are holding ALGO and USDC. Use
-              &ldquo;ALGO + USDC&rdquo; to see your balance, or try the conversion again.
+              Your funds left the vault, but the conversion didn&apos;t go through.
+              <strong className="font-semibold"> Nothing is lost</strong> — the ALGO and
+              USDC are both in your wallet, and you can swap the ALGO yourself whenever
+              you like.
             </span>
           )}
           {done.outcome === "unknown" && (

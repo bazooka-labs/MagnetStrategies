@@ -266,15 +266,26 @@ describe("what the vault exit pays out", () => {
     expect(screen.getByText(/same/)).toBeTruthy();
   });
 
-  it("says MOSTLY USDC, not all — and why", async () => {
-    // The vault cannot convert everything in one action. A label promising all
-    // USDC while leaving ALGO behind is the small lie this test exists to stop.
+  it("names the ACTION, not a guaranteed outcome", async () => {
+    // "Convert to USDC" rather than "All USDC": a verb is honest about a
+    // process that can be partial or fail; a noun claims a result we cannot
+    // guarantee. This is the small lie the test exists to stop.
     await openPanel({ shares: 100, lastDepositRound: 1 }, "withdraw");
-    expect(screen.getByText("Mostly USDC")).toBeTruthy();
-    expect(screen.getByText(/roughly 1% of the ALGO side stays ALGO/)).toBeTruthy();
-    expect(screen.getByText(/could fail after it had already paid out/)).toBeTruthy();
-    // And the conversion's cost is stated.
-    expect(screen.getByText(/costs about 0\.4%/)).toBeTruthy();
+    expect(screen.getByText("Convert to USDC")).toBeTruthy();
+    expect(screen.queryByText("All USDC")).toBeNull();
+  });
+
+  it("states the residue, the cost, and what happens if it fails", async () => {
+    await openPanel({ shares: 100, lastDepositRound: 1 }, "withdraw");
+    // JSX wraps text across elements, so normalise whitespace once and assert
+    // against the clean string rather than contorting each matcher.
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    // The four facts a user needs before signing this.
+    expect(body).toContain("convert the ALGO for you");
+    expect(body).toContain("stays as ALGO");          // the residue
+    expect(body).toContain("about 0.4%");             // the cost
+    expect(body).toContain("nothing is lost");        // what failure means
+    expect(body).toContain("keep the ALGO and can swap it yourself");
   });
 
   it("offers both assets with no conversion cost", async () => {
@@ -283,8 +294,8 @@ describe("what the vault exit pays out", () => {
     fireEvent.change(screen.getAllByPlaceholderText("0")[0], { target: { value: "10" } });
     fireEvent.click(screen.getByText("ALGO + USDC"));
     await waitFor(() => expect(screen.getByText(/no conversion, so/)).toBeTruthy());
-    expect(screen.queryByText(/Mostly USDC/)).toBeTruthy();   // the toggle stays
-    expect(screen.queryByText(/stays ALGO/)).toBeNull();      // the caveat goes
+    expect(screen.queryByText("Convert to USDC")).toBeTruthy();  // the toggle stays
+    expect(document.body.textContent ?? "").not.toMatch(/stays as ALGO/); // caveat goes
     expect(btn("withdraw").disabled).toBe(false);
   });
 });

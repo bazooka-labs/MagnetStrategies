@@ -1073,3 +1073,42 @@ capability gap, is why `/strategy` is out of the nav.
 - **Not a gap, recorded so it is not re-litigated:** no `Pool` interface is
   extracted. Two implementations share their gates and their discipline, not
   their shape — see ARCHITECTURE.md, "What the C-Vault proved about the seam".
+
+### 11.18 The failed-conversion case is COPY, not a feature
+
+The two-group exit can leave the conversion undone: group A commits, group B
+does not, and the user holds ALGO and USDC. The obvious response was a
+"convert the leftover" button, and it was scoped — detection, a minimum, a
+fee reserve, a guard against the original still landing inside its 47-minute
+validity window.
+
+It was not built, on the numbers:
+
+```
+routine dust      0.189 ALGO ($0.02)   the swap fee is 22.73% of it
+failed group B   15.475 ALGO ($1.68)   the swap fee is  0.28% of it
+```
+
+The swap costs 0.043 ALGO whatever its size, so a recovery button on the normal
+path would destroy about a quarter of what it recovered. On the rare failure
+the amount IS worth converting — but by then the user holds ordinary ALGO in
+their own wallet and can swap it anywhere, so the button buys convenience, not
+capability, in a case that should almost never happen.
+
+**What the funds actually do on failure**, which is why copy is sufficient:
+group A pays out by inner transaction directly to the user, and group B's first
+transaction is the user paying that ALGO to the swap venue. Groups are atomic,
+so if B fails that payment never happens. There is no intermediate custody and
+nothing to recover — the end state is identical to having chosen "ALGO + USDC".
+
+So the card says it instead. The label is **"Convert to USDC"**, not "All USDC":
+a verb is honest about a process that can be partial or fail, where a noun
+claims a result we cannot guarantee. The body states the residue, the ~0.4%
+cost, and that a failed conversion leaves the ALGO in the wallet to swap later
+with nothing lost. Tests assert all four, and were checked by removing the
+reassurance and confirming they fail.
+
+One nuance recorded for whoever revisits this: a group B that was BROADCAST but
+not confirmed can still land up to ~47 minutes later (1,000-round validity
+window). Any future retry control must distinguish refused-at-submission and
+rejected-on-chain, which are safe to retry, from unknown, which is not.
