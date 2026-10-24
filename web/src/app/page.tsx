@@ -117,12 +117,12 @@ export default function LandingPage() {
               the nav — hence real hit areas rather than bare 20px glyphs. */}
           <div className="mt-4 flex items-center gap-4 animate-hero-outro-3">
             {([
-              [SOCIALS.x, "X / Twitter", <XIcon key="x" className="h-12 w-12" />],
-              [SOCIALS.discord, "Discord", <DiscordIcon key="d" className="h-12 w-12" />],
+              [SOCIALS.x, "X / Twitter", <XIcon key="x" className="h-10 w-10" />],
+              [SOCIALS.discord, "Discord", <DiscordIcon key="d" className="h-10 w-10" />],
               [SOCIALS.github, "GitHub", /* Heavier stroke than lucide's 2 default looks at this size: X and
                    Discord are solid shapes, so a hairline outline beside them
                    reads as a lighter, lesser button rather than a matching one. */
-              <Github key="g" className="h-12 w-12" strokeWidth={2.25} />],
+              <Github key="g" className="h-10 w-10" strokeWidth={2.25} />],
             ] as const).map(([href, label, icon]) => (
               <a
                 key={label}
@@ -142,10 +142,36 @@ export default function LandingPage() {
                 // and appears only on hover: always-on, three of them would
                 // compete with the wordmark above.
                 className={
-                  "group rounded-2xl border border-white/30 bg-black/30 p-4 text-white backdrop-blur-md " +
+                  /*
+                    SIZE: 15% smaller as a whole, 2026-10-23. The glyph went
+                    48px -> 40px and the padding 16px -> 14px, so the button is
+                    68px square against 80px before — 0.85 exactly. Shrinking
+                    only the glyph would have left the same footprint with more
+                    air in it, which is not what "smaller" looks like.
+
+                    COLOUR: magnet-300 (#d8b4fe), not white. All three glyphs
+                    draw with currentColor — the two SVGs fill with it and
+                    lucide strokes with it — so one class on the anchor colours
+                    the set. The light end of the ramp rather than magnet-400
+                    or -500: these sit on a `bg-black/30` face over a LIGHT
+                    photograph, and a mid purple goes muddy there instead of
+                    reading as purple. It already matches the hover border and
+                    the focus ring, both magnet-300.
+
+                    The FACE darkened from black/30 to black/55 at the same
+                    time, and that is not a taste call. Measured off the render:
+                    magnet-300 on the old face gave 1.71:1, under the 3:1 WCAG
+                    asks of a graphical object that carries meaning — and these
+                    carry which platform you are about to open. White had
+                    scraped 3.03:1. The darker face brings the purple back to
+                    3.62:1 and is also why the glyphs now read as purple at all:
+                    a 30%-black veil over a near-white photo left the face at
+                    L=0.30, close enough to the glyph to grey it out.
+                  */
+                  "group rounded-2xl border border-white/30 bg-black/55 p-3.5 text-magnet-300 backdrop-blur-md " +
                   "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_3px_0_rgba(0,0,0,0.45),0_10px_24px_rgba(0,0,0,0.45)] " +
                   "transition-all duration-150 " +
-                  "hover:-translate-y-0.5 hover:border-magnet-300/70 hover:bg-black/40 " +
+                  "hover:-translate-y-0.5 hover:border-magnet-300/70 hover:bg-black/65 hover:text-magnet-100 " +
                   "hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_4px_0_rgba(0,0,0,0.45),0_14px_30px_rgba(168,85,247,0.45)] " +
                   "active:translate-y-[3px] " +
                   "active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.5),0_0_0_rgba(0,0,0,0),0_3px_8px_rgba(0,0,0,0.4)] " +
