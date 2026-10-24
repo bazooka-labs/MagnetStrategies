@@ -196,6 +196,25 @@ export type StrategyLiquidity = {
     allocations: CvaAllocation[];
     totalMarkets: number;
     yourShares: number | null;
+    /**
+     * Shares outstanding, and the price the CONTRACT prices them at.
+     *
+     * Deliberately the vault's own `total_nav_usd / total_cva_shares` globals
+     * rather than `navUsd` above, which we derive live from the pools. The two
+     * agree closely (chain-derived $1.1907 against the contract's $1.1907 when
+     * last checked, and against PEX's published share price of $1.190755), but
+     * they are not the same quantity: the contract's is what a withdrawal is
+     * actually priced against, and it is the one the withdraw form already
+     * uses. A card that valued a position differently from the form that
+     * spends it would be reporting a discrepancy we invented.
+     *
+     * Null when the globals could not be read, never 0 — "no shares exist" and
+     * "we could not read it" are the same pixels meaning opposite things.
+     */
+    totalShares: number | null;
+    navPerShare: number | null;
+    /** The user's position in dollars, at the contract's own share price. */
+    yourUsd: number | null;
   };
   totals: ReturnType<typeof liquidityTotals>;
   algoUsd: number;
@@ -279,6 +298,20 @@ export async function readStrategyLiquidity(
    * today; non-zero idle cash would be NAV outside any pool, and both this and
    * `liquidityTotals`' "the vault is a slice" assumption would need revisiting.
    */
+  /**
+   * The vault's own share accounting, straight off its globals.
+   *
+   * Read here rather than derived, and tolerant of failure: the page's job is
+   * the pools, and a vault global we cannot read should cost the three share
+   * stats, not the whole render. `readCvaVaultState` throws deliberately on a
+   * renamed global (a stale pinned layout), and that throw belongs to the
+   * signing path, not to a card.
+   */
+  const [shareState, yourShares] = await Promise.all([
+    readCvaShareState(algod),
+    address ? readCvaUserShares(algod, address) : Promise.resolve(null),
+  ]);
+
   const byMarketPre = new Map(markets.map((m) => [m.marketId, m]));
   const navUsd = allocations.length > 0
     ? allocations.reduce((acc, alloc) => {
@@ -299,11 +332,53 @@ export async function readStrategyLiquidity(
       // idle capital in the denominator — neither of which a blend of ours
       // could do.
       totalMarkets: allocations.length,
-      yourShares: address ? await readCvaUserShares(algod, address) : null,
+      yourShares: yourShares,
+      totalShares: shareState?.totalShares ?? null,
+      navPerShare: shareState?.navPerShare ?? null,
+      yourUsd: yourShares !== null && shareState ? yourShares * shareState.navPerShare : null,
     },
     totals: liquidityTotals(markets.map((m) => m.value), navUsd ?? 0),
     algoUsd,
   };
+}
+
+/**
+ * The vault's share supply and the price its own contract puts on a share.
+ *
+ * ── Why this reads the globals directly ──
+ * `readCvaVaultState` in preflight.ts reads the same app and THROWS when a
+ * pinned global is missing, because every gate it feeds would otherwise read
+ * as "fine" against a layout that moved. That is correct for the signing path
+ * and wrong here: these three numbers are displayed, never signed against, and
+ * a vault rename should blank three stats rather than break the page. So this
+ * returns null where that one throws.
+ *
+ * Both globals are in micro-units (1e6), confirmed against the chain:
+ * total_nav_usd 1667725953 and total_cva_shares 1400654055 give $1,667.73
+ * over 1,400.654 shares = $1.190677 — which agrees with the share price PEX
+ * publishes in its own performance bundle ($1.190755, a few hours older).
+ */
+async function readCvaShareState(
+  algod: algosdk.Algodv2,
+): Promise<{ totalShares: number; navPerShare: number } | null> {
+  try {
+    const app = await algod.getApplicationByID(PEX_APPS.cvaVault).do();
+    let navMicro: number | null = null;
+    let shareMicro: number | null = null;
+    for (const kv of app.params.globalState ?? []) {
+      const k = Buffer.from(kv.key as unknown as Uint8Array).toString("utf8");
+      if (k === "total_nav_usd") navMicro = Number(kv.value?.uint ?? 0);
+      if (k === "total_cva_shares") shareMicro = Number(kv.value?.uint ?? 0);
+    }
+    if (navMicro === null || shareMicro === null) return null;
+    const totalShares = shareMicro / 1e6;
+    // A vault with no shares has no share price. Returning 0 would value every
+    // position at zero rather than declining to value it.
+    if (totalShares <= 0) return null;
+    return { totalShares, navPerShare: navMicro / 1e6 / totalShares };
+  } catch {
+    return null;
+  }
 }
 
 /** The vault's slice of one market, for display beside that market's card. */

@@ -75,6 +75,8 @@ export type PoolReturn = {
   hasGaps: boolean;
 };
 
+export const PERF_PERIODS: readonly PerfPeriod[] = ["7d", "30d", "90d", "total"];
+
 export type PoolStats = {
   /** Null when apr_status is not ready, or the basis is one PEX says not to show. */
   income: IncomeApr | null;
@@ -82,6 +84,17 @@ export type PoolStats = {
   ret: PoolReturn | null;
   /** PEX's reason string when `ret` is null, for display rather than a blank. */
   retUnavailableReason: string | null;
+  /**
+   * EVERY window PEX published, not just the selected one.
+   *
+   * The card shows one period; the About modal shows the ladder, because a
+   * single window is exactly what makes a pool's record easy to misread — the
+   * C-Vault's 7d and 90d returns were +2.90% and +15.27% on the same day.
+   * A period absent here is one PEX did not publish or could not compute;
+   * `reasons` says which.
+   */
+  returns: Partial<Record<PerfPeriod, PoolReturn>>;
+  reasons: Partial<Record<PerfPeriod, string>>;
 };
 
 export type PerformanceBundle = {
@@ -191,8 +204,22 @@ export function parsePerformanceBundle(
   for (const [k, v] of Object.entries(payloads)) {
     const p = (v ?? {}) as Record<string, unknown>;
     const perf = (p.performance ?? {}) as Record<string, unknown>;
-    const { ret, reason } = parseReturn(perf[period], period);
-    byKey[k] = { income: parseIncome(p.income_apr), ret, retUnavailableReason: reason };
+    // Every window, so the About modal can show the ladder without a second
+    // fetch. `ret` stays the selected one — the card is unchanged by this.
+    const returns: Partial<Record<PerfPeriod, PoolReturn>> = {};
+    const reasons: Partial<Record<PerfPeriod, string>> = {};
+    for (const w of PERF_PERIODS) {
+      const parsed = parseReturn(perf[w], w);
+      if (parsed.ret) returns[w] = parsed.ret;
+      if (parsed.reason) reasons[w] = parsed.reason;
+    }
+    byKey[k] = {
+      income: parseIncome(p.income_apr),
+      ret: returns[period] ?? null,
+      retUnavailableReason: reasons[period] ?? null,
+      returns,
+      reasons,
+    };
   }
 
   return {

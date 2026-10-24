@@ -19,7 +19,7 @@
  * cards rendered anyway.
  */
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ADMIN = "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A";
 const VISITOR = "A4YW55ZEC2TTIN2TEVN56IRVGLWQYQRUNJTPG37OTWE4EJWNAH3EUKHZKA";
@@ -27,28 +27,93 @@ const VISITOR = "A4YW55ZEC2TTIN2TEVN56IRVGLWQYQRUNJTPG37OTWE4EJWNAH3EUKHZKA";
 let wallet: { address: string | null; isConnected: boolean } =
   { address: null, isConnected: false };
 
+/**
+ * A non-null algod stands in for a node: `load()` returns early without one, so
+ * a null client would make every data assertion below pass against an unloaded
+ * page. The object is never called — `readStrategyLiquidity` is mocked.
+ */
+// STABLE identity, deliberately. `load` is a useCallback keyed on
+// [algodClient, address] and the effect that calls it is keyed on `load`, so a
+// fresh object per render re-runs the read forever — which it did, and hung the
+// suite rather than failing it.
+const ALGOD = {} as unknown;
+
 vi.mock("@/hooks/useWallet", () => ({
   useWallet: () => ({
-    algodClient: null,
+    algodClient: ALGOD,
     address: wallet.address,
     isConnected: wallet.isConnected,
     signTransactions: null,
   }),
 }));
-// The read layer needs a node; this page must render without one, showing its
-// error state rather than throwing — which is also what a visitor sees offline.
+/**
+ * The read layer needs a node. By default both reads REJECT — the page must
+ * render without a node, showing its error state rather than throwing, which is
+ * also what a visitor sees offline. `liquidity`/`bundle` let a test supply real
+ * figures instead; the share stats cannot be asserted against a null read.
+ */
+let liquidity: unknown = null;
+let bundle: unknown = null;
+
 vi.mock("@/lib/strategy/reads", () => ({
-  readStrategyLiquidity: () => Promise.reject(new Error("no node in this test")),
+  readStrategyLiquidity: () => liquidity
+    ? Promise.resolve(liquidity)
+    : Promise.reject(new Error("no node in this test")),
   cvaShareOfMarket: () => null,
 }));
 vi.mock("@/lib/strategy/performance", () => ({
-  fetchPerformanceBundle: () => Promise.reject(new Error("no bundle in this test")),
-  benchmarkLabel: () => "vs holding",
+  fetchPerformanceBundle: () => bundle
+    ? Promise.resolve(bundle)
+    : Promise.reject(new Error("no bundle in this test")),
+  benchmarkLabel: () => "vs 50/50 geometric benchmark",
   marketKey: (id: number) => `market-${id}`,
   cvaKey: (id: number) => `cva-${id}`,
 }));
 
-afterEach(cleanup);
+/** The vault's real shape on 2026-10-23, with a position added. */
+const LIQUIDITY = {
+  markets: [],
+  cva: {
+    navUsd: 1557.42,
+    allocations: [{ marketId: 1 }, { marketId: 2 }],
+    totalMarkets: 2,
+    yourShares: 5.879,
+    totalShares: 1400.654055,
+    navPerShare: 1.190677,
+    yourUsd: 6.999,
+  },
+  totals: { totalUsd: 4689, directUsd: 3132, viaCvaUsd: 1557 },
+  algoUsd: 0.1234,
+};
+const BUNDLE = {
+  asOf: 1792800000, updatedAt: 1792800000, expiresAt: 1792929600,
+  sourceRound: 66274546, stale: false,
+  byKey: {
+    "cva-3690309167": {
+      income: { totalPct: 7.57, feePct: 1.52, yieldPct: 6.05, feeUsd7d: 0.26,
+        yieldUsd7d: 1.67, windowStart: 0, windowEnd: 0, missingEvents: 0 },
+      ret: { period: "30d", productPct: 5.64, holdPct: -4, vsHoldingPoints: 9.64,
+        benchmarkKind: "geometric_mean_50_50", points: 30, hasGaps: false },
+      retUnavailableReason: null, returns: {}, reasons: {},
+    },
+  },
+};
+
+// The ALGO price comes from Coinbase before anything else is read, so it is
+// stubbed rather than reached — an unstubbed fetch makes `load` throw and the
+// page render its error state regardless of what the read mocks return.
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(() =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve({ price: "0.1234" }) }),
+  ));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  liquidity = null;
+  bundle = null;
+});
 
 async function mount(as: "visitor" | "admin" | "disconnected") {
   wallet = as === "disconnected"
@@ -56,13 +121,15 @@ async function mount(as: "visitor" | "admin" | "disconnected") {
     : { address: as === "admin" ? ADMIN : VISITOR, isConnected: true };
   const { LiquidityView } = await import("./LiquidityView");
   render(<LiquidityView />);
-  await waitFor(() => expect(screen.getByText("C-Vault")).toBeTruthy());
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
+  });
 }
 
 describe("the public page shows the C-Vault only", () => {
   it("renders the C-Vault for a disconnected visitor", async () => {
     await mount("disconnected");
-    expect(screen.getByText("C-Vault")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
   });
 
   it("does NOT render the direct pool cards for a visitor", async () => {
@@ -112,5 +179,61 @@ describe("the admin can open them", () => {
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "ALGO/USD" })).toBeNull();
     });
+  });
+});
+
+/**
+ * The card itself.
+ *
+ * ── Why the share stats are asserted against a REAL read ──
+ * With the read rejecting, every one of them renders "—", so a test over the
+ * default mock would pass whether the wiring existed or not. These use the
+ * vault's actual numbers from 2026-10-23: $1,557.42 of NAV over 1,400.654
+ * shares at $1.190677 each.
+ */
+describe("the C-Vault card", () => {
+  it("carries the display heading", async () => {
+    await mount("visitor");
+    const h = screen.getByRole("heading", { name: "C-Vault Strategy" });
+    // The glow is the point of the heading treatment — a plain h2 is the
+    // regression, and it is invisible in a text-only assertion.
+    expect(h.className).toContain("magnet-glow-soft");
+    expect(h.className).toContain("font-display");
+  });
+
+  it("offers the About explainer to a public visitor", async () => {
+    // Not admin-gated: a visitor who cannot see the direct pools is exactly
+    // the reader who needs this.
+    await mount("visitor");
+    expect(screen.getByRole("button", { name: /About/ })).toBeTruthy();
+  });
+
+  it("shows the APR in lime, and only this card's", async () => {
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("7.6%")).toBeTruthy());
+    expect(screen.getByText("7.6%").className).toContain("text-lime-300");
+  });
+
+  it("shows pool liquidity, shares outstanding and the user's own position", async () => {
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
+    const read = (label: string) =>
+      screen.getByText(label).parentElement?.textContent ?? "";
+    expect(read("Pool liquidity")).toContain("$1,557");
+    expect(read("Shares outstanding")).toContain("1,400.65");
+    expect(read("Your shares")).toContain("5.879");
+    // Priced at the CONTRACT's NAV per share, the same basis the withdraw form
+    // spends against — 5.879 shares x $1.190677 = $7.00.
+    expect(read("Your position")).toContain("$7.00");
+  });
+
+  it("declines to value a position it could not read, rather than showing $0", async () => {
+    liquidity = { ...LIQUIDITY, cva: { ...LIQUIDITY.cva, yourUsd: null, yourShares: null } };
+    await mount("disconnected");
+    await waitFor(() => expect(screen.getByText("Your position")).toBeTruthy());
+    expect(screen.getByText("Your position").parentElement?.textContent).not.toContain("$0");
   });
 });

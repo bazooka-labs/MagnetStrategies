@@ -39,6 +39,7 @@ import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
+import { CvaAbout } from "./CvaAbout";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
   type PerformanceBundle, type PoolStats,
@@ -107,7 +108,14 @@ function TabButton({ active, onClick, icon: Icon, label }: {
  * the APR to the period return. `stats === null` renders "—", never 0% — their
  * instruction and the failure mode that matters most here.
  */
-function YieldFigure({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
+/**
+ * `accent` is the C-Vault's. The direct pools keep the white figure they had:
+ * lime is how this page says "this is the one", and three lime numbers say
+ * nothing. See `.lime-glow` in globals.css.
+ */
+function YieldFigure({ stats, stale, accent = false }: {
+  stats: PoolStats | null; stale: boolean; accent?: boolean;
+}) {
   const i = stats?.income ?? null;
   const r = stats?.ret ?? null;
   return (
@@ -119,7 +127,9 @@ function YieldFigure({ stats, stale }: { stats: PoolStats | null; stale: boolean
         <span className="text-[9.5px] text-gray-600">past 7d · PEX</span>
       </div>
       <div className="mt-0.5 flex items-baseline gap-2">
-        <span className="font-mono text-[32px] font-semibold leading-none tracking-tight text-white">
+        <span className={`font-mono text-[32px] font-semibold leading-none tracking-tight ${
+          accent ? "lime-glow text-lime-300" : "text-white"
+        }`}>
           {pct(i?.totalPct ?? null)}
         </span>
         {stale && (
@@ -377,25 +387,56 @@ export function LiquidityView() {
         )}
       </div>
 
-      {/* One card alone in a three-column grid reads as two missing cards, so
-          the layout follows what is actually shown. */}
+      {/*
+        One card alone in a three-column grid reads as two missing cards, so the
+        layout follows what is actually shown — and the CAVEAT is inside this
+        wrapper rather than beside it, because the two have to share a width.
+        Rendered with only the C-Vault, a 28rem card above a full-bleed amber
+        panel put the entire right half of the page in shadow and made the
+        warning the largest object on screen. Checked by rasterising the page,
+        not by reasoning about it.
+      */}
+      <div className={showDirect ? "" : "md:max-w-2xl"}>
       <div className={showDirect
         ? "grid gap-5 md:grid-cols-3"
-        : "grid gap-5 md:max-w-md"}>
-        {/* ── C-Vault ── */}
+        : "grid gap-5"}>
+        {/* ── C-Vault ──
+            The hero card: it is the only product the public sees, so it gets
+            the display heading, the drifting blob and the lime rate. The two
+            admin pool cards keep the quieter treatment they had — a page where
+            everything glows ranks nothing. */}
         <CardShell>
-          <div className="flex flex-col gap-4">
+          {/* Behind the content and non-interactive, same as SectionHero's.
+              The Panel already clips (`overflow-hidden`), so it cannot bleed
+              past the rounded corner. */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div className="animate-blob-drift absolute -right-20 -top-20 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+          </div>
+
+          <div className="relative flex flex-col gap-4">
             <div className="flex items-start justify-between gap-2.5">
               <div>
                 <div className="flex items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-magnet-400" aria-hidden="true" />
-                  <h2 className="text-[17px] font-bold text-white">C-Vault</h2>
+                  <h2 className="font-display magnet-glow-soft text-xl font-bold text-white">
+                    C-Vault Strategy
+                  </h2>
                 </div>
                 <p className="mt-1.5 text-[11.5px] text-gray-500">Managed by PEX · spans both markets</p>
               </div>
               <span className="shrink-0 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-magnet-300">
                 AUTO
               </span>
+            </div>
+
+            {/* Under the heading, not in the row above it: the title and the
+                thing that explains it are one object. Same reasoning as the
+                MagnetFi vault hero. */}
+            <div>
+              <CvaAbout
+                stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
+                stale={!!perf?.stale}
+              />
             </div>
 
             {/* PEX publishes the vault's own APR under its own key, so no
@@ -405,15 +446,28 @@ export function LiquidityView() {
             <YieldFigure
               stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
               stale={!!perf?.stale}
+              accent
             />
 
             <div className="h-px bg-white/[0.07]" />
 
+            {/*
+              ── Why "Your position" is dollars and shares both ──
+              Shares are what the contract holds and what a withdrawal burns;
+              dollars are the only unit a depositor thinks in. Showing one
+              without the other means either a number nobody can value, or a
+              value with nothing behind it. `yourUsd` is priced at the
+              CONTRACT's own NAV per share, which is the same basis the
+              withdraw form below spends against — see the note in reads.ts.
+            */}
             <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
-              <Stat label="Vault NAV" value={usd(data?.cva.navUsd ?? null)} />
-              <Stat label="Markets" value={num(data?.cva.allocations.length ?? null)} />
+              <Stat label="Pool liquidity" value={usd(data?.cva.navUsd ?? null)} />
+              <Stat label="Shares outstanding" value={num(data?.cva.totalShares ?? null, 2)} />
+              <Stat
+                label="Your position"
+                value={data?.cva.yourUsd != null ? usd(data.cva.yourUsd, 2) : "—"}
+              />
               <Stat label="Your shares" value={num(data?.cva.yourShares ?? null, 4)} />
-              <Stat label="Rebalanced" value="by PEX" />
             </dl>
 
             <div className="rounded-lg border border-white/[0.06] bg-black/30 px-3 py-2.5 text-[10.5px] leading-relaxed text-gray-500">
@@ -589,6 +643,7 @@ export function LiquidityView() {
             operates no exchange. PEX has had no external audit.
           </p>
         </div>
+      </div>
       </div>
     </div>
   );

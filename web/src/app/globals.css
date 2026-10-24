@@ -98,6 +98,15 @@ body {
   animation: float 5s ease-in-out infinite;
 }
 
+/* The APR figure. Lime rather than the brand purple on purpose: it is the one
+   number on the strategy card that is a RESULT rather than an identity, and it
+   should not read as part of the heading it sits under. Softer than the hero
+   glows — a 40px number carrying a hero-weight drop shadow smears. */
+.lime-glow {
+  text-shadow: 0 0 18px rgba(163, 230, 53, 0.45),
+               0 0 42px rgba(132, 204, 22, 0.25);
+}
+
 /* Soft static glow — calmer alternative to the pulsing hero glow */
 .magnet-glow-soft {
   filter: drop-shadow(0 0 16px rgba(192, 132, 252, 0.45))
