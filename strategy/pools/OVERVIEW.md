@@ -14,18 +14,50 @@ protocol — the same protocol the Trading Terminal trades on, approached from t
 other side of the book. Every action is a PEX call signed by the user's wallet,
 **in our UI** — the page does not hand anyone to a third-party frontend.
 
+## What the public sees (2026-10-23)
+
+**Only the C-Vault.** The two direct market pools render behind an admin gate on
+`/strategy` — a `Shield` "Direct pools" toggle beside the Pools pill, visible
+only to `MAGNETFI_ADMIN_ADDRESS` and closed until pressed. The C-Vault is the
+product going in front of users first, and a page offering three destinations
+invites a choice nobody has been given the context to make.
+
+Both direct paths are *finished*, not hidden because they are unready — they are
+built, asserted, simulated, and ALGO/USD has real signatures behind it. The
+table below records the engineering state; this section records the visibility
+decision, which is a separate thing and reversible in one boolean.
+
+**The gate is cosmetic, by design.** Everything on the page is a PEX call signed
+by the user's own wallet. Anyone can deposit to either market through PEX
+directly, and no claim is made otherwise — `isAdmin` hides a card, it does not
+guard an authority. Real authority is in the contracts' own admin checks. Same
+pattern and same address as `/magnetfi` and `/contact`.
+
+Two pieces of copy follow the gate rather than being written once:
+
+- the headline split reads `$X direct · $Y via C-Vault` for an admin and
+  `of which $Y is the C-Vault` for everyone else — "direct" would name a
+  product the visitor cannot see, while the fact it carries (the vault is a
+  *slice* of the pools, not an addition) still matters to a vault depositor;
+- the grid is `md:grid-cols-3` open and `md:max-w-md` closed, because one card
+  alone in a three-column grid reads as two cards that failed to load.
+
+`LiquidityView.test.tsx` asserts what a visitor can *see*, not the boolean:
+drop the gate and three tests go red (verified by mutation).
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |
 |---|---|---|---|---|
-| ALGO/USD (market 1) | PEX direct LP | **Live** | **Live** | Built, asserted and simulated against MainNet |
-| BTC/USD (market 2) | PEX direct LP | **Live** | **Live** | Synthetic index — holds no BTC, backed with ALGO + USDC |
-| C-Vault | PEX managed vault | **Live** | **Live** | Mark preamble assembled by the SDK; withdrawals denominated in USD |
+| ALGO/USD (market 1) | PEX direct LP | **Live** | **Live** | Admin-only in the UI; built, asserted and simulated against MainNet |
+| BTC/USD (market 2) | PEX direct LP | **Live** | **Live** | Admin-only in the UI; synthetic index — holds no BTC, backed with ALGO + USDC |
+| C-Vault | PEX managed vault | **Live** | **Live** | **The public one.** Mark preamble assembled by the SDK; withdrawals denominated in USD |
 | CLMM pools | PactFi | Not started | — | Waiting on PactFi to release the platform |
 | Structured vaults | Ours | Not started | — | Not designed |
 
-**All three destinations deposit and withdraw in our own UI.** Nothing links
-out. Measured on MainNet:
+**All three destinations deposit and withdraw in our own UI** — "Live" above
+means the path works, not that it is public; see the section above. Nothing
+links out. Measured on MainNet:
 
 | action | group | fee | note |
 |---|---|---|---|

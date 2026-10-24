@@ -30,9 +30,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Coins, Droplets, Layers, TrendingUp } from "lucide-react";
+import { AlertTriangle, Coins, Droplets, Layers, Shield, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PEX_APPS } from "@/lib/perps";
+import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
+import { RAISED_AMBER, RAISED_AMBER_ON } from "@/components/raisedButton";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
@@ -200,7 +202,25 @@ function CardShell({ children }: { children: React.ReactNode }) {
 }
 
 export function LiquidityView() {
-  const { algodClient, address, signTransactions } = useWallet();
+  const { algodClient, address, signTransactions, isConnected } = useWallet();
+  /**
+   * ── Only the C-Vault is public ──
+   * The two direct market pools are admin-only for now. Not because they are
+   * unfinished — both paths are built, asserted, simulated and ALGO/USD has
+   * real signatures behind it — but because the C-Vault is the product going
+   * in front of users first, and a page offering three destinations invites a
+   * choice nobody has been given the context to make.
+   *
+   * Gating is COSMETIC and deliberately so. Everything here is a PEX call
+   * signed by the user's own wallet; anyone can deposit to either pool through
+   * PEX directly, and `isAdmin` hides a card rather than guarding an
+   * authority. Real authority lives in the contracts' own admin checks. Same
+   * pattern and same address as /magnetfi and /contact.
+   */
+  const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
+  const [showPools, setShowPools] = useState(false);
+  /** The direct pools render only for an admin who has opened them. */
+  const showDirect = isAdmin && showPools;
   const [data, setData] = useState<StrategyLiquidity | null>(null);
   const [perf, setPerf] = useState<PerformanceBundle | null>(null);
   /**
@@ -285,7 +305,7 @@ export function LiquidityView() {
               $4.40 and no further. Promising a ceiling increase a depositor
               cannot influence is the worst thing this page could claim. */}
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-gray-400">
-            These pools are the capital traders on the terminal trade against. Deposits earn a share
+            The capital here is what traders on the terminal trade against. Deposits earn a share
             of trading fees and take the other side of every position. Open interest is separately
             capped per market by PEX, so a deposit does not by itself raise the trading ceiling.
           </p>
@@ -298,10 +318,16 @@ export function LiquidityView() {
             </div>
             {/* The split, shown because it is the proof the total is not
                 double-counted: the C-Vault's capital is a SLICE of the pools,
-                not an addition to them. */}
+                not an addition to them.
+                Worded differently when the direct pools are hidden: "direct"
+                would name a product the visitor cannot see, while the fact it
+                conveys — the vault is a part of the whole, not extra — still
+                matters to someone depositing into the vault. */}
             {data && (
               <div className="mt-1 text-[10px] text-gray-500">
-                {usd(data.totals.directUsd)} direct · {usd(data.totals.viaCvaUsd)} via C-Vault
+                {showDirect
+                  ? `${usd(data.totals.directUsd)} direct · ${usd(data.totals.viaCvaUsd)} via C-Vault`
+                  : `of which ${usd(data.totals.viaCvaUsd)} is the C-Vault`}
               </div>
             )}
           </div>
@@ -338,9 +364,24 @@ export function LiquidityView() {
             label="Pools"
           />
         </div>
+        {/* Amber, like every other "this is not ordinary browsing" control in
+            the app. Pressed-in when open, so the row shows its own state. */}
+        {isAdmin && (
+          <button
+            onClick={() => setShowPools((v) => !v)}
+            aria-pressed={showPools}
+            className={showPools ? RAISED_AMBER_ON : RAISED_AMBER}
+          >
+            <Shield className="h-3.5 w-3.5" /> Direct pools
+          </button>
+        )}
       </div>
 
-      <div className="grid gap-5 md:grid-cols-3">
+      {/* One card alone in a three-column grid reads as two missing cards, so
+          the layout follows what is actually shown. */}
+      <div className={showDirect
+        ? "grid gap-5 md:grid-cols-3"
+        : "grid gap-5 md:max-w-md"}>
         {/* ── C-Vault ── */}
         <CardShell>
           <div className="flex flex-col gap-4">
@@ -400,7 +441,7 @@ export function LiquidityView() {
         </CardShell>
 
         {/* ── the two market pools ── */}
-        {(["algo-usd", "btc-usd"] as const).map((id) => {
+        {showDirect && (["algo-usd", "btc-usd"] as const).map((id) => {
           const mk = m(id);
           const slice = data && mk ? cvaShareOfMarket(data, mk.marketId) : null;
           return (
