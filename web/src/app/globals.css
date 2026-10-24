@@ -52,6 +52,22 @@ body {
                0 0 55px rgba(147, 51, 234, 0.40);
 }
 
+/* ── Card-heading glow ──
+   `glow-text` above is tuned for the 48-60px splash titles: its 24px and 55px
+   radii spread further than a 20px glyph is tall, so on a card heading the
+   halo dilutes into the background and reads as no glow at all. (That is what
+   `magnet-glow-soft`, a drop-shadow filter for the hero LOGO, did here too —
+   checked by rasterising the card, not by reading the class name.)
+
+   Same hue family, tighter radii and higher opacity, so the halo sits ON the
+   letterforms at heading size. Lavender core over purple spread, matching the
+   splash's layering. */
+.glow-text-card {
+  text-shadow: 0 0 8px rgba(216, 180, 254, 0.75),
+               0 0 18px rgba(168, 85, 247, 0.60),
+               0 0 34px rgba(147, 51, 234, 0.40);
+}
+
 /* Gradient borders */
 .gradient-border {
   background: linear-gradient(135deg, #581c87 0%, #a855f7 50%, #581c87 100%);
@@ -96,15 +112,6 @@ body {
 }
 .animate-float {
   animation: float 5s ease-in-out infinite;
-}
-
-/* The APR figure. Lime rather than the brand purple on purpose: it is the one
-   number on the strategy card that is a RESULT rather than an identity, and it
-   should not read as part of the heading it sits under. Softer than the hero
-   glows — a 40px number carrying a hero-weight drop shadow smears. */
-.lime-glow {
-  text-shadow: 0 0 18px rgba(163, 230, 53, 0.45),
-               0 0 42px rgba(132, 204, 22, 0.25);
 }
 
 /* Soft static glow — calmer alternative to the pulsing hero glow */

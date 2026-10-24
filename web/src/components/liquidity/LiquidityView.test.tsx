@@ -197,7 +197,12 @@ describe("the C-Vault card", () => {
     const h = screen.getByRole("heading", { name: "C-Vault Strategy" });
     // The glow is the point of the heading treatment — a plain h2 is the
     // regression, and it is invisible in a text-only assertion.
-    expect(h.className).toContain("magnet-glow-soft");
+    //
+    // `glow-text-card`, NOT `magnet-glow-soft` (a drop-shadow filter for the
+    // hero logo, no visible halo here) and NOT `glow-text` (radii tuned for a
+    // 48-60px splash title, which dilute at heading size). Pinned to the class
+    // that actually renders a glow at this size.
+    expect(h.className).toContain("glow-text-card");
     expect(h.className).toContain("font-display");
   });
 
@@ -208,12 +213,29 @@ describe("the C-Vault card", () => {
     expect(screen.getByRole("button", { name: /About/ })).toBeTruthy();
   });
 
-  it("shows the APR in lime, and only this card's", async () => {
+  it("shows the APR in the site's green, in the token pages' metric box", async () => {
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
-    await waitFor(() => expect(screen.getByText("7.6%")).toBeTruthy());
-    expect(screen.getByText("7.6%").className).toContain("text-lime-300");
+    // Two decimals and `text-green-400` — the same shape PoolsSection uses for
+    // "Total 7-Day APR". Lime was close enough to look like a mistake.
+    await waitFor(() => expect(screen.getByText("7.57%")).toBeTruthy());
+    const figure = screen.getByText("7.57%");
+    expect(figure.className).toContain("text-green-400");
+    expect(figure.className).toContain("font-mono");
+    // Inside a bordered box, not loose on the card face.
+    expect(figure.parentElement?.parentElement?.className).toContain("bg-black/30");
+  });
+
+  it("breaks the rate into fees and yield, and shows the longer window", async () => {
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("7.57%")).toBeTruthy());
+    expect(screen.getByText("1.52%")).toBeTruthy();
+    expect(screen.getByText("6.05%")).toBeTruthy();
+    expect(screen.getByText("Return over 30d")).toBeTruthy();
+    expect(screen.getByText("+5.64%")).toBeTruthy();
   });
 
   it("shows pool liquidity, shares outstanding and the user's own position", async () => {

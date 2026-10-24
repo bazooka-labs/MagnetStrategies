@@ -45,6 +45,28 @@ Two pieces of copy follow the gate rather than being written once:
 `LiquidityView.test.tsx` asserts what a visitor can *see*, not the boolean:
 drop the gate and three tests go red (verified by mutation).
 
+### The card layout
+
+The grid is **two per row, fixed** — not a column count that tracks how many
+cards exist. Two earlier versions both failed by sizing to the current
+contents: three columns left two obvious holes once the direct pools went
+admin-only, and the single `max-w-2xl` column that replaced it gave one card a
+42rem span it had no content to fill. A `NextStrategyTile` renders last and
+absorbs whichever cell the row count leaves open — one strategy puts it beside
+the C-Vault, three make a clean 2x2. The caveat panel sits inside the same
+`max-w-5xl` column, because a card above a full-bleed amber panel made the
+warning the largest object on the page.
+
+The C-Vault is the hero: `glow-text-card` heading, a drifting blob, and the
+APR in the token pages' metric box (`text-green-400`, two decimals, fees and
+yield beneath). The direct pool cards keep the quieter `YieldFigure` — a page
+where everything glows ranks nothing.
+
+Three glow classes were rasterised and compared before settling: both
+`magnet-glow-soft` (a drop-shadow filter tuned for the hero logo) and
+`glow-text` (radii tuned for a 48-60px splash title) produced no visible halo
+at heading size. Reading the class name would not have caught either.
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |

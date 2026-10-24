@@ -115,7 +115,7 @@ function ReturnRow({ period, stats }: { period: PerfPeriod; stats: PoolStats }) 
       </span>
       <span className="flex items-baseline gap-2.5">
         <span className={`font-mono text-[13px] font-semibold ${
-          r.productPct >= 0 ? "text-lime-300" : "text-red-300"
+          r.productPct >= 0 ? "text-green-400" : "text-red-300"
         }`}>
           {signed(r.productPct)}%
         </span>
@@ -180,14 +180,14 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
 
             <div className="max-h-[75vh] space-y-5 overflow-y-auto px-6 py-6 sm:px-7">
               {/* ── The rate, up top, because it is what the button was pressed for ── */}
-              <div className="rounded-xl border border-lime-400/20 bg-lime-400/[0.04] p-5">
+              <div className="rounded-xl border border-green-500/20 bg-green-500/[0.04] p-5">
                 <div className="flex flex-wrap items-end justify-between gap-4">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                       Fees + yield APR
                     </div>
                     <div className="mt-1 flex items-baseline gap-2.5">
-                      <span className="lime-glow font-mono text-[40px] font-semibold leading-none tracking-tight text-lime-300">
+                      <span className="font-mono text-[40px] font-bold leading-none tracking-tight text-green-400">
                         {pct(i?.totalPct)}
                       </span>
                       {stale && (
@@ -208,7 +208,7 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                         Last 30 days
                       </div>
                       <div className={`mt-1 font-mono text-[26px] font-semibold leading-none ${
-                        thirty.productPct >= 0 ? "text-lime-300" : "text-red-300"
+                        thirty.productPct >= 0 ? "text-green-400" : "text-red-300"
                       }`}>
                         {signed(thirty.productPct)}%
                       </div>

@@ -30,7 +30,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Coins, Droplets, Layers, Shield, TrendingUp } from "lucide-react";
+import { AlertTriangle, Coins, Droplets, Layers, Shield, Sparkles, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PEX_APPS } from "@/lib/perps";
 import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
@@ -108,14 +108,7 @@ function TabButton({ active, onClick, icon: Icon, label }: {
  * the APR to the period return. `stats === null` renders "—", never 0% — their
  * instruction and the failure mode that matters most here.
  */
-/**
- * `accent` is the C-Vault's. The direct pools keep the white figure they had:
- * lime is how this page says "this is the one", and three lime numbers say
- * nothing. See `.lime-glow` in globals.css.
- */
-function YieldFigure({ stats, stale, accent = false }: {
-  stats: PoolStats | null; stale: boolean; accent?: boolean;
-}) {
+function YieldFigure({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
   const i = stats?.income ?? null;
   const r = stats?.ret ?? null;
   return (
@@ -127,9 +120,7 @@ function YieldFigure({ stats, stale, accent = false }: {
         <span className="text-[9.5px] text-gray-600">past 7d · PEX</span>
       </div>
       <div className="mt-0.5 flex items-baseline gap-2">
-        <span className={`font-mono text-[32px] font-semibold leading-none tracking-tight ${
-          accent ? "lime-glow text-lime-300" : "text-white"
-        }`}>
+        <span className="font-mono text-[32px] font-semibold leading-none tracking-tight text-white">
           {pct(i?.totalPct ?? null)}
         </span>
         {stale && (
@@ -164,6 +155,109 @@ function YieldFigure({ stats, stale, accent = false }: {
             : "Return unavailable"}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The empty cell in a two-up grid.
+ *
+ * Rendered LAST, always, so it absorbs whatever hole the row count leaves: one
+ * strategy puts it beside the C-Vault, three put it beside BTC/USD in the
+ * second row. Either way the grid reads as deliberate rather than as a card
+ * that failed to load — which is what the bare gap looked like.
+ *
+ * Deliberately not a tease. It names the two things actually queued in
+ * strategy/pools/OVERVIEW.md and says the honest thing about each: PactFi's
+ * CLMM is waiting on PactFi, and the structured vaults are not designed yet.
+ * A "coming soon" with no content behind it is worse than an empty cell.
+ */
+function NextStrategyTile() {
+  return (
+    <div className="flex min-h-[220px] flex-col justify-center rounded-2xl border border-dashed border-white/[0.09] bg-white/[0.012] p-6 text-center">
+      <Sparkles className="mx-auto h-5 w-5 text-gray-600" aria-hidden="true" />
+      <p className="mt-3 text-sm font-semibold text-gray-400">More strategies coming</p>
+      <p className="mx-auto mt-1.5 max-w-[22rem] text-[11.5px] leading-relaxed text-gray-600">
+        Concentrated liquidity on PactFi, once they release the platform, and
+        structured vaults of our own. Neither is built yet — this space is held,
+        not promised.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The C-Vault's rate, in the metric box the token pages use.
+ *
+ * Same frame as PoolsSection's "Total 7-Day APR" headline — `rounded-xl
+ * border-white/5 bg-black/30 p-4`, uppercase label, `font-mono text-3xl
+ * font-bold text-green-400`, components in a small row beneath. Matching it
+ * exactly is the point: an APR should look the same wherever this site shows
+ * one, and a bespoke treatment here made /strategy read as a different site.
+ *
+ * `text-green-400` is that green, from STAT_TONES. An earlier version used lime
+ * — close enough to look like a mistake and far enough to be one.
+ *
+ * The direct pool cards keep `YieldFigure` above: this is the card the page is
+ * built around, and three identical headline boxes rank nothing.
+ */
+function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
+  const i = stats?.income ?? null;
+  const r = stats?.ret ?? null;
+  return (
+    <div className="rounded-xl border border-white/5 bg-black/30 p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[11px] uppercase tracking-wider text-gray-500">Fees + Yield APR</p>
+        <span className="text-[10px] text-gray-600">past 7d · PEX</span>
+      </div>
+      <div className="mt-1 flex items-baseline gap-2.5">
+        <p className="font-mono text-3xl font-bold text-green-400">{pct(i?.totalPct ?? null, 2)}</p>
+        {stale && (
+          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+            STALE
+          </span>
+        )}
+      </div>
+      {i ? (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+          <span>Fees <span className="font-mono text-gray-300">{pct(i.feePct, 2)}</span></span>
+          <span>Yield <span className="font-mono text-green-300">{pct(i.yieldPct, 2)}</span></span>
+          {i.missingEvents > 0 && (
+            <span className="text-amber-300/90">{i.missingEvents} unvalued events</span>
+          )}
+        </div>
+      ) : (
+        <p className="mt-2 text-[11px] text-gray-500">PEX has not published a rate for this vault.</p>
+      )}
+
+      {/* The 30-day return, inside the same box rather than beside it: it is the
+          longer-window counterpart to the figure above and the reason the APR
+          is not the whole story. Hairline, not a second box — see the About
+          modal for the full ladder. */}
+      <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-white/[0.07] pt-2.5">
+        <span className="text-[11px] text-gray-500">
+          {r ? `Return over ${r.period}` : "Return"}
+        </span>
+        {r ? (
+          <span className="flex items-baseline gap-2">
+            <span className={`font-mono text-[13px] font-semibold ${
+              r.productPct >= 0 ? "text-green-400" : "text-red-300"
+            }`}>
+              {r.productPct >= 0 ? "+" : ""}{r.productPct.toFixed(2)}%
+            </span>
+            <span className="text-[10.5px] text-gray-500">
+              {r.vsHoldingPoints >= 0 ? "+" : ""}{r.vsHoldingPoints.toFixed(2)}pp vs benchmark
+            </span>
+          </span>
+        ) : (
+          <span className="text-[11px] text-gray-500">
+            {stats?.retUnavailableReason === "insufficient_history"
+              || stats?.retUnavailableReason === "no_valid_completed_samples"
+              ? "not enough history yet"
+              : "unavailable"}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -388,23 +482,28 @@ export function LiquidityView() {
       </div>
 
       {/*
-        One card alone in a three-column grid reads as two missing cards, so the
-        layout follows what is actually shown — and the CAVEAT is inside this
-        wrapper rather than beside it, because the two have to share a width.
-        Rendered with only the C-Vault, a 28rem card above a full-bleed amber
-        panel put the entire right half of the page in shadow and made the
-        warning the largest object on screen. Checked by rasterising the page,
-        not by reasoning about it.
+        TWO PER ROW, always — not a column count that tracks how many cards
+        happen to exist today.
+        ──────────────────────────────────────────────────────────────────────
+        More strategies are coming, and the two previous versions of this both
+        failed by sizing to the current contents: three columns left two
+        obvious holes once the direct pools went admin-only, and the single
+        `max-w-2xl` column that replaced it gave one card a 42rem span it had
+        no content to fill. A fixed two-up grid means a new strategy lands
+        beside this one without touching the layout.
+
+        The whole column is capped at `max-w-5xl` and the CAVEAT is inside it,
+        because the two have to share a width: a card above a full-bleed amber
+        panel made the warning the largest object on the page. Both checked by
+        rasterising, not by reasoning about it.
       */}
-      <div className={showDirect ? "" : "md:max-w-2xl"}>
-      <div className={showDirect
-        ? "grid gap-5 md:grid-cols-3"
-        : "grid gap-5"}>
+      <div className="max-w-5xl">
+      <div className="grid gap-5 md:grid-cols-2">
         {/* ── C-Vault ──
             The hero card: it is the only product the public sees, so it gets
-            the display heading, the drifting blob and the lime rate. The two
-            admin pool cards keep the quieter treatment they had — a page where
-            everything glows ranks nothing. */}
+            the display heading, the drifting blob and the green rate box. The
+            two admin pool cards keep the quieter treatment they had — a page
+            where everything glows ranks nothing. */}
         <CardShell>
           {/* Behind the content and non-interactive, same as SectionHero's.
               The Panel already clips (`overflow-hidden`), so it cannot bleed
@@ -414,42 +513,46 @@ export function LiquidityView() {
           </div>
 
           <div className="relative flex flex-col gap-4">
-            <div className="flex items-start justify-between gap-2.5">
-              <div>
+            {/* Title, subtitle and the two things attached to them on one row.
+                `glow-text-card` rather than `magnet-glow-soft` or `glow-text`:
+                the first is a drop-shadow filter tuned for the hero LOGO and
+                produced no visible halo here at all, and the second's 24/55px
+                radii are tuned for a 48-60px splash title and dilute at
+                heading size. The card variant has the same hue family with
+                tighter radii. All three were rasterised and compared; only
+                this one reads as a glow on a 22px heading. */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-magnet-400" aria-hidden="true" />
-                  <h2 className="font-display magnet-glow-soft text-xl font-bold text-white">
+                  <h2 className="glow-text-card font-display text-[22px] font-bold tracking-tight text-white">
                     C-Vault Strategy
                   </h2>
                 </div>
                 <p className="mt-1.5 text-[11.5px] text-gray-500">Managed by PEX · spans both markets</p>
               </div>
-              <span className="shrink-0 rounded-full border border-magnet-500/30 bg-magnet-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-magnet-300">
-                AUTO
-              </span>
-            </div>
-
-            {/* Under the heading, not in the row above it: the title and the
-                thing that explains it are one object. Same reasoning as the
-                MagnetFi vault hero. */}
-            <div>
-              <CvaAbout
-                stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
-                stale={!!perf?.stale}
-              />
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <span className="rounded-full border border-magnet-500/30 bg-magnet-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-magnet-300">
+                  AUTO
+                </span>
+                {/* Beside the title, not on a row of its own: a lone pill under
+                    the heading read as an orphan with a band of dead space
+                    around it, which was most of the "empty" in this card. */}
+                <CvaAbout
+                  stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
+                  stale={!!perf?.stale}
+                />
+              </div>
             </div>
 
             {/* PEX publishes the vault's own APR under its own key, so no
                 blending of ours is needed — and theirs follows the vault's
                 historical ownership and counts idle capital in the
                 denominator, which ours could not. */}
-            <YieldFigure
+            <CvaRateBox
               stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
               stale={!!perf?.stale}
-              accent
             />
-
-            <div className="h-px bg-white/[0.07]" />
 
             {/*
               ── Why "Your position" is dollars and shares both ──
@@ -459,10 +562,17 @@ export function LiquidityView() {
               value with nothing behind it. `yourUsd` is priced at the
               CONTRACT's own NAV per share, which is the same basis the
               withdraw form below spends against — see the note in reads.ts.
+
+              Two rows of two with a rule between the pool's figures and
+              yours: they are different subjects, and a flat 2x2 grid of four
+              equal cells made the reader work out which was which.
             */}
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Stat label="Pool liquidity" value={usd(data?.cva.navUsd ?? null)} />
               <Stat label="Shares outstanding" value={num(data?.cva.totalShares ?? null, 2)} />
+            </dl>
+            <div className="h-px bg-white/[0.07]" />
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Stat
                 label="Your position"
                 value={data?.cva.yourUsd != null ? usd(data.cva.yourUsd, 2) : "—"}
@@ -605,6 +715,8 @@ export function LiquidityView() {
             </CardShell>
           );
         })}
+        {/* Last child, so it fills whichever cell the row count leaves open. */}
+        <NextStrategyTile />
       </div>
 
       {/* The caveat. Not a footnote: it is the difference between a yield and a return. */}
