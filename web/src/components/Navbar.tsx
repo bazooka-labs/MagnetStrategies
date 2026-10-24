@@ -15,36 +15,49 @@ const navLinks = [
   // to a visitor, the path is its name to the codebase, and they need not match.
   { href: "/magnetfi", label: "Finance", external: false },
   /**
-   * "Trade", not "Strategy".
+   * "Trade" is the perps terminal, NOT the Strategy arm.
    *
-   * The Strategy ARM still exists and still groups this with the CLMM pools and
-   * vaults to come — but an arm is an organising principle and the nav is a
-   * shopping surface, and they do not have to match. Nobody scans a nav for
-   * "Strategy" wanting a leveraged perps screen. Strategy rejoins the nav when
-   * it has something to show.
+   * The Strategy arm groups /strategy with the CLMM pools and vaults to come —
+   * but an arm is an organising principle and the nav is a shopping surface,
+   * and they do not have to match. Nobody scans a nav for "Strategy" wanting a
+   * leveraged perps screen, which is why this slot is not called that even
+   * though /trade belongs to the same arm as the entry below.
    */
   { href: "/trade", label: "Trade", external: false },
   /**
-   * No "Strategy" entry — HIDDEN, NOT REMOVED, like Predict below.
+   * "Strategy" — BACK IN THE NAV, 2026-10-23.
    *
-   * `/strategy` still builds and still serves, so a link keeps working and
-   * bringing it back is this line rather than a rebuild. It was in the nav
-   * from 2026-10-20 until 2026-10-21.
-   *
-   * Why it came out (2026-10-21): the page could only READ, and its cards
-   * linked out to Ultrade's app to actually deposit. A nav slot pointing at a
+   * ── The history, because it came and went twice ──
+   * In from 2026-10-20, out on 2026-10-21: the page could only READ, and its
+   * cards linked out to Ultrade's app to deposit. A nav slot pointing at a
    * page that hands the user to someone else's site to finish the job spends
-   * the scarcest surface on the site to advertise an incomplete product.
+   * the scarcest surface here to advertise an incomplete product.
    *
-   * Why it is STILL out, now that the two direct pools do sign here: it is
-   * being exercised with real funds by its author first, reached by typing the
-   * path, while the rest of the protocol is live. Signing someone else's money
-   * into a third-party protocol on a path nobody has used end to end yet is not
-   * something to put in front of visitors on the strength of passing tests.
+   * It stayed out after the pools could sign, on a bar written into this
+   * comment: it rejoins "when the C-Vault signs here too and the direct pools
+   * have real round trips behind them".
    *
-   * It rejoins the nav when the C-Vault signs here too and the direct pools
-   * have real round trips behind them.
+   * ── Why that bar is now met ──
+   * The C-Vault has a complete signed round trip on MainNet: $7.00 in
+   * 2026-10-23 (first-timer, `gu2:` box created, mark preamble ran) and a full
+   * single-asset exit the same day across two groups in one prompt (rounds
+   * 66273320 and 66273322).
+   *
+   * The second clause resolved differently than it was written, and worth
+   * being exact about rather than waving through: ALGO/USD has a real both-
+   * asset round trip, but its all-USDC default has never been signed and
+   * BTC/USD has been signed neither way. Those paths did not get signatures —
+   * they stopped being PUBLIC. Both direct pool cards now render only for
+   * MAGNETFI_ADMIN_ADDRESS behind a toggle that starts closed, so the only
+   * thing this nav entry exposes to a visitor is the C-Vault, and that is the
+   * path with the round trip. The unsigned paths are reachable only by their
+   * author, which was the condition the old comment was reaching for.
+   *
+   * If the direct pools are ever made public again, this entry is downstream
+   * of that decision — check their signature status in
+   * strategy/pools/OVERVIEW.md before shipping it.
    */
+  { href: "/strategy", label: "Strategy", external: false },
   /**
    * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest
    * surface on the site — every item there costs attention the ones beside it
@@ -101,7 +114,20 @@ export function Navbar() {
         </div>
 
         {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-6">
+        {/*
+          ── Collapses at `lg`, not `md` ──
+          Raised 2026-10-23, when Strategy made five links. At 768px (the md
+          breakpoint, where this row first appeared) five links plus the social
+          icons pushed the Connect Wallet button off the right edge — the
+          header is `overflow-x-hidden`, so it clipped silently rather than
+          scrolling, and the primary CTA was the thing lost. Four links fitted;
+          five did not. Verified by rendering at 768 both ways, which is the
+          only way this was ever going to be noticed.
+
+          Tablets now get the hamburger, which holds every link at any count.
+          A future sixth item needs no change here.
+        */}
+        <div className="hidden lg:flex items-center gap-6">
           {navLinks.map((link) =>
             link.external ? (
               <a
@@ -147,19 +173,28 @@ export function Navbar() {
 
           <WalletButton />
 
-          {/* Mobile toggle */}
+          {/* Mobile toggle.
+              `aria-label` and `aria-expanded` added 2026-10-23: its only
+              content is an icon, so without a label a screen reader announced
+              an unnamed button, and nothing conveyed whether the sheet was
+              open. Found while testing the nav — the test could not locate the
+              control by name, which is exactly the problem a user of assistive
+              technology would have had. */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden rounded-lg p-2 text-white/60 hover:text-white hover:bg-white/5"
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            className="lg:hidden rounded-lg p-2 text-white/60 hover:text-white hover:bg-white/5"
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </button>
         </div>
       </div>
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="relative md:hidden border-t border-white/10 bg-[#0a0010]/95 backdrop-blur-md px-4 py-4 space-y-1">
+        <div id="mobile-nav" className="relative lg:hidden border-t border-white/10 bg-[#0a0010]/95 backdrop-blur-md px-4 py-4 space-y-1">
           {navLinks.map((link) =>
             link.external ? (
               <a

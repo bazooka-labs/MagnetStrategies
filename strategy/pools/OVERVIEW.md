@@ -131,10 +131,17 @@ Dust landed at **1.21%**, not ≤1%: the swap is sized from the SIMULATED payout
 and the actual came in higher, so the remainder exceeds 1% of what actually
 arrived. Cosmetic at this size, and the reason the UI says "roughly 1%".
 
-**`/strategy` is deliberately not in the nav.** Not because it cannot sign — it
-can — but because only one of six paths has a real signature behind it. It is
-reached by typing the path while it is exercised, and rejoins the nav when there
-are real round trips behind each destination.
+**`/strategy` is in the nav as of 2026-10-23**, between Trade and Contact. The
+bar written into `Navbar.tsx` was "the C-Vault signs here too and the direct
+pools have real round trips behind them". The first clause is met outright. The
+second resolved differently than it was written and is worth stating exactly:
+ALGO/USD's all-USDC default and BTC/USD in either direction still have no
+signature — those paths did not get signed, they stopped being **public**. Both
+direct pool cards are admin-only now, so the only thing the nav entry exposes to
+a visitor is the C-Vault, which is the path with the round trip.
+
+If the direct pools are made public again, the nav entry is downstream of that
+decision.
 
 ## Why the C-Vault was second, not first
 
