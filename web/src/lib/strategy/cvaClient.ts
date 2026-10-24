@@ -347,9 +347,15 @@ export async function withdrawFromCvaVault(input: {
 
     const r = await signAndSubmit({
       algod, signTransactions: input.signTransactions,
-      // Two groups, one prompt. `signAndSubmit` does not re-assign group ids,
-      // so the concatenation keeps each group intact.
-      txns: swap ? [...built.txns, ...swap.txns] : built.txns,
+      /**
+       * TWO GROUPS, one prompt — passed as groups, never concatenated.
+       *
+       * `sendRawTransaction` takes exactly one complete group per call. A flat
+       * array spanning both is refused with `incomplete group`, which is how
+       * the first real exit failed: the wallet signed all 22 transactions in a
+       * single prompt correctly, and the node rejected the submission.
+       */
+      groups: swap ? [built.txns, swap.txns] : [built.txns],
       onStage: (s) => onStage(s),
     });
     return {

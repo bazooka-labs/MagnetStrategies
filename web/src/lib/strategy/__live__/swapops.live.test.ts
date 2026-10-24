@@ -112,16 +112,27 @@ describe("live: PEX's standalone swap can take ALGO to USDC", () => {
     // The number that decides whether a combined group fits, and it is a
     // property of the pool's idle balance rather than of the method — so it
     // must be measured per attempt, never assumed.
+    /**
+     * Whether a recall-free swap is possible is a property of the pool's idle
+     * balance, which MOVES. Market 2 needed no recall on 2026-10-22 and did on
+     * 2026-10-23; market 1 went the other way. So this asserts the
+     * relationship, not the state — the same correction already made for
+     * market 1 above, which this test had not received.
+     */
     const withRecall = await swap(2, { recall: 1 });
+    expect(withRecall.ok, withRecall.why).toBe(true);
     const without = await swap(2, { recall: 0 });
-    expect(withRecall.ok).toBe(true);
-    expect(without.ok).toBe(true);
-    expect(without.txns).toBeLessThan(withRecall.txns);
-    console.log(`m2 swap: ${withRecall.txns} txns with recall, ${without.txns} without`);
+    console.log(`m2 swap: ${withRecall.txns} txns with recall; without recall `
+      + `${without.ok ? `OK at ${without.txns}` : "not possible right now"}`);
+    if (without.ok) expect(without.txns).toBeLessThan(withRecall.txns);
 
-    // The arithmetic that forces a second signature on the C-Vault.
-    expect(10 + without.txns).toBeLessThanOrEqual(MAX_GROUP_SIZE);   // pool  + swap: fits
-    expect(15 + without.txns).toBeGreaterThan(MAX_GROUP_SIZE);       // vault + swap: does not
+    /**
+     * The arithmetic that forces the vault exit into two GROUPS, whichever
+     * shape the swap takes today. Even the smallest swap observed (4) does not
+     * fit beside a 15-transaction vault withdrawal.
+     */
+    const smallest = without.ok ? without.txns : withRecall.txns;
+    expect(15 + smallest).toBeGreaterThan(MAX_GROUP_SIZE);
   }, 180_000);
 
   it("a recall-free swap is 4 txns, but whether one is possible moves", async () => {

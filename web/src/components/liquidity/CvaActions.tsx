@@ -32,7 +32,7 @@ import {
   type CvaFormState, type CvaWithdrawOutput,
 } from "@/lib/strategy/cvaClient";
 import { GatedError, PinDriftError, type LiquidityStage } from "@/lib/strategy/client";
-import { SubmissionUnknownError } from "@/lib/strategy/submit";
+import { SubmissionUnknownError, SubmissionRefusedError } from "@/lib/strategy/submit";
 import { cvaStoragePaymentFor } from "@/lib/strategy/cvaGroup";
 import { primaryGate, type Gate, type Notice } from "@/lib/strategy/preflight";
 
@@ -161,7 +161,17 @@ export function CvaActions({
       void refresh();
       onDone();
     } catch (e) {
-      if (e instanceof SubmissionUnknownError) {
+      if (e instanceof SubmissionRefusedError) {
+        /**
+         * Refused by the node: NOTHING was sent.
+         *
+         * This used to fall through to the generic handler and render the
+         * `unknown` copy — "it will most likely still go through" — which was
+         * false, and told the user to go and check a transaction that did not
+         * exist. An error is the honest rendering.
+         */
+        setErr(e.message);
+      } else if (e instanceof SubmissionUnknownError) {
         setDone({ txId: e.txId, outcome: "unknown", figures: {} });
       } else if (e instanceof GatedError || e instanceof PinDriftError) {
         setErr(e.message);
@@ -420,6 +430,15 @@ function CvaOutcome({ done, mode }: {
                   ? `${trim(Number(algoOut) / 1e6, 6)} ALGO and ${trim(Number(usdcOut) / 1e6, 6)} USDC`
                   : "Funds"} paid out.</span>)}
           {done.outcome === "rejected" && <span>PEX refused this. Nothing moved.</span>}
+          {done.outcome === "partial" && (
+            // Half-done is its own state. Calling it success or failure would
+            // both be false, and the user needs to know which half happened.
+            <span>
+              Your funds left the vault, but converting the ALGO to USDC did not
+              complete. Nothing is lost — you are holding ALGO and USDC. Use
+              &ldquo;ALGO + USDC&rdquo; to see your balance, or try the conversion again.
+            </span>
+          )}
           {done.outcome === "unknown" && (
             <span>
               Sent, but we could not confirm it in time. This is not a failure — it will most
