@@ -299,3 +299,53 @@ describe("what the vault exit pays out", () => {
     expect(btn("withdraw").disabled).toBe(false);
   });
 });
+
+/**
+ * What a depositor will actually see land.
+ *
+ * Prompted by a real report: $25.00 deposited, a $24.95 position arrived, and
+ * nothing anywhere had said it would. The gap is the 20 bps entry spread and
+ * it is entirely predictable, which makes naming it before the signature the
+ * whole fix.
+ */
+describe("the entry spread, before you sign", () => {
+  it("names the amount that will arrive, not just the amount going in", async () => {
+    await openPanel({ shares: 0 }, "deposit");
+    fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
+    await waitFor(() => expect(screen.getByText(/About \$25\.00 in total/)).toBeTruthy());
+    // The exact figure from the report. 25 / 1.002 = 24.9501 -> $24.95.
+    expect(screen.getByText("≈$24.95")).toBeTruthy();
+  });
+
+  it("says where the spread goes, so it does not read as a fee", async () => {
+    await openPanel({ shares: 0 }, "deposit");
+    fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
+    await waitFor(() => expect(screen.getByText("≈$24.95")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).toContain("stays in the vault");
+    expect(body).toContain("not a fee to PEX");
+  });
+
+  it("derives the figure the way the contract does, not with a flat multiply", async () => {
+    /**
+     * cva.teal label51 adds the spread to the NAV DENOMINATOR
+     * (`nav + nav*bps/10000`) and then divides, so the credited value is
+     * deposit / (1 + s), not deposit * (1 - s). The two diverge as the deposit
+     * grows: on $10,000 the division gives $9,980.04 and the multiply $9,980.00.
+     * Four cents is not much, but it sits next to a signature, and a figure
+     * shown there should be derived the way the chain derives it.
+     */
+    await openPanel({ shares: 0 }, "deposit");
+    fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "10000" } });
+    await waitFor(() => expect(screen.getByText(/About \$10,?000\.00 in total/)).toBeTruthy());
+    expect(screen.getByText("≈$9980.04")).toBeTruthy();
+  });
+
+  it("reads the spread off the vault rather than hardcoding 0.2%", async () => {
+    // PEX's admin can change it; a hardcoded string would quietly go stale.
+    await openPanel({ shares: 0 }, "deposit");
+    fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
+    await waitFor(() => expect(screen.getByText("≈$24.95")).toBeTruthy());
+    expect(screen.getByText(/0\.20% entry spread/)).toBeTruthy();
+  });
+});

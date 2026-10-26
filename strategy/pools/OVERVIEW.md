@@ -143,6 +143,40 @@ a visitor is the C-Vault, which is the path with the round trip.
 If the direct pools are made public again, the nav entry is downstream of that
 decision.
 
+## The 0.2% spreads are NOT a fee to PEX
+
+`cva_mint_spread_bps = 20` and `cva_burn_spread_bps = 20` on app 3690309167,
+both admin-settable, both read live rather than hardcoded. A $25.00 deposit
+arrives as about $24.95 of shares.
+
+**Nobody collects the difference.** Verified 2026-10-26 against the deployed
+program (sha256 `b2fd9b6f…`, matching our pin):
+
+- the burn-spread routine is `proto 1 1` — one value in, one out. It returns
+  `v - v*bps/10000` and performs no transfer, writes no global, touches no
+  address;
+- every outbound payment in all 6,578 lines goes to `txn Sender` or to a
+  market app's `AppAddress` (allocating capital, plus the 26,500 µALGO box
+  MBR). There is no third recipient;
+- none of the 26 globals the contract writes is a fee destination or
+  accumulator, and the strings `fee`, `treasury`, `collect`, `protocol` and
+  `revenue` appear nowhere in the program.
+
+It is a **dilution guard**: the mover pays it, the stayers receive it, which is
+what stops someone entering or exiting against a stale NAV mark from taking
+value off the people who sat still.
+
+**The credited value is `deposit / (1 + s)`, not `deposit × (1 - s)`.** The
+contract adds the spread to the NAV denominator before dividing (cva.teal
+`label51`: `nav + nav*bps/10000`, then `value * shares / nav'`). The two forms
+diverge as size grows — on $10,000, $9,980.04 against $9,980.00 — and the
+deposit form shows the division, because the figure sits next to a signature.
+
+Do not try to reconcile the exact bps from the deposit/withdraw receipts: they
+mix the spread with oracle valuation of the two legs across two markets, and
+the implied haircut comes out 0.28% and 0.93% on two real deposits. The clean
+confirmation is the position a depositor actually sees ($25.00 → $24.95).
+
 ## Why the C-Vault was second, not first
 
 It looked like the easy one — it is the best-performing destination and the one

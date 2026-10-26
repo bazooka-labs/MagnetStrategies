@@ -545,11 +545,16 @@ export function LiquidityView() {
               {/* The managed option is the only one with a fixed entry/exit cost
                   and a lock, and a page comparing three destinations that showed
                   its APR but not its spread would flatter it. Values are PEX's
-                  own globals on app 3690309167. */}
+                  own globals on app 3690309167.
+
+                  "Stays in the vault" is verified, not assumed — see the long
+                  note in CvaAbout.tsx. It reads as a fee to a third party
+                  otherwise, which is the opposite of what it is. */}
               <span className="mt-1.5 block text-gray-400">
-                Costs <strong className="font-semibold text-gray-300">0.2% in and 0.2% out</strong>,
-                with a ~1 hour withdrawal cooldown and a $5 minimum withdrawal. The direct pools
-                have no such spread.
+                Costs <strong className="font-semibold text-gray-300">0.2% in and 0.2% out</strong> —
+                which <strong className="font-semibold text-gray-300">stays in the vault</strong>,
+                not paid to PEX. Plus a ~1 hour withdrawal cooldown and a $5 minimum withdrawal.
+                The direct pools have no such spread.
               </span>
             </div>
 

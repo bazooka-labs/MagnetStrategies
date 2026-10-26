@@ -283,10 +283,45 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                     volatile assets — ALGO and USDC — so it moves with ALGO&apos;s price too. The
                     benchmark column above is there to show when holding would have beaten it.
                   </li>
+                  {/*
+                    ── Where the spread goes, verified against the bytecode ──
+                    Added 2026-10-26 after a $25.00 deposit arrived as a $24.95
+                    position and the obvious reading was "PEX took five cents".
+                    It did not. Checked against the deployed program (sha256
+                    b2fd9b6f…, which matches our pin):
+
+                      - the burn-spread routine is `proto 1 1` — one value in,
+                        one out. It returns `v - v*bps/10000` and performs no
+                        transfer, writes no global, touches no address;
+                      - every outbound payment in all 6,578 lines goes to
+                        `txn Sender` or to a market app's AppAddress. There is
+                        no third recipient;
+                      - none of the 26 globals the contract writes is a fee
+                        destination or accumulator, and the strings fee,
+                        treasury, collect, protocol and revenue appear nowhere
+                        in the program.
+
+                    So it is a dilution guard, not a fee: the mover pays it and
+                    the stayers receive it, which is what stops someone
+                    entering or exiting against a stale NAV mark from taking
+                    value off the people who sat still.
+
+                    Worth stating plainly because the UI previously said only
+                    "costs 0.2% in and 0.2% out", which reads as a fee to a
+                    third party — the opposite of what it is, and a worse story
+                    than the truth.
+                  */}
                   <li>
-                    <strong className="font-semibold text-amber-100">It costs 0.2% in and 0.2% out</strong>,
-                    so a round trip starts about 0.4% behind. There is a withdrawal cooldown of
-                    roughly an hour and a $5 minimum withdrawal.
+                    <strong className="font-semibold text-amber-100">It costs 0.2% in and 0.2% out,
+                    and that money stays in the vault.</strong>{" "}
+                    It is not a fee to PEX, and nobody collects it: a $25 deposit becomes about
+                    $24.95 of shares, and the five cents is left behind in the pool, where it
+                    raises the share price for everyone already in it. The same happens in reverse
+                    when you leave. It exists so that someone entering or exiting against a
+                    slightly stale valuation cannot take value off the people who stayed — so you
+                    pay it when you move, and you collect it when others do. A round trip still
+                    starts about 0.4% behind. There is a withdrawal cooldown of roughly an hour
+                    and a $5 minimum withdrawal.
                   </li>
                   <li>
                     <strong className="font-semibold text-amber-100">PEX controls the vault.</strong>{" "}

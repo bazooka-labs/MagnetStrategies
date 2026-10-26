@@ -235,8 +235,39 @@ export function CvaActions({
             onMax={form ? () => setUsdcText(trim(form.usdcMicro / 1e6, 6)) : undefined}
           />
           {depositUsd > 0 && (
-            <p className="text-[10.5px] text-gray-500">
+            /*
+              ── Say what will ARRIVE, not just what is going in ──
+              This read "About $25.00 in total" and nothing else, so a $25.00
+              deposit showed up as a $24.95 position with no warning. The gap
+              is the entry spread and it is entirely predictable, which makes
+              it the worst kind of surprise: one we could have named before the
+              signature and did not.
+
+              Credited value is deposit / (1 + s), not deposit x (1 - s). The
+              contract adds the spread to the NAV DENOMINATOR before dividing
+              (cva.teal label51: `nav + nav*bps/10000`, then
+              `value * shares / nav'`), so fewer shares are minted for the same
+              money. The two forms differ in the 5th decimal at these sizes —
+              $24.9501 against $24.9500 on $25 — but the division is what the
+              chain does, and a figure shown next to a signature should be
+              derived the way the contract derives it.
+
+              Spread read live off the vault's globals, never hardcoded: PEX's
+              admin can change it.
+            */
+            <p className="text-[10.5px] leading-relaxed text-gray-500">
               About ${depositUsd.toFixed(2)} in total.
+              {form && form.vault.mintSpreadBps > 0 && (
+                <>
+                  {" "}You&apos;ll start with{" "}
+                  <strong className="font-semibold text-gray-300">
+                    ≈${(depositUsd / (1 + form.vault.mintSpreadBps / 10_000)).toFixed(2)}
+                  </strong>{" "}
+                  of shares — the {(form.vault.mintSpreadBps / 100).toFixed(2)}% entry spread
+                  stays in the vault and accrues to the people already in it. It is not a fee
+                  to PEX.
+                </>
+              )}
             </p>
           )}
         </div>

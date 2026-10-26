@@ -159,6 +159,37 @@ describe("what it explains", () => {
     const d = openIt();
     expect(within(d).getByText(/0\.2% in and 0\.2% out/)).toBeTruthy();
     expect(within(d).getByText(/\$5 minimum withdrawal/)).toBeTruthy();
+    expect(within(d).getByText(/about 0\.4% behind/)).toBeTruthy();
+  });
+
+  /**
+   * The spread is NOT a fee to PEX, and saying so is a claim about someone
+   * else's deployed contract — so it is pinned rather than left to prose that
+   * a future edit might "simplify" back into "costs 0.2%".
+   *
+   * Verified against the deployed program (sha256 b2fd9b6f…, matching our
+   * pin): the burn-spread routine is `proto 1 1` and transfers nothing, every
+   * outbound payment goes to `txn Sender` or a market app address, and no
+   * global holds a fee destination or accumulator.
+   */
+  it("says the spread stays in the vault and is not a fee to PEX", () => {
+    const d = openIt();
+    expect(within(d).getByText(/stays in the vault/)).toBeTruthy();
+    expect(within(d).getByText(/not a fee to PEX/)).toBeTruthy();
+    expect(within(d).getByText(/nobody collects it/)).toBeTruthy();
+  });
+
+  it("names the concrete number a depositor will actually see", () => {
+    // The report that prompted this was "$25 in, $24.95 arrived". An
+    // explanation that never shows the arithmetic does not answer it.
+    const d = openIt();
+    expect(within(d).getByText(/\$25 deposit becomes about\s+\$24\.95/)).toBeTruthy();
+  });
+
+  it("explains who the spread protects, not just where it lands", () => {
+    const d = openIt();
+    expect(within(d).getByText(/stale valuation/)).toBeTruthy();
+    expect(within(d).getByText(/collect it when others do/)).toBeTruthy();
   });
 
   it("says the figures are unsigned, as PEX documents them", () => {
