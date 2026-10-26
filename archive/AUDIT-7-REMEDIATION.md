@@ -197,7 +197,7 @@ than asking them, on 2026-09-29: `funding_fee_collateral_amount` is a GROSS
 accrued cost, forced non-negative in `settledPosition`, and the signed
 settlement is `collateral_funding_net_amount`. The itemisation is restored and
 the draft question was deleted rather than sent. See
-[NEXT.md](./NEXT.md#closed-recently).
+[NEXT.md](../strategy/perps/NEXT.md#closed-recently).
 Publishing a decomposition we cannot derive is the same mistake as
 `collateral_delta`: internally plausible, wrong at the boundary. The panel now
 shows one figure — the difference between the payout and the collateral — which

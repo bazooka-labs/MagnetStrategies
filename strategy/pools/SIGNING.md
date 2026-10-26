@@ -1053,19 +1053,27 @@ by a first-time depositor. Confirmed on chain — a new `ml2:` box (the tenth),
 4.278512 shares, and the 26,500 µALGO MBR paid, which is the §11.10 fix
 validated in production rather than in simulation.
 
-Five of the six paths still have no real signature. That, and not any remaining
-capability gap, is why `/strategy` is out of the nav.
+At that point five of the six paths still had no real signature, and that — not
+any remaining capability gap — was why `/strategy` was out of the nav. Four of
+six have one now, and it rejoined the nav on 2026-10-23; see §11.17.
 
 ### 11.17 Still open
 
-- **Real signatures.** One of six paths has one (§11.16). That is the gap that
-  keeps `/strategy` out of the nav, not any missing capability.
-- **Fixtures and mutation tests for the C-Vault.** The pools have real-bytes
-  mutation tests; the vault has live tests and mounted component tests but no
-  captured fixture yet.
-- **A first-time C-Vault depositor**, live. The constant is pinned and the
-  branch is tested, but no wallet without a `gu2:` box has been simulated
-  through it — which is precisely the shape §11.10 says to check.
+- **Real signatures — four of six.** Signed: ALGO/USD deposit and withdraw
+  (2026-10-22), C-Vault deposit and withdraw (2026-10-23, a full round trip
+  including the two-group exit). Still unsigned: **ALGO/USD all-USDC**, which is
+  now the default on that card, and **BTC/USD in either direction**.
+
+  This no longer keeps `/strategy` out of the nav — it rejoined on 2026-10-23 —
+  because the two direct pool cards are admin-gated, so the only path a visitor
+  can reach is the C-Vault, which is one of the signed ones. If the direct pools
+  are ever made public, these two gaps are the thing to close first.
+- ~~Fixtures and mutation tests for the C-Vault.~~ **Done** —
+  `__fixtures__/cvaGroups.json` is captured and `cvaReal.test.ts` carries the
+  mutation tests.
+- ~~A first-time C-Vault depositor, live.~~ **Done** — 2026-10-23, $7.00 from a
+  wallet with no `gu2:` box: the box was created, the 32,900 µALGO MBR paid and
+  the mark preamble ran. The shape §11.10 says to check, checked in production.
 - `signAndSubmit` lives in `submit.ts` and is used by the liquidity paths only;
   `perpsClient.ts` still has its own copy. Rewiring the live trading submit path
   for a hidden feature was the riskier choice, so the trading path should adopt

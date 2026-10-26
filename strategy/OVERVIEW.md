@@ -2,8 +2,9 @@
 
 The DeFi strategy arm of Magnet Strategies.
 
-**The arm is not a nav item.** It was, while it held one product. It now splits
-across two, and that is deliberate — see below.
+**The arm spans two nav items** — **Trade** and **Strategy** — and that is
+deliberate; see below. It was briefly neither, while Strategy Pools was being
+exercised with real funds before being advertised.
 
 Strategy houses products where a user **takes a position or deploys capital into an
 engineered strategy**. Some run on our contracts, some on someone else's, some on
@@ -13,7 +14,7 @@ both. The umbrella is the user's intent, not who wrote the code.
 |---|---|---|---|
 | [Trading Terminal](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | **Trade** | Live on MainNet |
 | Advanced trading | Surfaces for users who want the full instrument, not the simplified one | **Trade** | Not started |
-| [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools and its managed C-Vault — you earn fees and take the other side | Strategy | **Live on MainNet**, all three destinations signed in our UI. Not in the nav yet |
+| [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools and its managed C-Vault — you earn fees and take the other side | **Strategy** | **Live on MainNet and in the nav** (2026-10-23). Only the C-Vault is public; the two direct market pools are admin-gated |
 | CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | Strategy | **Waiting on PactFi** to release the platform. Discussed, not designed |
 | Strategy vaults | Other engineered exposures — looped, structured | Strategy | Not started |
 
@@ -42,11 +43,19 @@ not have to match.** [Predict](../predict/OVERVIEW.md) already proves it: by the
 definition above, prediction markets are a position and so belong to this arm's
 logic, and they are a top-level nav item because that is how people shop.
 
-Strategy rejoins the nav once a pool product is exercised, not merely built: [Strategy Pools](./pools/OVERVIEW.md) is live on MainNet and deliberately still out of the nav, because no real funds have round-tripped through it yet. Trade does not move,
-rename or lose anything when that happens — which is the point of doing it this
-way round rather than letting Trade borrow the slot and hand it back.
+**Strategy rejoined the nav on 2026-10-23**, on the rule that a pool product
+must be *exercised*, not merely built. The C-Vault has a full round trip signed
+on MainNet — in and out, real funds. The two direct market pools are admin-gated
+because their remaining paths have no signature yet, so the only thing the nav
+entry exposes is the path that does. Trade did not move, rename or lose anything
+when that happened — which is the point of doing it this way round rather than
+letting Trade borrow the slot and hand it back.
 
-**Route:** `/trade`. `/strategy` 308-redirects to it, so older links survive.
+**Routes:** `/trade` for the Trading Terminal, `/strategy` for Strategy Pools.
+`/strategy` briefly 308-redirected to `/trade` while the terminal owned the slot;
+that redirect is gone and the two are separate pages. Anyone whose browser cached
+the old permanent redirect will still land on `/trade` until it expires — see the
+note at the top of `web/next.config.js`.
 
 ---
 

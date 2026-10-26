@@ -10,16 +10,22 @@ and partner money markets — and reinvests returns into the token's underlying 
 
 ## Live
 
-- **Landing:** https://magnetstrategies.io
-- **Tokens ($U + mUSD, + ASA TVL Rank):** https://magnetstrategies.io/tokens
-- **Bank (MagnetFi):** https://magnetstrategies.io/magnetfi
-- **Predict:** https://magnetstrategies.io/predict
-- **Vote (UVote):** https://magnetstrategies.io/vote
-- **Contact:** https://magnetstrategies.io/contact
-- **Top 100 ASA leaderboard (API):** https://magnetstrategies.io/api/leaderboard
+| Route | Nav label | What |
+|---|---|---|
+| [`/`](https://magnetstrategies.io) | — | Landing |
+| [`/tokens`](https://magnetstrategies.io/tokens) | Tokens | $U + mUSD, ASA TVL Rank, UVote governance |
+| [`/magnetfi`](https://magnetstrategies.io/magnetfi) | Finance | MagnetFi — LP vaults, mUSD, PSM |
+| [`/trade`](https://magnetstrategies.io/trade) | Trade | Trading Terminal (perps on PEX) |
+| [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Strategy Pools + C-Vault |
+| [`/predict`](https://magnetstrategies.io/predict) | — | VPL volatility ladder |
+| [`/contact`](https://magnetstrategies.io/contact) | Contact | On-chain support inbox |
+| [`/api/leaderboard`](https://magnetstrategies.io/api/leaderboard) | — | Top 100 ASA TVL, public read API |
 
-> `/token`, `/musd` and `/pools` were retired — all three are now tabs and sections
-> inside `/tokens`. `/about` became a modal on the same page.
+> Retired and redirected: `/token`, `/musd`, `/pools` and `/about` folded into
+> `/tokens`; `/dao` and `/vote` into `/tokens#governance`. The authority for all
+> of this is [`web/next.config.js`](./web/next.config.js) and
+> [`web/src/components/Navbar.tsx`](./web/src/components/Navbar.tsx) — if this
+> table and those files disagree, the files are right.
 
 ## Products
 
@@ -49,10 +55,9 @@ product below; every action is a PEX call signed by the user's wallet.
   perpetuals protocol. Live on MainNet.
 - **Strategy Pools** (nav: **Strategy**) — liquidity into those same PEX pools, from the
   other side of the book: you earn trading fees and yield, and you are the counterparty.
-  Three destinations — the ALGO/USD and BTC/USD market pools and PEX's managed **C-Vault**
-  — all depositing and withdrawing **in our own UI**, with no link-out. Live on MainNet;
-  `/strategy` is deliberately not in the nav until each path has a real signature behind
-  it (one of six does so far).
+  Depositing and withdrawing happen **in our own UI**, with no link-out. Current status,
+  including which paths carry a real signature and which destinations are public, is in
+  [`strategy/pools/OVERVIEW.md`](./strategy/pools/OVERVIEW.md).
 
 CLMM pools on PactFi and structured vaults come later.
 
@@ -108,6 +113,8 @@ an oracle, and no protocol code path reads it.
 ```
 MagnetStrategies/
 ├── README.md
+├── CLAUDE.md           ← Repo map, doc conventions, working agreements
+├── archive/            ← Finished work: closed audits and remediations
 ├── ASA_TVL_SPEC.md     ← ASA TVL tracker: sources, conventions, eligibility rules
 ├── org/                ← Org overview, $U tokenomics, treasury, roadmap
 ├── vote/               ← UVote governance — UVOTE.md + UVOTE_SPEC.md
@@ -116,7 +123,8 @@ MagnetStrategies/
 ├── strategy/           ← The "Strategy" arm
 │   ├── OVERVIEW.md     ← Admission criterion + arm-wide commitments
 │   ├── ORACLE.md       ← Arm-level price doctrine
-│   └── perps/          ← Perps on PEX — OVERVIEW, SPEC, PEX platform reference
+│   ├── perps/          ← Trading Terminal on PEX (nav: Trade)
+│   └── pools/          ← Strategy Pools + C-Vault on PEX (nav: Strategy)
 ├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
 │   └── magnetdao/       ← MagnetDAO-era contracts. `uvote/` is the live one
@@ -132,12 +140,14 @@ doctrine to hold.
 
 | Nav | Docs | Note |
 |---|---|---|
-| Tokens | `org/` (\$U) + `magnetfi/v2/mUSD.md` | A page, not a tree — it composes two products |
-| Bank | `magnetfi/` | One product; "Bank" is the label, MagnetFi is the name |
-| Strategy | `strategy/` | A real tree: multiple products sharing price doctrine and commitments |
-| Predict | `predict/` | Stands alone by design |
-| Vote | `vote/` | UVote — its own live contract and spec |
+| Tokens | `org/` (\$U) + `magnetfi/v2/mUSD.md` + `vote/` | A page, not a tree — it composes $U, mUSD and UVote governance |
+| Finance | `magnetfi/` | One product; "Finance" is the label, MagnetFi is the name |
+| Trade | `strategy/perps/` | The Trading Terminal. Same arm as Strategy, different errand |
+| Strategy | `strategy/pools/` | Strategy Pools. Shares `strategy/` doctrine with Trade |
 | Contact | — | Frontend only |
+
+> `/predict` is live and reachable but has no nav slot — VPL is deprioritised.
+> Hidden, not removed; see `Navbar.tsx`, which tests that it stays unlinked.
 
 > Note: **MagnetDAO** was the first governance vision, later rebuilt as **UVote**. The
 > docs tree is split into `org/` and `vote/` accordingly.
@@ -163,6 +173,8 @@ doctrine to hold.
 | [`org/TODO.md`](./org/TODO.md) | Org-level roadmap *(last reviewed 2026-06)* |
 | [`CONTACT.md`](./CONTACT.md) | On-chain messaging between users and the admin — the `/contact` surface |
 | [`SECURITY.md`](./SECURITY.md) | Security policy and disclosure |
+| [`CLAUDE.md`](./CLAUDE.md) | Repo map, doc conventions, and the agreements this codebase is built under |
+| [`archive/README.md`](./archive/README.md) | Finished work — what is closed, and what deliberately is not |
 
 ## Built by Bazooka Labs
 

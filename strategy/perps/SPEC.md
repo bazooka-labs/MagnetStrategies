@@ -14,7 +14,7 @@ needs a first-time trader opening with no target.
 **Nine audits have run.** Audit 9 (2026-10-04) found five issues, no
 ship-blocker, and was remediated in `d45f0f5` — a remediation whose own review
 caught a defect it had introduced, recorded in
-[AUDIT-9-REMEDIATION.md](./AUDIT-9-REMEDIATION.md).
+[AUDIT-9-REMEDIATION.md](../../archive/AUDIT-9-REMEDIATION.md).
 
 **Stop-loss ships on both entry paths** (2026-10-05) — market in `e2adc4d`,
 limit in `aacf0e0` — one protective leg at a time, take-profit OR stop-loss, see

@@ -38,7 +38,8 @@ observed on TestNet. Limit entries do not carry one yet.
 so the nav now splits the arm by what the user is actually doing. The arm itself
 is unchanged and still groups this with the CLMM pools and vaults to come; see
 [../OVERVIEW.md](../OVERVIEW.md#why-the-arm-spans-two-nav-items). `/strategy`
-308-redirects.
+308-redirected here at the time; that redirect was removed on 2026-10-20 when
+Strategy Pools took the route, and both are now nav items in their own right.
 
 The directory and component names still say `perps` and `strategy`; the UI says
 Trading Terminal and Trade. Those are labels, not a restructure.
@@ -153,6 +154,6 @@ MagnetFi state at all.
 | [NEXT.md](./NEXT.md) | What to build next — close, cancel, limit orders, USDC-only payout — and what each needs settled first |
 | [AUDIT.md](./AUDIT.md) | Adversarial audit findings, the one-position decision, and what the earlier verification got wrong |
 | [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md) | **Drafted, NOT sent, unanswered.** Which `quoteV2DecreasePosition` fields scale on a PARTIAL close. Blocks nothing — partial close is not built — and is the only one of the four Ultrade letters still live |
-| [AUDIT-7-REMEDIATION.md](./AUDIT-7-REMEDIATION.md) | Audit 7's findings, the fixes, and what the review of those fixes then found |
+| [AUDIT-7-REMEDIATION.md](../../archive/AUDIT-7-REMEDIATION.md) | Audit 7's findings, the fixes, and what the review of those fixes then found |
 | [../ORACLE.md](../ORACLE.md) | Arm-level price doctrine — Perps consumes PEX's signed payloads and runs no feed of its own |
 | [../OVERVIEW.md](../OVERVIEW.md) | The Strategy arm — admission criterion and arm-wide commitments |

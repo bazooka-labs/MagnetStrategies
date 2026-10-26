@@ -1,7 +1,7 @@
 # Audit 9 — remediation spec
 
 Written before the code, 2026-10-05. Five findings from
-[AUDIT.md](./AUDIT.md#audit-9--2026-10-04). All five are fixed here.
+[AUDIT.md](../strategy/perps/AUDIT.md#audit-9--2026-10-04). All five are fixed here.
 
 Order is deliberate: HIGH 1 and LOW 4 are the same defect seen from two sides —
 a gate whose membership nothing checks — so they are specified together and

@@ -10,7 +10,28 @@ const USDC_ID = 31566704
 const MAGNET_ID = 3081853135
 const MAGNET_FACTOR = 100_000
 const USDC_FACTOR = 1_000_000
-const HAYSTACK_KEY = "1b72df7e-1131-4449-8ce1-29b79dd3f51e"
+/**
+ * Haystack Router key.
+ *
+ * ── This is NOT a secret, and it is not ours ──
+ * `1b72df7e-…` is TxnLab's own FREE-TIER key, printed verbatim in the
+ * @txnlab/haystack-router README's "API Key Tiers" table and shared by every
+ * app that uses the default. It is stated here because it has twice been
+ * mistaken for a leaked credential — it sits in a `"use client"` component, so
+ * it has always shipped in the browser bundle at /tokens and has always been
+ * readable by any visitor. There is nothing to rotate and nothing to hide.
+ * Moving it to NEXT_PUBLIC_* would not change that; client-side env vars ship
+ * in the bundle too.
+ *
+ * ── What IS worth doing ──
+ * The free tier is 60 requests/min SHARED across everyone using the default
+ * key, which is a rate-limit contention risk in production, not a security
+ * one. TxnLab issue dedicated production keys on request
+ * (support@txnlab.dev). The env var below exists so one can be dropped in
+ * without touching this file; the free-tier key stays as the fallback.
+ */
+const HAYSTACK_KEY =
+  process.env.NEXT_PUBLIC_HAYSTACK_KEY || "1b72df7e-1131-4449-8ce1-29b79dd3f51e"
 
 const router = new RouterClient({ apiKey: HAYSTACK_KEY, autoOptIn: true })
 

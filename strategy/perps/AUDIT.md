@@ -1284,7 +1284,7 @@ take-profit became optional.
 
 Two ship-blockers, four HIGH, three MEDIUM, five LOW. Both ship-blockers were on
 the limit path. Full remediation and its own review in
-[AUDIT-8-REMEDIATION.md](./AUDIT-8-REMEDIATION.md); fixed in `5f85472`.
+[AUDIT-8-REMEDIATION.md](../../archive/AUDIT-8-REMEDIATION.md); fixed in `5f85472`.
 
 ### SB1 — three ABI offsets, masked by a four-way coincidence
 

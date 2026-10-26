@@ -12,8 +12,8 @@ this document and that one both got wrong before MainNet corrected them.
 > The product reasoning in §§1-6 — what is shown, what is deliberately NOT
 > claimed, and the corrected open-interest and APR language — is still live and
 > still governs the page, which is why this is amended rather than replaced.
-> `/strategy` remains out of the nav: see OVERVIEW.md for the reason, which is
-> no longer "it can only read".
+> `/strategy` joined the nav on 2026-10-23, once the C-Vault had a full signed
+> round trip and the two direct pools went admin-gated. See OVERVIEW.md.
 **Scope:** self-managed liquidity provision into PEX's three capital destinations.
 **Explicitly out of scope:** "Smart Stake" / Magnet-managed fund — shelved by decision 2026-10-20.
 
