@@ -1,4 +1,19 @@
-# Magnet Strategies — TODO
+# Magnet Strategies — 2026 H1 roadmap
+
+> **History. Nothing here is current.**
+> The org-level checklist as it stood on 2026-06-18, moved out of `org/TODO.md`
+> on 2026-10-27. Almost all of it shipped: MagnetFi v2 is live on mainnet, the
+> docs it lists as "to write" all exist, the contracts it lists as "to build"
+> are deployed, and the repo it proposes creating is public.
+>
+> It is kept as the record of how the organisation got from the MagnetDAO era
+> to here. **Do not act on an unchecked box in this file** — several describe
+> work that was done differently, and several describe the retired `voting.py`
+> (`3554779766`) rather than the live UVote contract.
+>
+> The items that were still genuinely open moved to the documents that own
+> them: ASA TVL work to [ASA_TVL_SPEC.md](../../ASA_TVL_SPEC.md), the legacy
+> contract question to [OVERVIEW.md](../OVERVIEW.md).
 
 Last updated: 2026-06-18
 
@@ -20,7 +35,7 @@ Last updated: 2026-06-18
 
 - [x] Full-bleed background, Times New Roman title, white divider, subtitle
 - [x] Live stat cards — price, holders, TVL
-- [x] **TVL Rank card + Top 100 ASA leaderboard modal** (`/token`, 2026-09-07) — see [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md)
+- [x] **TVL Rank card + Top 100 ASA leaderboard modal** (`/token`, 2026-09-07) — see [ASA_TVL_SPEC.md](../../ASA_TVL_SPEC.md)
 - [x] Action cards — Vestige (chart), TinyMan (swap), MagnetDAO (DAO)
 - [x] Social icons — X and Discord
 - [x] About Magnet Strategies modal with full copy

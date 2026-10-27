@@ -34,7 +34,7 @@ neither — the capacity that matters is the capacity when a keeper fills it.
 by a fresh reviewer: one ship blocker — the card called an **empty** book
 "nearly full", because `oi_headroom` is our own availability policy and binds
 at $0 of a $1,560 cap — plus three HIGH. Six of ten findings fixed in `9f48f30`
-and `c6b1ec8`; the four left open are display-only and listed in `NEXT.md`.
+and `c6b1ec8`; the four left open are display-only and listed in [OVERVIEW.md](./OVERVIEW.md#open-items).
 
 The refactor the audit was called for came back **clean**: `PerpsCard`'s three
 columns were cut and re-inserted by script and nothing was lost in the move.
@@ -44,7 +44,7 @@ component in this repo can be tested behaviourally — `vitest` runs in `node`
 with a `.test.ts`-only glob — so every card guard is pinned by a string match,
 and three of them passed under the bugs they claimed to prevent.
 
-See [AUDIT.md](./AUDIT.md#open) and [NEXT.md](./NEXT.md).
+See [AUDIT.md](./AUDIT.md#open) and [OVERVIEW.md](./OVERVIEW.md#open-items).
 
 > **On source citations.** This document names **symbols**, not line numbers. Line numbers drifted by up to ~300 lines between 0.5.0 and 0.6.2 and were silently wrong here through two claimed re-derivations — for a document whose security control is "verify this against source", a stale line number is worse than no line number. Grep the symbol in the pinned SDK. The pinned SDK is **0.6.6** (`6575dee`), but the citations here were last systematically derived against **0.6.2** (`d9f43a4`) and have *not* been re-derived since — symbol names are stable across those releases, which is why this is a caveat rather than a defect, but verify by grep rather than trusting the version stamp.
 
@@ -1369,7 +1369,7 @@ SDK budgets `3 * strategyAssets.length` of carriers for the round trip, on top
 of a group already carrying math and budget calls); whether the **provider fee
 credit** reaches the quote the user sees before signing; and that it **simulates
 clean** on a real position, both markets, both sides, including the ALGO-profit
-case that raised the question. See [NEXT.md](./NEXT.md).
+case that raised the question. See [OVERVIEW.md](./OVERVIEW.md#open-items).
 
 ---
 

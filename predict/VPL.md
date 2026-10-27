@@ -4,7 +4,18 @@ A daily intraday ladder on BTC. Each morning a reference price is set, the day's
 
 Entry is open 24 hours a day. Stakes are in mUSD. Payouts are funded by everyone who was wrong — no counterparty has to volunteer for the other side, and no order can fail to fill.
 
-**Status:** Design complete. No contract written, no deployment. Implementation detail in [VPL_SPEC.md](./VPL_SPEC.md).
+**Status (verified 2026-10-27):** contract **written and tested, not deployed.**
+`contracts/smart_contracts/vpl/contract.py` is 1,660 lines with 20 LocalNet
+tests, and `keeper/` carries `deploy.py` and `preflight.py`. No app exists on
+any network — `VPL_APP_ID` in `web/src/lib/vpl.ts` reads
+`NEXT_PUBLIC_VPL_APP_ID` and defaults to `0`, so the `/predict` page renders
+against nothing until that is set. Implementation detail in
+[VPL_SPEC.md](./VPL_SPEC.md); deployment steps in
+[OPERATIONS.md](./OPERATIONS.md).
+
+> This line previously read *"Design complete. No contract written, no
+> deployment."* The contract had been written since; nothing updated the
+> status, and a reader would have concluded the work had not started.
 
 ---
 

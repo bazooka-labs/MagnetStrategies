@@ -29,11 +29,11 @@ and anyone evaluating the protocol.
 | `strategy/perps/` | Trading Terminal on PEX (nav: **Trade**) | `strategy/perps/OVERVIEW.md` |
 | `strategy/pools/` | Strategy Pools + C-Vault on PEX (nav: **Strategy**) | `strategy/pools/OVERVIEW.md` |
 | `predict/` | VPL volatility ladder. Its own tree, deliberately | `predict/OVERVIEW.md` |
-| `vote/` | UVote governance | `vote/UVOTE.md` |
+| `vote/` | UVote governance | `vote/OVERVIEW.md` |
 | `contracts/magnetdao/` | MagnetDAO-era contracts; only `uvote/` is live | — |
 | `web/` | The Next.js frontend | `web/README.md` |
 | `archive/` | Repo-wide finished work — closed audits and remediations | `archive/README.md` |
-| `magnetfi/v2/history/` | MagnetFi's own closed records | `magnetfi/v2/history/README.md` |
+| `<product>/history/` | A product's own closed records — `magnetfi/v2/`, `strategy/perps/`, `org/` each have one | the folder's `README.md`, or the file's own banner |
 
 The **app nav** is organised by user intent; the **repo** is organised by where
 doctrine lives. They are allowed to differ, and do.
@@ -48,7 +48,9 @@ Look these up; do not restate them in a doc.
 |---|---|
 | PEX app IDs, program hashes, oracle signer pin | `web/src/lib/perps.ts` |
 | MagnetFi app IDs, mUSD ASA, admin address | `web/src/lib/magnetfi.ts` |
-| $U / USDC ASA IDs, node URLs, UVote app | `web/src/lib/constants.ts` |
+| $U / USDC ASA IDs, node URLs | `web/src/lib/constants.ts` |
+| UVote app | `web/src/lib/uvote.ts` — **not** `constants.ts`, whose `VOTING_APP_ID` is the RETIRED 2026 voting app and is never read |
+| VPL (Predict) | `web/src/lib/vpl.ts` |
 | Nav items and routes | `web/src/components/Navbar.tsx` (+ `Navbar.test.tsx`) |
 | Redirects | `web/next.config.js` |
 | Live contract parameters (spreads, cooldowns, caps) | **The chain.** Read them; never hardcode |
@@ -77,7 +79,9 @@ names what has changed since.
 
 **Status and open items go in that product's `OVERVIEW.md` and nowhere else.**
 Separate `STATUS.md` / `TODO.md` / `NEXT.md` files are what rot fastest, because
-three filenames guarantee two of them go stale.
+three filenames guarantee two of them go stale. All five that existed have been
+merged away — if you are about to create another, put a section in `OVERVIEW.md`
+instead.
 
 **`README.md` at the root is a map, not a status board.** If shipping a feature
 means editing the README, the README is carrying something it should have

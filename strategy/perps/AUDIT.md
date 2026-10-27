@@ -1583,7 +1583,7 @@ $60.847808 at a $0.12 trigger, no child — returned **everything** escrowed:
 
 Two things this settles that were previously inference:
 
-1. **The keeper fee really is refunded on cancel.** [NEXT.md](./NEXT.md) records
+1. **The keeper fee really is refunded on cancel.** [history/BUILD_LOG.md](./history/BUILD_LOG.md) records
    it as refunded-on-cancel, kept-on-execution. The execution half was observed
    on 2026-09-29; the cancel half is observed here. Both halves are now measured.
 2. **The storage MBR returns to the wallet on cancel**, as a `pay` inner
@@ -1800,7 +1800,7 @@ and it is now pinned in three independent places.
 
 **YIELD-RECALL — answered 2026-09-29.** *"Always use recall."* So
 `yieldRecallMode: 1` unconditionally, with the registry built from chain state
-rather than Ultrade's API. Captured in SPEC.md and NEXT.md.
+rather than Ultrade's API. Captured in SPEC.md and OVERVIEW.md.
 
 **CLOSE-RECALL — downgraded, then closed by construction.** Both remaining
 details answered themselves:
@@ -2051,7 +2051,7 @@ unchanged.
 - **`SHAPE_OPEN_STORAGE` was signed on MainNet for the first time** — round
   65742862, 7 txns: `pay 70,900` + `fund_storage(pay)` + `axfer 7 USDC` +
   `open_or_increase` (fee 30,000) + 3 × `noop()`. It passed `assertOpenGroup`
-  and PEX accepted it. Closes the NEXT.md item that said this shape was unsigned.
+  and PEX accepted it. Closes the item that said this shape was unsigned.
 - **The close payout is side-dependent.** Three short closes settled in **USDC
   only**; an ALGO long on 10-04 returned `25.656776 ALGO + 5.918314 USDC`. The
   "USDC-only payout" item therefore only has to address longs on a market whose

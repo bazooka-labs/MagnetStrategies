@@ -147,8 +147,11 @@ stay byte-identical to the live deploy):
   (deploy + createProposal + updateFounder, embedded bytecode), `app/vote/*`,
   `components/vote/*` (ProposalCard, VoteModal, CreateProposalModal, AdminPanel).
 - `tsc --noEmit` clean; production build compiles `/vote`.
-- Still TODO: retire old `/dao` route + `dao.ts` cruft once `/vote` is confirmed live;
-  set `UVOTE_APP_ID` after the deploy handshake; founder canary.
+- ~~Still TODO: retire old `/dao` route + `dao.ts` cruft; set `UVOTE_APP_ID`;
+  founder canary.~~ **All done.** Verified 2026-10-27: `/dao` and `/vote` both
+  308-redirect to `/tokens#governance` (`web/next.config.js`), no `dao.ts`
+  exists, and `UVOTE_APP_ID` resolves to `3679681107` in
+  `web/src/lib/uvote.ts`.
 
 ### Go-live sequence
 1. Admin connects (MagnetFi admin wallet) on `/vote` → **Deploy UVote** (2 signatures).

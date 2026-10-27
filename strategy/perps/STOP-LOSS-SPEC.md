@@ -1,7 +1,7 @@
 # Stop-loss — build spec
 
 Written before the code, 2026-10-05. Closes the gap recorded in
-[NEXT.md](./NEXT.md): `stopLossPrice12` exists, is hardcoded `null`, and nothing
+[OVERVIEW.md](./OVERVIEW.md#open-items): `stopLossPrice12` exists, is hardcoded `null`, and nothing
 can create a `DECREASE_STOP_LOSS` order — while `PositionsPanel` labels order
 kind 3 "Stop loss" and `PerpsView` draws an amber line for it. The code reads as
 though the feature ships.
@@ -246,7 +246,7 @@ one that fails if the edge regresses toward the index point.
 loss, had `legCount` charge them a second keeper fee and a second 99,700 µALGO
 box the group never creates, could be blocked from submitting by a stop that
 would never exist — and the mode toggle did not clear it, so a stop typed in
-market mode followed them into limit mode. `NEXT.md` documented the limitation
+market mode followed them into limit mode. `NEXT.md` (now `history/BUILD_LOG.md`) documented the limitation
 and the UI did not enforce it.
 
 Gated on `!isLimit`, cleared on toggle, excluded from `legCount` and `slOk`.

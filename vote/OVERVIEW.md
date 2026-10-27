@@ -5,8 +5,10 @@ voting over the $U token**. The founder posts an open question about the protoco
 direction; $U holders signal their preference by locking $U for the voting window.
 The tally guides the founder, who executes under the protocol's existing safeguards.
 
-> **Live on mainnet** — App ID `3679681107` · route `/vote` (magnetstrategies.io/vote)
-> Token: $U (ASA `3081853135`). Technical + audit detail: [UVOTE_SPEC.md](./UVOTE_SPEC.md).
+> **Live on mainnet** — App ID `3679681107` (`web/src/lib/uvote.ts`) · surfaced as the
+> **Governance** section of [`/tokens`](https://magnetstrategies.io/tokens#governance).
+> `/vote` and `/dao` 308-redirect there; neither is a page any more.
+> Token: $U (ASA `3081853135`). Technical + audit detail: [SPEC.md](./SPEC.md).
 
 ---
 
@@ -56,7 +58,7 @@ or at risk — it simply signals conviction and prevents double-counting.
 
 ## Guarantees for voters
 
-These are properties of the deployed contract (see [UVOTE_SPEC.md](./UVOTE_SPEC.md)
+These are properties of the deployed contract (see [SPEC.md](./SPEC.md)
 for the audited detail), stated plainly:
 
 - **Your $U always comes back.** The only way $U leaves the contract is *you*
@@ -79,7 +81,7 @@ for the audited detail), stated plainly:
   proportional to how much you lock. This is a core utility of the token alongside its
   role as collateral and LP anchor across MagnetFi.
 - **Treasury.** Proposals often direct how the Magnet Strategies treasury deploys
-  liquidity. The treasury's live USDC balance is shown on the `/vote` page so voters
+  liquidity. The treasury's live USDC balance is shown in the Governance section so voters
   can see the pool a decision is directing. Treasury deployment remains a founder
   action informed by the vote.
 
@@ -97,8 +99,9 @@ for the audited detail), stated plainly:
 
 ## Further reading
 
-- [UVOTE_SPEC.md](./UVOTE_SPEC.md) — contract internals, box layout, transaction
+- [SPEC.md](./SPEC.md) — contract internals, box layout, transaction
   shapes, the two audit passes, and the deploy record (App `3679681107`).
 - [TOKENOMICS.md](../org/TOKENOMICS.md) — $U roles across the protocol.
 - [Treasury](../org/TREASURY.md) — funding and deployment of protocol capital.
-- Frontend: the `/vote` page (`web/src/app/vote/`) — see [web/README.md](../web/README.md).
+- Frontend: `web/src/components/tokens/GovernanceSection.tsx`, with the proposal
+  and voting UI in `web/src/components/vote/` — see [web/README.md](../web/README.md).

@@ -13,6 +13,10 @@ the other side of a position, holds no inventory, and carries no directional ris
 > in Predict depends on a tree outside it. The copies will drift, which is correct:
 > they describe different products.
 
+> **Status: not deployed.** VPL's contract is written and LocalNet-tested; no
+> app exists on mainnet or testnet, and `/predict` has no nav entry. Predict is
+> deprioritised rather than abandoned. Detail: [VPL.md](./VPL.md).
+
 ---
 
 ## Why mUSD Is the Base Currency

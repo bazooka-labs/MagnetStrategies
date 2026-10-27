@@ -53,7 +53,7 @@ the product name set in type. If we ever run our own matching engine, it gets a
 brand then, when the claim is true.
 
 Detail: [SPEC.md](./SPEC.md#build-status--2026-09-29) for what is built,
-[NEXT.md](./NEXT.md) for what to build next and why in that order,
+the Open items below for what is left,
 [AUDIT.md](./AUDIT.md#open) for what is open.
 
 > **Its own tree inside Strategy, deliberately.** Perps was briefly its own top-level
@@ -145,13 +145,50 @@ MagnetFi state at all.
 
 ---
 
+## Open items
+
+Carried over from the former `NEXT.md` on 2026-10-27 and each re-checked
+against the code at that date.
+
+**`PerpsCard.tsx` has no behavioural test.** It is 1,994 lines on the money
+path. The *blocker* that NEXT.md recorded — "no React component here can be
+tested behaviourally", no jsdom, no `.tsx` in the vitest glob — **is fixed**:
+`vitest.config.ts` now includes `src/**/*.test.tsx`, testing-library is
+installed, and the environment is chosen per file by docblock. `FormSection`
+and the liquidity components are mounted and asserted. PerpsCard itself still
+is not; the tests naming it (`perpsCardLayout`, `perpsFormSections`, …) are
+lib-level assertions about it, not mounts of it. The harness is no longer the
+excuse.
+
+**Audit 11 — four display findings open.** None on the group, none on the money
+path. MEDIUM 5 (a failed first proposal read renders as "no live proposals" for
+the page session, on `/tokens`); LOW 7 (the 24h strip mixes the PEX oracle with
+Coinbase candles and its window is 23–24h); LOW 8 (`PositionsPanel`'s signature
+guard fires on nearly every poll — harmless, but its comment claims otherwise);
+LOW 10 (a freeze-contract comment says "never a live derived value" beside
+eleven bare live reads — the comment is what is wrong). Detail in
+[AUDIT.md](./AUDIT.md).
+
+**A take-profit and a stop-loss at the same time** — still one protective leg
+per position, pending PEX's sibling-cleanup behaviour being observed on
+TestNet.
+
+**Pay profit out in USDC** — specified, unbuilt.
+
+**Partial close, add collateral, reclaim** — unbuilt.
+
+**The unsent letter.** [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md)
+was drafted 2026-09-28 and never sent.
+
+---
+
 ## Documents
 
 | | |
 |---|---|
 | [SPEC.md](./SPEC.md) | Product definition, architecture, threat model, invariants |
 | [PEX.md](./PEX.md) | PEX integration — platform facts, measured MainNet state, integration paths considered |
-| [NEXT.md](./NEXT.md) | What to build next — close, cancel, limit orders, USDC-only payout — and what each needs settled first |
+| [history/BUILD_LOG.md](./history/BUILD_LOG.md) | How the write paths were sequenced and why. History — the plan half is now "Open items" above |
 | [AUDIT.md](./AUDIT.md) | Adversarial audit findings, the one-position decision, and what the earlier verification got wrong |
 | [CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md](./CLOSE-QUOTE-QUESTION-FOR-ULTRADE.md) | **Drafted, NOT sent, unanswered.** Which `quoteV2DecreasePosition` fields scale on a PARTIAL close. Blocks nothing — partial close is not built — and is the only one of the four Ultrade letters still live |
 | [AUDIT-7-REMEDIATION.md](../../archive/AUDIT-7-REMEDIATION.md) | Audit 7's findings, the fixes, and what the review of those fixes then found |

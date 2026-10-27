@@ -277,6 +277,24 @@ stays in the modal header, where it reads as methodology rather than a claim on 
   bump. `npm i -D vitest` is needed on a fresh clone to run the 74 tests.
 - **`components/LiveStats.tsx` is dead code** — rendered nowhere.
 
+## Open items
+
+Moved here 2026-10-27 from the former `org/TODO.md`, which was an org-level
+checklist carrying product-level work. Each was verified against the code at
+that date.
+
+- **Flip `AGGREGATE_TVL_ENABLED` after a 48h shadow comparison.**
+  `tvlAggregate.ts:21` still reads `false`, so the Total TVL box shows the
+  hardcoded floor while the aggregate runs alongside it.
+- **Extract the duplicated `PACT_WEIGHTED_FACTORY_ADDR`.** It is declared in
+  both `tvlAggregate.ts` and `leaderboard.ts`. It was typo'd in one copy once
+  and silently returned zero weighted pools — which is the whole reason this
+  tracker exists, so a second copy is a live hazard rather than untidiness.
+- **Rank delta (▲/▼)** — needs an hourly snapshot table; the project has no
+  datastore.
+- **Staleness filter for dormant pools** — board-wide, not fAsset-specific.
+  45% of fGOLD$'s TVL had not traded since 2024-04.
+
 ## Files
 
 | File | Role |

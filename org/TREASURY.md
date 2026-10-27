@@ -27,10 +27,11 @@ Deployment mechanics for a $U-paired pool:
 ## Direction & Oversight
 
 - **UVote** — where treasury liquidity is pointed is a frequent subject of UVote
-  proposals; $U holders signal a preferred direction (advisory). See [UVOTE.md](../vote/UVOTE.md).
+  proposals; $U holders signal a preferred direction (advisory). See [vote/OVERVIEW.md](../vote/OVERVIEW.md).
 - **Founder oversight** — deployment is executed by the founder, who retains final
   authority to avoid pointing capital at unacceptable risk, regardless of vote outcome.
-- **Visibility** — the treasury's live USDC balance is shown on the `/vote` page, so
+- **Visibility** — the treasury's live USDC balance is shown in the Governance
+  section of `/tokens`, so
   voters can see the pool a decision is directing.
 
 ---

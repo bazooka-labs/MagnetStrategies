@@ -43,7 +43,7 @@ open question (liquidity, parameters, investments, or any direction); $U holders
 tokens to signal a preference; the founder acts on the mandate. **Live on mainnet**
 (App `3679681107`). Replaces the retired "MagnetDAO" quarterly-liquidity model.
 
-→ [`vote/UVOTE.md`](./vote/UVOTE.md)
+→ [`vote/OVERVIEW.md`](./vote/OVERVIEW.md)
 
 ### Strategy
 The DeFi strategy arm — products where a user **takes a position or deploys capital into
@@ -117,7 +117,7 @@ MagnetStrategies/
 ├── archive/            ← Finished work: closed audits and remediations
 ├── ASA_TVL_SPEC.md     ← ASA TVL tracker: sources, conventions, eligibility rules
 ├── org/                ← Org overview, $U tokenomics, treasury, roadmap
-├── vote/               ← UVote governance — UVOTE.md + UVOTE_SPEC.md
+├── vote/               ← UVote governance — OVERVIEW.md + SPEC.md
 ├── magnetfi/           ← MagnetFi protocol docs — the "Bank"
 │   └── v2/             ← LP vault + mUSD + PSMv3 — docs, contracts, oracle bot, tests (LIVE)
 ├── strategy/           ← The "Strategy" arm
@@ -162,7 +162,7 @@ doctrine to hold.
 > The retired `governance.py` / `treasury.py` / `voting.py` still sit there. `voting.py`
 > was deployed (App `3554779766`) and is dormant: it holds **zero $U**, so no user funds
 > are in it, and `VOTING_APP_ID` in `web/src/lib/constants.ts` is defined but never read.
-> Their fate is an open item in [`org/TODO.md`](./org/TODO.md).
+> Their fate is an open item in [`org/OVERVIEW.md`](./org/OVERVIEW.md#open-items).
 
 ## Other Documents
 
@@ -170,7 +170,7 @@ doctrine to hold.
 |---|---|
 | [`org/OVERVIEW.md`](./org/OVERVIEW.md) | The organization — objective, product suite, history |
 | [`org/TREASURY.md`](./org/TREASURY.md) | Treasury funding sources and policy |
-| [`org/TODO.md`](./org/TODO.md) | Org-level roadmap *(last reviewed 2026-06)* |
+| [`org/history/ROADMAP_2026H1.md`](./org/history/ROADMAP_2026H1.md) | The 2026 H1 roadmap — history, almost all shipped |
 | [`CONTACT.md`](./CONTACT.md) | On-chain messaging between users and the admin — the `/contact` surface |
 | [`SECURITY.md`](./SECURITY.md) | Security policy and disclosure |
 | [`CLAUDE.md`](./CLAUDE.md) | Repo map, doc conventions, and the agreements this codebase is built under |
