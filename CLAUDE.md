@@ -32,7 +32,8 @@ and anyone evaluating the protocol.
 | `vote/` | UVote governance | `vote/UVOTE.md` |
 | `contracts/magnetdao/` | MagnetDAO-era contracts; only `uvote/` is live | — |
 | `web/` | The Next.js frontend | `web/README.md` |
-| `archive/` | Finished work — closed audits and remediations | `archive/README.md` |
+| `archive/` | Repo-wide finished work — closed audits and remediations | `archive/README.md` |
+| `magnetfi/v2/history/` | MagnetFi's own closed records | `magnetfi/v2/history/README.md` |
 
 The **app nav** is organised by user intent; the **repo** is organised by where
 doctrine lives. They are allowed to differ, and do.
@@ -66,7 +67,13 @@ Four types. Use these names; do not invent a fifth.
 | `OVERVIEW.md` | What it is, why, **current status**, **open items**, links out. The entry point for a product. |
 | `SPEC.md` | Mechanism detail — box layouts, selectors, invariants, group shapes. |
 | `OPERATIONS.md` | Runbooks: deploy, keys, monitoring, what to do when it breaks. |
-| `archive/` | Anything **finished and not resuming**. Keep it; a public protocol showing how its failures were found is worth more than a tidy tree. Read the doc before moving it — `REVAMP_PLAN.md` and `AUDIT_HANDOFF.md` both sound historical and are live. |
+| `archive/` or `<product>/history/` | Anything **finished and not resuming**. Keep it; a public protocol showing how its failures were found is worth more than a tidy tree. Read the doc before moving it — `REVAMP_PLAN.md` and `AUDIT_HANDOFF.md` both sound historical and are live. |
+
+Root `archive/` is for repo-wide closed work. A product keeps its own
+`history/` when the records are dense protocol detail that only reads correctly
+beside the contracts they describe — `magnetfi/v2/history/` is the example.
+Either way every file in them carries a banner saying it is not current, and
+names what has changed since.
 
 **Status and open items go in that product's `OVERVIEW.md` and nowhere else.**
 Separate `STATUS.md` / `TODO.md` / `NEXT.md` files are what rot fastest, because

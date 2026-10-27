@@ -162,7 +162,7 @@ composability risk (8.4) — we consume its pools, we don't run its logic.
 > damage now is the PSM's real-USDC issuance cap and the admin gate on
 > liquidation, not an oracle band. This section stays as written because it is
 > what the audit found at the time; for the current position see ADMIN.md's
-> bot-key compromise row and STATUS.md §1b.
+> bot-key compromise row and [history/LEAN_ORACLE_MIGRATION.md](./history/LEAN_ORACLE_MIGRATION.md).
 
 
 The `±25%` anchor caps how far the reported price can be inflated; combined with 60% LTV:

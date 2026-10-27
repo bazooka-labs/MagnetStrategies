@@ -11,7 +11,7 @@ This is a deliberate choice. Trustless governance adds complexity and attack sur
 | Role | Key type | Powers |
 |---|---|---|
 | **Admin** (hot) | Hardware wallet | Rates/LTV/thresholds, all liquidations, fee/reserve management, oracle-bot authorization, opt-ins, *proposing* the timelocked oracle/vault repoints, pause |
-| **Guardian** (cold) | Cold multisig | Pause **and** unpause, **cancel** any queued timelocked change (the veto), and propose admin rotation (recovery). Never signs routine transactions. |
+| **Guardian** (cold) | ⚠️ **Single cold key** today; a 2-of-3 multisig is the design target — see below | Pause **and** unpause, **cancel** any queued timelocked change (the veto), and propose admin rotation (recovery). Never signs routine transactions. |
 
 **What the admin can do:**
 - Trigger all liquidations; set rates / LTV / thresholds; manage PSM reserves; collect revenue
@@ -51,11 +51,42 @@ The admin is stored on-chain (mutable via 2-step rotation) on all three contract
 
 ## Guardian Wallet (cold)
 
-Separate **cold multisig**, ideally 2-of-3 across hardware wallets held by different principals. Touched only during incidents or scheduled rotations — never for routine operations.
+Separate cold key, touched only during incidents or scheduled rotations — never
+for routine operations.
 
-| Property | Recommendation |
+> ### ⚠️ Deployed reality: the guardian is a SINGLE KEY, not a multisig
+>
+> Confirmed with the operator 2026-10-27. Every earlier revision of this
+> document described the guardian as a 2-of-3 cold multisig in the present
+> tense, including the table below. That was the **design target**, never what
+> shipped, and the gap went unrecorded for months.
+>
+> **Why it matters, from the contracts rather than from intent.** `unpause()`
+> and `propose_guardian()` are both `_assert_guardian()` in all three contracts
+> (`psm_v3/contract.py:349,328`, `vault/contract.py:319,295`,
+> `lean_oracle/contract.py:144`). The admin can do neither. So with one key:
+>
+> - **Lost** → the guardian role can never be rotated, because only the
+>   guardian can propose a successor. The containment layer is gone
+>   permanently, and if anything is ever paused it can never be unpaused.
+> - **Compromised** → the holder can pause and the admin cannot lift it. That
+>   is an indefinite protocol freeze, and they can rotate the role to
+>   themselves.
+>
+> A guardian still cannot move funds or change parameters, so this is a
+> **freeze-and-lose-containment** risk, not a drain risk. At the current scale —
+> a $151 reserve and three positions, all the operator's — it is a defensible
+> acceptance. It stops being one at the tripwires in
+> [OVERVIEW.md](./OVERVIEW.md#tripwires--conditions-not-intentions).
+>
+> This is exactly the failure the paragraph at the end of this document
+> predicted: *"the guardian must be a robust cold multisig (2-of-3) so a single
+> signer compromise does not lose the role."* The reasoning was right and the
+> deployment did not follow it.
+
+| Property | Recommendation (**not** current state) |
 |---|---|
-| Wallet type | Cold multisig (2-of-3 hardware) |
+| Wallet type | Cold multisig (2-of-3 hardware) — **currently a single key** |
 | Powers | `pause`/`unpause`, `cancel_pending_*` (veto a queued repoint), `propose_admin` (recovery), `propose_guardian`/`accept_guardian` (rotate itself) |
 | Storage | Fully offline; signing only for incident response |
 | Compromise impact | Guardian alone cannot move funds or change parameters — it can only pause and veto. A guardian compromise is a griefing risk (can pause), not a drain risk. |
@@ -353,4 +384,7 @@ Order matters — do not skip steps or reorder.
 - The hot key alone cannot drain funds: the catastrophic oracle/vault repoints are timelocked 48h and guardian-cancellable, and the guardian holds unpause. Hardware wallet for the hot key further reduces compromise risk.
 
 **Guardian (cold key) compromised:** — lower severity; the guardian cannot move funds or change parameters, only pause and veto
-- A compromised guardian can grief by pausing (admin cannot unpause). Mitigation: admin `propose_guardian(clean_cold_key)` is not available (guardian-only) — so recovery requires the guardian's own `propose_guardian`/`accept_guardian`. **Therefore the guardian must be a robust cold multisig (2-of-3) so a single signer compromise does not lose the role.** This is why the guardian is specified as a multisig, not a single key.
+- A compromised guardian can grief by pausing (admin cannot unpause). Mitigation: admin `propose_guardian(clean_cold_key)` is not available (guardian-only) — so recovery requires the guardian's own `propose_guardian`/`accept_guardian`. **Therefore the guardian must be a robust cold multisig (2-of-3) so a single signer compromise does not lose the role.** This is why the guardian is *specified* as a multisig.
+  > ⚠️ **It is not one today** — the deployed guardian is a single key. See the
+  > boxed note under "Guardian Wallet (cold)" above. The argument in this
+  > paragraph is sound and currently unmet.

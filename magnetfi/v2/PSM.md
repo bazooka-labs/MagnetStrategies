@@ -391,7 +391,7 @@ opening the PSM to third-party deposits is the natural way to raise it.
 date. A deposit product launched now would add a risk class, a regulatory
 question and new contract surface in exchange for distributing roughly nothing.
 **Borrow demand has to come first**, which is why ALGO/USDC collateral is ahead
-of this in [TODO.md](./TODO.md#-path-forward--agreed-2026-10-07).
+of this in [REVAMP_PLAN.md](./REVAMP_PLAN.md), which superseded the earlier ordering.
 
 **It transfers risk that is currently the founder's alone.** Today a bad debt
 event costs one person. With public deposits it costs depositors — and the
@@ -426,7 +426,7 @@ not the founder's, and it should be documented as such at launch.
 
 Public deposits require, first: **ALGO/USDC collateral live and borrow demand
 demonstrated**, **liquidation proven working**, and the key-compromise question
-re-answered per the tripwires in [TODO.md](./TODO.md#-tripwires--conditions-not-intentions).
+re-answered per the tripwires in [OVERVIEW.md](./OVERVIEW.md#tripwires--conditions-not-intentions).
 
 This is a **v4 contract shape**, not a change to the live v3 PSM — and it should
 ship in the same migration as the signed-payload oracle, since both touch the

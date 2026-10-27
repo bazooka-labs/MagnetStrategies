@@ -1,53 +1,14 @@
-# MagnetFi — where things stand
+# Lean-oracle migration — record
 
-_Updated 2026-10-14. **Start here.** The document set has churned a lot in the
-last week and several specs supersede each other; this page says what is live,
-what is built, what is next, and which document to trust for what._
-
----
-
-## 1. Live on mainnet, right now
-
-| | | |
-|---|---|---|
-| **LP Oracle** | `3741272132` | **lean** — no band. The vault's oracle since 2026-10-17 19:01Z |
-| Banded oracle | `3644230020` | **RETIRED 2026-10-17.** Nothing posts to it; the vault does not read it. Permanent on chain (no delete handler) |
-| PSM v3 | `3644230181` | reserve **$151.40 USDC** |
-| Vault | `3671287267` | **3 open positions**, all the founder's own wallets |
-| mUSD ASA | `3615600399` | **101.40** circulating |
-
-**Interest rates** (set on chain 2026-10-14, matching the UI): U/tALGO **1000 bps**,
-U/USDC **600 bps**. These apply to NEW vaults only — the rate is copied into the
-vault box at `open_vault`, so the three open positions stay at 800/500/800 for
-their whole life.
-
-> **Open loans do NOT need to be closed for this migration.** That requirement
-> (`REVAMP_PLAN.md:22`) is a consequence of deploying a new **vault**, the one
-> contract with no repointing path; `ORACLE_V5_SPEC.md:84` tabulates it as the
-> v4-vs-v5 difference — *"unwind every open position: yes | no"*. The lean
-> oracle swap repoints the **oracle** via `propose_lp_oracle` →
-> `confirm_lp_oracle` and never redeploys the vault, so vault boxes are
-> untouched. Asserted, not inferred: see §3's rehearsal.
-
-**Collateral registered on the vault:** U/tALGO `3163770927`, U/USDC `3673941603`.
-**Registered on the oracle only** (priced, but nothing can borrow against them):
-ALGO/USDC `1002590888`, U/ALGO `3617313492`.
-
-### The feed — restored 2026-10-14
-
-The bot stopped on 2026-10-13 after a host reboot; borrowing and all three
-liquidation paths reverted for ~27 hours. Restarted 2026-10-14 18:44Z, first
-posts at 18:49Z after the expected TWAP warm-up (`MIN_TWAP_READINGS = 3` at
-~370s spacing, rebuilt from scratch because the outage was far past `max_gap`).
-
-All four pools are posting. **ALGO/USDC and U/ALGO were priced for the first
-time ever** — before this they carried only the seed `add_pool` wrote.
-
-First live read of the cross-check, against a healthy feed: divergence
-**0.04%–0.69%** across the four pools. That supersedes the 0.26–4.20% recorded
-in §3b, which was measured against a feed frozen 23–109 hours and is an upper
-bound rather than a sample — the 5% warn line has ~15x headroom over real lag,
-not the 1.2x the stale numbers implied.
+> **History. Complete 2026-10-17; nothing here is current.**
+> Lifted from the former `magnetfi/v2/STATUS.md` when that file was merged into
+> `OVERVIEW.md`. Kept intact because two findings in it generalise well beyond
+> this migration — see "What this taught us" below. For how the oracle works
+> now, read [ORACLE_LEAN_SPEC.md](../ORACLE_LEAN_SPEC.md); for current state,
+> [OVERVIEW.md](../OVERVIEW.md).
+>
+> Figures and app states below are as they were at the time of writing and have
+> not been refreshed.
 
 ## 1b. Lean-oracle migration — COMPLETE
 
@@ -169,7 +130,7 @@ The operator has accepted key-compromise risk explicitly; the bands only ever
 bounded a compromised key, and their cost — a protocol-wide freeze — is not
 accepted.
 
-**Authoritative document: [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md).**
+**Authoritative document: [ORACLE_LEAN_SPEC.md](../ORACLE_LEAN_SPEC.md).**
 
 ---
 
@@ -371,94 +332,3 @@ own $U price, which comes from these same thin pools.
 vault-wired pools, so **ALGO/USDC and U/ALGO are not displayed** even though the
 cross-check already knows their addresses. That is pre-existing and will resolve
 when those two are wired vault-side at the migration.
-
-## 4. Built, proven, and deliberately shelved
-
-The **v5 relay oracle** — signed payloads any third party can relay — is fully
-built: payload format (59 tests), contracts (compiled, 17 tests), signer (19
-tests), the drop-in claim demonstrated by running the entire vault suite against
-it, and the liveness property executable.
-
-It is deferred, not abandoned. What it adds over the lean oracle — zero-second
-pricing at the moment of liquidation, and no key the contract trusts — is worth
-less than it costs **while every borrower is the operator**. Both become
-valuable the moment that stops being true.
-
-**Tripwire — before a third-party borrower opens a vault:** re-answer the
-key-compromise question. Without the bands, a compromised bot key can set any
-price, and the PSM invariant caps only the over-minting direction. See
-[ORACLE_LEAN_SPEC.md §5](./ORACLE_LEAN_SPEC.md).
-
----
-
-## 5. Which document to trust
-
-| document | status |
-|---|---|
-| **STATUS.md** (this) | current |
-| **ORACLE_LEAN_SPEC.md** | **executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this, and §5's rate limit is the one deferred piece |
-| ORACLE_V5_SPEC.md | built and proven, **deferred**; carries the notice |
-| SIGNED_PAYLOAD.md | current, describes v5's wire format |
-| REVAMP_PLAN.md | phase structure still useful; **Phase 2 is superseded** by the lean spec |
-| LP_ORACLE.md | ⚠️ describes the **retired** banded oracle. Carries a stale-banner; its band/anchor/`set_price_anchor` material and its "compromised key is bounded" claim no longer describe anything live |
-| **ADMIN.md** | **accurate for what is running** — see below |
-| LAUNCH_RUNBOOK.md | ⚠️ its add-a-pool procedure targets the **retired** oracle app and the wrong config file. Carries a stale-banner. Do not follow it without reading that |
-| TODO.md | its "path forward" predates both re-scopes; use this page instead |
-| AUDIT.md, AUDIT_HANDOFF.md | **historical records.** P19-03 documents the anchor band as a finding that was *addressed*; the band was then removed deliberately on 2026-10-17. Do not rewrite the record — it is what was true then. AUDIT_HANDOFF §8.3's manipulation bound reads as a live safety argument and is not one any more, so it carries a dated note rather than an edit |
-| PSM.md, VAULT.md, LIQUIDATION.md, mUSD.md, OVERVIEW.md, FOLKS_ADAPTER.md | unaffected |
-
-### ADMIN.md: swept 2026-10-17, with step 8
-
-This section used to say the anchor-band re-anchor procedure must NOT be
-"fixed" early, because the banded oracle was still the vault's oracle and
-later still the rollback target. Both reasons expired the same day.
-
-`ADMIN.md`'s re-anchoring section is now a tombstone: the band, the
-`set_price_anchor` call and the "Re-anchor price" admin form are all gone, and
-the stale-pool diagnosis is rewritten around what can actually refuse a post.
-
-**Two things in that sweep were wrong on the first pass and are worth
-recording, because both are the same mistake — naming a check that does not
-check.**
-
-- `effective_bounds_with_anchor` returns `(0,0,0)` when the oracle has no
-  anchor (`oracle_bot.py:1012`), so the per-pool `min_price`/`max_price` in
-  `config.lean.json` are **inert**. That is deliberate — a bot-side bound that
-  refuses to post is the same halt as a band that refuses to accept — but it
-  means the config reads as a guardrail it is not.
-- The §2.2b TVL-balance invariant **warns and keeps posting**
-  (`oracle_bot.py:887`). It is not "the replacement bound", and §6 already
-  recorded that it warns rather than gates.
-
-What actually gates a post: `asset_price_bounds`, the CompX divergence check,
-and the spot-vs-TWAP upward spike block. ADMIN.md carries that as a table.
-
----
-
-## 6. Open decisions
-
-**Settled:** the composition check warns rather than gates, at 5%; a TWAP gap
-discards history (option A) above 2× the expected cycle spacing.
-
-**Done 2026-10-14:**
-
-- ~~**Interest rates.**~~ `set_rate(3163770927, 1000)` and
-  `set_rate(3673941603, 600)` are on chain and now match the UI. The drift had
-  been open since `9aa945a`, where the cards were updated to the intended rates
-  and the calls were never made.
-
-**Open:**
-
-- **A storage bucket** — only needed if v5 is revived; the lean oracle needs none.
-- **Vault-side registration for ALGO/USDC and U/ALGO** — still deferred. Both
-  are now priced on BOTH oracles, but neither has a vault-side rate, LTV,
-  liquidation threshold or LP ASA, so nothing can be borrowed against them. They
-  render as inert "Coming soon" cards and carry an ORACLE ONLY badge in the
-  admin health panel.
-- **Rotating the oracle bot key.** `QX7EPGRC…` had its mnemonic pasted into a
-  terminal and a chat transcript on 2026-10-14. It is the authorized updater on
-  **both** oracles now, so rotation is two `set_authorized_updater` calls, both
-  admin-only and immediate. Doing it inside the 48h window means the lean oracle
-  never goes live trusting an exposed key. The blast radius is bounded to
-  posting prices — it cannot move funds — and while the banded oracle is live
-  the ±25% band bounds it further; after the swap it does not.

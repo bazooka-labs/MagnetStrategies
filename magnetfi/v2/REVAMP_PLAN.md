@@ -1,6 +1,6 @@
 # MagnetFi Revamp — Sequenced Plan
 
-_Written 2026-10-10. Supersedes the ordering in [TODO.md](./TODO.md) "Path forward
+_Written 2026-10-10. Supersedes the ordering in the former `TODO.md` "Path forward
 — agreed 2026-10-07", which put ALGO/USDC before the rebuild. The measurements
 below are why that order changed._
 
@@ -343,7 +343,7 @@ Only now does goal 2 become measurable.
       on. The pool is $1.72M; 10% captured is ~$172k collateral and ~$103k of
       borrow demand.
 - [ ] **5.3** Public PSM deposits remain **pinned** behind the tripwires in
-      TODO.md. Before a single third-party deposit, re-answer the key-compromise
+      OVERVIEW.md. Before a single third-party deposit, re-answer the key-compromise
       question: v4 accepts that risk because loss is capped at the PSM reserve
       *and the reserve is the founder's own money*. Outside deposits end both
       halves, and the **upward rate limit** in LP_ORACLE.md → Designs considered

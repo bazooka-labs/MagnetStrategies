@@ -23,7 +23,7 @@ A document whose work is **done and will not resume**. Specifically not:
 
 - anything still referenced as the authority for current behaviour;
 - plans that supersede another document's ordering (`magnetfi/v2/REVAMP_PLAN.md`
-  supersedes `TODO.md`, so it is live);
+  superseded `magnetfi/v2/TODO.md`'s ordering, so it is live);
 - packages for work that has not happened yet (`magnetfi/v2/AUDIT_HANDOFF.md` is
   for an upcoming v3 audit);
 - letters drafted and not yet sent

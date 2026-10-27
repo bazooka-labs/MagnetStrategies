@@ -119,7 +119,7 @@
 > penalties; full-liq flow → seize-all; Risk Parameters `Liquidation fee` row; settlement notes; mark
 > P23-01 resolved) and delete the banner. **ADMIN.md** — liquidation procedure (no surplus return) +
 > Revenue Accounting (frame liquidation proceeds as cost-recovery, **NOT** a revenue line, per D6).
-> **TODO.md** P23-01 → resolved. **web `LpVaultLearnMore.tsx`** — Tier-2 wording + "partial
+> **P23-01** → resolved (see [history/V2_DEPLOYMENT_RECORD.md](./history/V2_DEPLOYMENT_RECORD.md)). **web `LpVaultLearnMore.tsx`** — Tier-2 wording + "partial
 > liquidations carry a 5%/7% fee; on a full liquidation the borrower receives nothing above the MBR."
 > ⚠️ The **web copy must NOT change before the contract is live**, or it misrepresents the on-chain
 > terms to real users. (ADMIN.md now carries a forward-pointer to this block near the liq procedure.)

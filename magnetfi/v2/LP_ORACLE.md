@@ -8,7 +8,7 @@
 > below about anchors, bands, re-anchoring and band-derived bot bounds is
 > history. The bot-compromise paragraph near the end is specifically
 > superseded — see ADMIN.md's compromise row and
-> [STATUS.md](./STATUS.md) §1b. Kept as the record of how the banded oracle
+> [history/LEAN_ORACLE_MIGRATION.md](./history/LEAN_ORACLE_MIGRATION.md). Kept as the record of how the banded oracle
 > worked; see [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) for what replaced it.
 
 ## Purpose
@@ -475,7 +475,7 @@ ALGO.
 This is a **vault** contract change, and the vault is the one piece with no
 repointing path (the oracle is swappable via `propose_lp_oracle`; the vault is
 not). It should therefore ship in the **same migration** as the public-lending
-contract shape — see [TODO.md](./TODO.md). Two expensive migrations become one,
+contract shape — see [OVERVIEW.md](./OVERVIEW.md). Two expensive migrations become one,
 and the window is open while the book is 3 vaults and $950.
 
 

@@ -392,7 +392,7 @@ Same shape as any oracle swap, and the vault keeps serving throughout.
 
    §2.2b's TVL-balance invariant is **not** the replacement bound, despite
    being written here as one. It runs in the bot, which a key holder bypasses,
-   and it warns rather than gates (`oracle_bot.py:887`; STATUS.md §6 recorded
+   and it warns rather than gates (`oracle_bot.py:887`; [OVERVIEW.md](./OVERVIEW.md) recorded
    the warn-not-gate decision). §5's upward rate limit remains the real
    remedy, and remains deferred.
 
@@ -421,7 +421,7 @@ behind it rather than a dead one.
 > "proposal is not a cutover" window, the cutover itself, the `accept_admin`
 > restart, step 8's harmless staleness, and this rollback paragraph. The two
 > oracles are seeded at different prices so the vault's borrowing capacity
-> reads back which one it is pricing from. See STATUS.md §3.
+> reads back which one it is pricing from. See [history/LEAN_ORACLE_MIGRATION.md](./history/LEAN_ORACLE_MIGRATION.md).
 
 ### Documentation that becomes actively wrong — these are incident runbooks
 

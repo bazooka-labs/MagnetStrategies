@@ -9,7 +9,7 @@
 > (re-anchor) no longer exists. There is no anchor and no `set_price_anchor`
 > on the lean oracle, so every band/anchor instruction below is inert.
 > See [ORACLE_LEAN_SPEC.md §6](./ORACLE_LEAN_SPEC.md) step 8 and
-> [STATUS.md](./STATUS.md) §1b. Everything non-oracle here is still accurate.
+> [history/LEAN_ORACLE_MIGRATION.md](./history/LEAN_ORACLE_MIGRATION.md). Everything non-oracle here is still accurate.
 
 Every privileged step is **Pera-signed by the connected admin/guardian wallet** through the
 `/magnetfi` admin panel — no seed phrase, no script. Follow in order. Detailed method-level notes:

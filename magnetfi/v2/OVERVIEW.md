@@ -1,25 +1,88 @@
 # MagnetFi v2 — LP Vault + mUSD
 
-## What Is This?
+## What is this?
 
-MagnetFi v2 protocol is a new approach into Algorand DeFi by leveraging yield bearing LP tokens as suitable collateral for Magnet's own Algorand-native stablecoin $mUSD. Users deposit Tinyman LP tokens as collateral and borrow mUSD where the peg is guaranteed by a protocol-owned reserve module. Repayment is mandatory but interest-only; principal is optional and unlocks collateral. 
+MagnetFi v2 leverages yield-bearing LP tokens as collateral for Magnet's own
+Algorand-native stablecoin **mUSD**. Users deposit Tinyman LP tokens and borrow
+mUSD, where the peg is guaranteed by a protocol-owned reserve module. Repayment
+is mandatory but interest-only; principal is optional and unlocks collateral.
 
-This is an admin-managed protocol with a two-role security model: a hot **admin** key controls rates, reserve levels, and liquidation triggers, while a cold **guardian** key can pause the protocol, veto the timelocked oracle/vault repointing powers, and recover a lost or compromised admin key. There is no external governance at launch. See [Admin](./ADMIN.md) for the full trust model.
+Admin-managed, with a two-role security model: a hot **admin** key controls
+rates, reserve levels and liquidation triggers; a cold **guardian** key can
+pause the protocol, veto the timelocked oracle/vault repointing powers, and
+recover a lost or compromised admin key. No external governance at launch. Full
+trust model: [ADMIN.md](./ADMIN.md).
+
+> ⚠️ **The guardian is a single cold key, not the 2-of-3 multisig the design
+> calls for.** `unpause()` and `propose_guardian()` are guardian-only in all
+> three contracts, so losing that key permanently removes the containment layer
+> and a compromise of it freezes the protocol with no admin recovery. It cannot
+> move funds or change parameters. See
+> [ADMIN.md](./ADMIN.md#guardian-wallet-cold) and the tripwires below.
 
 ---
 
-## Product Surfaces
+## Status
 
-The MagnetFi app exposes two complementary borrowing/lending surfaces:
+**Live on Algorand mainnet.** Oracle, PSMv3 and Vault operating on U/tALGO and
+U/USDC collateral; borrows validated end to end. v3 productive reserves live;
+the Folks yield adapter is built and testnet-validated but **not yet
+whitelisted**.
 
-1. **LP-collateral vaults (these contracts).** Deposit Tinyman LP tokens, borrow mUSD. Built and owned by MagnetFi — the LP Oracle, PSM, and Vault documented here.
-2. **Single-token markets (CompX).** Lend or borrow individual assets ($U, USDC, …) via our partner **CompX**'s lending pools, surfaced in the MagnetFi UI through their SDK (read-only market data + deep-link to transact). These pools are hosted and operated by CompX; MagnetFi adds no contract surface or custody for them.
+### Where to read the live state
 
-Together they give MagnetFi both single-token and LP-collateralized options. Everything else in this document set concerns the LP-vault contracts only.
+This document deliberately does **not** restate figures that change. Every one
+of them has diverged across documents at least once — the interest rates were
+recorded three different ways in three files in this folder, and two were wrong.
+
+| What | Read it from |
+|---|---|
+| App IDs (oracle, PSM, vault), mUSD ASA, pool wiring | `web/src/lib/magnetfi.ts` — `DEPLOYMENTS.mainnet`, `POOL_WIRING` |
+| Interest rates per pool | The vault's `rate_<pool_id>` globals, on chain |
+| PSM reserve, circulating mUSD, vault ceiling | The PSM app account and the mUSD ASA, on chain |
+| Open positions and their health | The vault's boxes, or the admin panel |
+| Oracle freshness and price cross-check | The admin Oracle Health panel |
+
+The admin panel reads all of these live. If a number here and the chain
+disagree, the chain is right and this line is the bug.
+
+### The oracle: lean, no band
+
+The vault has priced from the **lean oracle** since 2026-10-17 19:01Z, swapped
+in behind the 48h timelock. The banded oracle it replaced is retired — nothing
+posts to it, the vault does not read it, and it cannot be deleted (no delete
+handler), so it sits on chain unread.
+
+**The band was removed deliberately.** The oracle had frozen three times; two
+were the bot's own hardcoded bounds and are fixed, and the third was the
+*contract's* anchor band rejecting a valid post. The bands only ever bounded a
+compromised key, and their cost — a protocol-wide freeze — was not accepted.
+Authoritative: [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md). Migration record:
+[history/LEAN_ORACLE_MIGRATION.md](./history/LEAN_ORACLE_MIGRATION.md).
+
+**The consequence, stated plainly:** a holder of `authorized_updater` can post
+**any price** for any pool. There is no deviation check, no bounds and no rate
+limit on chain. The loss is still bounded in both directions — over-borrowing
+is capped by the PSM's backing invariant, which counts real USDC and not
+oracle-priced collateral; and all three `trigger_*_liquidation` methods are
+admin-only, so a crashed price seizes nothing by itself. But "bounded" here
+means *bounded by the PSM reserve*, and it grows with the reserve.
 
 ---
 
-## Protocol Architecture
+## Product surfaces
+
+1. **LP-collateral vaults (these contracts).** Deposit Tinyman LP tokens,
+   borrow mUSD. Built and owned by MagnetFi.
+2. **Single-token markets (CompX).** Lend or borrow individual assets via
+   partner CompX's pools, surfaced read-only with a deep-link. Hosted and
+   operated by CompX; MagnetFi adds no contract surface or custody.
+
+Everything else in this document set concerns the LP-vault contracts only.
+
+---
+
+## Architecture
 
 ```
 Admin Wallet (Bazooka Labs)
@@ -33,190 +96,276 @@ LP Oracle Contract        ← values LP positions by (LP balance / total LP supp
 mUSD ASA                  ← Algorand-native stablecoin; total minted ≤ PSM USDC reserves
 ```
 
----
-
-## Core Invariant
+### Core invariant
 
 > **Circulating mUSD ≤ PSM USDC reserves at all times.**
 
-"Circulating mUSD" is all mUSD not held by the PSM — regardless of whether it entered circulation via vault borrowing or direct PSM mint.
+"Circulating" is all mUSD not held by the PSM, regardless of whether it entered
+via vault borrowing or direct PSM mint. Enforced at contract level. The two
+entry paths stress it differently:
 
-This invariant is enforced at the contract level, but the two mUSD entry paths stress it differently:
+- **Vault borrow** — PSM issues mUSD without receiving USDC: circulating rises,
+  PSM USDC unchanged, vault ceiling shrinks.
+- **PSM direct mint** — USDC enters as mUSD is issued: both sides rise equally,
+  the invariant is never stressed, ceiling unchanged.
 
-- **Vault borrow:** PSM issues mUSD without receiving USDC → circulating increases, PSM USDC unchanged → vault ceiling shrinks
-- **PSM direct mint (USDC → mUSD):** USDC enters PSM at the same moment mUSD is issued → both sides increase equally → invariant is never stressed; vault ceiling unchanged
-
-The practical constraint is vault minting. PSM direct mints are self-balancing and can never break the invariant. Admin cannot withdraw PSM USDC below circulating mUSD. The peg is mathematically guaranteed as long as the invariant holds.
+So the practical constraint is vault minting. Admin cannot withdraw PSM USDC
+below circulating mUSD. The peg is mathematically guaranteed while it holds.
 
 ---
 
-## Peg Stability Module (PSM)
+## Peg Stability Module
 
-The PSM is a protocol-owned fixed-rate swap module. It is not an AMM.
+A protocol-owned fixed-rate swap module, not an AMM.
 
 | Direction | Rate | Fee |
 |---|---|---|
-| USDC → mUSD (Mint) | 1:1 | 0% — friction-free entry |
-| mUSD → USDC (Redeem) | 1:1 | 1% → treasury wallet |
+| USDC → mUSD (mint) | 1:1 | 0% — friction-free entry |
+| mUSD → USDC (redeem) | 1:1 | 1% → treasury wallet |
 
-- The PSM is a first-class user-facing product — anyone can mint mUSD by depositing USDC (no vault needed)
-- Redemption fee (1%) routes directly to treasury per transaction; it does not accumulate in PSM reserves
-- Vault ceiling grows via admin USDC deposits and vault repayments; PSM swaps are self-balancing
-- Admin-only: add or withdraw USDC from PSM (withdraw guard: cannot drop below outstanding mUSD)
-- No external LPs; all reserves are protocol-owned
-- **Productive reserves (v3, live):** the PSM deploys idle reserves into low-risk **on-chain** yield (Folks Finance first) via vetted, timelocked adapters while keeping mUSD fully redeemable — capital does double duty (loan interest + reserve yield). PSMv3 is live on mainnet; the Folks yield adapter is built + testnet-validated, not yet whitelisted. See [PSM.md → Productive Reserves (v3)](./PSM.md#productive-reserves-v3).
+- A first-class user-facing product: anyone can mint mUSD with USDC, no vault.
+- The redemption fee routes to treasury per transaction; it does not accumulate
+  in reserves.
+- No external LPs; all reserves protocol-owned.
+- **Productive reserves (v3, live):** idle reserves deploy into low-risk
+  on-chain yield through vetted, timelocked adapters while mUSD stays fully
+  redeemable. See [PSM.md](./PSM.md#productive-reserves-v3).
 
 ---
 
 ## Vault
 
-Each vault is an LP collateral position. A borrower deposits a Tinyman LP token and mints mUSD up to the vault's LTV limit.
+Each vault is an LP collateral position: deposit a Tinyman LP token, mint mUSD
+up to the LTV limit.
 
-### Vault Types
+| Vault | LP Pair | LTV | Liq. threshold | Status |
+|---|---|---|---|---|
+| U/tALGO LP | $U + tALGO | 60% | 75% | live |
+| U/USDC LP | $U + USDC | 65% | 75% | live |
+| ALGO/USDC | ALGO + USDC | — | — | priced on the oracle, **not vault-registered** |
+| U/ALGO | $U + ALGO | — | — | priced on the oracle, **not vault-registered** |
 
-| Vault | LP Pair | LTV | Liq. Threshold | Interest Rate (APR) | Status |
-|---|---|---|---|---|---|
-| U/tALGO LP | $U + tALGO | 60% | 75% | 8% | ✅ live |
-| U/USDC LP | $U + USDC | 65% | 75% | 5% | ✅ live |
-| U/ALGO LP | $U + ALGO | 60% | 75% | ~8% | planned |
-| U/wBTC LP | $U + wBTC | 60% | 75% | ~8% | planned |
+**Rates are not listed here on purpose** — read them from the vault's
+`rate_<pool_id>` globals. They changed on 2026-10-14 and this table said
+otherwise for twelve days.
 
-### Repayment Model
+Rates **lock at open**: the rate is copied into the vault box, so a change
+applies to new vaults only and never reprices an open position.
 
-- **Interest-only** — borrower owes accrued interest quarterly (every ~90 days)
-- **Principal optional** — repaying principal in full returns all collateral; no mandatory repayment date
-- **Grace period** — admin may trigger micro-liquidation at 90 days of non-payment; interest continues accruing until the admin acts; micro-liquidation seizes all accrued interest at execution time and resets the clock
-- **Clock resets** on every interest payment or liquidation event
+The bottom two rows are priced by the oracle but have no vault-side rate, LTV,
+liquidation threshold or LP ASA, so nothing can be borrowed against them. They
+render as inert "Coming soon" cards and carry an ORACLE ONLY badge in the admin
+panel.
+
+### Repayment
+
+- **Interest-only** — interest owed roughly quarterly (~90 days).
+- **Principal optional** — repaying in full returns all collateral; no mandatory
+  repayment date.
+- **Grace** — admin may trigger micro-liquidation at 90 days of non-payment.
+  Interest accrues until the admin acts.
+- **Clock resets** on every interest payment or liquidation event.
+- `pay_interest()` is the single repayment path (always charges interest before
+  touching principal), with clamp-and-refund on overpay.
 
 ---
 
-## Liquidation Paths
+## Liquidation
 
-Two independent triggers, both admin-manual:
+Two independent triggers, both admin-manual. Full detail:
+[LIQUIDATION.md](./LIQUIDATION.md).
 
-### Path 1 — Missed Payment (Micro-Liquidation)
-- **Trigger:** 90+ days since last interest payment
-- **Action:** Seize LP collateral covering accrued interest + 5% buffer (2% execution + 3% late fee)
-- **Result:** Interest debt cleared, position continues, clock resets
-- **Note:** Admin holds discretion on timing; known/trusted borrowers may receive extended grace
+**Path 1 — missed payment (micro-liquidation).** 90+ days since last interest
+payment. Seizes LP covering accrued interest + 5% buffer. Debt cleared, position
+continues, clock resets.
 
-### Path 2 — Health Factor Breach (Tiered Liquidation)
-- **Trigger:** LP collateral value causes health factor to fall below 1.0
-- **Action:** 3-tier system based on severity — admin selects the correct tier for instant execution
-  - HF 0.95–0.9999 → seize 35% LP; position continues with restored health
-  - HF 0.85–0.9499 → seize 60% LP; position continues with restored health
-  - HF < 0.85 → full seizure; position closed
-- **Result:** Partial tiers restore the borrower's position while protecting the protocol; full seizure for deeply distressed positions
-- **1-click design:** pre-calibrated percentages let the admin act immediately during fast-moving markets — no calculation required under pressure
-- **LP advantage:** Redeeming LP splits collateral 50/50 across both pooled assets — halves price impact on any single asset (critical for $U price stability during liquidation events)
+**Path 2 — health-factor breach (tiered).** Health factor below 1.0, with
+pre-calibrated tiers so the admin acts without calculating under pressure:
 
-### Priority
-If both triggers apply simultaneously, Path 2 (health factor) takes precedence.
+| Health factor | Action |
+|---|---|
+| 0.95 – 0.9999 | seize ~35% LP + 5% penalty; position continues |
+| 0.85 – 0.9499 | seize ~77% LP + 7% penalty; position continues |
+| < 0.85 | full seizure; position closed, no surplus refund |
+
+If both apply, Path 2 takes precedence. Redeeming LP splits collateral across
+both pooled assets, halving price impact on either — which matters for $U
+stability during a liquidation.
 
 ---
 
 ## LP Oracle
-
-LP positions are valued as:
 
 ```
 position_value = (user_lp_balance / total_lp_supply) × pool_TVL
 pool_TVL       = (asset_A_reserves × price_A) + (asset_B_reserves × price_B)
 ```
 
-Data sources: **on-chain Tinyman v2 pool reserves**, cross-checked against CompX's on-chain Flux oracle. There is no dependency on an external price API — the original Vestige integration was removed after its endpoint was retired, which was also the P19-02 single-point-of-failure. See [LP_ORACLE.md](./LP_ORACLE.md) and [AUDIT.md](./AUDIT.md).
-Circuit breakers: **none on chain** since the lean oracle replaced the banded one on 2026-10-17. The contract accepts any price from the authorized updater; the remaining checks (per-asset price bounds, CompX divergence, a spot-vs-TWAP spike block) all run in the oracle bot. See [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) and ADMIN.md's bot-key compromise row.
+Sources are **on-chain Tinyman v2 pool reserves**, cross-checked against CompX's
+Flux oracle. No external price API — the original Vestige integration was
+removed when its endpoint retired, which was also the P19-02 single point of
+failure.
 
-→ [`LP_ORACLE.md`](./LP_ORACLE.md)
+**Circuit breakers: none on chain** since the lean oracle. The contract accepts
+any price from the authorized updater. What still gates a post, all bot-side:
+per-asset price bounds, the CompX divergence check, and a spot-vs-TWAP upward
+spike block.
 
----
-
-## Interest Rate Model
-
-MagnetFi v2 offers **current fixed rates** — rates are set by the admin per vault type and lock in at the moment a borrower opens a position. The rate a borrower sees when opening a vault is their rate for the life of that position, regardless of any future admin adjustments.
-
-- **New vaults** always open at the current advertised rate for that vault type
-- **Existing positions** are never retroactively repriced — rate is locked in the vault box at open time
-- **Admin** may adjust the current rate for new vaults in response to market demand or revenue goals; this never affects open positions
-
-Fixed rates are a meaningful DeFi differentiator. Protocols like Aave and Compound offer variable rates that fluctuate with utilization. MagnetFi borrowers know their exact quarterly payment from day one and can plan accordingly.
-
-The PSM removes the primary reason protocols use variable rates: peg maintenance. In utilization-based models, rates rise when the stablecoin trades below peg — that signal incentivizes repayment and supply reduction. In MagnetFi v2, the PSM's guaranteed redemption arbitrage restores the peg mechanically, without any interest rate signal required. Fixed rates are viable here specifically because the peg anchor exists at the contract level.
+**The independent cross-check** (`web/src/lib/magnetfiPriceCheck.ts`) is the only
+signal that can catch a price that is *wrong but fresh*: third-party pool TVL ÷
+on-chain issued LP tokens, which touches none of our asset prices, decimals,
+route selection or TWAP. Warn at 5%, critical at 15%. It is a **pull readout
+behind a connected admin wallet, not an alert** — catching a bad price with it
+requires somebody to be looking.
 
 ---
 
-## Revenue Model
+## Interest rate model
 
-MagnetFi v2 has five revenue streams across two categories — automatic and admin-collected.
+Fixed rates, set per vault type, locked at the moment a position opens.
 
-**Automatic (no admin action required):**
+- New vaults open at the current advertised rate.
+- Existing positions are never retroactively repriced.
+- Admin may adjust the rate for new vaults; this never affects open positions.
 
-| Source | Asset | Trigger |
-|---|---|---|
-| PSM redemption fee | USDC (1% of swap) | Every mUSD → USDC redemption; routed to treasury per transaction |
-| Protocol-owned DEX LP fees (future) | LP fees | Passively earned if treasury mUSD is deployed into a DEX pair |
-
-**Admin-collected:**
-
-| Source | Asset | Trigger |
-|---|---|---|
-| Vault loan interest | mUSD | Accumulates in vault contract; admin sweeps via `collect_fees()` when ready |
-| Micro-liquidation late fee | LP tokens (~3% of accrued interest) | Included in 5% buffer on micro-liq seizure; excess above execution cost is revenue |
-| Health liquidation surplus | LP tokens / underlying | Any LP value recovered above total debt after settlement |
-
-**Primary growth lever:** loan interest scales directly with total vault TVL. PSM redemption fees scale with mUSD trading volume. As mUSD adoption grows across the Bazooka ecosystem, both streams compound together.
-
-**Treasury strategy:** collected mUSD can either be converted to USDC and deposited into the PSM (grows vault ceiling) or deployed as protocol-owned DEX liquidity (builds mUSD market depth and earns passive LP fees). The right split depends on where the protocol is in its growth cycle — PSM compounding early, DEX liquidity as mUSD matures.
+Fixed rates are viable here specifically because the PSM anchors the peg
+mechanically. Utilisation-based models need a rate signal to restore a peg;
+the PSM's guaranteed redemption arbitrage does it without one.
 
 ---
 
-## Admin Controls
+## Revenue
 
-| Action | Who | Contract guard |
-|---|---|---|
-| Add USDC to PSM | Admin only | None — admin can always add |
-| Withdraw USDC from PSM | Admin only | Cannot drop below total outstanding mUSD |
-| Set vault interest rates | Admin only | Max 3000 bps (30% APR) |
-| Trigger micro-liquidation | Admin only | Requires 90+ days since last payment |
-| Trigger health liquidation | Admin only | Requires health factor below threshold |
-| Collect loan interest | Admin only | None |
+**Automatic:** PSM redemption fee (1% of each mUSD→USDC swap, to treasury per
+transaction); protocol-owned DEX LP fees if treasury mUSD is deployed.
 
----
+**Admin-collected:** vault loan interest (accumulates in the vault, swept via
+`collect_fees()`); micro-liquidation late fee; health-liquidation surplus.
 
-## What This Is Not
-
-- Not a trustless protocol — admin holds real discretionary power
-- Not a public AMM PSM — all PSM reserves are protocol-owned
-- Not automated — no keeper bots or on-chain automation at launch
-- Not cross-chain — Algorand only
+Loan interest scales with vault TVL; redemption fees scale with mUSD volume.
+Collected mUSD can convert to USDC and enter the PSM (growing the vault ceiling)
+or become protocol-owned DEX liquidity (building mUSD depth).
 
 ---
 
-## Status
+## Admin controls
 
-| Component | Status |
+| Action | Guard |
 |---|---|
-| Architecture design | ✅ Complete (24 audit passes) |
-| Contracts (LP Oracle / PSMv3 / Vault) | ✅ Built — 83 integration/adversarial tests (67 v2 + 16 v3) + 30 oracle-bot tests pass |
-| mUSD ASA | ✅ Live on mainnet — ASA `3615600399` |
-| Admin UI + borrower app | ✅ Live — `/magnetfi` Bank (Overview / Single Token Markets / LP Collateral Vaults / mUSD deep-link) + gated admin (ops console + Productive Reserves); standalone `/musd` and `/about` pages. UI reference: [web/README.md](../../web/README.md) |
-| Testnet deployment | ✅ Complete — full deploy rehearsal (Oracle `765096480` / PSM `765096481` / Vault `765096491`) |
-| **Productive Reserves (v3)** | ✅ **Live** — yield-bearing PSM (PSMv3) deployed on mainnet: adapter pattern (≤5 vetted, timelocked adapters), Folks Finance first, redefined invariant + buffer + per-venue caps. Folks yield adapter built + testnet-validated, not yet whitelisted. See [PSM.md](./PSM.md#productive-reserves-v3). |
-| Mainnet deployment | ✅ **Live** — Oracle / PSMv3 / Vault operating on U/tALGO + U/USDC collateral; borrows validated end-to-end. Vault redeployed to consolidate repayment onto a single `pay_interest()` path. Live app IDs are in `web/src/lib/magnetfi.ts` (`DEPLOYMENTS.mainnet`). |
+| Add USDC to PSM | None — admin can always add |
+| Withdraw USDC from PSM | Cannot drop below outstanding mUSD |
+| Set vault interest rates | Max 3000 bps (30% APR) |
+| Trigger micro-liquidation | 90+ days since last payment |
+| Trigger health liquidation | Health factor below threshold |
+| Collect loan interest | None |
+| Repoint oracle or vault | 48h timelock, guardian can veto |
 
 ---
 
-## Further Reading
+## What this is not
 
-- [mUSD](./mUSD.md) — stablecoin ASA design, mint authority, PSM reserve recycling, cross-contract invariant
-- [Vault](./VAULT.md) — LP collateral, mUSD minting, interest-only repayment model, grace period
-- [PSM](./PSM.md) — reserve mechanics, asymmetric fee model, self-balancing property, admin controls
-- [LP Oracle](./LP_ORACLE.md) — LP valuation formula, data sources, TWAP, circuit breakers
-- [Liquidation](./LIQUIDATION.md) — micro-liquidation, health-factor liquidation, state guards
-- [Admin](./ADMIN.md) — all admin actions, monitoring checklist, deployment procedure, emergency runbook
-- [Folks Adapter](./FOLKS_ADAPTER.md) — **v3 productive reserves.** The venue integration that puts idle PSM reserves to work in the Folks Finance USDC pool. Verified interface, live mainnet constants, and the `recoverable_value()` non-manipulability gate
-- [Folks SDK reference extracts](./reference/folks-sdk/) — the upstream source the adapter was derived from, kept so the derivation stays checkable (MIT, read-only, not buildable)
-- [V3 Implementation Plan](./V3_IMPLEMENTATION_PLAN.md) — phased delivery of productive reserves
-- [Audit Handoff](./AUDIT_HANDOFF.md) — internal review package and accepted residuals
-- [Launch Runbook](./LAUNCH_RUNBOOK.md) — *historical.* The original mainnet launch sequence, step by step. Records that the deploy wizards were removed from the live admin panel post-launch and how to re-enable them
-- [Web app](../../web/README.md) — frontend site map, the Bank tabs, admin console, `src/lib` architecture, and notable UI behaviors
+- Not trustless — admin holds real discretionary power.
+- Not a public AMM PSM — all reserves are protocol-owned.
+- Not automated — no keeper bots or on-chain automation.
+- Not cross-chain — Algorand only.
+
+---
+
+## Open items
+
+**The guardian is a single key.** The design calls for a 2-of-3 cold multisig
+and the deployment never got one. Moving it is a guardian-signed
+`propose_guardian` → `accept_guardian` on each of the three contracts, so it
+can be done without redeploying anything — but only while the current key still
+works, because the admin cannot replace a guardian it has lost.
+
+**Rotate the oracle bot key `QX7EPGRC…`.** It is the live `authorized_updater`.
+Its mnemonic has been pasted into shell history on two machines, a chat
+transcript, and a Windows registry hive. Since the band was removed it can post
+any price. Rotation is `set_authorized_updater`, admin-only and immediate.
+*This has been open and flagged repeatedly; it is the oldest unactioned risk in
+the protocol.*
+
+**`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** Two prior feed outages ran
+~27h and ~48h before anyone noticed. The feed now auto-starts at logon, which
+addresses the restart but not the detection.
+
+**Bot redundancy.** A single instance is a single point of failure. Auto-start
+at logon is verified by an actual power cycle; a second host is not built.
+
+**The upward rate limit on the lean oracle** is the real fix for the unbounded
+key, and is deferred. The oracle already stores prior price and timestamp per
+pool, so it needs no new state — the 57-uint schema was chosen to keep this
+possible. [ORACLE_LEAN_SPEC.md §5](./ORACLE_LEAN_SPEC.md).
+
+**Vault-side registration for ALGO/USDC and U/ALGO.** Both are priced on the
+oracle; neither has vault-side parameters. ALGO/USDC is a **risk** fix before a
+growth one — the collateral book is entirely $U-denominated, and U/tALGO is thin
+enough that seizing a large position would move the price against the
+liquidator.
+
+**Folks yield adapter — not whitelisted.** Built and testnet-validated.
+
+**A professional third-party audit** before significant TVL. Internal review is
+24 passes plus adversarial and oracle-bot tests; real-fund custody warrants an
+external firm. [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md) is the package.
+
+**Public PSM deposits** remain pinned — deliberately parked until ALGO/USDC
+proves borrow demand exists. [PSM.md](./PSM.md#public-deposits--pinned).
+
+**Sequencing for all of the above:** [REVAMP_PLAN.md](./REVAMP_PLAN.md), which
+supersedes the ordering this document's predecessor carried.
+
+---
+
+## Tripwires — conditions, not intentions
+
+Written down because decisions made at $950 have a habit of still being in force
+at $100k.
+
+**Before a third-party borrower opens a vault** — re-answer the key-compromise
+question. Without the band a compromised bot key can set any price, and the PSM
+invariant caps only the over-minting direction. The risk is currently *accepted*,
+not covered, and that acceptance rests on every borrower being the operator.
+
+**Before the PSM accepts a single third-party deposit** — the same question
+again. Today's acceptance rests on the reserve being the founder's own money.
+Both halves stop being true with outside deposits, and *"I accept the risk"*
+stops being one person's sentence to say.
+
+**Before third-party funds of any kind** — the guardian should be a real 2-of-3
+cold multisig. A single-key guardian is survivable while the only thing it can
+freeze is the operator's own $151; it is not a position to defend to someone
+else's depositors.
+
+**Before any public deposit** — liquidation must be proven working, and
+permissionless-vs-admin decided deliberately rather than by default. One hot key
+operated by one person is not a solvency plan at scale.
+
+---
+
+## Which document to trust
+
+| Document | Status |
+|---|---|
+| **This file** | Current. Start here. |
+| [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) | **Executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this; §5's rate limit is the one deferred piece |
+| [ADMIN.md](./ADMIN.md) | Accurate for what is running — swept 2026-10-17 |
+| [PSM.md](./PSM.md) · [VAULT.md](./VAULT.md) · [LIQUIDATION.md](./LIQUIDATION.md) · [mUSD.md](./mUSD.md) · [FOLKS_ADAPTER.md](./FOLKS_ADAPTER.md) | Current |
+| [REVAMP_PLAN.md](./REVAMP_PLAN.md) | Live. Phase structure still governs; **Phase 2 is superseded** by the lean spec |
+| [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md) | Live — the package for the upcoming v3 audit. §8.3's manipulation bound is no longer a live safety argument and carries a dated note |
+| [V3_IMPLEMENTATION_PLAN.md](./V3_IMPLEMENTATION_PLAN.md) | Live — phased delivery of productive reserves |
+| [ORACLE_V5_SPEC.md](./ORACLE_V5_SPEC.md) · [SIGNED_PAYLOAD.md](./SIGNED_PAYLOAD.md) | Built and proven, **deferred**. v5 adds zero-second pricing at liquidation and no key the contract trusts — worth less than it costs while every borrower is the operator |
+| ⚠️ [LP_ORACLE.md](./LP_ORACLE.md) | Describes the **retired** banded oracle. Its band/anchor material and its "a compromised key is bounded" claim no longer describe anything live |
+| ⚠️ [LAUNCH_RUNBOOK.md](./LAUNCH_RUNBOOK.md) | Its add-a-pool procedure targets the **retired** oracle app and the wrong config file. Do not follow it without reading the banner |
+| [AUDIT.md](./AUDIT.md) | **Historical record.** P19-03 documents the anchor band as a finding that was *addressed*; the band was then removed deliberately. Do not rewrite it — it is what was true then |
+
+---
+
+## Further reading
+
+- [web/README.md](../../web/README.md) — frontend site map, Bank tabs, admin console
+- [reference/folks-sdk/](./reference/folks-sdk/) — upstream source the adapter was
+  derived from, kept so the derivation stays checkable
+- [history/](./history/README.md) — closed records: the lean-oracle migration and
+  the v2 deployment record. Nothing in there is current
