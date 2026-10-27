@@ -54,7 +54,7 @@ item is that trigger. On-chain check confirmed the live app has **1 historical
 proposal, 0 outstanding votes, 0 $U locked** — nothing to migrate. Clean
 redeploy, retire the old app, re-point the frontend.
 
-## Contract — `contracts/magnetdao/uvote/uvote.py` (PyTeal v8)
+## Contract — `contracts/uvote/uvote/uvote.py` (PyTeal v8)
 
 Kept in PyTeal (not ported to PuyaPy) deliberately: the v1 logic is audited and
 battle-tested end-to-end; surgical fixes on the known-good base preserve that

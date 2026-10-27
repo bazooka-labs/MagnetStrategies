@@ -30,7 +30,8 @@ and anyone evaluating the protocol.
 | `strategy/pools/` | Strategy Pools + C-Vault on PEX (nav: **Strategy**) | `strategy/pools/OVERVIEW.md` |
 | `predict/` | VPL volatility ladder. Its own tree, deliberately | `predict/OVERVIEW.md` |
 | `vote/` | UVote governance | `vote/OVERVIEW.md` |
-| `contracts/magnetdao/` | MagnetDAO-era contracts; only `uvote/` is live | — |
+| `contracts/uvote/` | The UVote governance contract — **live**, App 3679681107 | — |
+| `contracts/legacy/` | Retired MagnetDAO-era contracts; none is live | `contracts/legacy/README.md` |
 | `web/` | The Next.js frontend | `web/README.md` |
 | `archive/` | Repo-wide finished work — closed audits and remediations | `archive/README.md` |
 | `<product>/history/` | A product's own closed records — `magnetfi/v2/`, `strategy/perps/`, `org/` each have one | the folder's `README.md`, or the file's own banner |
@@ -157,9 +158,11 @@ Deploys are routine; do not ask for confirmation before a production deploy.
 Each of these looks like a mistake and is not. They are listed so a future
 session does not spend an afternoon correcting them.
 
-- **`contracts/magnetdao/` keeps the old name.** `deploy_uvote.py` does a real
-  package import from it, so renaming breaks the deploy of a live governance
-  contract, and breaks it silently.
+- **Deploy scripts under `contracts/` import their contract as a SIBLING
+  package** (`from uvote.uvote import …`), resolved against the script's own
+  directory. A script and its package must stay beside each other; the parent
+  directory's name does not matter. A previous version of this file claimed the
+  opposite and it was wrong — verified by compiling from a renamed parent.
 - **`strategy/perps/` and `components/strategy/` vs the UI labels.** The UI says
   "Trading Terminal" and "Trade"; the directories say `perps` and `strategy`.
   Labels, not a restructure.

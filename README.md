@@ -127,8 +127,8 @@ MagnetStrategies/
 │   └── pools/          ← Strategy Pools + C-Vault on PEX (nav: Strategy)
 ├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
-│   └── magnetdao/       ← MagnetDAO-era contracts. `uvote/` is the live one
-│                          (App 3679681107); governance/treasury/voting are retired
+│   ├── uvote/          ← UVote governance contract — LIVE (App 3679681107)
+│   └── legacy/         ← retired MagnetDAO-era contracts; none is live
 └── web/                ← Next.js frontend (magnetstrategies.io)
 ```
 
@@ -152,17 +152,27 @@ doctrine to hold.
 > Note: **MagnetDAO** was the first governance vision, later rebuilt as **UVote**. The
 > docs tree is split into `org/` and `vote/` accordingly.
 >
-> `contracts/magnetdao/` deliberately keeps the old name, and the name is accurate —
-> it holds the MagnetDAO-era contracts, of which only `uvote/` survived. Renaming was
-> considered and rejected: `deploy_uvote.py` does `from uvote.uvote import ...`, a real
-> package import, so moving the directory breaks the deploy script for a live
-> governance contract, and breaks it silently — the failure would surface at the next
-> redeploy, which is exactly when surprises are least welcome. Cosmetic gain, real risk.
+> The contracts were split on 2026-10-27: `contracts/uvote/` holds the one live
+> governance contract, `contracts/legacy/` the three retired ones. They had all sat
+> together under `contracts/magnetdao/`, where nothing distinguished the contract
+> running on mainnet from the ones that never shipped.
 >
-> The retired `governance.py` / `treasury.py` / `voting.py` still sit there. `voting.py`
-> was deployed (App `3554779766`) and is dormant: it holds **zero $U**, so no user funds
-> are in it, and `VOTING_APP_ID` in `web/src/lib/constants.ts` is defined but never read.
-> Their fate is an open item in [`org/OVERVIEW.md`](./org/OVERVIEW.md#open-items).
+> An earlier version of this note said the directory could not be renamed, because
+> `deploy_uvote.py` does `from uvote.uvote import ...` and a rename would break the
+> deploy of a live contract. **That was wrong.** The import is a *sibling* package
+> import resolved against the script's own directory, so the parent's name has no
+> bearing on it. What matters is that each deploy script stays beside the package it
+> imports — which the split preserves, and which is now stated in
+> [`contracts/legacy/README.md`](./contracts/legacy/README.md).
+>
+> The move was verified rather than assumed: `uvote.py` at its new path compiles to
+> bytecode whose SHA-256 is byte-for-byte identical to the approval program running
+> on App `3679681107`.
+>
+> `voting.py` was deployed (App `3554779766`) and is dormant: it holds **zero $U**, so
+> no user funds are in it, and `VOTING_APP_ID` in `web/src/lib/constants.ts` is defined
+> but never read. The retired contracts' fate is an open item in
+> [`org/OVERVIEW.md`](./org/OVERVIEW.md#open-items).
 
 ## Other Documents
 

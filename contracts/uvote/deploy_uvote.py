@@ -9,7 +9,7 @@ Deploys uvote/uvote.py to mainnet (default) or testnet in three steps:
 Prerequisites:
   pip install py-algorand-sdk pyteal
 
-Usage (run from the contracts/magnetdao/ directory, in YOUR OWN terminal so the
+Usage (run from the contracts/uvote/ directory, in YOUR OWN terminal so the
 seed phrase never lands in a shared session/transcript):
   export FUNDER_MNEMONIC='word1 word2 ... word25'
   python deploy_uvote.py                    # mainnet

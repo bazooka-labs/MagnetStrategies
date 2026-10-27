@@ -1,6 +1,6 @@
 // ── UVote — frontend config + helpers ───────────────────────────────────────
 // Advisory, founder-led token-locking governance over $U. Standalone contract
-// (contracts/magnetdao/uvote/uvote.py), separate from MagnetFi. Admin gating and
+// (contracts/uvote/uvote/uvote.py), separate from MagnetFi. Admin gating and
 // the deploy signer match the MagnetFi admin wallet.
 
 import algosdk from "algosdk";

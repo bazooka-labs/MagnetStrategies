@@ -69,16 +69,16 @@ detail in [vote/SPEC.md](../vote/SPEC.md).
 
 ## Open items
 
-**Decide the fate of the legacy MagnetDAO contracts.** `contracts/magnetdao/`
+**Decide the fate of the legacy MagnetDAO contracts.** `contracts/legacy/`
 holds `governance.py`, `treasury.py` and `voting.py` from the retired
-quarterly-liquidity model. `voting.py` was deployed as App `3554779766` and is
+quarterly-liquidity model. They were separated from the live UVote contract on
+2026-10-27, which makes the question easier to answer but does not answer it. `voting.py` was deployed as App `3554779766` and is
 dormant: it holds **zero $U**, so no user funds are in it, and
 `VOTING_APP_ID` in `web/src/lib/constants.ts` is defined but never imported
 anywhere — verified 2026-10-27. Archive or delete.
 
-The directory keeps its old name deliberately; `deploy_uvote.py` imports from
-it as a real package, so renaming breaks the deploy of the **live** governance
-contract silently. See the note in the root [README](../README.md).
+The live governance contract now lives at `contracts/uvote/`. See the note in
+the root [README](../README.md).
 
 Per-product open items live with their product: [MagnetFi](../magnetfi/v2/OVERVIEW.md),
 [Strategy Pools](../strategy/pools/OVERVIEW.md), [ASA TVL](../ASA_TVL_SPEC.md).

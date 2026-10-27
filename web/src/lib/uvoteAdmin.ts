@@ -1,6 +1,6 @@
 // ── UVote — admin writes (deploy handshake, create_proposal, founder transfer) ─
 // Wallet-signed; the connected admin (== MagnetFi admin) becomes the contract
-// `founder`. Bytecode below is compiled from contracts/magnetdao/uvote/uvote.py
+// `founder`. Bytecode below is compiled from contracts/uvote/uvote/uvote.py
 // (PyTeal v8) — approval hash VQXFHFXPBUWFAH6QLIA5VZNEETAHQM3HVCRIKIO7HAB2HR5HZNHX64W55E.
 
 import algosdk from "algosdk";
