@@ -69,7 +69,7 @@ Four types. Use these names; do not invent a fifth.
 |---|---|
 | `OVERVIEW.md` | What it is, why, **current status**, **open items**, links out. The entry point for a product. |
 | `SPEC.md` | Mechanism detail — box layouts, selectors, invariants, group shapes. |
-| `OPERATIONS.md` | Runbooks: deploy, keys, monitoring, what to do when it breaks. |
+| `OPERATIONS.md` | Runbooks: deploy, keys, monitoring, what to do when it breaks. Examples: `magnetfi/v2/`, `predict/`. |
 | `archive/` or `<product>/history/` | Anything **finished and not resuming**. Keep it; a public protocol showing how its failures were found is worth more than a tidy tree. Read the doc before moving it — `REVAMP_PLAN.md` and `AUDIT_HANDOFF.md` both sound historical and are live. |
 
 Root `archive/` is for repo-wide closed work. A product keeps its own

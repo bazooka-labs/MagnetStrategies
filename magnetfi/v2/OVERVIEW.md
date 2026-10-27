@@ -279,12 +279,44 @@ and the deployment never got one. Moving it is a guardian-signed
 can be done without redeploying anything — but only while the current key still
 works, because the admin cannot replace a guardian it has lost.
 
-**Rotate the oracle bot key.** The current `authorized_updater` key is treated
-as exposed and is scheduled for rotation. Since the anchor band was removed the
-updater can post any price, so this is the highest-priority open item on the
-protocol. Rotation is `set_authorized_updater` — admin-only, immediate, and
-needs no redeploy. The bound on what an exposed updater is worth to an attacker
-is in [ADMIN.md](./ADMIN.md#oracle-bot-wallet-hot).
+**Three of four pools can be frozen by one third-party feed.** `U/tALGO`,
+`U/USDC` and `U/ALGO` all cross-check against **CompX's $U price box** on app
+`3307588794`. When that box goes stale past `compx_max_age` (3600s), the bot
+refuses to post any price *increase* for those pools — it will post flat or a
+decline only (`oracle_bot.py:1192`, rule `UNVERIFIED_MAX_DROP`). Roughly 30
+minutes later the vault's own freshness window closes and borrowing and all
+three liquidation paths revert on every affected pool.
+
+Since the entire live collateral book is $U-denominated, that is effectively
+the whole protocol, gated on one external feed.
+
+**This happened on 2026-10-27.** CompX's $U box stopped updating at 16:28Z,
+crossed our limit at 17:28Z, and U/ALGO froze at 17:58Z. CompX resumed at
+18:04:54Z and all four pools recovered within two minutes, unattended — total
+outage ~96 minutes. `ALGO/USDC` was unaffected throughout because it is the
+reference pool and carries `compx_check_asset_id: null`, so it is never
+cross-checked.
+
+The refusal is **correct behaviour** — declining to raise a price that cannot
+be independently verified is exactly the protection that exists because the bot
+key is a single point of trust. The problems are that the dependency is
+undocumented, that it is single-sourced, and that nothing alerts: the incident
+was noticed only because someone happened to be watching. Options worth
+weighing are a second verification source, a longer tolerance with an explicit
+staleness alarm, or allowing a bounded raise when unverified.
+
+**The PEX cross-check has been failing since 2026-10-23.** The bot logs
+`PEX cross-check unavailable: Signature was forged or corrupt` on every cycle.
+`PEX_ORACLE_PUBKEY_HEX` in `oracle_bot.py:154` is pinned to
+`4cc6bcc8…`, the signer PEX **retired** on 2026-10-23; the live key is
+`ac4b7131…`. The frontend pin in `web/src/lib/perps.ts` was updated at the
+time and the bot's copy was missed. This is a cross-check rather than a gate,
+so nothing is blocked by it — but it means a verification we believe is running
+has been dead for four days.
+
+**`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** The bot states this on
+every startup. Three feed incidents have now run ~27h, ~48h and ~96min before
+anyone noticed. The feed restarts automatically; detection is the gap.
 
 **`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** Two prior feed outages ran
 ~27h and ~48h before anyone noticed. The feed now auto-starts at logon, which
@@ -351,6 +383,7 @@ operated by one person is not a solvency plan at scale.
 | **This file** | Current. Start here. |
 | [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) | **Executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this; §5's rate limit is the one deferred piece |
 | [ADMIN.md](./ADMIN.md) | Accurate for what is running — swept 2026-10-17 |
+| [OPERATIONS.md](./OPERATIONS.md) | Runbooks — oracle bot key rotation, diagnosing a stale feed |
 | [PSM.md](./PSM.md) · [VAULT.md](./VAULT.md) · [LIQUIDATION.md](./LIQUIDATION.md) · [mUSD.md](./mUSD.md) · [FOLKS_ADAPTER.md](./FOLKS_ADAPTER.md) | Current |
 | [REVAMP_PLAN.md](./REVAMP_PLAN.md) | Live. Phase structure still governs; **Phase 2 is superseded** by the lean spec |
 | [AUDIT_HANDOFF.md](./AUDIT_HANDOFF.md) | Live — the package for the upcoming v3 audit. §8.3's manipulation bound is no longer a live safety argument and carries a dated note |
