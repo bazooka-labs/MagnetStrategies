@@ -16,9 +16,11 @@ import dynamic from "next/dynamic";
  * close to empty — and the destination they reach is a working page, not an
  * error.
  *
- * Note the components live under `src/components/liquidity/`, not
- * `src/components/strategy/`, which still holds the perps components. Renaming
- * that would touch the terminal for no benefit.
+ * Components live under `src/components/strategy/pools/`, beside the terminal's
+ * `src/components/strategy/perps/`, mirroring the docs tree. Until 2026-10-27
+ * they sat in `src/components/liquidity/` while `strategy/` held the TERMINAL —
+ * so `StrategySplash.tsx` lived in `liquidity/` and `TradeSplash.tsx` in
+ * `strategy/`, each named for the page the other directory served.
  */
 
 export const metadata: Metadata = {
@@ -31,7 +33,7 @@ export const metadata: Metadata = {
 // Pulls algosdk and the PEX read layer — lazy so the route stays light, and
 // ssr:false because every figure on it comes from a chain read.
 const LiquidityView = dynamic(
-  () => import("@/components/liquidity/LiquidityView").then((m) => m.LiquidityView),
+  () => import("@/components/strategy/pools/LiquidityView").then((m) => m.LiquidityView),
   {
     ssr: false,
     loading: () => (

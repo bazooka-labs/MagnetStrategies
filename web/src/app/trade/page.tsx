@@ -1,5 +1,5 @@
 import { PerpsView } from "@/components/strategy/perps/PerpsView";
-import { TradeSplash } from "@/components/strategy/TradeSplash";
+import { TradeSplash } from "@/components/strategy/perps/TradeSplash";
 
 export default function TradePage() {
   return (

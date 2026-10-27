@@ -8,9 +8,9 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_MS } from "@/components/ArrivalSplash";
 
 const tokens = readFileSync("src/components/tokens/TokensSplash.tsx", "utf8");
-const trade = readFileSync("src/components/strategy/TradeSplash.tsx", "utf8");
+const trade = readFileSync("src/components/strategy/perps/TradeSplash.tsx", "utf8");
 const magnetfi = readFileSync("src/components/magnetfi/MagnetFiSplash.tsx", "utf8");
-const strategy = readFileSync("src/components/liquidity/StrategySplash.tsx", "utf8");
+const strategy = readFileSync("src/components/strategy/pools/StrategySplash.tsx", "utf8");
 
 describe("each arrival is its own image", () => {
   it("gives the $U mark to /tokens and the wordmark to MagnetFi", () => {

@@ -63,9 +63,11 @@ is close to empty — and where they land is a working page, not an error. Weigh
 against a permanent mismatch between the product's name and its URL, this is the
 better trade.
 
-**Components stay under `src/components/liquidity/`.** `src/components/strategy/`
-still holds the perps components; renaming it would touch the terminal for no
-benefit.
+**Components live under `src/components/strategy/pools/`**, mirroring this
+document's own path. They were at `src/components/liquidity/` until 2026-10-27,
+which inverted against `src/components/strategy/` holding the *terminal* — so
+`StrategySplash.tsx` sat in `liquidity/` while `TradeSplash.tsx` sat in
+`strategy/`, each named for the page the other directory served.
 
 **Paths still consumed by legacy redirects**, none available: `/earn`, `/pools`,
 `/dao`, `/vote`, `/token`, `/musd`.

@@ -11,7 +11,7 @@ cut along them rather than along "PEX" vs "us".
 ```
   ┌─ UI ───────────────────────────────────────────────────────────┐
   │ web/src/app/strategy/            the route                     │
-  │ web/src/components/liquidity/    LiquidityView (the page)      │
+  │ web/src/components/strategy/pools/  LiquidityView (the page)   │
   │                                  LiquidityActions (pools)      │
   │                                  CvaActions (vault)            │
   └────────────────────────────────────────────────────────────────┘
@@ -64,7 +64,7 @@ exists to prevent. If it is ever done it is a standalone, behaviour-free PR —
 
 ```
 web/src/components/strategy/   -> the PERPS terminal   (/trade)
-web/src/components/liquidity/  -> Strategy Pools       (/strategy)
+web/src/components/strategy/pools/  -> Strategy Pools  (/strategy)
 ```
 
 Exactly inverted, for historical reasons: Strategy was the arm name before the
