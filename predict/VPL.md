@@ -13,10 +13,6 @@ against nothing until that is set. Implementation detail in
 [VPL_SPEC.md](./VPL_SPEC.md); deployment steps in
 [OPERATIONS.md](./OPERATIONS.md).
 
-> This line previously read *"Design complete. No contract written, no
-> deployment."* The contract had been written since; nothing updated the
-> status, and a reader would have concluded the work had not started.
-
 ---
 
 ## Positioning

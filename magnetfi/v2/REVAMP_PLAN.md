@@ -4,7 +4,7 @@ _Written 2026-10-10. Supersedes the ordering in the former `TODO.md` "Path forwa
 — agreed 2026-10-07", which put ALGO/USDC before the rebuild. The measurements
 below are why that order changed._
 
-Three goals, in the operator's words:
+Three goals:
 
 1. Reconfigure the over-the-top defences causing frequent protocol halts.
 2. Add ALGO/USDC and U/ALGO collateral vaults.
@@ -33,11 +33,11 @@ to leave.
 | PSM USDC reserve | **$151.40** | caps everything below |
 | circulating mUSD | **$100.04** | |
 | `vault_ceiling` = reserve − circulating | **$51.37** | total *additional* borrow capacity, all pools |
-| open positions | **3**, across **2 borrower addresses**, both the founder's own dogfood wallets | migration is self-service today — the cheapest it will ever be |
+| open positions | **3**, across **2 borrower addresses**, both operator-controlled | migration is self-service today — the cheapest it will ever be |
 | vault collateral held | 2,000 U/tALGO LP + 400 U/USDC LP | |
 
 **The $51 ceiling is the hinge.** Listing ALGO/USDC today opens it to fifty-one
-dollars of borrowing, so it cannot produce the demand evidence TODO item 7 waits
+dollars of borrowing, so it cannot produce the demand evidence public PSM deposits wait
 on. The goal "prove ALGO/USDC interest" is gated by the *reserve*, not by the
 collateral list — and funding the reserve while the halts persist and liquidation
 is manual is the combination to avoid.
@@ -63,7 +63,7 @@ chain. v4 deletes them, but v4 is weeks away and the halts are weekly.
 
 - [x] **0.1 — Derive `min_price`/`max_price` from the on-chain anchor at startup.** DONE 2026-10-10 (`30c4594`), **not yet deployed**.
       Read `lp_anchor_<pool_id>` from the oracle; set bounds to `anchor × 0.76`
-      and `× 1.24`. This is TODO item 2, and it is the single highest-value
+      and `× 1.24`. This is the single highest-value
       change in Phase 0: it ends the failure class where bot bounds and the
       contract band disagree. Both the 2026-10-09 freeze (`max_price` 900,000
       blocking a legitimate rise while the band had 21% of room) and the
@@ -172,7 +172,8 @@ counted from deployment, not from the commit.
 ## Phase 1 — Decide the lender-side shape. No code.
 
 This blocks Phase 2 because it is *also* a vault change, and both must ride the
-same migration (TODO item 6). Four questions, all of which change the contract:
+same migration — the lender-side contract shape. Four questions, all of which
+change the contract:
 
 - [ ] **1.1** Subordination of depositors to mUSD holders — explicit, or implied
       by the PSM invariant?
@@ -285,9 +286,9 @@ vault is the same work as registering two, and the rate changes are just the
 - [ ] **3.1** Deploy the new vault (reproducible build verified).
 - [ ] **3.2** `propose_vault_contract(<new vault>)` on the PSM. **Start the 48h
       clock early** and do the rest of the work inside the window.
-- [ ] **3.3** Wind down the 3 open positions. Both borrower addresses —
-      `DINKXOOJ…` (2 positions) and `WTG2WWFY…` (1) — are the **founder's own
-      dogfood wallets**, confirmed 2026-10-10. No third-party coordination: just
+- [ ] **3.3** Wind down the 3 open positions. Both borrower addresses are
+      **operator-controlled test positions**, confirmed 2026-10-10 — no
+      third-party borrowers are affected. No coordination needed: just
       `pay_interest` and close on each, LP and the refundable `46,500 µALGO` MBR
       returning to the same hands. **This is the cheapest this step will ever
       be**, and it is the strongest argument for migrating before any outside
@@ -321,7 +322,7 @@ vault is the same work as registering two, and the rate changes are just the
 
 ## Phase 4 — Liquidation bot
 
-After Phase 3, **not before** (TODO item 5). Built against today's band it would
+After Phase 3, **not before**. Built against today's band it would
 be frozen out in most of the cases it exists for: the band locks at −25% while
 live borrowers only become liquidatable at −53%, so the freeze is *guaranteed* to
 precede the need. v4 removes the band, which is what makes a liquidation bot able
@@ -339,7 +340,7 @@ Only now does goal 2 become measurable.
 
 - [ ] **5.1** Fund the PSM reserve from own capital. This raises `vault_ceiling`
       and is *not* gated by the public-deposit tripwire.
-- [ ] **5.2** Measure ALGO/USDC borrow demand — the evidence TODO item 7 waits
+- [ ] **5.2** Measure ALGO/USDC borrow demand — the evidence public PSM deposits wait
       on. The pool is $1.72M; 10% captured is ~$172k collateral and ~$103k of
       borrow demand.
 - [ ] **5.3** Public PSM deposits remain **pinned** behind the tripwires in

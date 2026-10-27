@@ -54,12 +54,12 @@ The admin is stored on-chain (mutable via 2-step rotation) on all three contract
 Separate cold key, touched only during incidents or scheduled rotations — never
 for routine operations.
 
-> ### ⚠️ Deployed reality: the guardian is a SINGLE KEY, not a multisig
+> ### ⚠️ Current deployment: the guardian is a single cold key
 >
-> Confirmed with the operator 2026-10-27. Every earlier revision of this
-> document described the guardian as a 2-of-3 cold multisig in the present
-> tense, including the table below. That was the **design target**, never what
-> shipped, and the gap went unrecorded for months.
+> The 2-of-3 multisig described below is the **design target**, not the current
+> deployment. Confirmed 2026-10-27. Stated plainly because the distinction
+> changes the protocol's recovery properties, and because earlier revisions of
+> this document gave the target in the present tense.
 >
 > **Why it matters, from the contracts rather than from intent.** `unpause()`
 > and `propose_guardian()` are both `_assert_guardian()` in all three contracts
@@ -79,10 +79,10 @@ for routine operations.
 > acceptance. It stops being one at the tripwires in
 > [OVERVIEW.md](./OVERVIEW.md#tripwires--conditions-not-intentions).
 >
-> This is exactly the failure the paragraph at the end of this document
-> predicted: *"the guardian must be a robust cold multisig (2-of-3) so a single
-> signer compromise does not lose the role."* The reasoning was right and the
-> deployment did not follow it.
+> The requirement is stated at the end of this document — *"the guardian must
+> be a robust cold multisig (2-of-3) so a single signer compromise does not
+> lose the role"* — and moving to one needs no redeploy, only a guardian-signed
+> `propose_guardian` → `accept_guardian` on each contract.
 
 | Property | Recommendation (**not** current state) |
 |---|---|
@@ -180,7 +180,7 @@ higher threshold (e.g. a pure stable/stable collateral pair) would require **rec
 
 A pool can no longer freeze from a band rejection — removing that failure mode is the entire reason the lean oracle exists, after U/tALGO froze this way on 2026-08-21. What it costs is the only on-chain bound on a posted price; see the bot-key compromise row above.
 
-**A stale pool now means something different.** The old first guess was a band rejection with the bot healthy. There is no such thing any more: if a pool goes stale, either the process is dead or the bot is refusing to post on one of its own checks. Check the process first — the 2026-10-15 outage was simply a bot that never restarted after a power cut — then grep the log for `refusing to post`.
+**A stale pool now means something different.** The old first guess was a band rejection with the bot healthy. There is no such thing any more: if a pool goes stale, either the process is dead or the bot is refusing to post on one of its own checks. Check the process first — the 2026-10-15 outage was a bot that did not restart after an unplanned host restart — then grep the log for `refusing to post`.
 
 **Know which checks can actually produce that line**, because two plausible candidates cannot:
 
@@ -281,7 +281,7 @@ The admin (or an automated monitoring script) should track:
 
 | Metric | Threshold | Action |
 |---|---|---|
-| Oracle bot last update | >10 min stale | Alert. Check the process is alive first — a power cut left it down 48h on 2026-10-15. If it is running, look for `refusing to post` (asset bounds, CompX divergence, or the spot-vs-TWAP spike block — see the table above for what cannot produce it). There is no band rejection to look for any more. |
+| Oracle bot last update | >10 min stale | Alert. Check the process is alive first — an unplanned host restart left it down 48h on 2026-10-15. If it is running, look for `refusing to post` (asset bounds, CompX divergence, or the spot-vs-TWAP spike block — see the table above for what cannot produce it). There is no band rejection to look for any more. |
 | Any pool: posted vs independent price | >5% divergence | Investigate before acting. Nothing on chain bounds the posted price now, so this cross-check (admin → Oracle health) is the substitute for the band. |
 | Oracle bot wallet ALGO (`authorized_updater`) | <2 ALGO | Top up — the bot pays fees per post |
 | Any vault: `current_time - last_payment_timestamp` | >75 days | Flag; begin borrower outreach |
@@ -385,6 +385,5 @@ Order matters — do not skip steps or reorder.
 
 **Guardian (cold key) compromised:** — lower severity; the guardian cannot move funds or change parameters, only pause and veto
 - A compromised guardian can grief by pausing (admin cannot unpause). Mitigation: admin `propose_guardian(clean_cold_key)` is not available (guardian-only) — so recovery requires the guardian's own `propose_guardian`/`accept_guardian`. **Therefore the guardian must be a robust cold multisig (2-of-3) so a single signer compromise does not lose the role.** This is why the guardian is *specified* as a multisig.
-  > ⚠️ **It is not one today** — the deployed guardian is a single key. See the
-  > boxed note under "Guardian Wallet (cold)" above. The argument in this
-  > paragraph is sound and currently unmet.
+  > ⚠️ **Current deployment uses a single key** — see the note under "Guardian
+  > Wallet (cold)" above. This requirement is open.

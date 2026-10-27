@@ -18,7 +18,7 @@
 > resolved). Global schema sized to the 64-entry cap (`58` uints + `6` bytes → **12-pool capacity**)
 > so adding a collateral type never needs another redeploy. **Pending before deploy:** pin the puyapy
 > compiler + rebuild for reproducible TEAL; flip the live docs + user-facing web copy; founder closes
-> the dogfood loan + sweeps fees.
+> the operator test loan + sweeps fees.
 >
 > ### Why
 > Every health-factor liquidation settles at the **oracle mark**, but the protocol has to
@@ -125,7 +125,7 @@
 > terms to real users. (ADMIN.md now carries a forward-pointer to this block near the liq procedure.)
 >
 > ### Deploy sequence (vault-only redeploy)
-> (1) Ensure **no open positions** [D3 — founder closing the dogfood loan + sweeping fees first];
+> (1) Ensure **no open positions** [D3 — closing the operator test loan + sweeping fees first];
 > (2) `pause()` borrowing; (3) deploy new vault; (4) `opt_in_asset` + `set_liq_threshold` → `set_ltv`
 > → `set_rate` → `set_lp_asa_id` per pool (order matters) + penalties; (5) PSM
 > `propose_vault_contract` → **wait 48h** → `confirm_vault_contract` (guardian veto available);
@@ -138,7 +138,7 @@
 >   in the same place anyway (net-neutral downside).
 > - **D2 — Adjustable penalties = YES,** with the capped/downward-safe/no-inner-txn design + coupling
 >   invariant above. Review **confirmed** no new surface area. On-chain lever only — not wired into the UI.
-> - **D3 — Migrate only when no positions are open.** Founder closing the dogfood loan + sweeping
+> - **D3 — Migrate only when no positions are open.** Closing the operator test loan + sweeping
 >   fees, then redeploy clean.
 > - **D4 — Post-HF target = 1.06** (unchanged).
 > - **D5 — Global schema maxed to 12 pools** (`58` uints + `6` bytes = the 64 cap) so adding a

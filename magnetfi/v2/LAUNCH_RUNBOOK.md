@@ -198,8 +198,8 @@ vault  3671287267   set_rate(1002590888, 800)
 vault  3671287267   opt_in_asset(1002590888)                   # vault must hold the LP ASA
 ```
 
-Threshold was 7800 in an earlier revision of this file. That exceeds the firm
-7500 cap and would have broken partial liquidation silently.
+⚠️ Older documentation gave 7800 here. That exceeds the firm 7500 cap and
+breaks partial liquidation silently — use 7500.
 
 `add_pool` seeds the price. There is no anchor on the lean oracle, so there is
 nothing to re-anchor — but note it also writes `lp_ts_`, so the pool reads
@@ -251,8 +251,8 @@ live on-chain interaction.
 
 **No CompX cross-check on this pool.** CompX prices $U but **not ALGO** (nor
 tALGO) — verified against the live oracle. **Omit `compx_check_asset_id`
-entirely**; do NOT set it to `0`. An earlier revision of this line said `0`
-disables the check, which was true then and is now actively harmful: `0` is
+entirely**; do NOT set it to `0`. ⚠️ Older documentation stated that `0`
+disables the check. That is no longer true and is now actively harmful: `0` is
 ALGO's asset id, so the bot would attempt a check CompX cannot answer, return
 `unverified` every cycle, and `update_pool` would then refuse every price
 *increase*. On a rising market that stalls the feed past the 1800s freshness

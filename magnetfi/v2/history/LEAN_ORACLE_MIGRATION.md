@@ -59,8 +59,7 @@ staleness. `update_lp_price` on the lean oracle
 active, then writes — no deviation check, no bounds, no rate limit. A holder of
 `authorized_updater` can post **any price** for any pool.
 
-**The loss is still bounded, and the first draft of this section got that
-wrong.** Two limits the key does not control:
+**The loss is still bounded**, by two limits the key does not control:
 
 - **Upward.** Over-borrowing against an inflated price mints mUSD, and
   `psm_v3/contract.py:439` caps issuance at
@@ -79,9 +78,9 @@ posting directly, and it **warns rather than gates** even when it does run
 
 Consequences, in order:
 
-1. **`QX7EPGRC…` should be rotated.** It is the live `authorized_updater`, and
-   it has been pasted into shell history on two machines and stored in a
-   Windows user registry hive. The honest framing is "can mint up to the PSM's
+1. **The oracle bot key should be rotated.** It is the live
+   `authorized_updater` and is treated as exposed. The honest framing is "can
+   mint up to the PSM's
    free backing, and can make the admin liquidate the wrong people" — not "can
    drain the vault". That is a smaller problem than the band's removal first
    suggested, and it grows with the PSM reserve.
@@ -105,12 +104,12 @@ three `trigger_*_liquidation`, confirming onto a dead oracle freezes borrowing
 **and liquidations** in one transaction. The incoming feed must be verified
 live immediately before the confirm; nothing on chain will do it for you.
 
-**A single bot instance is a single point of failure.** A power cut on
-2026-10-15 took the lean oracle down for 48h because its instance did not
-restart. That was harmless only because the oracle was not yet live. The feed
-now auto-starts at logon via `oracle_bot/start_oracles.cmd`, launched from a
-stub in the Windows Startup folder. Verified by an actual power cycle on
-2026-10-17, fast enough that no pool approached the freshness gate.
+**A single bot instance is a single point of failure.** An unplanned host
+restart on 2026-10-15 took the lean oracle down for 48h because its instance
+did not come back. That was harmless only because the oracle was not yet live.
+The feed now restarts automatically via `oracle_bot/start_oracles.cmd`, and the
+recovery was verified by a deliberate restart on 2026-10-17 — fast enough that
+no pool approached the freshness gate. Host redundancy remains an open item.
 
 That launcher started BOTH bots when it was verified; it starts only the lean
 one since step 8 retired the banded oracle later the same day. It still sets

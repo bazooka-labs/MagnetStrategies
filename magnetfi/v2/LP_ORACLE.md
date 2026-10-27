@@ -425,9 +425,9 @@ price spike and replay it later. That is arithmetic on public data, not a
 compromise, and it is why PEX validates for **30 seconds** — measured from
 their live bundle (`max_age_seconds: 30`, `max_future_skew_seconds: 0`).
 
-An earlier revision of this line said 20 seconds. It was this design's only
-cited precedent and it was wrong by a third, which matters because the number
-becomes a contract constant changeable only by a vault migration.
+⚠️ Older documentation gave 20 seconds. The figure matters because it becomes
+a contract constant changeable only by a vault migration, and it was this
+design's only cited precedent — so it is stated here from the source.
 
 Note also which way the chain clock errs: `Global.latest_timestamp` is the
 PREVIOUS block's timestamp, measured ~4s behind wall clock against a ~2.7s mean
@@ -654,9 +654,8 @@ The natural replacement for ALGO is PEX, which is already integrated and pinned.
 `strategy/perps/SPEC.md` invariant 5 is the coupling rule here: *"no Perps code
 path makes PEX state an input to a MagnetFi solvency decision."*
 
-Stated precisely, because an earlier revision of this paragraph said SPEC.md
-"forbids" it and that is stronger than the spec claims. Its own parenthetical
-says so: *"Stated as a constraint on Perps, which is what Perps can enforce.
+Stated precisely, because "forbids" would be stronger than the spec claims.
+Its own parenthetical says so: *"Stated as a constraint on Perps, which is what Perps can enforce.
 Whether MagnetFi ever accepts PEX-derived collateral is a MagnetFi policy
 decision, not something this codebase can assert."* So the Perps side is
 closed, and the MagnetFi side is **an open decision this document is not

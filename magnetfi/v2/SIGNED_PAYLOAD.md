@@ -101,10 +101,9 @@ behind wall clock** against a **~2.7s mean block interval**. So
 `latest_timestamp - issued_at <= MAX_AGE` stays true until wall time
 `issued_at + MAX_AGE + lag`.
 
-**An earlier revision of this document had that backwards**, calling the window
-shorter than it reads by one block. The expiry is the *only* replay defence in
-v4, and this constant can afterwards be changed only by a vault migration, so the
-direction is recorded deliberately.
+The direction is recorded deliberately and is easy to state backwards: the
+expiry is the *only* replay defence in v4, and this constant can afterwards be
+changed only by a vault migration.
 
 The same arithmetic sets the forward tolerance: `issued_at <= latest_timestamp +
 CLOCK_SKEW` gives a real tolerance of `CLOCK_SKEW - lag`, so a skew of 5 is

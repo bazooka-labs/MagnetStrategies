@@ -59,10 +59,8 @@ suite run costs about **3,400 rounds**, so one reset is good for roughly eight
 runs — three consecutive runs reached round 10,322 with all three accounts still
 `Online`.
 
-(An earlier revision of this file said 20,000 rounds per run and "about one and
-a half runs per reset". That was wrong by ~6x. The dispenser failure that
-prompted it came from a LocalNet left running for two days, already past round
-30000, not from a single run's cost.)
+(The dispenser failure that prompted this note came from a LocalNet left
+running for two days, already past round 30000 — not from a single run's cost.)
 
 Once past the expiry the accounts go `Offline`,
 `algorand.account.localnet_dispenser()` can no longer find a dispenser, and

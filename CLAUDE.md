@@ -92,41 +92,42 @@ linked to instead.
 ## How we work
 
 These are settled agreements, each learned from a specific failure. They are
-here rather than in a private memory so they are reviewable, public, and apply
-to anyone working in this repo.
+here rather than in a private assistant memory so they are reviewable, public,
+and apply to anyone working in this repo. Each was adopted after a specific
+defect, and each is cheaper to follow than to rediscover.
 
 **Measure, don't model.** Verify constants and dependencies against the live
-system rather than reasoning about what they should be. Three wrong claims came
-from coherent reasoning over unverified premises. Read the chain, run the
-command, fetch the file.
+system rather than reasoning about what they should be. Read the chain, run the
+command, fetch the file. Coherent reasoning over an unverified premise produces
+confident wrong answers.
 
-**Simulation is not a signature.** A hermetic test passing says nothing about
-whether a real wallet can sign the group. Several defects in the liquidity path
+**Simulation is not a signature.** A passing hermetic test says nothing about
+whether a real wallet can sign the group; several defects on the liquidity path
 were invisible to tests and obvious to a MainNet simulation. Test the
-first-time shape explicitly — the box-MBR bug reached production because every
-test used a wallet that already had the box.
+first-time shape explicitly — a wallet that already holds the box exercises a
+different branch from one that must create it.
 
 **Floors come from the contract's own receipt**, never from an SDK quote. The
 quotes run ~1.65% high on deposits and ~1.74% low on withdrawals, which makes a
 quote-derived floor unsatisfiable on chain.
 
 **Assert behaviour, not source text.** Guard tests with the AST or real
-behaviour; a comment containing the right words defeats a grep-based test. This
-has bitten four times. When a test is meant to prevent something, verify it
-fails when that thing is reintroduced — mutate the code, watch it go red, put
-it back.
+behaviour: a comment containing the right words will satisfy a grep-based test
+while the code does the opposite. When a test exists to prevent something,
+verify it fails when that thing is reintroduced — mutate the code, watch it go
+red, restore it.
 
 **Render visuals before shipping them.** Rasterise the page and look at it.
-Reasoning about geometry and colour has missed real errors that one screenshot
-caught: a clipped wallet button, a heading glow that rendered as nothing, a
-contrast ratio under the accessible threshold.
+Reasoning about geometry and colour reliably misses what one screenshot
+catches: clipped controls, a glow that renders as nothing, a contrast ratio
+below the accessible threshold.
 
 **No hot fixes on money paths.** Queue the change as a spec, then run a fresh
 review for breakage and attack vectors before pushing.
 
 **Report outcomes faithfully.** If a submission's result is unknown, say
-unknown. Reporting a refusal as "it will most likely still go through" was
-worse than the bug that caused it.
+unknown. A probable-sounding guess about whether funds moved is worse than no
+answer.
 
 ---
 

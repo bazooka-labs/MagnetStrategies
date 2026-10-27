@@ -178,7 +178,7 @@ Last updated: 2026-06-18
 
 ## Infrastructure
 
-- [x] Vercel deployment configured (deploys from `/Users/kc/MagnetDAO` root, `web/` resolved correctly)
+- [x] Vercel deployment configured (repo root, `web/` resolved correctly)
 - [x] Custom domain magnetstrategies.io live on Vercel
 - [ ] Set up GitHub repo and push codebase
 - [ ] Enable Vercel GitHub integration for auto-deploy on `git push main`

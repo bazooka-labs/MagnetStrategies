@@ -279,12 +279,12 @@ and the deployment never got one. Moving it is a guardian-signed
 can be done without redeploying anything — but only while the current key still
 works, because the admin cannot replace a guardian it has lost.
 
-**Rotate the oracle bot key `QX7EPGRC…`.** It is the live `authorized_updater`.
-Its mnemonic has been pasted into shell history on two machines, a chat
-transcript, and a Windows registry hive. Since the band was removed it can post
-any price. Rotation is `set_authorized_updater`, admin-only and immediate.
-*This has been open and flagged repeatedly; it is the oldest unactioned risk in
-the protocol.*
+**Rotate the oracle bot key.** The current `authorized_updater` key is treated
+as exposed and is scheduled for rotation. Since the anchor band was removed the
+updater can post any price, so this is the highest-priority open item on the
+protocol. Rotation is `set_authorized_updater` — admin-only, immediate, and
+needs no redeploy. The bound on what an exposed updater is worth to an attacker
+is in [ADMIN.md](./ADMIN.md#oracle-bot-wallet-hot).
 
 **`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** Two prior feed outages ran
 ~27h and ~48h before anyone noticed. The feed now auto-starts at logon, which
