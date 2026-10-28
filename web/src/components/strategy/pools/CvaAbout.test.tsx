@@ -56,7 +56,7 @@ afterEach(cleanup);
 
 const openIt = (stats: PoolStats | null = STATS, stale = false) => {
   render(<CvaAbout stats={stats} stale={stale} />);
-  fireEvent.click(screen.getByRole("button", { name: /About/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Learn more/ }));
   return screen.getByRole("dialog");
 };
 
@@ -68,7 +68,7 @@ describe("the trigger", () => {
 
   it("opens and closes", () => {
     render(<CvaAbout stats={STATS} stale={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Learn more/ }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();

@@ -533,10 +533,7 @@ export function LiquidityView() {
                 </div>
                 <p className="mt-1.5 text-[11.5px] text-gray-500">Managed by PEX · spans both markets</p>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <span className="rounded-full border border-magnet-500/30 bg-magnet-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-magnet-300">
-                  AUTO
-                </span>
+              <div className="shrink-0">
                 {/* Beside the title, not on a row of its own: a lone pill under
                     the heading read as an orphan with a band of dead space
                     around it, which was most of the "empty" in this card. */}

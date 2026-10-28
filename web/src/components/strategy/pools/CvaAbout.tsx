@@ -143,10 +143,11 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
   return (
     <>
       {/* Amber pill — the shape this site already uses for "press here to
-          understand what you are looking at" (About $U, Learn more on the
-          MagnetFi vaults, More info on the terminal). */}
+          understand what you are looking at". Worded "Learn more" to match
+          the MagnetFi LP-vault button exactly — same control, same shape, same
+          words. */}
       <button onClick={() => setOpen(true)} aria-haspopup="dialog" className={RAISED_AMBER}>
-        <BookOpen className="h-3.5 w-3.5" /> About
+        <BookOpen className="h-3.5 w-3.5" /> Learn more
       </button>
 
       {open && createPortal(

@@ -247,7 +247,7 @@ describe("the C-Vault card", () => {
     // Not admin-gated: a visitor who cannot see the direct pools is exactly
     // the reader who needs this.
     await mount("visitor");
-    expect(screen.getByRole("button", { name: /About/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Learn more/ })).toBeTruthy();
   });
 
   it("headlines the annualised return, derived from the LONGEST window", async () => {
