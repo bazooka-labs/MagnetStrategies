@@ -71,6 +71,16 @@ export type PoolReturn = {
   benchmarkKind: string;
   /** Completed daily observations behind it. */
   points: number;
+  /**
+   * Days actually spanned by the observations, first timestamp to last.
+   *
+   * NOT the period label: the bundle's "90d" window currently holds 55 days
+   * because that is all the history the vault has. Annualising against the
+   * label rather than the span would understate the rate by whatever the gap
+   * is — on today's data, 17.00% over a claimed 90 days reads 89% instead of
+   * the true 183%.
+   */
+  days: number;
   /** True when any point has missing history before it. */
   hasGaps: boolean;
 };
@@ -164,6 +174,11 @@ function parseReturn(raw: unknown, period: PerfPeriod): {
       period, productPct: product, holdPct: hold, vsHoldingPoints: vs,
       benchmarkKind: typeof bm.kind === "string" ? bm.kind : "unknown",
       points: pts.length,
+      days: (() => {
+        const t0 = Number((pts[0] as Record<string, unknown>)?.timestamp ?? 0);
+        const t1 = Number((pts[pts.length - 1] as Record<string, unknown>)?.timestamp ?? 0);
+        return t1 > t0 ? (t1 - t0) / 86_400 : 0;
+      })(),
       hasGaps: pts.some((p) => !!(p as Record<string, unknown>)?.gap_before),
     },
     reason: null,
@@ -255,4 +270,63 @@ export function benchmarkLabel(kind: string): string {
   // the other is unchanged, the benchmark gains about 41.42%, while that basket
   // gains 50%." So it is never labelled "vs holding" when it is the geometric one.
   return kind === "geometric_mean_50_50" ? "vs 50/50 geometric benchmark" : "vs holding";
+}
+
+/**
+ * The longest window with real history, and its return annualised.
+ *
+ * ── Why this exists, and the argument against it ──
+ * Annualising a realised return is NOT a rate. The same vault on the same day
+ * gives wildly different answers depending on the window chosen — measured
+ * 2026-10-28: +812% from 7 days, **−26% from 30 days**, +183% from 55. The
+ * number is as much a statement about the window as about the vault, and this
+ * repo has already shipped that mistake once (a derived 15.3% APR against a
+ * real 4.83%, removed — see the header of this file).
+ *
+ * It is displayed anyway, as a product decision, under three conditions that
+ * are what make it defensible and must not be quietly dropped:
+ *
+ *   1. **Longest window only.** Short windows are the volatile ones; a seven-
+ *      day headline would be indefensible. `pickLongest` enforces this.
+ *   2. **The realised figure travels with it** — "+17.00% over 55 days" is the
+ *      fact; the annualisation is derived from it and labelled as such.
+ *   3. **The shorter windows stay visible**, so a reader sees the dispersion
+ *      rather than one flattering point. The card shows 7d/30d beneath it and
+ *      the About modal carries the full ladder.
+ *
+ * Never annualise income APR with this — that figure is already a rate.
+ */
+export type AnnualisedReturn = {
+  /** The window it came from. */
+  period: PerfPeriod;
+  /** Days actually spanned, not the period label. */
+  days: number;
+  /** The realised return over those days, percent. This is the FACT. */
+  realisedPct: number;
+  /** Compounded to a year, percent. This is DERIVED. */
+  annualisedPct: number;
+};
+
+/** Days below which annualising is refused outright, however it is labelled. */
+export const MIN_ANNUALISE_DAYS = 14;
+
+export function pickLongest(stats: PoolStats | null): AnnualisedReturn | null {
+  if (!stats) return null;
+  // Longest first. `total` and `90d` are the same window until the vault has
+  // more than 90 days of history, so either may be the longest.
+  let best: PoolReturn | null = null;
+  for (const p of PERF_PERIODS) {
+    const r = stats.returns[p];
+    if (r && r.days > (best?.days ?? 0)) best = r;
+  }
+  if (!best || best.days < MIN_ANNUALISE_DAYS) return null;
+  const growth = 1 + best.productPct / 100;
+  // A total loss cannot be compounded; refuse rather than return NaN.
+  if (growth <= 0) return null;
+  return {
+    period: best.period,
+    days: best.days,
+    realisedPct: best.productPct,
+    annualisedPct: (Math.pow(growth, 365 / best.days) - 1) * 100,
+  };
 }

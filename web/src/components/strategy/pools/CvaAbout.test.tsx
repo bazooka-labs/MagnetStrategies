@@ -30,16 +30,16 @@ const STATS: PoolStats = {
   },
   ret: {
     period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-    benchmarkKind: "geometric_mean_50_50", points: 30, hasGaps: false,
+    benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false,
   },
   retUnavailableReason: null,
   returns: {
     "7d": { period: "7d", productPct: 2.90, holdPct: -3.25, vsHoldingPoints: 6.15,
-      benchmarkKind: "geometric_mean_50_50", points: 7, hasGaps: false },
+      benchmarkKind: "geometric_mean_50_50", points: 7, days: 6, hasGaps: false },
     "30d": { period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-      benchmarkKind: "geometric_mean_50_50", points: 30, hasGaps: false },
+      benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
     "90d": { period: "90d", productPct: 15.27, holdPct: 6.03, vsHoldingPoints: 9.24,
-      benchmarkKind: "geometric_mean_50_50", points: 43, hasGaps: true },
+      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true },
   },
   reasons: { total: "insufficient_history" },
 };
@@ -87,8 +87,13 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText("+2.90%")).toBeTruthy();
     expect(within(d).getAllByText("+5.64%").length).toBeGreaterThan(0);
     expect(within(d).getByText("+15.27%")).toBeTruthy();
-    // Never annualised — a 30-day run extrapolated to a year reads ~100% here.
-    expect(within(d).getByText(/not annualised/)).toBeTruthy();
+    // The LADDER is never annualised, even though the card's headline is.
+    // That split is the whole design: one derived figure, calibrated by the
+    // realised spread beneath it.
+    expect(within(d).getByText(/never annualised/)).toBeTruthy();
+    // And the modal states the spread explicitly, so the headline cannot be
+    // read as the only possible answer.
+    expect(within(d).getByText(/\+812%, −26% and \+183%/)).toBeTruthy();
   });
 
   it("says a window is short of history instead of printing a zero", () => {

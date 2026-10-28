@@ -61,7 +61,10 @@ vi.mock("@/lib/strategy/pools/reads", () => ({
     : Promise.reject(new Error("no node in this test")),
   cvaShareOfMarket: () => null,
 }));
-vi.mock("@/lib/strategy/pools/performance", () => ({
+vi.mock("@/lib/strategy/pools/performance", async (orig) => ({
+  // The REAL pickLongest — the annualisation is the thing under test, so
+  // stubbing it would certify arithmetic nobody ran.
+  ...(await orig<Record<string, unknown>>()),
   fetchPerformanceBundle: () => bundle
     ? Promise.resolve(bundle)
     : Promise.reject(new Error("no bundle in this test")),
@@ -93,8 +96,18 @@ const BUNDLE = {
       income: { totalPct: 7.57, feePct: 1.52, yieldPct: 6.05, feeUsd7d: 0.26,
         yieldUsd7d: 1.67, windowStart: 0, windowEnd: 0, missingEvents: 0 },
       ret: { period: "30d", productPct: 5.64, holdPct: -4, vsHoldingPoints: 9.64,
-        benchmarkKind: "geometric_mean_50_50", points: 30, hasGaps: false },
-      retUnavailableReason: null, returns: {}, reasons: {},
+        benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
+      retUnavailableReason: null,
+      // Real spans from the live bundle on 2026-10-28.
+      returns: {
+        "7d":  { period: "7d",  productPct: 3.70,  holdPct: -4.49, vsHoldingPoints: 8.19,
+          benchmarkKind: "geometric_mean_50_50", points: 7,  days: 6,  hasGaps: false },
+        "30d": { period: "30d", productPct: -2.38, holdPct: -12.42, vsHoldingPoints: 10.04,
+          benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
+        "90d": { period: "90d", productPct: 17.00, holdPct: 5.63, vsHoldingPoints: 11.37,
+          benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true },
+      },
+      reasons: {},
     },
   },
 };
@@ -229,29 +242,70 @@ describe("the C-Vault card", () => {
     expect(screen.getByRole("button", { name: /About/ })).toBeTruthy();
   });
 
-  it("shows the APR in the site's green, in the token pages' metric box", async () => {
+  it("headlines the annualised return, derived from the LONGEST window", async () => {
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
-    // Two decimals and `text-green-400` — the same shape PoolsSection uses for
-    // "Total 7-Day APR". Lime was close enough to look like a mistake.
-    await waitFor(() => expect(screen.getByText("7.57%")).toBeTruthy());
-    const figure = screen.getByText("7.57%");
+    // 17.00% realised over 55 days compounds to +183%. Computed by the real
+    // pickLongest, not stubbed — the arithmetic is the thing under test.
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const figure = screen.getByText("+183%");
     expect(figure.className).toContain("text-green-400");
     expect(figure.className).toContain("font-mono");
-    // Inside a bordered box, not loose on the card face.
-    expect(figure.parentElement?.parentElement?.className).toContain("bg-black/30");
+    expect(screen.getByText(/derived · past 55d/)).toBeTruthy();
   });
 
-  it("breaks the rate into fees and yield, and shows the longer window", async () => {
+  it("never annualises a short window, however good it looks", async () => {
+    /**
+     * The 7-day window here is +3.70%, which annualises to +812%. Picking it
+     * would be the single most flattering number available and the least
+     * defensible. The headline must come from the 55-day window.
+     */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
-    await waitFor(() => expect(screen.getByText("7.57%")).toBeTruthy());
-    expect(screen.getByText("1.52%")).toBeTruthy();
-    expect(screen.getByText("6.05%")).toBeTruthy();
-    expect(screen.getByText("Return over 30d")).toBeTruthy();
-    expect(screen.getByText("+5.64%")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).not.toContain("812");
+  });
+
+  it("keeps the realised figure attached to the derived one", async () => {
+    // The annualisation is derived; +17.00% over 55 days is the fact. If the
+    // two are ever separated the headline stops being defensible.
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    // Appears twice by design — in the derivation line and in the 90d column.
+    expect(screen.getAllByText("+17.00%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/actually realised over 55 days/)).toBeTruthy();
+    expect(screen.getByText(/Not a forecast/)).toBeTruthy();
+  });
+
+  it("shows the losing window beside it, so the dispersion is visible", async () => {
+    /**
+     * -2.38% over 30 days is what stops a reader taking +183% as a promise.
+     * This row is load-bearing, not decoration: remove it and the headline is
+     * one flattering point with nothing to calibrate it against.
+     */
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    expect(screen.getByText("Realised")).toBeTruthy();
+    expect(screen.getByText("+3.70%")).toBeTruthy();
+    const neg = screen.getByText("-2.38%");
+    expect(neg).toBeTruthy();
+    expect(neg.className).toContain("text-red-300");
+  });
+
+  it("still shows the income rate, labelled as only part of the return", async () => {
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    expect(screen.getByText("7.57% APR")).toBeTruthy();
+    expect(screen.getByText(/trader P&L and asset price/)).toBeTruthy();
   });
 
   it("shows pool liquidity, shares outstanding and the user's own position", async () => {

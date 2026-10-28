@@ -220,22 +220,23 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                 </div>
 
                 {/*
-                  ── Why the headline APR is still 7 days ──
-                  It is the only APR that exists. PEX publishes income as
-                  `total_apr_7d_bps` / `fee_apr_7d_bps` / `yield_apr_7d_bps`
-                  and there is no 30-day equivalent in the bundle; the longer
-                  windows it publishes are SHARE-PRICE RETURNS, which are a
-                  different quantity — they include trader P&L, which the APR
-                  explicitly excludes.
+                  ── Two different quantities, and the card headlines the
+                     second one ──
+                  INCOME APR (fees + yield) is published by PEX as
+                  `total_apr_7d_bps` and friends. It is already a rate, it is
+                  7-day only, and there is no longer-window equivalent.
 
-                  Annualising the 30-day return would produce a 30-day-based
-                  APR, and on the day this was written that was about +100%,
-                  from a month in which the vault happened to beat the traders.
-                  That is precisely the error this repo already made once and
-                  removed: a derived 15.3% APR that annualised an
-                  unrepresentative window and overstated the real rate by 3.2x.
-                  So the ladder below shows each window as what it is, and the
-                  reader does the extrapolating with their eyes open.
+                  SHARE-PRICE RETURN is the whole picture — the same income
+                  plus or minus trader P&L and asset price moves. It is NOT a
+                  rate, and the card's headline annualises it from the longest
+                  available window as a deliberate product decision.
+
+                  The ladder below is the counterweight to that headline, and
+                  it is why the headline is defensible: a reader who sees the
+                  30-day window negative cannot read the annualised figure as
+                  a promise. The reasoning and the three conditions the
+                  headline rests on are in pools/performance.ts, on
+                  `pickLongest`.
                 */}
                 <div className="mt-5 border-t border-white/[0.07] pt-4">
                   <div className="mb-1 flex items-baseline justify-between">
@@ -251,8 +252,11 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                     : <p className="py-2 text-[11.5px] text-gray-500">No published history yet.</p>}
                   <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
                     The APR above counts fees and yield only. These returns are the whole picture —
-                    the same income, plus or minus what the pool won or lost against traders. They
-                    are not annualised, and a good month is not a rate.
+                    the same income, plus or minus what the pool won or lost against traders.
+                    <strong className="text-gray-300"> Shown here as realised, never annualised</strong>,
+                    because the windows disagree sharply: on 2026-10-28 these same figures
+                    annualised to +812%, −26% and +183% depending on which one you picked. The
+                    card headlines the longest of them; this is the spread behind it.
                   </p>
                 </div>
               </div>

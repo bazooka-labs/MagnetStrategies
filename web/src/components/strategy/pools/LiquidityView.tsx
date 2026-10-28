@@ -41,7 +41,7 @@ import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
 import { CvaAbout } from "./CvaAbout";
 import {
-  benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
+  benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey, pickLongest,
   type PerformanceBundle, type PoolStats,
 } from "@/lib/strategy/pools/performance";
 import {
@@ -203,59 +203,90 @@ function NextStrategyTile() {
  */
 function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
   const i = stats?.income ?? null;
-  const r = stats?.ret ?? null;
+  /**
+   * The headline is the LONGEST window annualised — never a short one. The
+   * same vault read 2026-10-28 gave +812% from 7 days and **−26% from 30**,
+   * so the window choice moves the answer more than the vault does. The
+   * shorter windows render beneath precisely so that dispersion is visible
+   * rather than hidden behind one flattering figure.
+   */
+  const ann = pickLongest(stats);
   return (
     <div className="rounded-xl border border-white/5 bg-black/30 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[11px] uppercase tracking-wider text-gray-500">Fees + Yield APR</p>
-        <span className="text-[10px] text-gray-600">past 7d · PEX</span>
+        <p className="text-[11px] uppercase tracking-wider text-gray-500">
+          {ann ? "Annualised return" : "Fees + Yield APR"}
+        </p>
+        <span className="text-[10px] text-gray-600">
+          {ann ? `derived · past ${Math.round(ann.days)}d` : "past 7d · PEX"}
+        </span>
       </div>
       <div className="mt-1 flex items-baseline gap-2.5">
-        <p className="font-mono text-3xl font-bold text-green-400">{pct(i?.totalPct ?? null, 2)}</p>
+        <p className={`font-mono text-3xl font-bold ${
+          ann && ann.annualisedPct < 0 ? "text-red-300" : "text-green-400"
+        }`}>
+          {ann
+            ? `${ann.annualisedPct >= 0 ? "+" : ""}${ann.annualisedPct.toFixed(0)}%`
+            : pct(i?.totalPct ?? null, 2)}
+        </p>
         {stale && (
           <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
             STALE
           </span>
         )}
       </div>
+      {/* The realised figure is the FACT; the headline above is derived from
+          it. It travels directly beneath so the two are never separated — see
+          the long note on `pickLongest` in pools/performance.ts. */}
+      {ann && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">
+          Derived from{" "}
+          <strong className="font-semibold text-gray-200">
+            {ann.realisedPct >= 0 ? "+" : ""}{ann.realisedPct.toFixed(2)}%
+          </strong>{" "}
+          actually realised over {Math.round(ann.days)} days.{" "}
+          <span className="text-gray-500">Not a forecast.</span>
+        </p>
+      )}
       {i ? (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
-          <span>Fees <span className="font-mono text-gray-300">{pct(i.feePct, 2)}</span></span>
-          <span>Yield <span className="font-mono text-green-300">{pct(i.yieldPct, 2)}</span></span>
-          {i.missingEvents > 0 && (
-            <span className="text-amber-300/90">{i.missingEvents} unvalued events</span>
-          )}
+          <span>Fees + yield <span className="font-mono text-green-300">{pct(i.totalPct, 2)} APR</span></span>
+          <span className="text-gray-600">the rest is trader P&amp;L and asset price</span>
         </div>
       ) : (
         <p className="mt-2 text-[11px] text-gray-500">PEX has not published a rate for this vault.</p>
       )}
 
-      {/* The 30-day return, inside the same box rather than beside it: it is the
-          longer-window counterpart to the figure above and the reason the APR
-          is not the whole story. Hairline, not a second box — see the About
-          modal for the full ladder. */}
-      <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-white/[0.07] pt-2.5">
-        <span className="text-[11px] text-gray-500">
-          {r ? `Return over ${r.period}` : "Return"}
-        </span>
-        {r ? (
-          <span className="flex items-baseline gap-2">
-            <span className={`font-mono text-[13px] font-semibold ${
-              r.productPct >= 0 ? "text-green-400" : "text-red-300"
-            }`}>
-              {r.productPct >= 0 ? "+" : ""}{r.productPct.toFixed(2)}%
-            </span>
-            <span className="text-[10.5px] text-gray-500">
-              {r.vsHoldingPoints >= 0 ? "+" : ""}{r.vsHoldingPoints.toFixed(2)}pp vs benchmark
-            </span>
+      {/* The shorter windows, shown as REALISED returns and never annualised.
+          This row is the third condition the headline rests on: a reader who
+          sees −2.38% over 30 days beside it cannot mistake the big number for
+          a promise. Removing this row makes the headline indefensible. */}
+      <div className="mt-3 border-t border-white/[0.07] pt-2.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[11px] text-gray-500">Realised</span>
+          <span className="flex items-baseline gap-3.5">
+            {(["7d", "30d", "90d"] as const).map((p) => {
+              const w = stats?.returns[p];
+              return (
+                <span key={p} className="flex items-baseline gap-1">
+                  <span className="text-[10px] text-gray-600">{p}</span>
+                  <span className={`font-mono text-[12px] font-semibold ${
+                    !w ? "text-gray-600" : w.productPct >= 0 ? "text-green-400" : "text-red-300"
+                  }`}>
+                    {w ? `${w.productPct >= 0 ? "+" : ""}${w.productPct.toFixed(2)}%` : "—"}
+                  </span>
+                </span>
+              );
+            })}
           </span>
-        ) : (
-          <span className="text-[11px] text-gray-500">
+        </div>
+        {!ann && (
+          <p className="mt-1.5 text-[10.5px] text-gray-500">
             {stats?.retUnavailableReason === "insufficient_history"
               || stats?.retUnavailableReason === "no_valid_completed_samples"
-              ? "not enough history yet"
-              : "unavailable"}
-          </span>
+              ? "Not enough history to annualise yet."
+              : "Return history unavailable."}
+          </p>
         )}
       </div>
     </div>

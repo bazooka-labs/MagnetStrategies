@@ -84,6 +84,50 @@ Three glow classes were rasterised and compared before settling: both
 `glow-text` (radii tuned for a 48-60px splash title) produced no visible halo
 at heading size. Reading the class name would not have caught either.
 
+## The C-Vault card headlines an ANNUALISED return
+
+A product decision taken 2026-10-28, against the evidence, and recorded here so
+it is not reversed by accident or repeated by mistake elsewhere.
+
+**Annualising a realised return is not a rate.** The same vault on the same day:
+
+| window | days | realised | annualised |
+|---|---|---|---|
+| 7d | 6 | +3.70% | **+812%** |
+| 30d | 29 | **−2.38%** | **−26%** |
+| 90d / total | 55 | +17.00% | **+183%** |
+
+The figure measures the window as much as the vault. This repo has already
+shipped that error once — a derived 15.3% APR against a real 4.83%, removed and
+documented in `pools/performance.ts`.
+
+It is displayed anyway, because the card's job includes showing what the
+strategy has actually done, and +17% realised in under two months is that. The
+three conditions that make it defensible are enforced in code and must not be
+dropped quietly:
+
+1. **Longest window only** — `pickLongest` refuses anything under
+   `MIN_ANNUALISE_DAYS` (14) and always takes the longest available span. A
+   7-day headline would be indefensible.
+2. **The realised figure travels with it** — "+17.00% actually realised over 55
+   days. Not a forecast." sits directly beneath, in the same box.
+3. **The shorter windows stay visible** — 7d / 30d / 90d render as realised
+   returns on the card, so the negative month is in the same glance. The About
+   modal carries the full ladder and states the +812% / −26% / +183% spread
+   outright.
+
+It annualises the **span**, not the period label: the bundle's "90d" holds 55
+days of history, and using the label would read +89% instead of +183%.
+
+Income APR (fees + yield) is a separate quantity and is never annualised by us
+— it already is a rate. It stays on the card, labelled, because on the measured
+week it accounted for about 2.6% of the total return; the rest was trader P&L
+and ALGO's price.
+
+`annualise.test.ts` pins the guards: longest-window selection, the minimum
+span, a negative headline when the long window is negative, and a refusal
+rather than `NaN` on a total loss.
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |
