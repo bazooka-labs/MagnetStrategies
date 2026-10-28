@@ -40,6 +40,8 @@ import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
 import { CvaAbout } from "./CvaAbout";
+import { readCostBasis, type CostBasis } from "@/lib/strategy/pools/costBasis";
+import { getIndexerClient } from "@/lib/algorand";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey, pickLongest,
   type PerformanceBundle, type PoolStats,
@@ -274,11 +276,18 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, sub, subTone }: {
+  label: string; value: string; sub?: string; subTone?: "up" | "down";
+}) {
   return (
     <div>
       <dt className="text-[10.5px] text-gray-500">{label}</dt>
       <dd className="mt-0.5 font-mono text-sm text-gray-200">{value}</dd>
+      {sub && (
+        <dd className={`mt-0.5 font-mono text-[10.5px] ${
+          subTone === "down" ? "text-red-300" : "text-green-400"
+        }`}>{sub}</dd>
+      )}
     </div>
   );
 }
@@ -347,6 +356,13 @@ export function LiquidityView() {
    * from before is worse than none.
    */
   const [algoUsd, setAlgoUsd] = useState<number | null>(null);
+  /**
+   * Cost basis is read SEPARATELY from the main pool read, and allowed to fail
+   * on its own. `readStrategyLiquidity` is the money path and uses algod; this
+   * needs the indexer and is pure decoration. A basis we cannot read must cost
+   * the one line that shows it, never the position value.
+   */
+  const [basis, setBasis] = useState<CostBasis | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -358,7 +374,8 @@ export function LiquidityView() {
       const algoUsd = Number((await r.json()).price);
       if (!Number.isFinite(algoUsd) || algoUsd <= 0) throw new Error("no ALGO price");
       setAlgoUsd(algoUsd);
-      setData(await readStrategyLiquidity(algodClient, algoUsd, address));
+      const liq = await readStrategyLiquidity(algodClient, algoUsd, address);
+      setData(liq);
       setErr(null);
       /**
        * PEX's own statistics, fetched separately and allowed to fail alone.
@@ -373,6 +390,15 @@ export function LiquidityView() {
        * attributed to PEX in the UI and never mixed with chain reads. Its own
        * failure does not blank the pool sizes, which ARE chain reads.
        */
+      try {
+        const shares = liq.cva.yourShares;
+        setBasis(address && shares
+          ? await readCostBasis(getIndexerClient("mainnet"), address, shares)
+          : null);
+      } catch {
+        setBasis(null);
+      }
+
       try {
         setPerf(await fetchPerformanceBundle("30d"));
       } catch {
@@ -392,6 +418,7 @@ export function LiquidityView() {
       setData(null);
       setPerf(null);
       setAlgoUsd(null);
+      setBasis(null);
       setErr(e instanceof Error ? e.message : "Could not read pool state");
     }
   }, [algodClient, address]);
@@ -547,6 +574,28 @@ export function LiquidityView() {
               <Stat
                 label="Your position"
                 value={data?.cva.yourUsd != null ? usd(data.cva.yourUsd, 2) : "—"}
+                /*
+                  ── Measured against what LEFT THE WALLET ──
+                  `paidUsd` is the deposit receipt's own value field, verified
+                  against chain: the 2026-10-23 deposit logs 25_000_000 and the
+                  group transfers exactly 25.000000 USDC. NOT the credited
+                  value after the 0.2% entry spread.
+
+                  That distinction is the entire reason this line exists. The
+                  share price already tells a holder their percentage return —
+                  a position is a scalar multiple of it. What no published
+                  series can show is the spread, which on $25.00 is $0.05, a
+                  fifth of the first week's gain. Measuring from the
+                  post-spread value would hide exactly the cost this is here to
+                  surface.
+                */
+                sub={data?.cva.yourUsd != null && basis
+                  ? `${data.cva.yourUsd - basis.paidUsd >= 0 ? "+" : "−"}${usd(
+                      Math.abs(data.cva.yourUsd - basis.paidUsd), 2).slice(1)} since you paid ${usd(basis.paidUsd, 2)}`
+                  : undefined}
+                subTone={data?.cva.yourUsd != null && basis
+                  ? (data.cva.yourUsd >= basis.paidUsd ? "up" : "down")
+                  : undefined}
               />
               <Stat label="Your shares" value={num(data?.cva.yourShares ?? null, 4)} />
             </dl>

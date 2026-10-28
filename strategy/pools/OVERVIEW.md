@@ -128,6 +128,37 @@ and ALGO's price.
 span, a negative headline when the long window is negative, and a refusal
 rather than `NaN` on a total loss.
 
+### "Your position" measures against what left the wallet
+
+The card shows a holder's change since they deposited — `+$0.32 since you paid
+$25.00`. The basis is the **amount that actually left the wallet**, read from
+their own `v2_cva_deposited` receipt (field 4), verified against chain: the
+2026-10-23 deposit logs `25_000_000` and the group transfers exactly
+`25.000000` USDC.
+
+**Not the credited value.** After the 0.2% entry spread that deposit bought
+~$24.95 of shares, and measuring from there would quietly hide the spread —
+$0.05 on $25.00, a fifth of the first week's gain. Hiding the entry cost inside
+the performance figure is precisely the flattering default this exists to
+avoid, and it is the one thing a real position knows that no published series
+can show: a position's percentage return is identical to the share price's, so
+the share price alone tells a holder nothing new.
+
+**It does no withdrawal accounting.** It asks a narrower question that needs
+none — *what did the shares you hold right now cost?* — by walking deposits
+newest-first and accumulating until their minted shares equal the shares held.
+A wallet that deposited $7, exited fully, then deposited $25 resolves cleanly
+to $25.00. Anything that does not reconcile exactly returns null.
+
+That asymmetry is deliberate: an overstated basis understates a gain, which is
+annoying; an understated basis **overstates** it, which is not acceptable on a
+money surface. `costBasis.test.ts` pins the refusals — partial exits, missing
+receipts, deposits that cannot cover the balance, and an indexer that is down.
+
+The read is separate from `readStrategyLiquidity` and allowed to fail alone: it
+needs the indexer, the pool read needs algod, and a basis we cannot fetch must
+cost the one line that shows it rather than the position value.
+
 ### The card carries one number; the modal carries the detail
 
 A depositor arriving at the card is asking two things — what is the strategy,
