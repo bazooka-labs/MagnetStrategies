@@ -128,6 +128,35 @@ and ALGO's price.
 span, a negative headline when the long window is negative, and a refusal
 rather than `NaN` on a total loss.
 
+### The benchmark line is the honest signal
+
+Beneath the headline the card shows **how far the vault beat simply holding
+ALGO + USDC** — PEX's own `vs_holding_bps`, not a derivation of ours. It is
+there because it is the only figure in the box that measures the **strategy**
+rather than the market:
+
+| window | share price | benchmark | vs holding |
+|---|---|---|---|
+| 7d | +3.70% | −4.49% | **+8.19pp** |
+| 30d | **−2.38%** | −12.42% | **+10.04pp** |
+| 90d | +17.00% | +5.63% | **+11.37pp** |
+
+The headline return swings 19 points across those windows; the outperformance
+moves three. **The swing is ALGO's price**, which the vault does not choose and
+a depositor can hedge. The 30-day row is the one to keep in mind: the vault was
+*down* 2.38% while beating the benchmark by 10.04pp, because ALGO fell 12.42%.
+
+Income is almost none of it. The 5.11% APR pro-rates to **0.41%** over 30 days
+against **+10.04pp** of outperformance — so roughly **96% of what the vault adds
+is trader P&L**, money from traders on the losing side. That is the engine, and
+it is why "deposits earn a share of trading fees" is a poor description of this
+product: fee income across all three pools runs **0–3% of LP income**, and
+BTC/USD earned **$0.00** in fees over the measured week.
+
+**This figure is never annualised.** The same relative outperformance
+annualises to +14,813% from 6 days and +97% from 55 — short windows are
+nonsense here too.
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |

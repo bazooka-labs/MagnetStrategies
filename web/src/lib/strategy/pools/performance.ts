@@ -301,9 +301,26 @@ export type AnnualisedReturn = {
   period: PerfPeriod;
   /** Days actually spanned, not the period label. */
   days: number;
-  /** The realised return over those days, percent. This is the FACT. */
+  /** The realised share-price return over those days, percent. A FACT. */
   realisedPct: number;
-  /** Compounded to a year, percent. This is DERIVED. */
+  /** What simply holding the two assets returned over the same days. A FACT. */
+  holdPct: number;
+  /**
+   * PEX's own `vs_holding_bps` — how far the vault beat holding, in
+   * percentage points. A FACT, and theirs rather than ours.
+   *
+   * This is the headline, because it is the only figure here that measures
+   * the STRATEGY rather than the market. Measured 2026-10-28 the share-price
+   * return across windows ran −2.38% to +17.00% while this ran +8.19 to
+   * +11.37pp — the swing in the former is ALGO's price, which the vault does
+   * not choose and a depositor can hedge.
+   *
+   * The 30-day window is the case that matters: the vault was DOWN 2.38%
+   * while beating the benchmark by 10.04pp, because ALGO fell 12.42%. A
+   * headline that cannot stay honest in that month is the wrong headline.
+   */
+  vsHoldingPoints: number;
+  /** Compounded to a year, percent. This is DERIVED, and demoted on the card. */
   annualisedPct: number;
 };
 
@@ -327,6 +344,8 @@ export function pickLongest(stats: PoolStats | null): AnnualisedReturn | null {
     period: best.period,
     days: best.days,
     realisedPct: best.productPct,
+    holdPct: best.holdPct,
+    vsHoldingPoints: best.vsHoldingPoints,
     annualisedPct: (Math.pow(growth, 365 / best.days) - 1) * 100,
   };
 }

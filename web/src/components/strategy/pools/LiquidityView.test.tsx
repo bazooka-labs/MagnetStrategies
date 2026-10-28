@@ -305,7 +305,22 @@ describe("the C-Vault card", () => {
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
     expect(screen.getByText("7.57% APR")).toBeTruthy();
-    expect(screen.getByText(/trader P&L and asset price/)).toBeTruthy();
+    expect(screen.getByText(/the rest is trader P&L/)).toBeTruthy();
+  });
+
+  it("surfaces how far the vault beat simply holding the assets", async () => {
+    /**
+     * The only figure in the box that measures the STRATEGY rather than the
+     * market. Over the same windows the share price ran -2.38% to +17.00%
+     * while this ran +8.19 to +11.37pp — the difference is ALGO's price,
+     * which the vault does not choose. It is PEX's own vs_holding_bps.
+     */
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    expect(screen.getByText(/Beat holding/)).toBeTruthy();
+    expect(screen.getByText("+11.37pp")).toBeTruthy();
   });
 
   it("shows pool liquidity, shares outstanding and the user's own position", async () => {
