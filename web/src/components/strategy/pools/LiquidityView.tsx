@@ -218,7 +218,7 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
        close enough to the halo that the two read as one block. py-5 balances
        the box around its contents — the figure is tall, so equal padding
        top and bottom leaves it looking high. */
-    <div className="glow-white mt-1 rounded-xl border border-white/10 bg-black/30 px-5 pb-4 pt-5">
+    <div className="glow-white mb-2 mt-1 rounded-xl border border-white/10 bg-black/30 px-5 pb-4 pt-5">
       {/*
         ── One figure, inline with its label ──
         The label and the number read as a single statement, and the
@@ -231,36 +231,42 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
         of the large one in the wrong proportion. It lives in Learn more with
         the split that explains it.
       */}
-      {/* items-center, not items-baseline. Sharing a baseline makes a 29px
-          figure ride high above a 15px label — the figure's mass is all above
-          the line while the label's sits on it. Centring drops the figure to
-          the label's mid-height, which is what reads as aligned. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="text-[15px] font-semibold text-gray-200">
-          {ann ? "12 Month Annualized Return:" : "Fees + Yield APR:"}
-        </p>
-        <p className={`font-mono text-[29px] font-bold leading-none ${
-          ann && ann.annualizedPct < 0 ? "text-red-300" : "text-green-400"
-        }`}>
-          {ann
-            ? `${ann.annualizedPct >= 0 ? "+" : ""}${ann.annualizedPct.toFixed(0)}%`
-            : pct(i?.totalPct ?? null, 2)}
-        </p>
-        {stale && (
-          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
-            STALE
-          </span>
-        )}
-      </div>
-      <p className="mt-2 text-[10.5px] text-gray-500">
-        {ann
-          ? `Derived from past ${Math.round(ann.days)} days performance`
-          : "Past 7 days · published by PEX"}
-      </p>
+      {/*
+        Label and subtext are grouped on the left so the figure centres
+        against the WHOLE block rather than just the label line — otherwise a
+        29px number centred on a 15px label hangs past the subtext beneath it.
 
-      {/* The realised figure is the FACT; the headline above is derived from
-          it. It travels directly beneath so the two are never separated — see
-          the long note on `pickLongest` in pools/performance.ts. */}
+        `justify-between` rather than sitting the figure beside the colon: it
+        was hugging the label with the rest of the row empty, and a metric row
+        should use the width it has.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold leading-snug text-gray-200">
+            {ann ? "12 Month Annualized Return" : "Fees + Yield APR"}
+          </p>
+          <p className="mt-0.5 text-[10.5px] leading-snug text-gray-500">
+            {ann
+              ? `Derived from past ${Math.round(ann.days)} days performance`
+              : "Past 7 days · published by PEX"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <p className={`font-mono text-[29px] font-bold leading-none ${
+            ann && ann.annualizedPct < 0 ? "text-red-300" : "text-green-400"
+          }`}>
+            {ann
+              ? `${ann.annualizedPct >= 0 ? "+" : ""}${ann.annualizedPct.toFixed(0)}%`
+              : pct(i?.totalPct ?? null, 2)}
+          </p>
+          {stale && (
+            <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+              STALE
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* The realised ladder moved to the About modal. The card is now one
           number with its basis in the label; the modal carries the 7d/30d/90d
           spread, the chart against the benchmark, and the risk disclosure.

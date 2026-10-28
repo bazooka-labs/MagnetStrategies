@@ -292,10 +292,14 @@ describe("the C-Vault card", () => {
     // Label and figure read as one statement; the derivation is the subtext
     // directly beneath. Asserted via the shared parent so the three cannot be
     // separated — that is how a basis drifts away from its figure.
-    const label = screen.getByText("12 Month Annualized Return:");
-    expect(label.parentElement?.textContent).toContain("+183%");
-    expect(label.parentElement?.nextElementSibling?.textContent)
+    // Label and subtext are grouped; the figure sits opposite them in the
+    // same row. Asserted through the shared row so the basis cannot drift
+    // away from the figure it belongs to.
+    const label = screen.getByText("12 Month Annualized Return");
+    expect(label.nextElementSibling?.textContent)
       .toMatch(/Derived from past 55 days performance/);
+    const row = label.parentElement?.parentElement;
+    expect(row?.textContent).toContain("+183%");
   });
 
   it("timestamps the two sources separately, because they differ", async () => {
