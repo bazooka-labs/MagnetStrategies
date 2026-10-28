@@ -289,8 +289,12 @@ describe("the C-Vault card", () => {
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    const label = screen.getByText(/Annualised return/);
-    expect(label.textContent).toMatch(/derived from past 55 days performance/);
+    const title = screen.getByText("Annualised returns");
+    // The derivation is now its own element, so assert it is the title's
+    // immediate sibling — separable markup is how a basis drifts away from
+    // the figure it belongs to.
+    const sub = title.nextElementSibling;
+    expect(sub?.textContent).toMatch(/derived from past 55 days performance/);
   });
 
   it("timestamps the two sources separately, because they differ", async () => {
@@ -340,15 +344,22 @@ describe("the C-Vault card", () => {
     );
   });
 
-  it("keeps APR and yield figures OFF the card", async () => {
-    // They live in the About modal now. The card carries one number.
+  it("shows the APR beside the headline, labelled as a different quantity", async () => {
+    /**
+     * They are not the same measure and must not read as one. +183% is
+     * everything — income plus trader P&L plus ALGO's price. 7.57% is income
+     * alone, PEX's own published rate. Measured 2026-10-28 income was ~2.6%
+     * of the total return, so unlabelled side-by-side figures would invite
+     * reading the small one as a subset of the large one in the wrong
+     * proportion.
+     */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
-    expect(body).not.toContain("7.57% APR");
-    expect(body).not.toContain("Fees + yield");
+    expect(screen.getByText("7.57%")).toBeTruthy();
+    expect(screen.getByText("all sources")).toBeTruthy();
+    expect(screen.getByText("fees + yield APR")).toBeTruthy();
   });
 
   it("does not put the benchmark comparison on the card", async () => {

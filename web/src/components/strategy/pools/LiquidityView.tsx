@@ -215,29 +215,58 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
   const ann = pickLongest(stats);
   return (
     <div className="rounded-xl border border-white/5 bg-black/30 p-4">
-      {/* The derivation lives in the LABEL now, not in a sentence beneath the
-          number. It is the one piece of context that must not be separable
-          from the figure: "+183%" alone is a claim, "+183% derived from past
-          55 days performance" is a measurement with its basis attached. */}
-      <p className="text-[11px] uppercase tracking-wider text-gray-500">
-        {ann
-          ? `Annualised return — derived from past ${Math.round(ann.days)} days performance`
-          : "Fees + Yield APR · past 7d · PEX"}
+      {/*
+        ── Title, then subtext, then two values side by side ──
+        The title carries the weight and the derivation sits under it as
+        subtext, so the basis is still attached to the figure without
+        competing with it for size.
+
+        The two values are DIFFERENT QUANTITIES and are labelled as such.
+        +183% is everything — income plus trader P&L plus ALGO's price. 5.11%
+        is income alone, and it is PEX's own published rate rather than
+        anything derived here. Measured 2026-10-28 income was ~2.6% of the
+        total return, so showing them side by side without those labels would
+        invite reading the small one as a subset of the large one in the wrong
+        proportion.
+      */}
+      <p className="text-[13px] font-semibold uppercase tracking-wide text-gray-300">
+        {ann ? "Annualised returns" : "Fees + Yield APR"}
       </p>
-      <div className="mt-1 flex items-baseline gap-2.5">
-        <p className={`font-mono text-3xl font-bold ${
-          ann && ann.annualisedPct < 0 ? "text-red-300" : "text-green-400"
-        }`}>
-          {ann
-            ? `${ann.annualisedPct >= 0 ? "+" : ""}${ann.annualisedPct.toFixed(0)}%`
-            : pct(i?.totalPct ?? null, 2)}
-        </p>
-        {stale && (
-          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
-            STALE
-          </span>
+      <p className="mt-0.5 text-[10px] text-gray-600">
+        {ann
+          ? `derived from past ${Math.round(ann.days)} days performance`
+          : "past 7 days · published by PEX"}
+      </p>
+
+      <div className="mt-2.5 flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div>
+          <div className="flex items-baseline gap-2">
+            <p className={`font-mono text-3xl font-bold leading-none ${
+              ann && ann.annualisedPct < 0 ? "text-red-300" : "text-green-400"
+            }`}>
+              {ann
+                ? `${ann.annualisedPct >= 0 ? "+" : ""}${ann.annualisedPct.toFixed(0)}%`
+                : pct(i?.totalPct ?? null, 2)}
+            </p>
+            {stale && (
+              <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+                STALE
+              </span>
+            )}
+          </div>
+          {ann && <p className="mt-1 text-[10px] text-gray-500">all sources</p>}
+        </div>
+
+        {ann && i && (
+          <div className="border-l border-white/[0.07] pl-6">
+            <p className="font-mono text-xl font-semibold leading-none text-green-300">
+              {pct(i.totalPct, 2)}
+            </p>
+            <p className="mt-1 text-[10px] text-gray-500">fees + yield APR</p>
+          </div>
         )}
       </div>
+
       {/* The realised figure is the FACT; the headline above is derived from
           it. It travels directly beneath so the two are never separated — see
           the long note on `pickLongest` in pools/performance.ts. */}
