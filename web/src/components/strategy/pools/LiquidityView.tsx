@@ -218,7 +218,7 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
        close enough to the halo that the two read as one block. py-5 balances
        the box around its contents — the figure is tall, so equal padding
        top and bottom leaves it looking high. */
-    <div className="glow-white mb-2 mt-1 rounded-xl border border-white/10 bg-black/30 px-5 pb-4 pt-5">
+    <div className="glow-white mb-2 mt-1 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
       {/*
         ── One figure, inline with its label ──
         The label and the number read as a single statement, and the
@@ -284,18 +284,15 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
   );
 }
 
-function Stat({ label, value, sub, subTone }: {
-  label: string; value: string; sub?: string; subTone?: "up" | "down";
+function Stat({ label, value, tone }: {
+  label: string; value: string; tone?: "up" | "down";
 }) {
   return (
     <div>
       <dt className="text-[10.5px] text-gray-500">{label}</dt>
-      <dd className="mt-0.5 font-mono text-sm text-gray-200">{value}</dd>
-      {sub && (
-        <dd className={`mt-0.5 font-mono text-[10.5px] ${
-          subTone === "down" ? "text-red-300" : "text-green-400"
-        }`}>{sub}</dd>
-      )}
+      <dd className={`mt-0.5 font-mono text-sm ${
+        tone === "up" ? "text-green-400" : tone === "down" ? "text-red-300" : "text-gray-200"
+      }`}>{value}</dd>
     </div>
   );
 }
@@ -573,39 +570,53 @@ export function LiquidityView() {
               yours: they are different subjects, and a flat 2x2 grid of four
               equal cells made the reader work out which was which.
             */}
+            {/*
+              ── What a depositor actually asks ──
+              How big is this, how many people are in it, what do I hold, and
+              am I up or down. "Shares outstanding" and "Your shares" answered
+              neither — share counts are the contract's unit, not a
+              depositor's, and the dollar figures already carry the same
+              information in one they think in.
+
+              Unrealized gain replaces the "+$0.32 since you paid $25.00"
+              subtext that used to hang under Your position; it is the same
+              number given a slot of its own.
+            */}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Stat label="Pool liquidity" value={usd(data?.cva.navUsd ?? null)} />
-              <Stat label="Shares outstanding" value={num(data?.cva.totalShares ?? null, 2)} />
+              <Stat label="Participants" value={num(data?.cva.participants ?? null)} />
             </dl>
             <div className="h-px bg-white/[0.07]" />
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Stat
                 label="Your position"
                 value={data?.cva.yourUsd != null ? usd(data.cva.yourUsd, 2) : "—"}
-                /*
-                  ── Measured against what LEFT THE WALLET ──
-                  `paidUsd` is the deposit receipt's own value field, verified
-                  against chain: the 2026-10-23 deposit logs 25_000_000 and the
-                  group transfers exactly 25.000000 USDC. NOT the credited
-                  value after the 0.2% entry spread.
+              />
+              {/*
+                Measured against what LEFT THE WALLET — the deposit receipt's
+                own value field, not the credited value after the 0.2% entry
+                spread. On $25.00 that spread is $0.05, a fifth of the first
+                week's gain, and measuring from the post-spread figure would
+                hide exactly the cost this is here to surface.
 
-                  That distinction is the entire reason this line exists. The
-                  share price already tells a holder their percentage return —
-                  a position is a scalar multiple of it. What no published
-                  series can show is the spread, which on $25.00 is $0.05, a
-                  fifth of the first week's gain. Measuring from the
-                  post-spread value would hide exactly the cost this is here to
-                  surface.
-                */
-                sub={data?.cva.yourUsd != null && basis
+                "Unrealized" is the honest word: it moves with the share price
+                every time PEX re-marks, and it is only realised on exit, where
+                the 0.2% burn spread applies again.
+              */}
+              <Stat
+                label="Unrealized gain/loss"
+                /* The sign goes BEFORE the currency symbol: "+$0.30", not
+                   "+0.30". An earlier version sliced the symbol off and
+                   rendered a bare number, which reads as a share count on a
+                   card that also shows those. */
+                value={data?.cva.yourUsd != null && basis
                   ? `${data.cva.yourUsd - basis.paidUsd >= 0 ? "+" : "−"}${usd(
-                      Math.abs(data.cva.yourUsd - basis.paidUsd), 2).slice(1)} since you paid ${usd(basis.paidUsd, 2)}`
-                  : undefined}
-                subTone={data?.cva.yourUsd != null && basis
+                      Math.abs(data.cva.yourUsd - basis.paidUsd), 2)}`
+                  : "—"}
+                tone={data?.cva.yourUsd != null && basis
                   ? (data.cva.yourUsd >= basis.paidUsd ? "up" : "down")
                   : undefined}
               />
-              <Stat label="Your shares" value={num(data?.cva.yourShares ?? null, 4)} />
             </dl>
 
             <div className="rounded-lg border border-white/[0.06] bg-black/30 px-3 py-2.5 text-[10.5px] leading-relaxed text-gray-500">

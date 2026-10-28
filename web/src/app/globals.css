@@ -57,9 +57,9 @@ body {
      halo did not render at all. Measured by sampling pixels at the box edge
      against the card background — they came back DARKER than the surround,
      which is how a glow that is not there looks. */
-  box-shadow: 0 0 46px rgba(255, 255, 255, 0.22),
-              0 0 14px rgba(255, 255, 255, 0.10),
-              inset 0 0 26px -18px rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 46px rgba(255, 255, 255, 0.26),
+              0 0 14px rgba(255, 255, 255, 0.14),
+              inset 0 0 26px -18px rgba(255, 255, 255, 0.62);
 }
 
 .glow-text {

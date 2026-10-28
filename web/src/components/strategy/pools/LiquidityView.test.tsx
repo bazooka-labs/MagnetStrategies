@@ -54,7 +54,11 @@ vi.mock("@/hooks/useWallet", () => ({
  */
 let liquidity: unknown = null;
 let bundle: unknown = null;
+let costBasis: unknown = null;
 
+vi.mock("@/lib/strategy/pools/costBasis", () => ({
+  readCostBasis: () => Promise.resolve(costBasis),
+}));
 vi.mock("@/lib/strategy/pools/reads", () => ({
   readStrategyLiquidity: () => liquidity
     ? Promise.resolve(liquidity)
@@ -92,6 +96,7 @@ const LIQUIDITY = {
     totalShares: 1400.654055,
     navPerShare: 1.190677,
     yourUsd: 6.999,
+    participants: 9,
   },
   totals: { totalUsd: 4689, directUsd: 3132, viaCvaUsd: 1557 },
   algoUsd: 0.1234,
@@ -134,6 +139,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   liquidity = null;
   bundle = null;
+  costBasis = null;
 });
 
 async function mount(as: "visitor" | "admin" | "disconnected") {
@@ -377,18 +383,26 @@ describe("the C-Vault card", () => {
     expect(body).not.toContain("Beat holding");
   });
 
-  it("shows pool liquidity, shares outstanding and the user's own position", async () => {
+  it("shows the four figures a depositor actually asks for", async () => {
+    /**
+     * How big is this, how many people are in it, what do I hold, and am I up
+     * or down. Share counts were the contract's unit, not a depositor's, and
+     * the dollar figures already carry the same information.
+     *
+     * Against the vault's real numbers from 2026-10-28: $1,557.42 of NAV, 9
+     * `gu2:` holder boxes, 5.879 shares at $1.190677 = $7.00.
+     */
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
     const read = (label: string) =>
       screen.getByText(label).parentElement?.textContent ?? "";
     expect(read("Pool liquidity")).toContain("$1,557");
-    expect(read("Shares outstanding")).toContain("1,400.65");
-    expect(read("Your shares")).toContain("5.879");
-    // Priced at the CONTRACT's NAV per share, the same basis the withdraw form
-    // spends against — 5.879 shares x $1.190677 = $7.00.
+    expect(read("Participants")).toContain("9");
     expect(read("Your position")).toContain("$7.00");
+    // Share counts are gone — the contract's unit, not a depositor's.
+    expect(screen.queryByText("Shares outstanding")).toBeNull();
+    expect(screen.queryByText("Your shares")).toBeNull();
   });
 
   it("declines to value a position it could not read, rather than showing $0", async () => {
@@ -396,5 +410,43 @@ describe("the C-Vault card", () => {
     await mount("disconnected");
     await waitFor(() => expect(screen.getByText("Your position")).toBeTruthy());
     expect(screen.getByText("Your position").parentElement?.textContent).not.toContain("$0");
+  });
+});
+
+describe("unrealized gain/loss", () => {
+  /**
+   * Replaces the "+$0.32 since you paid $25.00" subtext that hung under Your
+   * position. Same number, its own slot, and measured against what LEFT THE
+   * WALLET rather than the value credited after the 0.2% entry spread.
+   */
+  it("shows the gain in green, against what was actually paid", async () => {
+    liquidity = LIQUIDITY;        // $6.999 held
+    costBasis = { paidUsd: 6.70, shares: 5.879, deposits: 1 };
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
+    const el = screen.getByText("Unrealized gain/loss").parentElement;
+    expect(el?.textContent).toContain("+$0.30");
+    expect(el?.querySelector("dd:last-of-type")?.className).toContain("text-green-400");
+  });
+
+  it("shows a loss in red, not as a smaller gain", async () => {
+    liquidity = LIQUIDITY;
+    costBasis = { paidUsd: 8.00, shares: 5.879, deposits: 1 };
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
+    const el = screen.getByText("Unrealized gain/loss").parentElement;
+    expect(el?.textContent).toContain("−$1.00");
+    expect(el?.querySelector("dd:last-of-type")?.className).toContain("text-red-300");
+  });
+
+  it("declines rather than showing zero when the basis is unknown", async () => {
+    // A basis we cannot reconcile must never render as "no change".
+    liquidity = LIQUIDITY;
+    costBasis = null;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
+    const el = screen.getByText("Unrealized gain/loss").parentElement;
+    expect(el?.textContent).toContain("—");
+    expect(el?.textContent).not.toContain("$0.00");
   });
 });

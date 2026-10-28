@@ -215,6 +215,18 @@ export type StrategyLiquidity = {
     navPerShare: number | null;
     /** The user's position in dollars, at the contract's own share price. */
     yourUsd: number | null;
+    /**
+     * Depositors in the vault, counted as `gu2:` boxes.
+     *
+     * One box per address that holds shares — the contract creates it on a
+     * first deposit (paying the 32,900 µALGO MBR) and DELETES it on a full
+     * exit, refunding the MBR. So the count is live holders, not everyone who
+     * ever deposited. Verified 2026-10-28: 9 boxes, matching Mallow's figure.
+     *
+     * Null rather than 0 on a failed read — "nobody is in this vault" and "we
+     * could not count" are the same pixels meaning opposite things.
+     */
+    participants: number | null;
   };
   totals: ReturnType<typeof liquidityTotals>;
   algoUsd: number;
@@ -307,9 +319,10 @@ export async function readStrategyLiquidity(
    * renamed global (a stale pinned layout), and that throw belongs to the
    * signing path, not to a card.
    */
-  const [shareState, yourShares] = await Promise.all([
+  const [shareState, yourShares, participants] = await Promise.all([
     readCvaShareState(algod),
     address ? readCvaUserShares(algod, address) : Promise.resolve(null),
+    readCvaParticipants(algod),
   ]);
 
   const byMarketPre = new Map(markets.map((m) => [m.marketId, m]));
@@ -336,6 +349,7 @@ export async function readStrategyLiquidity(
       totalShares: shareState?.totalShares ?? null,
       navPerShare: shareState?.navPerShare ?? null,
       yourUsd: yourShares !== null && shareState ? yourShares * shareState.navPerShare : null,
+      participants,
     },
     totals: liquidityTotals(markets.map((m) => m.value), navUsd ?? 0),
     algoUsd,
@@ -376,6 +390,31 @@ async function readCvaShareState(
     // position at zero rather than declining to value it.
     if (totalShares <= 0) return null;
     return { totalShares, navPerShare: navMicro / 1e6 / totalShares };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How many addresses hold shares, counted as `gu2:` boxes.
+ *
+ * One box per holder: created on a first deposit, deleted on a full exit with
+ * its MBR refunded. So this is LIVE holders rather than everyone who has ever
+ * deposited — a wallet that entered and left is not counted, which is the
+ * figure a prospective depositor actually wants.
+ *
+ * Tolerant of failure like `readCvaShareState`: a box listing we cannot read
+ * should cost one stat, not the page.
+ */
+async function readCvaParticipants(algod: algosdk.Algodv2): Promise<number | null> {
+  try {
+    const res = await algod.getApplicationBoxes(PEX_APPS.cvaVault).max(2000).do();
+    const boxes = res.boxes ?? [];
+    // `gm2:` boxes are market allocations, not holders. Counting every box
+    // would have reported 11 against a real 9.
+    const n = boxes.filter((b) =>
+      Buffer.from(b.name).subarray(0, 4).toString("utf8") === "gu2:").length;
+    return boxes.length > 0 || n > 0 ? n : null;
   } catch {
     return null;
   }
