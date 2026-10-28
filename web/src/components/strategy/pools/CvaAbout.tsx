@@ -66,11 +66,18 @@ const SECTIONS: { icon: React.ReactNode; title: string; body: React.ReactNode }[
     title: "How it earns",
     body: (
       <>
-        Two income streams, both shown separately in the rate above:{" "}
-        <strong className="font-semibold text-gray-300">trading fees</strong> paid by every trader
-        who opens, closes or is liquidated, and <strong className="font-semibold text-gray-300">
-        yield</strong> on the capital sitting in the pool. On this vault yield has been the larger
-        half. Both accrue to the share price, so you hold a growing number of dollars per share
+        {/* Moved here from the card on 2026-10-28, where it was the only
+            sentence left beside the figure. Ordered by contribution: trader
+            P&L is ~96% of what the vault adds, swap fees 0-3%. */}
+        Three sources, in the order they matter.{" "}
+        <strong className="font-semibold text-gray-300">Earnings from opposite trade
+        positions</strong> — when a trader loses, the pool is the other side, and this is most of
+        the return. <strong className="font-semibold text-gray-300">ALGO/USDC price
+        movement</strong>, because the vault holds both and is not hedged; this is what makes the
+        figure swing between windows. And <strong className="font-semibold text-gray-300">pool
+        swap fees</strong> plus yield on idle capital — steady, and the smallest of the three.
+        <br /><br />
+        All of it accrues to the share price, so you hold a growing number of dollars per share
         rather than being paid out — there is nothing to claim.
       </>
     ),

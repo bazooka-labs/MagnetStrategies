@@ -47,6 +47,21 @@ body {
   box-shadow: 0 0 28px rgba(168, 85, 247, 0.25);
 }
 
+/* A soft white halo for the one box on a card that should read as the
+   headline. White rather than the brand purple on purpose: the card is
+   already purple-framed, so a purple glow on a purple card reads as more
+   frame, while white lifts the box off it. Kept low-opacity — this sits
+   behind a number, and anything stronger smears the glyph edges. */
+.glow-white {
+  /* No negative spread: -6px pulled the shadow back inside the box and the
+     halo did not render at all. Measured by sampling pixels at the box edge
+     against the card background — they came back DARKER than the surround,
+     which is how a glow that is not there looks. */
+  box-shadow: 0 0 46px rgba(255, 255, 255, 0.22),
+              0 0 14px rgba(255, 255, 255, 0.10),
+              inset 0 0 26px -18px rgba(255, 255, 255, 0.55);
+}
+
 .glow-text {
   text-shadow: 0 0 24px rgba(192, 132, 252, 0.70),
                0 0 55px rgba(147, 51, 234, 0.40);
