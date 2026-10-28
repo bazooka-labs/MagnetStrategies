@@ -25,7 +25,7 @@ describe("the real bundle parses to the real numbers", () => {
   it("reads ALGO/USD's income APR as fee + yield", () => {
     // 483 + 639 = 1122 bps. The yield half is LARGER than the fee half, and
     // our on-chain derivation omitted it entirely while still reading 3.2x
-    // high at 15.3% — because it annualised fees since inception and trading
+    // high at 15.3% — because it annualized fees since inception and trading
     // has slowed 4.1x since.
     const i = b.byKey[marketKey(1)].income!;
     expect(i.feePct).toBeCloseTo(4.83, 2);

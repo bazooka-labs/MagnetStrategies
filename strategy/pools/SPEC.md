@@ -201,7 +201,7 @@ It was wrong, and wrong in the direction this spec claimed it was not:
 
 Two independent errors, compounding:
 
-1. **Inception average, not a current rate.** It annualised fees since the
+1. **Inception average, not a current rate.** It annualized fees since the
    pool opened. Trading has since slowed **4.1x** — $1.088/day over the first
    48.9 days against $0.268/day over the last seven — so the figure overstated
    what a depositor would earn today by **3.2x**. §5.3 of this spec argued the
@@ -361,7 +361,7 @@ Behaviour, asserted on values — not greps:
    fails if someone sums naively.
 2. **CVA ownership**: CVA share holdings ÷ pool share supply, per market, against
    the marks.
-3. **Fee-yield arithmetic**: annualisation from (fees, pool value, days) with a
+3. **Fee-yield arithmetic**: annualization from (fees, pool value, days) with a
    fixed clock, including the zero-fee and zero-pool cases.
 4. **Asset legs**: both markets report ALGO long / USDC short, so a card can never
    silently claim "deposit USDC only".

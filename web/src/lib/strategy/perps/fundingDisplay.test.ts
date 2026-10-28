@@ -27,7 +27,7 @@ describe("a market charging no funding says so", () => {
   });
 
   it("still hides a zero INTERVAL, which is unreadable rather than free", () => {
-    // A zero interval cannot be annualised: that is missing data, and the two
+    // A zero interval cannot be annualized: that is missing data, and the two
     // must not collapse into the same branch.
     expect(cardSrc).toContain("if (interval <= 0) return null;");
   });
@@ -62,7 +62,7 @@ describe("the ceiling is the on-chain clamp", () => {
   // Quotable because it is the field saved_factor is clamped to — ALGO sits at
   // exactly max_factor_milli_bps. The RAMP is undocumented on our side, so the
   // copy must not claim when the rate moves or in whose favour.
-  it("annualises max_factor_milli_bps, not a constant", () => {
+  it("annualizes max_factor_milli_bps, not a constant", () => {
     expect(cardSrc).toContain("annual(Number(data.state.adaptive.max_factor_milli_bps))");
   });
 });

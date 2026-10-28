@@ -62,7 +62,7 @@ vi.mock("@/lib/strategy/pools/reads", () => ({
   cvaShareOfMarket: () => null,
 }));
 vi.mock("@/lib/strategy/pools/performance", async (orig) => ({
-  // The REAL pickLongest — the annualisation is the thing under test, so
+  // The REAL pickLongest — the annualization is the thing under test, so
   // stubbing it would certify arithmetic nobody ran.
   ...(await orig<Record<string, unknown>>()),
   fetchPerformanceBundle: () => bundle
@@ -250,7 +250,7 @@ describe("the C-Vault card", () => {
     expect(screen.getByRole("button", { name: /Learn more/ })).toBeTruthy();
   });
 
-  it("headlines the annualised return, derived from the LONGEST window", async () => {
+  it("headlines the annualized return, derived from the LONGEST window", async () => {
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
@@ -260,12 +260,12 @@ describe("the C-Vault card", () => {
     const figure = screen.getByText("+183%");
     expect(figure.className).toContain("text-green-400");
     expect(figure.className).toContain("font-mono");
-    expect(screen.getByText(/derived from past 55 days performance/)).toBeTruthy();
+    expect(screen.getByText(/Derived from past 55 days performance/)).toBeTruthy();
   });
 
-  it("never annualises a short window, however good it looks", async () => {
+  it("never annualizes a short window, however good it looks", async () => {
     /**
-     * The 7-day window here is +3.70%, which annualises to +812%. Picking it
+     * The 7-day window here is +3.70%, which annualizes to +812%. Picking it
      * would be the single most flattering number available and the least
      * defensible. The headline must come from the 55-day window.
      */
@@ -289,12 +289,13 @@ describe("the C-Vault card", () => {
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    const title = screen.getByText("Annualised returns");
-    // The derivation is now its own element, so assert it is the title's
-    // immediate sibling — separable markup is how a basis drifts away from
-    // the figure it belongs to.
-    const sub = title.nextElementSibling;
-    expect(sub?.textContent).toMatch(/derived from past 55 days performance/);
+    // Label and figure read as one statement; the derivation is the subtext
+    // directly beneath. Asserted via the shared parent so the three cannot be
+    // separated — that is how a basis drifts away from its figure.
+    const label = screen.getByText("12 Month Annualized Return:");
+    expect(label.parentElement?.textContent).toContain("+183%");
+    expect(label.parentElement?.nextElementSibling?.textContent)
+      .toMatch(/Derived from past 55 days performance/);
   });
 
   it("timestamps the two sources separately, because they differ", async () => {
@@ -344,22 +345,24 @@ describe("the C-Vault card", () => {
     );
   });
 
-  it("shows the APR beside the headline, labelled as a different quantity", async () => {
+  it("carries ONE rate — the income APR is a different quantity and lives in the modal", async () => {
     /**
-     * They are not the same measure and must not read as one. +183% is
-     * everything — income plus trader P&L plus ALGO's price. 7.57% is income
-     * alone, PEX's own published rate. Measured 2026-10-28 income was ~2.6%
-     * of the total return, so unlabelled side-by-side figures would invite
-     * reading the small one as a subset of the large one in the wrong
-     * proportion.
+     * 5.11% income against a +183% total on 2026-10-28, because income was
+     * ~2.6% of the return. Two rates side by side invited reading the small
+     * one as a subset of the large one in the wrong proportion.
+     *
+     * Asserted on the rendered element, not a substring of the page: an
+     * earlier version of this test matched "7.57% APR" as a literal and kept
+     * passing after the APR came BACK onto the card, because the markup had
+     * split the value from its label.
      */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    expect(screen.getByText("7.57%")).toBeTruthy();
-    expect(screen.getByText("all sources")).toBeTruthy();
-    expect(screen.getByText("fees + yield APR")).toBeTruthy();
+    expect(screen.queryByText("7.57%")).toBeNull();
+    expect(screen.queryByText(/fees \+ yield/i)).toBeNull();
+    expect(screen.queryByText("all sources")).toBeNull();
   });
 
   it("does not put the benchmark comparison on the card", async () => {

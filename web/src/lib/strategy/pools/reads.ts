@@ -171,7 +171,7 @@ export type MarketLiquidity = {
   /**
    * Cumulative trading fees the pool has earned since it opened, USD.
    *
-   * A STOCK, not a rate. The rate that used to live here annualised this
+   * A STOCK, not a rate. The rate that used to live here annualized this
    * against the current pool and read 15.3% where PEX's actual fee APR is
    * 4.83% — trading has slowed 4.1x since inception, so an inception average
    * is not what a depositor would earn today. The APR now comes from PEX's

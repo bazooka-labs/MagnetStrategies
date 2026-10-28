@@ -156,7 +156,7 @@ export function poolValuePerShare(totalUsd: number, shareSupply: number): number
 //
 //     ALGO/USD   it read 15.3%   PEX's actual fee APR is 4.83%
 //
-// It annualised fees since inception against the current pool. Trading has
+// It annualized fees since inception against the current pool. Trading has
 // slowed 4.1x ($1.088/day over the first 48.9 days, $0.268/day over the last
 // seven), so an inception average overstates what a depositor earns today by
 // 3.2x — and it omitted yield income, which on these pools is the larger half
@@ -230,10 +230,10 @@ export function liquidityTotals(
 
 /** The C-Vault's blended fee yield: each market's rate at the vault's weight. */
 export function blendedFeeYieldPct(
-  parts: readonly { annualisedPct: number | null; weight: number }[],
+  parts: readonly { annualizedPct: number | null; weight: number }[],
 ): number | null {
-  const usable = parts.filter((p) => p.annualisedPct !== null && p.weight > 0);
+  const usable = parts.filter((p) => p.annualizedPct !== null && p.weight > 0);
   const totalWeight = usable.reduce((a, p) => a + p.weight, 0);
   if (totalWeight <= 0) return null;
-  return usable.reduce((a, p) => a + p.annualisedPct! * p.weight, 0) / totalWeight;
+  return usable.reduce((a, p) => a + p.annualizedPct! * p.weight, 0) / totalWeight;
 }

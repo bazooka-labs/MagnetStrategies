@@ -7,7 +7,7 @@
  *
  *     ALGO/USD   derived 15.3%   PEX fee APR 4.83%   PEX total 11.22%
  *
- * That derivation annualised fees since inception against the current pool.
+ * That derivation annualized fees since inception against the current pool.
  * Trading has since slowed 4.1x ($1.088/day averaged over 48.9 days, against
  * $0.268/day over the last seven), so an inception average overstates the rate
  * a depositor would actually earn today by 3.2x. It also omitted yield income
@@ -75,7 +75,7 @@ export type PoolReturn = {
    * Days actually spanned by the observations, first timestamp to last.
    *
    * NOT the period label: the bundle's "90d" window currently holds 55 days
-   * because that is all the history the vault has. Annualising against the
+   * because that is all the history the vault has. Annualizing against the
    * label rather than the span would understate the rate by whatever the gap
    * is — on today's data, 17.00% over a claimed 90 days reads 89% instead of
    * the true 183%.
@@ -291,10 +291,10 @@ export function benchmarkLabel(kind: string): string {
 }
 
 /**
- * The longest window with real history, and its return annualised.
+ * The longest window with real history, and its return annualized.
  *
  * ── Why this exists, and the argument against it ──
- * Annualising a realised return is NOT a rate. The same vault on the same day
+ * Annualizing a realised return is NOT a rate. The same vault on the same day
  * gives wildly different answers depending on the window chosen — measured
  * 2026-10-28: +812% from 7 days, **−26% from 30 days**, +183% from 55. The
  * number is as much a statement about the window as about the vault, and this
@@ -307,14 +307,14 @@ export function benchmarkLabel(kind: string): string {
  *   1. **Longest window only.** Short windows are the volatile ones; a seven-
  *      day headline would be indefensible. `pickLongest` enforces this.
  *   2. **The realised figure travels with it** — "+17.00% over 55 days" is the
- *      fact; the annualisation is derived from it and labelled as such.
+ *      fact; the annualization is derived from it and labelled as such.
  *   3. **The shorter windows stay visible**, so a reader sees the dispersion
  *      rather than one flattering point. The card shows 7d/30d beneath it and
  *      the About modal carries the full ladder.
  *
- * Never annualise income APR with this — that figure is already a rate.
+ * Never annualize income APR with this — that figure is already a rate.
  */
-export type AnnualisedReturn = {
+export type AnnualizedReturn = {
   /** The window it came from. */
   period: PerfPeriod;
   /** Days actually spanned, not the period label. */
@@ -339,13 +339,13 @@ export type AnnualisedReturn = {
    */
   vsHoldingPoints: number;
   /** Compounded to a year, percent. This is DERIVED, and demoted on the card. */
-  annualisedPct: number;
+  annualizedPct: number;
 };
 
-/** Days below which annualising is refused outright, however it is labelled. */
-export const MIN_ANNUALISE_DAYS = 14;
+/** Days below which annualizing is refused outright, however it is labelled. */
+export const MIN_ANNUALIZE_DAYS = 14;
 
-export function pickLongest(stats: PoolStats | null): AnnualisedReturn | null {
+export function pickLongest(stats: PoolStats | null): AnnualizedReturn | null {
   if (!stats) return null;
   // Longest first. `total` and `90d` are the same window until the vault has
   // more than 90 days of history, so either may be the longest.
@@ -354,7 +354,7 @@ export function pickLongest(stats: PoolStats | null): AnnualisedReturn | null {
     const r = stats.returns[p];
     if (r && r.days > (best?.days ?? 0)) best = r;
   }
-  if (!best || best.days < MIN_ANNUALISE_DAYS) return null;
+  if (!best || best.days < MIN_ANNUALIZE_DAYS) return null;
   const growth = 1 + best.productPct / 100;
   // A total loss cannot be compounded; refuse rather than return NaN.
   if (growth <= 0) return null;
@@ -364,6 +364,6 @@ export function pickLongest(stats: PoolStats | null): AnnualisedReturn | null {
     realisedPct: best.productPct,
     holdPct: best.holdPct,
     vsHoldingPoints: best.vsHoldingPoints,
-    annualisedPct: (Math.pow(growth, 365 / best.days) - 1) * 100,
+    annualizedPct: (Math.pow(growth, 365 / best.days) - 1) * 100,
   };
 }

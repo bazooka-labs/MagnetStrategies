@@ -6,7 +6,7 @@ import type { PoolReturn } from "@/lib/strategy/pools/performance";
  * The vault against simply holding the two assets, over real history only.
  *
  * ── Why a chart rather than another number ──
- * The card headlines an annualised figure, which is derived. This is the
+ * The card headlines an annualized figure, which is derived. This is the
  * opposite: nothing here is extrapolated, every point is a day PEX recorded.
  *
  * It exists because the single most important fact about this vault cannot be

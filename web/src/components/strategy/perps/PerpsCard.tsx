@@ -185,7 +185,7 @@ type CardSnapshot = {
   trigger12: bigint;
   /** The traded side's open interest, and the cap it sits under. */
   openInterest: OiSide | null;
-  /** Which way funding flows and the paying side's annualised rate — or that
+  /** Which way funding flows and the paying side's annualized rate — or that
    *  nobody is paying, which is a state and not an absence. */
   funding:
     | { charged: true; annualPct: number; youPay: boolean; ceilingPct: number }
@@ -525,7 +525,7 @@ export function PerpsCard({
    * `saved_factor_side` is PEX's own statement of which side pays: 1 long,
    * 2 short, 0 neither. That is read, not inferred from the imbalance.
    *
-   * The rate is `saved_factor_milli_bps` annualised over
+   * The rate is `saved_factor_milli_bps` annualized over
    * `funding_interval_seconds`. **Verified against actual accrual** rather than
    * trusted: on 2026-09-29 the factor implied 74.9%/yr and the two live short
    * positions had accrued 75.6% and 72.9%, measured as the drift in their
@@ -603,7 +603,7 @@ export function PerpsCard({
     const payingSide = Number(data.state.adaptive.saved_factor_side);
     const interval = Number(data.state.risk.funding_interval_seconds);
     if (interval <= 0) return null;
-    // milli-bps is 1e-7 as a fraction; annualise over the interval.
+    // milli-bps is 1e-7 as a fraction; annualize over the interval.
     const annual = (f: number) => (f / 1e7) * (31_536_000 / interval) * 100;
     const ceilingPct = annual(Number(data.state.adaptive.max_factor_milli_bps));
     if (factor <= 0) return { charged: false as const, ceilingPct };

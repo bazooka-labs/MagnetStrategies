@@ -21,7 +21,7 @@ import { benchmarkLabel } from "@/lib/strategy/pools/performance";
  * money. Two rules held throughout:
  *
  *   1. Nothing is a projection. Every figure comes from PEX's published
- *      bundle and is labelled with the window it covers. No annualising of a
+ *      bundle and is labelled with the window it covers. No annualizing of a
  *      short window — see the APR note below, which is the whole reason the
  *      headline is still 7d.
  *   2. The counterparty risk is stated in the body, not in a footnote. A
@@ -235,12 +235,12 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
 
                   SHARE-PRICE RETURN is the whole picture — the same income
                   plus or minus trader P&L and asset price moves. It is NOT a
-                  rate, and the card's headline annualises it from the longest
+                  rate, and the card's headline annualizes it from the longest
                   available window as a deliberate product decision.
 
                   The ladder below is the counterweight to that headline, and
                   it is why the headline is defensible: a reader who sees the
-                  30-day window negative cannot read the annualised figure as
+                  30-day window negative cannot read the annualized figure as
                   a promise. The reasoning and the three conditions the
                   headline rests on are in pools/performance.ts, on
                   `pickLongest`.
@@ -260,9 +260,9 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                   <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
                     The APR above counts fees and yield only. These returns are the whole picture —
                     the same income, plus or minus what the pool won or lost against traders.
-                    <strong className="text-gray-300"> Shown here as realised, never annualised</strong>,
+                    <strong className="text-gray-300"> Shown here as realised, never annualized</strong>,
                     because the windows disagree sharply: on 2026-10-28 these same figures
-                    annualised to +812%, −26% and +183% depending on which one you picked. The
+                    annualized to +812%, −26% and +183% depending on which one you picked. The
                     card headlines the longest of them; this is the spread behind it.
                   </p>
                 </div>
@@ -274,7 +274,7 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                 recorded, and both lines start at 0% on the same day. It is
                 the only place a depositor can SEE the thing that matters
                 most — that in the losing month the benchmark fell further
-                than the vault did. The card's headline is annualised and
+                than the vault did. The card's headline is annualized and
                 therefore derived; this is the opposite, and the two belong in
                 different places for that reason.
               */}

@@ -9,7 +9,7 @@
  *   1. The APR is labelled with the window it covers. PEX publishes a 7-day
  *      income APR and nothing longer; the longer windows in the bundle are
  *      share-price RETURNS, which include trader P&L the APR excludes. A
- *      future edit that relabels the 7d figure as a 30d one, or annualises a
+ *      future edit that relabels the 7d figure as a 30d one, or annualizes a
  *      30-day return into an APR, is the exact mistake this repo already made
  *      and removed — so the "past 7 days" attribution is asserted.
  *   2. The downside is in the body. A modal that explains four ways to earn
@@ -95,10 +95,10 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText("+2.90%")).toBeTruthy();
     expect(within(d).getAllByText("+5.64%").length).toBeGreaterThan(0);
     expect(within(d).getByText("+15.27%")).toBeTruthy();
-    // The LADDER is never annualised, even though the card's headline is.
+    // The LADDER is never annualized, even though the card's headline is.
     // That split is the whole design: one derived figure, calibrated by the
     // realised spread beneath it.
-    expect(within(d).getByText(/never annualised/)).toBeTruthy();
+    expect(within(d).getByText(/never annualized/)).toBeTruthy();
     // And the modal states the spread explicitly, so the headline cannot be
     // read as the only possible answer.
     expect(within(d).getByText(/\+812%, −26% and \+183%/)).toBeTruthy();

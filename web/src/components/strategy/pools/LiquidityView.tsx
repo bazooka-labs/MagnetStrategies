@@ -206,7 +206,7 @@ function NextStrategyTile() {
 function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
   const i = stats?.income ?? null;
   /**
-   * The headline is the LONGEST window annualised — never a short one. The
+   * The headline is the LONGEST window annualized — never a short one. The
    * same vault read 2026-10-28 gave +812% from 7 days and **−26% from 30**,
    * so the window choice moves the answer more than the vault does. The
    * shorter windows render beneath precisely so that dispersion is visible
@@ -216,56 +216,39 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
   return (
     <div className="rounded-xl border border-white/5 bg-black/30 p-4">
       {/*
-        ── Title, then subtext, then two values side by side ──
-        The title carries the weight and the derivation sits under it as
-        subtext, so the basis is still attached to the figure without
-        competing with it for size.
+        ── One figure, inline with its label ──
+        The label and the number read as a single statement, and the
+        derivation sits under it as subtext so the basis stays attached
+        without competing for size.
 
-        The two values are DIFFERENT QUANTITIES and are labelled as such.
-        +183% is everything — income plus trader P&L plus ALGO's price. 5.11%
-        is income alone, and it is PEX's own published rate rather than
-        anything derived here. Measured 2026-10-28 income was ~2.6% of the
-        total return, so showing them side by side without those labels would
-        invite reading the small one as a subset of the large one in the wrong
-        proportion.
+        The income APR is NOT here. It is a different quantity — 5.11% against
+        a +183% total on 2026-10-28, because income was ~2.6% of the return —
+        and two rates side by side invited reading the small one as a subset
+        of the large one in the wrong proportion. It lives in Learn more with
+        the split that explains it.
       */}
-      <p className="text-[13px] font-semibold uppercase tracking-wide text-gray-300">
-        {ann ? "Annualised returns" : "Fees + Yield APR"}
-      </p>
-      <p className="mt-0.5 text-[10px] text-gray-600">
-        {ann
-          ? `derived from past ${Math.round(ann.days)} days performance`
-          : "past 7 days · published by PEX"}
-      </p>
-
-      <div className="mt-2.5 flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div>
-          <div className="flex items-baseline gap-2">
-            <p className={`font-mono text-3xl font-bold leading-none ${
-              ann && ann.annualisedPct < 0 ? "text-red-300" : "text-green-400"
-            }`}>
-              {ann
-                ? `${ann.annualisedPct >= 0 ? "+" : ""}${ann.annualisedPct.toFixed(0)}%`
-                : pct(i?.totalPct ?? null, 2)}
-            </p>
-            {stale && (
-              <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
-                STALE
-              </span>
-            )}
-          </div>
-          {ann && <p className="mt-1 text-[10px] text-gray-500">all sources</p>}
-        </div>
-
-        {ann && i && (
-          <div className="border-l border-white/[0.07] pl-6">
-            <p className="font-mono text-xl font-semibold leading-none text-green-300">
-              {pct(i.totalPct, 2)}
-            </p>
-            <p className="mt-1 text-[10px] text-gray-500">fees + yield APR</p>
-          </div>
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <p className="text-[13px] font-semibold text-gray-300">
+          {ann ? "12 Month Annualized Return:" : "Fees + Yield APR:"}
+        </p>
+        <p className={`font-mono text-3xl font-bold leading-none ${
+          ann && ann.annualizedPct < 0 ? "text-red-300" : "text-green-400"
+        }`}>
+          {ann
+            ? `${ann.annualizedPct >= 0 ? "+" : ""}${ann.annualizedPct.toFixed(0)}%`
+            : pct(i?.totalPct ?? null, 2)}
+        </p>
+        {stale && (
+          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+            STALE
+          </span>
         )}
       </div>
+      <p className="mt-1 text-[10px] text-gray-600">
+        {ann
+          ? `Derived from past ${Math.round(ann.days)} days performance`
+          : "Past 7 days · published by PEX"}
+      </p>
 
       {/* The realised figure is the FACT; the headline above is derived from
           it. It travels directly beneath so the two are never separated — see
@@ -297,7 +280,7 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
         <p className="mt-2 text-[11px] text-gray-500">
           {stats?.retUnavailableReason === "insufficient_history"
             || stats?.retUnavailableReason === "no_valid_completed_samples"
-            ? "Not enough history to annualise yet."
+            ? "Not enough history to annualize yet."
             : "Return history unavailable."}
         </p>
       )}
@@ -414,7 +397,7 @@ export function LiquidityView() {
        *
        * This is the authoritative APR and the only source of the benchmark
        * comparison. It replaced a figure we derived on chain which read 15.3%
-       * against a real 4.83% — that derivation annualised fees since inception
+       * against a real 4.83% — that derivation annualized fees since inception
        * while trading had slowed 4.1x, and omitted yield income, which is the
        * larger half here.
        *
