@@ -128,6 +128,15 @@ describe("the rate it was opened for", () => {
 });
 
 describe("what it explains", () => {
+  it("carries the detail the card no longer shows", () => {
+    // "Managed by PEX · spans both markets" came off the card on 2026-10-28.
+    // Both halves of it must survive here or the fact is simply gone.
+    const d = openIt();
+    expect(within(d).getByText(/spans\s+both markets/)).toBeTruthy();
+    expect(within(d).getByText(/ALGO\/USD and BTC\/USD/)).toBeTruthy();
+    expect(within(d).getByText("How PEX manages it")).toBeTruthy();
+  });
+
   it("covers PEX, the counterparty role, the income, and who manages it", () => {
     const d = openIt();
     for (const heading of ["What PEX is", "Who is on the other side",

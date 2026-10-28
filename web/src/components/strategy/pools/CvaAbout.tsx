@@ -81,7 +81,8 @@ const SECTIONS: { icon: React.ReactNode; title: string; body: React.ReactNode }[
     body: (
       <>
         This is the <em>managed</em> option, which is the difference between it and depositing into
-        a single market directly. PEX decides how much of the vault sits in each market and
+        a single market directly. The vault <strong className="font-semibold text-gray-300">spans
+        both markets</strong> — ALGO/USD and BTC/USD — and PEX decides how much sits in each and
         rebalances between them; it marks the vault&apos;s net asset value on chain, and that mark
         is what your shares are priced against when you deposit or withdraw. PEX can also pause
         deposits or withdrawals. You do not pick a market and cannot override an allocation —

@@ -531,7 +531,6 @@ export function LiquidityView() {
                     C-Vault Strategy
                   </h2>
                 </div>
-                <p className="mt-1.5 text-[11.5px] text-gray-500">Managed by PEX · spans both markets</p>
               </div>
               <div className="shrink-0">
                 {/* Beside the title, not on a row of its own: a lone pill under
