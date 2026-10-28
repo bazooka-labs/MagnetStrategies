@@ -83,6 +83,16 @@ export type PoolReturn = {
   days: number;
   /** True when any point has missing history before it. */
   hasGaps: boolean;
+  /**
+   * The index series behind the summary, for charting.
+   *
+   * Both indices start at 1.0 on the window's first day, so they plot
+   * directly against each other: `product` is the vault, `hold` is what the
+   * two assets would have done. Kept because the chart is the only place a
+   * depositor can SEE that the benchmark fell harder than the vault in the
+   * losing month — a number cannot show that shape.
+   */
+  series: { ts: number; product: number; hold: number }[];
 };
 
 export const PERF_PERIODS: readonly PerfPeriod[] = ["7d", "30d", "90d", "total"];
@@ -174,6 +184,14 @@ function parseReturn(raw: unknown, period: PerfPeriod): {
       period, productPct: product, holdPct: hold, vsHoldingPoints: vs,
       benchmarkKind: typeof bm.kind === "string" ? bm.kind : "unknown",
       points: pts.length,
+      series: pts.map((raw) => {
+        const o = raw as Record<string, unknown>;
+        return {
+          ts: num(o.timestamp) ?? 0,
+          product: (num(o.product_index) ?? 0) / 1e6,
+          hold: (num(o.hold_index) ?? 0) / 1e6,
+        };
+      }).filter((pt) => pt.ts > 0 && pt.product > 0 && pt.hold > 0),
       days: (() => {
         const t0 = Number((pts[0] as Record<string, unknown>)?.timestamp ?? 0);
         const t1 = Number((pts[pts.length - 1] as Record<string, unknown>)?.timestamp ?? 0);

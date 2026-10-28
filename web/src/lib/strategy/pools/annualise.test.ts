@@ -9,9 +9,18 @@
 import { describe, expect, it } from "vitest";
 import { pickLongest, MIN_ANNUALISE_DAYS, type PoolStats, type PoolReturn } from "./performance";
 
+/** A plausible index series: both start at 1.0, each ends at its own return. */
+const series = (productPct: number, holdPct: number, n = 6) =>
+  Array.from({ length: n }, (_, k) => ({
+    ts: 1_790_000_000 + k * 86_400,
+    product: 1 + (productPct / 100) * (k / (n - 1)),
+    hold: 1 + (holdPct / 100) * (k / (n - 1)),
+  }));
+
 const ret = (period: PoolReturn["period"], productPct: number, days: number): PoolReturn => ({
   period, productPct, holdPct: 0, vsHoldingPoints: 0,
-  benchmarkKind: "geometric_mean_50_50", points: Math.max(2, Math.round(days)), days, hasGaps: false,
+  benchmarkKind: "geometric_mean_50_50", points: Math.max(2, Math.round(days)), days,
+  hasGaps: false, series: series(productPct, 0),
 });
 const stats = (returns: PoolStats["returns"]): PoolStats =>
   ({ income: null, ret: null, retUnavailableReason: null, returns, reasons: {} });

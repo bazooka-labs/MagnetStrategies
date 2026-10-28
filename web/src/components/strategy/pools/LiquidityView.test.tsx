@@ -73,6 +73,14 @@ vi.mock("@/lib/strategy/pools/performance", async (orig) => ({
   cvaKey: (id: number) => `cva-${id}`,
 }));
 
+/** Index series shaped like the real bundle: both start at 1.0. */
+const series = (productPct: number, holdPct: number, n = 6) =>
+  Array.from({ length: n }, (_, k) => ({
+    ts: 1_790_000_000 + k * 86_400,
+    product: 1 + (productPct / 100) * (k / (n - 1)),
+    hold: 1 + (holdPct / 100) * (k / (n - 1)),
+  }));
+
 /** The vault's real shape on 2026-10-23, with a position added. */
 const LIQUIDITY = {
   markets: [],
@@ -96,16 +104,16 @@ const BUNDLE = {
       income: { totalPct: 7.57, feePct: 1.52, yieldPct: 6.05, feeUsd7d: 0.26,
         yieldUsd7d: 1.67, windowStart: 0, windowEnd: 0, missingEvents: 0 },
       ret: { period: "30d", productPct: 5.64, holdPct: -4, vsHoldingPoints: 9.64,
-        benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
+        benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(5.64, -4) },
       retUnavailableReason: null,
       // Real spans from the live bundle on 2026-10-28.
       returns: {
         "7d":  { period: "7d",  productPct: 3.70,  holdPct: -4.49, vsHoldingPoints: 8.19,
           benchmarkKind: "geometric_mean_50_50", points: 7,  days: 6,  hasGaps: false },
         "30d": { period: "30d", productPct: -2.38, holdPct: -12.42, vsHoldingPoints: 10.04,
-          benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
+          benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(-2.38, -12.42) },
         "90d": { period: "90d", productPct: 17.00, holdPct: 5.63, vsHoldingPoints: 11.37,
-          benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true },
+          benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true, series: series(17.00, 5.63) },
       },
       reasons: {},
     },
@@ -299,28 +307,47 @@ describe("the C-Vault card", () => {
     expect(neg.className).toContain("text-red-300");
   });
 
-  it("still shows the income rate, labelled as only part of the return", async () => {
-    bundle = BUNDLE;
-    liquidity = LIQUIDITY;
-    await mount("visitor");
-    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    expect(screen.getByText("7.57% APR")).toBeTruthy();
-    expect(screen.getByText(/the rest is trader P&L/)).toBeTruthy();
-  });
-
-  it("surfaces how far the vault beat simply holding the assets", async () => {
+  it("names where the return comes from, in contribution order", async () => {
     /**
-     * The only figure in the box that measures the STRATEGY rather than the
-     * market. Over the same windows the share price ran -2.38% to +17.00%
-     * while this ran +8.19 to +11.37pp — the difference is ALGO's price,
-     * which the vault does not choose. It is PEX's own vs_holding_bps.
+     * Qualitative on the card by design — a depositor is asking what the
+     * strategy is and what it returns, and every extra figure competes with
+     * that. The ORDER carries the weighting: trader P&L is ~96% of what the
+     * vault adds and swap fees are 0-3%, so fees go last. This page used to
+     * lead with fees.
      */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    expect(screen.getByText(/Beat holding/)).toBeTruthy();
-    expect(screen.getByText("+11.37pp")).toBeTruthy();
+    const line = screen.getByText(/earnings from losing trades/);
+    expect(line.textContent).toMatch(
+      /earnings from losing trades.*ALGO\/USDC price movement.*swap fees/,
+    );
+  });
+
+  it("keeps APR and yield figures OFF the card", async () => {
+    // They live in the About modal now. The card carries one number.
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).not.toContain("7.57% APR");
+    expect(body).not.toContain("Fees + yield");
+  });
+
+  it("does not put the benchmark comparison on the card", async () => {
+    // "+11.37pp against a geometric 50/50 benchmark" is too much to hold at a
+    // glance. The About modal charts it instead, which shows the same thing
+    // without asking anyone to parse percentage points.
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    // The FIGURE, not the letters — "Opportunities" contains "pp".
+    expect(body).not.toMatch(/[+-]\d+\.\d+pp/);
+    expect(body).not.toContain("Beat holding");
   });
 
   it("shows pool liquidity, shares outstanding and the user's own position", async () => {

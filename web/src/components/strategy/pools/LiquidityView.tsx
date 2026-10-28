@@ -215,7 +215,7 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
     <div className="rounded-xl border border-white/5 bg-black/30 p-4">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[11px] uppercase tracking-wider text-gray-500">
-          {ann ? "Annualised return" : "Fees + Yield APR"}
+          {ann ? "Annualised performance" : "Fees + Yield APR"}
         </p>
         <span className="text-[10px] text-gray-600">
           {ann ? `derived · past ${Math.round(ann.days)}d` : "past 7d · PEX"}
@@ -250,37 +250,22 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
       )}
 
       {/*
-        ── The benchmark line, and why it sits this high ──
-        It is the only figure in this box that measures the STRATEGY rather
-        than the market. Over the same windows the share-price return ran
-        −2.38% to +17.00% while this ran +8.19 to +11.37pp: the swing in the
-        former is ALGO's price, which the vault does not pick and a depositor
-        can hedge. In the 30-day window the vault was DOWN 2.38% and still
-        beat holding by 10.04pp, because ALGO fell 12.42%.
+        ── Three sources, named and not quantified ──
+        A depositor arriving at this card is asking two things: what is the
+        strategy, and what does it return. Every extra figure competes with
+        that. So the breakdown is qualitative here and quantified in the About
+        modal, where someone has opted into detail.
 
-        It is PEX's own `vs_holding_bps`, not a derivation of ours.
+        Ordered by actual contribution, measured 2026-10-28: trader P&L is
+        ~96% of what the vault adds, ALGO's price is the entire source of the
+        swing between windows, and swap fees are 0-3% of income — $0.00 on
+        BTC/USD over the measured week. Listing fees first, as this page used
+        to, put the smallest term in the most prominent position.
       */}
-      {ann && (
-        <div className="mt-2.5 flex items-baseline justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.02] px-2.5 py-2">
-          <span className="text-[11px] text-gray-400">
-            Beat holding <strong className="font-semibold text-gray-300">ALGO + USDC</strong> by
-          </span>
-          <span className={`font-mono text-[15px] font-semibold ${
-            ann.vsHoldingPoints >= 0 ? "text-green-400" : "text-red-300"
-          }`}>
-            {ann.vsHoldingPoints >= 0 ? "+" : ""}{ann.vsHoldingPoints.toFixed(2)}pp
-          </span>
-        </div>
-      )}
-
-      {i ? (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
-          <span>Fees + yield <span className="font-mono text-green-300">{pct(i.totalPct, 2)} APR</span></span>
-          <span className="text-gray-600">the rest is trader P&amp;L</span>
-        </div>
-      ) : (
-        <p className="mt-2 text-[11px] text-gray-500">PEX has not published a rate for this vault.</p>
-      )}
+      <div className="mt-2.5 text-[11px] leading-relaxed text-gray-400">
+        <span className="text-gray-500">Comes from</span>{" "}
+        earnings from losing trades, ALGO/USDC price movement, and swap fees.
+      </div>
 
       {/* The shorter windows, shown as REALISED returns and never annualised.
           This row is the third condition the headline rests on: a reader who

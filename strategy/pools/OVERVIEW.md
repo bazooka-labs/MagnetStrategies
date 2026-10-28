@@ -128,12 +128,29 @@ and ALGO's price.
 span, a negative headline when the long window is negative, and a refusal
 rather than `NaN` on a total loss.
 
-### The benchmark line is the honest signal
+### The card carries one number; the modal carries the detail
 
-Beneath the headline the card shows **how far the vault beat simply holding
-ALGO + USDC** — PEX's own `vs_holding_bps`, not a derivation of ours. It is
-there because it is the only figure in the box that measures the **strategy**
-rather than the market:
+A depositor arriving at the card is asking two things — what is the strategy,
+and what does it return. Every extra metric competes with those. So the card
+shows the annualised figure, its derivation, the three sources **named but not
+quantified**, and the realised ladder. Nothing else: no APR, no yield split, no
+benchmark figure.
+
+The sources are listed in contribution order — *earnings from losing trades,
+ALGO/USDC price movement, swap fees* — so the ordering carries the weighting
+without numbers. Fees come last because they are 0–3% of income. This page
+previously led with them.
+
+**The benchmark comparison moved to a chart.** `vs_holding_bps` is the only
+figure that measures the strategy rather than the market, but "+11.37pp against
+a geometric 50/50 benchmark" is too much to hold at a glance. The About modal
+plots the vault against the benchmark over the full real window instead —
+`PerformanceChart`, two SVG polylines, no library, every point a day PEX
+recorded and nothing extrapolated. The shape says what the number could not:
+the two track together through the rally, then the benchmark falls away while
+the vault holds.
+
+The figures behind it:
 
 | window | share price | benchmark | vs holding |
 |---|---|---|---|

@@ -6,6 +6,7 @@ import {
   X, BookOpen, TrendingUp, Coins, Scale, Settings2, AlertTriangle,
 } from "lucide-react";
 import { RAISED_AMBER } from "@/components/raisedButton";
+import { PerformanceChart } from "./PerformanceChart";
 import type { PoolStats, PerfPeriod } from "@/lib/strategy/pools/performance";
 import { benchmarkLabel } from "@/lib/strategy/pools/performance";
 
@@ -134,6 +135,10 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
   const [open, setOpen] = useState(false);
   const i = stats?.income ?? null;
   const thirty = stats?.returns["30d"] ?? null;
+  /** The chart uses the longest real window — never a label, never padded. */
+  const longest = (["total", "90d", "30d", "7d"] as const)
+    .map((p) => stats?.returns[p])
+    .find((r): r is NonNullable<typeof r> => !!r && r.series.length > 1) ?? null;
 
   return (
     <>
@@ -259,6 +264,26 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                     card headlines the longest of them; this is the spread behind it.
                   </p>
                 </div>
+              </div>
+
+              {/*
+                ── The chart, and why it is here rather than on the card ──
+                Nothing in it is extrapolated: every point is a day PEX
+                recorded, and both lines start at 0% on the same day. It is
+                the only place a depositor can SEE the thing that matters
+                most — that in the losing month the benchmark fell further
+                than the vault did. The card's headline is annualised and
+                therefore derived; this is the opposite, and the two belong in
+                different places for that reason.
+              */}
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                <PerformanceChart ret={longest} />
+                <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
+                  Both lines start at 0% on the same day, so they are directly
+                  comparable. The grey line is what simply holding ALGO and USDC would
+                  have done over the same period — when the vault stays above it, the
+                  strategy added value regardless of which way the market went.
+                </p>
               </div>
 
               {/* ── The explainer ── */}

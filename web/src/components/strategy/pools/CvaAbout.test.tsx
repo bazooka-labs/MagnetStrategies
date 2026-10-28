@@ -22,6 +22,14 @@ import { CvaAbout } from "./CvaAbout";
 import type { PoolStats } from "@/lib/strategy/pools/performance";
 
 /** Shaped like the real bundle's cva payload on 2026-10-23. */
+/** A plausible index series: both start at 1.0, each ends at its own return. */
+const series = (productPct: number, holdPct: number, n = 6) =>
+  Array.from({ length: n }, (_, k) => ({
+    ts: 1_790_000_000 + k * 86_400,
+    product: 1 + (productPct / 100) * (k / (n - 1)),
+    hold: 1 + (holdPct / 100) * (k / (n - 1)),
+  }));
+
 const STATS: PoolStats = {
   income: {
     totalPct: 7.57, feePct: 1.52, yieldPct: 6.05,
@@ -30,16 +38,16 @@ const STATS: PoolStats = {
   },
   ret: {
     period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-    benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false,
+    benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(5.64, -4.0),
   },
   retUnavailableReason: null,
   returns: {
     "7d": { period: "7d", productPct: 2.90, holdPct: -3.25, vsHoldingPoints: 6.15,
-      benchmarkKind: "geometric_mean_50_50", points: 7, days: 6, hasGaps: false },
+      benchmarkKind: "geometric_mean_50_50", points: 7, days: 6, hasGaps: false, series: series(2.90, -3.25) },
     "30d": { period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-      benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false },
+      benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(5.64, -4.0) },
     "90d": { period: "90d", productPct: 15.27, holdPct: 6.03, vsHoldingPoints: 9.24,
-      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true },
+      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true, series: series(15.27, 6.03) },
   },
   reasons: { total: "insufficient_history" },
 };
