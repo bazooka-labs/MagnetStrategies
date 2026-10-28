@@ -78,12 +78,13 @@ posting directly, and it **warns rather than gates** even when it does run
 
 Consequences, in order:
 
-1. **The oracle bot key should be rotated.** It is the live
-   `authorized_updater` and is treated as exposed. The honest framing is "can
-   mint up to the PSM's
-   free backing, and can make the admin liquidate the wrong people" — not "can
-   drain the vault". That is a smaller problem than the band's removal first
-   suggested, and it grows with the PSM reserve.
+1. **The oracle bot key should be rotated.** *(Done 2026-10-27 — see
+   [OPERATIONS.md](../OPERATIONS.md#rotating-the-oracle-bot-key). The text
+   below is how the risk read at the time.)* It was the live
+   `authorized_updater` and was treated as exposed. The honest framing is "can
+   mint up to the PSM's free backing, and can make the admin liquidate the
+   wrong people" — not "can drain the vault". That is a smaller problem than
+   the band's removal first suggested, and it grows with the PSM reserve.
 2. **The independent cross-check is no longer a nice-to-have.** The admin
    Oracle-health panel's "Independent" column (pool TVL ÷ issued LP tokens,
    third-party sourced) is now the only thing that can catch a wrong-but-fresh
