@@ -20,9 +20,9 @@
  */
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
-import { readCvaSnapshot, readCvaUserShares } from "../cvaSnapshot";
-import { buildCvaDeposit, cvaStoragePaymentFor, CVA_USER_BOX_MBR_MICRO_ALGO } from "../cvaGroup";
-import { readBalances } from "../preflight";
+import { readCvaSnapshot, readCvaUserShares } from "@/lib/strategy/pools/cvaSnapshot";
+import { buildCvaDeposit, cvaStoragePaymentFor, CVA_USER_BOX_MBR_MICRO_ALGO } from "@/lib/strategy/pools/cvaGroup";
+import { readBalances } from "@/lib/strategy/pools/preflight";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /**

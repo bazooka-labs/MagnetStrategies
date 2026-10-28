@@ -36,10 +36,10 @@
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
 import { buildV2SwapExactInTransactions, decodeReceipt } from "@pdex/sdk";
-import { simulateGroup } from "../../perpsGroup";
-import { readQuoteContext, readRecallContext } from "../quote";
-import { getOraclePayload } from "../../perpsOracle";
-import { PEX_APPS, PEX_ASSETS } from "../../perps";
+import { simulateGroup } from "@/lib/strategy/pex/group";
+import { readQuoteContext, readRecallContext } from "@/lib/strategy/pools/quote";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
+import { PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 const WALLET = "ALUYA2D55QDUUIY3JORBOB2B7WRTVV477R6URF4P6NY4ZZWB3LUK3DU6WE";

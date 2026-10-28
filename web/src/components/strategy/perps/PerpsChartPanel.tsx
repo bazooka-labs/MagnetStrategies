@@ -30,11 +30,11 @@
 // of the page. If the widget fails to load, the SVG chart renders instead.
 
 import { useEffect, useRef, useState } from "react";
-import { ENABLED_MARKET_IDS, PEX_MARKETS } from "@/lib/perps";
+import { ENABLED_MARKET_IDS, PEX_MARKETS } from "@/lib/strategy/pex/config";
 import { PerpsChart } from "./PerpsChart";
-import { fetchDayStats, type DayStats } from "@/lib/perpsChart";
-import { formatPriceUsd } from "@/lib/perpsQuote";
-import { CHART_RANGES, rangeLabel, type ChartRange } from "@/lib/perpsChart";
+import { fetchDayStats, type DayStats } from "@/lib/strategy/perps/chart";
+import { formatPriceUsd } from "@/lib/strategy/pex/quote";
+import { CHART_RANGES, rangeLabel, type ChartRange } from "@/lib/strategy/perps/chart";
 
 /**
  * TradingView symbols, on the same venue our own chart used.

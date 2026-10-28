@@ -7,12 +7,12 @@
  */
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
-import { readCvaSnapshot, readCvaUserShares, oracleBudgetSec } from "../cvaSnapshot";
+import { readCvaSnapshot, readCvaUserShares, oracleBudgetSec } from "@/lib/strategy/pools/cvaSnapshot";
 import {
   buildCvaWithdraw, buildCvaDeposit, chooseWithdrawRoute, markMarketsFor,
   cvaStoragePaymentFor, CVA_USER_BOX_MBR_MICRO_ALGO, assertCvaWithdrawGroup,
-} from "../cvaGroup";
-import { readBalances } from "../preflight";
+} from "@/lib/strategy/pools/cvaGroup";
+import { readBalances } from "@/lib/strategy/pools/preflight";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /** A real C-Vault depositor: 646.8 shares (gu2: box). */

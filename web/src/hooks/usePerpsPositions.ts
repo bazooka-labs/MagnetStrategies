@@ -24,15 +24,15 @@ import {
   ENABLED_MARKET_IDS,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
-} from "@/lib/perps";
+} from "@/lib/strategy/pex/config";
 import {
   readMarketFunding,
   readMarketState,
   readPosition,
   type PositionState,
-} from "@/lib/perpsReads";
-import { getOraclePayload } from "@/lib/perpsOracle";
-import { quoteClose, quoteLiquidationPrice, type CloseQuote } from "@/lib/perpsQuote";
+} from "@/lib/strategy/pex/reads";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
+import { quoteClose, quoteLiquidationPrice, type CloseQuote } from "@/lib/strategy/pex/quote";
 
 export type OpenPosition = {
   marketId: number;

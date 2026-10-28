@@ -21,7 +21,7 @@
 // mark, not the policy.
 
 import { ArrivalSplash } from "@/components/ArrivalSplash";
-import { PEX_MARKETS } from "@/lib/perps";
+import { PEX_MARKETS } from "@/lib/strategy/pex/config";
 
 /** Derived, not written out, so it stays true as markets are added. */
 const markets = Object.values(PEX_MARKETS).map((m) => m.label.split("/")[0]).join(" and ");

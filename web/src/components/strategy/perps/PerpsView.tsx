@@ -12,7 +12,7 @@ import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
 import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
-import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/perps";
+import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
 import { Panel } from "@/components/magnetfi/v2/shared";
 
 // Sized and shaped like the section it replaces — no border or background of

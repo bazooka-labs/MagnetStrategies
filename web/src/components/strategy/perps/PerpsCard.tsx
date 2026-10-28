@@ -27,22 +27,22 @@ import {
   PEX_MARKETS,
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
-} from "@/lib/perps";
+} from "@/lib/strategy/pex/config";
 // The MBRs the client actually bills, so the disclosure cannot drift from the
 // group it describes — audit 9, MEDIUM 3.
 import {
   LIMIT_ORDER_BOX_MBR_MICRO_ALGO,
   ORDER_BOX_MBR_MICRO_ALGO,
   STORAGE_ESCROW_MICRO_ALGO,
-} from "@/lib/perpsGroup";
+} from "@/lib/strategy/pex/group";
 import { Seam } from "./Seam";
 import {
   minimumCollateralUsd,
   notionalAtBarPosition,
   solveBar,
   type Side,
-} from "@/lib/perpsSolver";
-import { price12ToUsd, usdToPrice12 } from "@/lib/perpsOracle";
+} from "@/lib/strategy/perps/solver";
+import { price12ToUsd, usdToPrice12 } from "@/lib/strategy/pex/oracle";
 import {
   confirmCeiling,
   payoffAtPrice,
@@ -55,8 +55,8 @@ import {
   type OpenQuote,
   capacityOnlyFailure,
   stopLossBounds,
-} from "@/lib/perpsQuote";
-import { sideOiUsd } from "@/lib/perpsReads";
+} from "@/lib/strategy/pex/quote";
+import { sideOiUsd } from "@/lib/strategy/pex/reads";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
@@ -68,8 +68,8 @@ import {
   SubmissionUnknownError,
   type OpenStage,
   type OpenPositionResult,
-} from "@/lib/perpsClient";
-import { parseMoney, readNumericInput } from "@/lib/perpsInput";
+} from "@/lib/strategy/perps/client";
+import { parseMoney, readNumericInput } from "@/lib/strategy/perps/input";
 
 const MARKETS = Object.values(PEX_MARKETS).filter((m) => ENABLED_MARKET_IDS.includes(m.id));
 

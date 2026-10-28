@@ -21,9 +21,9 @@ import {
   buildV2CvaDepositTransactions,
   buildV2CvaWithdrawFromMarketTransactions,
 } from "@pdex/sdk/transactions";
-import { readCvaSnapshot } from "../cvaSnapshot";
-import { chooseWithdrawRoute, markMarketsFor, CVA_USER_BOX_MBR_MICRO_ALGO } from "../cvaGroup";
-import { PEX_APPS, PEX_ASSETS } from "../../perps";
+import { readCvaSnapshot } from "@/lib/strategy/pools/cvaSnapshot";
+import { chooseWithdrawRoute, markMarketsFor, CVA_USER_BOX_MBR_MICRO_ALGO } from "@/lib/strategy/pools/cvaGroup";
+import { PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const CAPTURE = !!process.env.CAPTURE;

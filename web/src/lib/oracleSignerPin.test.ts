@@ -13,8 +13,8 @@
 import { describe, expect, it } from "vitest";
 import {
   PEX_ORACLE_SIGNER_PUBKEY_HEX, ORACLE_SIGNER_SOURCES, PEX_APPS,
-} from "./perps";
-import { verifyOracleSignerPin, signerDriftMessage } from "./perpsReads";
+} from "@/lib/strategy/pex/config";
+import { verifyOracleSignerPin, signerDriftMessage } from "@/lib/strategy/pex/reads";
 
 const NEW = "ac4b7131e62f4a715e4357f237b996d335b96b2127731cc44b6d34eb932ec9b6";
 const OLD = "4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb";

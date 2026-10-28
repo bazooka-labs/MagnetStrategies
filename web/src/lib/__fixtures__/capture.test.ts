@@ -28,15 +28,15 @@ import {
   buildV2MarketOpenWithAttachedOrdersTransactions,
 } from "@pdex/sdk/transactions";
 import { V2_ORDER_TARGET } from "@pdex/sdk";
-import { readMarketState } from "../perpsReads";
-import { getOraclePayload } from "../perpsOracle";
-import { installProtocolManifest } from "../perpsManifest";
-import { quoteOpen, confirmCeiling, acceptableForClose } from "../perpsQuote";
+import { readMarketState } from "@/lib/strategy/pex/reads";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
+import { installProtocolManifest } from "@/lib/strategy/pex/manifest";
+import { quoteOpen, confirmCeiling, acceptableForClose } from "@/lib/strategy/pex/quote";
 import {
   BUILDER_ADDRESS, CHILD_KEEPER_FEE_USDC, COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS, PEX_APPS, POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
-} from "../perps";
+} from "@/lib/strategy/pex/config";
 import { V2_OPEN_ORDER_EXECUTION_STORAGE_ESCROW_MICRO_ALGO } from "@pdex/sdk";
 
 const micro = (x: number) => BigInt(Math.round(x * 1e6));

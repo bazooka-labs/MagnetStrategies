@@ -55,13 +55,13 @@ vi.mock("@/hooks/useWallet", () => ({
 let liquidity: unknown = null;
 let bundle: unknown = null;
 
-vi.mock("@/lib/strategy/reads", () => ({
+vi.mock("@/lib/strategy/pools/reads", () => ({
   readStrategyLiquidity: () => liquidity
     ? Promise.resolve(liquidity)
     : Promise.reject(new Error("no node in this test")),
   cvaShareOfMarket: () => null,
 }));
-vi.mock("@/lib/strategy/performance", () => ({
+vi.mock("@/lib/strategy/pools/performance", () => ({
   fetchPerformanceBundle: () => bundle
     ? Promise.resolve(bundle)
     : Promise.reject(new Error("no bundle in this test")),

@@ -9,7 +9,7 @@ to Ultrade. That was the wrong product, not a smaller one. The link-out is
 removed, URL included.
 **Current status and real-signature state:** [`OVERVIEW.md`](./OVERVIEW.md).
 **Code layout:** [`ARCHITECTURE.md`](./ARCHITECTURE.md).
-**Prerequisite reading:** `src/lib/perpsGroup.ts` header, and
+**Prerequisite reading:** `src/lib/strategy/pex/group.ts` header, and
 `vendor/README.md` before touching the SDK pin.
 
 ---

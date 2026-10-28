@@ -8,11 +8,11 @@
  */
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
-import { readCvaSnapshot } from "../cvaSnapshot";
-import { buildCvaWithdraw } from "../cvaGroup";
-import { buildAlgoToUsdcSwap, assertSwapGroup, MAX_SWAP_GROUP_FEE_MICRO_ALGO } from "../swapGroup";
-import { readQuoteContext, readRecallContext } from "../quote";
-import { PEX_APPS } from "../../perps";
+import { readCvaSnapshot } from "@/lib/strategy/pools/cvaSnapshot";
+import { buildCvaWithdraw } from "@/lib/strategy/pools/cvaGroup";
+import { buildAlgoToUsdcSwap, assertSwapGroup, MAX_SWAP_GROUP_FEE_MICRO_ALGO } from "@/lib/strategy/pools/swapGroup";
+import { readQuoteContext, readRecallContext } from "@/lib/strategy/pools/quote";
+import { PEX_APPS } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 const HOLDER = "ALUYA2D55QDUUIY3JORBOB2B7WRTVV477R6URF4P6NY4ZZWB3LUK3DU6WE";

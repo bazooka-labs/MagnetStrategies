@@ -23,7 +23,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, X } from "lucide-react";
-import { CHILD_KEEPER_FEE_USDC, DEFAULT_SLIPPAGE_BPS } from "@/lib/perps";
+import { CHILD_KEEPER_FEE_USDC, DEFAULT_SLIPPAGE_BPS } from "@/lib/strategy/pex/config";
 
 type Props = { open: boolean; onClose: () => void };
 

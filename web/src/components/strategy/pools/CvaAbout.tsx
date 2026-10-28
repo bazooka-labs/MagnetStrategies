@@ -6,8 +6,8 @@ import {
   X, BookOpen, TrendingUp, Coins, Scale, Settings2, AlertTriangle,
 } from "lucide-react";
 import { RAISED_AMBER } from "@/components/raisedButton";
-import type { PoolStats, PerfPeriod } from "@/lib/strategy/performance";
-import { benchmarkLabel } from "@/lib/strategy/performance";
+import type { PoolStats, PerfPeriod } from "@/lib/strategy/pools/performance";
+import { benchmarkLabel } from "@/lib/strategy/pools/performance";
 
 /**
  * "What am I actually depositing into?" — the C-Vault explainer.

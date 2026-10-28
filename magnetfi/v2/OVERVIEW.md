@@ -309,7 +309,7 @@ staleness alarm, or allowing a bounded raise when unverified.
 `PEX cross-check unavailable: Signature was forged or corrupt` on every cycle.
 `PEX_ORACLE_PUBKEY_HEX` in `oracle_bot.py:154` is pinned to
 `4cc6bcc8…`, the signer PEX **retired** on 2026-10-23; the live key is
-`ac4b7131…`. The frontend pin in `web/src/lib/perps.ts` was updated at the
+`ac4b7131…`. The frontend pin in `web/src/lib/strategy/pex/config.ts` was updated at the
 time and the bot's copy was missed. This is a cross-check rather than a gate,
 so nothing is blocked by it — but it means a verification we believe is running
 has been dead for four days.

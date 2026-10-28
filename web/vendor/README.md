@@ -22,7 +22,7 @@ tarball keeps installs reproducible and offline, and keeps the reviewed artifact
 identical to the audited one.
 
 **Upgrading.** Do not bump this in isolation. `PEX_SDK_VERSION` in
-`src/lib/perps.ts` is pinned to the same version, and the program hashes pinned
+`src/lib/strategy/pex/config.ts` is pinned to the same version, and the program hashes pinned
 beside it are what make an SDK/contract mismatch visible. Re-run the solver
 verification against the new SDK before relying on it — the closed form is
 checked against `quoteV2OpenPosition`, so a change in that function is a change

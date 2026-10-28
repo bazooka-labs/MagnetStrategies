@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import algosdk from "algosdk";
 import { planV2CvaWithdraw, parseV2CvaMarketAllocationState } from "@pdex/sdk";
-import { readMarketState } from "../../perpsReads";
-import { getOraclePayload } from "../../perpsOracle";
-import { installProtocolManifest } from "../../perpsManifest";
-import { priceInput, marketRecord } from "../../perpsQuote";
-import { readCvaVaultState } from "../preflight";
-import { readYieldRegistry } from "../../perpsReads";
-import { PEX_APPS } from "../../perps";
+import { readMarketState } from "@/lib/strategy/pex/reads";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
+import { installProtocolManifest } from "@/lib/strategy/pex/manifest";
+import { priceInput, marketRecord } from "@/lib/strategy/pex/quote";
+import { readCvaVaultState } from "@/lib/strategy/pools/preflight";
+import { readYieldRegistry } from "@/lib/strategy/pex/reads";
+import { PEX_APPS } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /** A real C-Vault depositor: 5.475 shares (gu2: box). */

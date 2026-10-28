@@ -38,10 +38,10 @@
 import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import { buildV2WithdrawLiquidityWithSwapTransactions } from "@pdex/sdk";
-import { simulateGroup } from "../../perpsGroup";
-import { readQuoteContext, readRecallContext } from "../quote";
-import { supportsAllUsdc } from "../group";
-import { PEX_APPS, PEX_ASSETS } from "../../perps";
+import { simulateGroup } from "@/lib/strategy/pex/group";
+import { readQuoteContext, readRecallContext } from "@/lib/strategy/pools/quote";
+import { supportsAllUsdc } from "@/lib/strategy/pools/group";
+import { PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 const LP = "A4YW55ZEC2TTIN2TEVN56IRVGLWQYQRUNJTPG37OTWE4EJWNAH3EUKHZKA";

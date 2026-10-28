@@ -11,9 +11,9 @@
 import { useCallback, useEffect, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { ORACLE_MAX_AGE_SEC, PEX_APPS } from "@/lib/perps";
-import { readMarketState, type MarketState } from "@/lib/perpsReads";
-import { getOraclePayload, type OraclePayload } from "@/lib/perpsOracle";
+import { ORACLE_MAX_AGE_SEC, PEX_APPS } from "@/lib/strategy/pex/config";
+import { readMarketState, type MarketState } from "@/lib/strategy/pex/reads";
+import { getOraclePayload, type OraclePayload } from "@/lib/strategy/pex/oracle";
 
 export type PerpsMarketData = {
   state: MarketState;

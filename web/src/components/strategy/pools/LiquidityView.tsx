@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Coins, Droplets, Layers, Shield, Sparkles, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
-import { PEX_APPS } from "@/lib/perps";
+import { PEX_APPS } from "@/lib/strategy/pex/config";
 import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { RAISED_AMBER, RAISED_AMBER_ON } from "@/components/raisedButton";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
@@ -43,10 +43,10 @@ import { CvaAbout } from "./CvaAbout";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey,
   type PerformanceBundle, type PoolStats,
-} from "@/lib/strategy/performance";
+} from "@/lib/strategy/pools/performance";
 import {
   cvaShareOfMarket, readStrategyLiquidity, type StrategyLiquidity,
-} from "@/lib/strategy/reads";
+} from "@/lib/strategy/pools/reads";
 
 /**
  * ── There is deliberately no PEX URL in this file ──

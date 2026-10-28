@@ -33,7 +33,7 @@ cut along them rather than along "PEX" vs "us".
   │     cvaGroup.ts     route choice, builders, assertions, marks  │
   └────────────────────────────────────────────────────────────────┘
   ┌─ Shared PEX protocol layer ────────────────────────────────────┐
-  │ web/src/lib/perps*.ts   ← SEE THE TRAP BELOW                   │
+  │ web/src/lib/strategy/pex/config*.ts   ← SEE THE TRAP BELOW                   │
   └────────────────────────────────────────────────────────────────┘
 ```
 

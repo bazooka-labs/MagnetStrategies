@@ -21,9 +21,9 @@ import {
   buildV2DepositLiquidityTransactions,
   buildV2WithdrawLiquidityTransactions,
 } from "@pdex/sdk/transactions";
-import { readQuoteContext, readRecallContext, quoteWithdraw, recallCaps } from "../quote";
-import { installProtocolManifest } from "../../perpsManifest";
-import { PEX_APPS, PEX_ASSETS } from "../../perps";
+import { readQuoteContext, readRecallContext, quoteWithdraw, recallCaps } from "@/lib/strategy/pools/quote";
+import { installProtocolManifest } from "@/lib/strategy/pex/manifest";
+import { PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const CAPTURE = !!process.env.CAPTURE;

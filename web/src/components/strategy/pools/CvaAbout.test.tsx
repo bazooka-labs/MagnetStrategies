@@ -19,7 +19,7 @@
 import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CvaAbout } from "./CvaAbout";
-import type { PoolStats } from "@/lib/strategy/performance";
+import type { PoolStats } from "@/lib/strategy/pools/performance";
 
 /** Shaped like the real bundle's cva payload on 2026-10-23. */
 const STATS: PoolStats = {

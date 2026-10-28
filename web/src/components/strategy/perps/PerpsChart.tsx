@@ -23,14 +23,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
-import { getOraclePayload, price12ToUsd } from "@/lib/perpsOracle";
-import { formatPriceUsd } from "@/lib/perpsQuote";
-import { PEX_APPS } from "@/lib/perps";
+import { getOraclePayload, price12ToUsd } from "@/lib/strategy/pex/oracle";
+import { formatPriceUsd } from "@/lib/strategy/pex/quote";
+import { PEX_APPS } from "@/lib/strategy/pex/config";
 import {
   CHART_RANGES, ChartUnavailableError, candleInterval, changePct, defaultVisible,
   fetchCandles, priceWindow, rangeGranularity, rangeLabel,
   type Candle, type ChartRange,
-} from "@/lib/perpsChart";
+} from "@/lib/strategy/perps/chart";
 
 const UP = "#4ade80";
 const DOWN = "#f87171";

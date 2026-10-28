@@ -30,11 +30,11 @@ import {
   depositToCvaVault, withdrawFromCvaVault, readCvaFormState,
   cvaDepositGates, cvaWithdrawGates, usdToShares, sharesToUsd,
   type CvaFormState, type CvaWithdrawOutput,
-} from "@/lib/strategy/cvaClient";
-import { GatedError, PinDriftError, type LiquidityStage } from "@/lib/strategy/client";
-import { SubmissionUnknownError, SubmissionRefusedError } from "@/lib/strategy/submit";
-import { cvaStoragePaymentFor } from "@/lib/strategy/cvaGroup";
-import { primaryGate, type Gate, type Notice } from "@/lib/strategy/preflight";
+} from "@/lib/strategy/pools/cvaClient";
+import { GatedError, PinDriftError, type LiquidityStage } from "@/lib/strategy/pools/client";
+import { SubmissionUnknownError, SubmissionRefusedError } from "@/lib/strategy/pools/submit";
+import { cvaStoragePaymentFor } from "@/lib/strategy/pools/cvaGroup";
+import { primaryGate, type Gate, type Notice } from "@/lib/strategy/pools/preflight";
 
 type Mode = "deposit" | "withdraw";
 

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
-import { buildDeposit, storagePaymentFor, LP_BOX_MBR_MICRO_ALGO } from "../group";
-import { readMarketGateState, readBalances } from "../preflight";
-import { verifyOracleSignerPin, signerDriftMessage } from "../../perpsReads";
-import { PEX_ORACLE_SIGNER_PUBKEY_HEX, ORACLE_SIGNER_SOURCES } from "../../perps";
+import { buildDeposit, storagePaymentFor, LP_BOX_MBR_MICRO_ALGO } from "@/lib/strategy/pools/group";
+import { readMarketGateState, readBalances } from "@/lib/strategy/pools/preflight";
+import { verifyOracleSignerPin, signerDriftMessage } from "@/lib/strategy/pex/reads";
+import { PEX_ORACLE_SIGNER_PUBKEY_HEX, ORACLE_SIGNER_SOURCES } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /** A real funded account with NO `ml2:` box in either market — a first-time LP. */

@@ -37,9 +37,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import algosdk from "algosdk";
 import { analyzeV2OrderLifecycle } from "@pdex/sdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { COLLATERAL_ASSET_ID, ENABLED_MARKET_IDS, PEX_APPS } from "@/lib/perps";
-import { readOrders, readPosition, type OrderState, type PositionState } from "@/lib/perpsReads";
-import { getOraclePayload } from "@/lib/perpsOracle";
+import { COLLATERAL_ASSET_ID, ENABLED_MARKET_IDS, PEX_APPS } from "@/lib/strategy/pex/config";
+import { readOrders, readPosition, type OrderState, type PositionState } from "@/lib/strategy/pex/reads";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
 
 export type RestingOrder = {
   order: OrderState;

@@ -30,15 +30,15 @@ import algosdk from "algosdk";
 import {
   depositToMarket, withdrawFromMarket, withdrawOutputsFor, GatedError, PinDriftError,
   type LiquidityStage, type WithdrawOutput,
-} from "@/lib/strategy/client";
-import { SubmissionUnknownError } from "@/lib/strategy/submit";
+} from "@/lib/strategy/pools/client";
+import { SubmissionUnknownError } from "@/lib/strategy/pools/submit";
 import {
   readBalances, readMarketGateState, directCooldownGate, depositRestartsCooldown,
   marketDepositMinimumGate, MARKET_MIN_DEPOSIT_USD,
   type Balances, type Gate,
-} from "@/lib/strategy/preflight";
-import type { LpState } from "@/lib/strategy/reads";
-import { storagePaymentFor } from "@/lib/strategy/group";
+} from "@/lib/strategy/pools/preflight";
+import type { LpState } from "@/lib/strategy/pools/reads";
+import { storagePaymentFor } from "@/lib/strategy/pools/group";
 
 type Mode = "deposit" | "withdraw";
 

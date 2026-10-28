@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { preflight, type PreflightResult } from "@/lib/perpsPreflight";
+import { preflight, type PreflightResult } from "@/lib/strategy/perps/preflight";
 
 export function usePerpsPreflight() {
   const [result, setResult] = useState<PreflightResult | null>(null);

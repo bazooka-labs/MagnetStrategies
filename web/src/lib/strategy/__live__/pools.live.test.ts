@@ -13,15 +13,15 @@
  */
 import { describe, it, expect } from "vitest";
 import algosdk from "algosdk";
-import { buildWithdraw, buildDeposit, assertWithdrawGroup } from "../group";
+import { buildWithdraw, buildDeposit, assertWithdrawGroup } from "@/lib/strategy/pools/group";
 import {
   readQuoteContext, quoteDeposit, quoteWithdraw, readRecallContext, recallCaps,
   DEFAULT_LIQUIDITY_SLIPPAGE_BPS,
-} from "../quote";
+} from "@/lib/strategy/pools/quote";
 import {
   readMarketGateState, readBalances, marketGates, directCooldownGate,
   readCvaVaultState,
-} from "../preflight";
+} from "@/lib/strategy/pools/preflight";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 

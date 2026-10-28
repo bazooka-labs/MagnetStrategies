@@ -36,14 +36,14 @@ import algosdk from "algosdk";
 import {
   buildV2DecreaseOrCloseWithSwapTransactions, decodeReceipt,
 } from "@pdex/sdk";
-import { simulateGroup } from "../../perpsGroup";
-import { readMarketState, readPosition, readYieldRegistry } from "../../perpsReads";
-import { getOraclePayload } from "../../perpsOracle";
-import { installProtocolManifest } from "../../perpsManifest";
+import { simulateGroup } from "@/lib/strategy/pex/group";
+import { readMarketState, readPosition, readYieldRegistry } from "@/lib/strategy/pex/reads";
+import { getOraclePayload } from "@/lib/strategy/pex/oracle";
+import { installProtocolManifest } from "@/lib/strategy/pex/manifest";
 import {
   PEX_APPS, PEX_ASSETS, COLLATERAL_ASSET_ID, BUILDER_ADDRESS,
   POSITION_BUILDER_FEE_BPS,
-} from "../../perps";
+} from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 /** A real market-1 LONG, from the live `p2:` box listing. */

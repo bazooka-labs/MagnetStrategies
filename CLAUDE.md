@@ -47,7 +47,7 @@ Look these up; do not restate them in a doc.
 
 | Fact | Source of truth |
 |---|---|
-| PEX app IDs, program hashes, oracle signer pin | `web/src/lib/perps.ts` |
+| PEX app IDs, program hashes, oracle signer pin | `web/src/lib/strategy/pex/config.ts` |
 | MagnetFi app IDs, mUSD ASA, admin address | `web/src/lib/magnetfi.ts` |
 | $U / USDC ASA IDs, node URLs | `web/src/lib/constants.ts` |
 | UVote app | `web/src/lib/uvote.ts` — **not** `constants.ts`, whose `VOTING_APP_ID` is the RETIRED 2026 voting app and is never read |
@@ -58,6 +58,39 @@ Look these up; do not restate them in a doc.
 
 That last row is a rule, not a preference. PEX's admin can change
 `cva_mint_spread_bps` and friends at any time, so the UI reads them live.
+
+---
+
+## Where code lives
+
+The frontend mirrors the nav arms, so a new product has an obvious home.
+
+```
+web/src/lib/strategy/
+  pex/      venue integration — PEX app IDs, program hashes, ABI manifest,
+            oracle payloads, group assertions, chain reads. SHARED by every
+            product that trades on PEX.
+  perps/    Trading Terminal only — chart, input, solver, client, preflight
+  pools/    Strategy Pools only — deposit/withdraw, C-Vault, gates, quotes
+
+web/src/components/strategy/{perps,pools}/
+```
+
+**The `pex/` layer is named for the venue, not the instrument**, and that line
+does real work: those modules describe *PEX's contracts*, so they are shared;
+`perps/` describes *our product*, so it is not. Putting a shared module under
+`perps/` would claim the terminal owns code Strategy Pools depends on.
+
+**Adding a product to an arm:** give it a folder beside its siblings
+(`lib/strategy/clmm/`, `components/strategy/clmm/`), and a docs tree at
+`strategy/clmm/`. If it runs on a new venue, that venue gets its own shared
+folder beside `pex/` — do **not** widen `pex/` to mean "any venue".
+
+Extract shared code only when a second real implementation exists, per
+[strategy/OVERVIEW.md](./strategy/OVERVIEW.md) — "against two real
+implementations rather than one real and one hypothetical". The `pex/` layer is
+that rule applied: it was extracted once Strategy Pools shipped and the overlap
+with the terminal was observable rather than guessed.
 
 ---
 

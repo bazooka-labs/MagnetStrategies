@@ -12,15 +12,15 @@
 // were on screen when the position was opened.
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
-import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/perps";
-import { ORDER_KIND } from "@/lib/perpsReads";
+import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
+import { ORDER_KIND } from "@/lib/strategy/pex/reads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
 import { useEffect, useRef, useState } from "react";
 import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { cancelOrder, closePosition } from "@/lib/perpsClient";
-import { exitBanner } from "@/lib/perpsPreflight";
+import { cancelOrder, closePosition } from "@/lib/strategy/perps/client";
+import { exitBanner } from "@/lib/strategy/perps/preflight";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";

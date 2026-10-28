@@ -10,10 +10,10 @@ import algosdk from "algosdk";
 import {
   buildWithdrawAllUsdc, assertWithdrawAllUsdcGroup, supportsAllUsdc,
   OUTPUT_MODE_ALL_USDC,
-} from "../group";
-import { readQuoteContext, readRecallContext, quoteWithdraw, recallCaps } from "../quote";
-import { withdrawOutputsFor } from "../client";
-import { readMarketGateState } from "../preflight";
+} from "@/lib/strategy/pools/group";
+import { readQuoteContext, readRecallContext, quoteWithdraw, recallCaps } from "@/lib/strategy/pools/quote";
+import { withdrawOutputsFor } from "@/lib/strategy/pools/client";
+import { readMarketGateState } from "@/lib/strategy/pools/preflight";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
 const LP = "A4YW55ZEC2TTIN2TEVN56IRVGLWQYQRUNJTPG37OTWE4EJWNAH3EUKHZKA";

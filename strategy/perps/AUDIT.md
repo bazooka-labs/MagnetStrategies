@@ -175,7 +175,7 @@ that live in `perpsGroup.ts`:
 
 ### The verification, and why it is in the repo
 
-`web/src/lib/perpsGroup.test.ts`, 27 cases under `npm test`. Each takes a group
+`web/src/lib/strategy/pex/group.test.ts`, 27 cases under `npm test`. Each takes a group
 the assertion accepts, breaks exactly one thing that costs the user money, and
 requires the assertion to name it **by its own finding code** — "something was
 rejected" is not a pass, because B2 was a check firing for the wrong reason.
@@ -196,7 +196,7 @@ what it sends — a *consistent* lie — so those cases now mutate both.
 
 **Phase 4 — H4, the controls with no callers.** `readPosition` was wired in
 Phase 1 by the one-position guard. The other two now share
-`web/src/lib/perpsPreflight.ts`, which is their only caller:
+`web/src/lib/strategy/perps/preflight.ts`, which is their only caller:
 
 - `verifyProgramPins` — app IDs survive a redeploy untouched, so this is the
   only thing that notices a PEX upgrade. On drift: **block opens, keep exits
