@@ -203,16 +203,33 @@ function NextStrategyTile() {
  * The direct pool cards keep `YieldFigure` above: this is the card the page is
  * built around, and three identical headline boxes rank nothing.
  */
-function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
+function CvaRateBox({ stats, stale, sharePrice }: {
+  stats: PoolStats | null;
+  stale: boolean;
+  /** The vault's live `total_nav_usd / total_cva_shares`; see `ann` below. */
+  sharePrice: number | null;
+}) {
   const i = stats?.income ?? null;
   /**
    * The headline is the LONGEST window annualized — never a short one. The
    * same vault read 2026-10-28 gave +812% from 7 days and **−26% from 30**,
    * so the window choice moves the answer more than the vault does. The
-   * shorter windows render beneath precisely so that dispersion is visible
-   * rather than hidden behind one flattering figure.
+   * shorter windows render in the modal precisely so that dispersion is
+   * visible rather than hidden behind one flattering figure.
+   *
+   * ── Why the live share price goes in ──
+   * PEX republishes its bundle once a day, at 00:10 UTC for an `as_of` of
+   * 00:00, so a bundle-only figure is up to 24 hours stale and changes once.
+   * The share price itself moves on every re-mark. Passing it here runs the
+   * window from the bundle's FIRST day to now, which lengthens the window
+   * rather than shortening it — 55 days became 57 and keeps growing — so the
+   * figure refreshes continuously without reintroducing the short-window
+   * volatility above. Measured 2026-10-28: 184% bundle-only, 177% extended.
+   *
+   * It is also the same basis as "Your position" and "Pool liquidity", so the
+   * card no longer mixes a derived mark with the contract's own.
    */
-  const ann = pickLongest(stats);
+  const ann = pickLongest(stats, sharePrice);
   return (
     /* mt-1 adds air above: the header row and the Learn more button sat
        close enough to the halo that the two read as one block. py-5 balances
@@ -555,6 +572,7 @@ export function LiquidityView() {
             <CvaRateBox
               stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
               stale={!!perf?.stale}
+              sharePrice={data?.cva.navPerShare ?? null}
             />
 
             {/*
@@ -640,24 +658,28 @@ export function LiquidityView() {
 
             {/*
               ── Two vintages, shown as two, because they are ──
-              The position and pool figures are chain reads, seconds old. The
-              performance figures are PEX's daily bundle, regenerated around
-              00:10 UTC — measured 2026-10-28 it was 16 hours old while the
-              chain reads were current.
+              Every DOLLAR on this card is a chain read, seconds old — and so
+              is the end of the return window, since the headline now runs to
+              the live share price rather than to the bundle's last day.
 
-              A single "updated just now" covering both would be false for
-              half the card, and it is the half carrying the headline number.
-              So the line states each separately and makes no attempt to
-              reconcile them.
+              What is still a daily snapshot is PEX's HISTORY: the series the
+              return is measured across, the ladder in the modal, and the
+              benchmark chart. That bundle regenerates around 00:10 UTC and
+              was 23.8 hours old when measured on 2026-10-28.
+
+              So the line names what each half covers. It previously said
+              "performance to <bundle date>", which became wrong the moment
+              the headline started ending at the live mark: the performance
+              figure is current, its history is not.
             */}
             {(readAt || perf) && (
               <p className="text-[10px] leading-relaxed text-gray-600">
-                {readAt && <>Your position and pool figures read{" "}
+                {readAt && <>All figures read{" "}
                   <span className="text-gray-500">
                     {readAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span></>}
                 {readAt && perf && " · "}
-                {perf && <>performance to{" "}
+                {perf && <>PEX history to{" "}
                   <span className="text-gray-500">
                     {new Date(perf.asOf * 1000).toLocaleDateString([], {
                       day: "numeric", month: "short", timeZone: "UTC",

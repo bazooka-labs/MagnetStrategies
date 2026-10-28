@@ -30,6 +30,13 @@ const series = (productPct: number, holdPct: number, n = 6) =>
     hold: 1 + (holdPct / 100) * (k / (n - 1)),
   }));
 
+/**
+ * The modal renders the ladder as PEX published it and never extends it to the
+ * live share price — that is the headline's job. So these fixtures carry no
+ * start anchor, which is also the shape of a bundle that omits share prices.
+ */
+const anchor = { startSharePrice: null, startTs: 0 };
+
 const STATS: PoolStats = {
   income: {
     totalPct: 7.57, feePct: 1.52, yieldPct: 6.05,
@@ -38,16 +45,16 @@ const STATS: PoolStats = {
   },
   ret: {
     period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-    benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(5.64, -4.0),
+    benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, ...anchor, series: series(5.64, -4.0),
   },
   retUnavailableReason: null,
   returns: {
     "7d": { period: "7d", productPct: 2.90, holdPct: -3.25, vsHoldingPoints: 6.15,
-      benchmarkKind: "geometric_mean_50_50", points: 7, days: 6, hasGaps: false, series: series(2.90, -3.25) },
+      benchmarkKind: "geometric_mean_50_50", points: 7, days: 6, hasGaps: false, ...anchor, series: series(2.90, -3.25) },
     "30d": { period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
-      benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, series: series(5.64, -4.0) },
+      benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, ...anchor, series: series(5.64, -4.0) },
     "90d": { period: "90d", productPct: 15.27, holdPct: 6.03, vsHoldingPoints: 9.24,
-      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true, series: series(15.27, 6.03) },
+      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true, ...anchor, series: series(15.27, 6.03) },
   },
   reasons: { total: "insufficient_history" },
 };
@@ -102,6 +109,30 @@ describe("the rate it was opened for", () => {
     // And the modal states the spread explicitly, so the headline cannot be
     // read as the only possible answer.
     expect(within(d).getByText(/\+812%, −26% and \+183%/)).toBeTruthy();
+  });
+
+  /**
+   * The headline runs the longest window on to the LIVE share price, so its
+   * day count is a day or two beyond the ladder's. A reader checking the
+   * arithmetic — 90d shows +17.01%, the headline says 57 days — would
+   * otherwise find a discrepancy the modal never accounts for.
+   */
+  /**
+   * US spelling throughout the UI, per the correction on "annualised" ->
+   * "annualized". The modal is the longest body of copy on the site, so it is
+   * where a British form survives unnoticed.
+   */
+  it("uses US spelling in its copy", () => {
+    const d = openIt();
+    expect(d.textContent).not.toMatch(/realis(ed|e|ing)\b/i);
+    expect(d.textContent).not.toMatch(/annualis/i);
+    expect(d.textContent).toMatch(/realized/);
+  });
+
+  it("explains why the headline's window is longer than the ladder's", () => {
+    const d = openIt();
+    expect(within(d).getByText(/run on to the live share price/)).toBeTruthy();
+    expect(within(d).getByText(/refreshes between PEX.s daily updates/)).toBeTruthy();
   });
 
   it("says a window is short of history instead of printing a zero", () => {

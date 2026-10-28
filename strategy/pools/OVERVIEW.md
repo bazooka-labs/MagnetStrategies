@@ -109,12 +109,14 @@ dropped quietly:
 1. **Longest window only** — `pickLongest` refuses anything under
    `MIN_ANNUALIZE_DAYS` (14) and always takes the longest available span. A
    7-day headline would be indefensible.
-2. **The realised figure travels with it** — "+17.00% actually realised over 55
-   days. Not a forecast." sits directly beneath, in the same box.
-3. **The shorter windows stay visible** — 7d / 30d / 90d render as realised
-   returns on the card, so the negative month is in the same glance. The About
-   modal carries the full ladder and states the +812% / −26% / +183% spread
-   outright.
+2. **The span travels with it** — `Derived from past 57 days performance` sits
+   directly beneath the figure, in the same box. A reader is never shown the
+   annualized number without the window it was extrapolated from.
+3. **The spread stays one click away** — the card carries ONE figure; the full
+   7d / 30d / 90d / all-time ladder is in the Learn more modal, shown as
+   realized returns and **never annualized**, with the +812% / −26% / +183%
+   dispersion stated outright. The modal also says why the headline's window
+   reads longer than the ladder's.
 
 It annualizes the **span**, not the period label: the bundle's "90d" holds 55
 days of history, and using the label would read +89% instead of +183%.
@@ -125,29 +127,76 @@ week it accounted for about 2.6% of the total return; the rest was trader P&L
 and ALGO's price.
 
 `annualize.test.ts` pins the guards: longest-window selection, the minimum
-span, a negative headline when the long window is negative, and a refusal
-rather than `NaN` on a total loss.
+span, a negative headline when the long window is negative, a refusal rather
+than `NaN` on a total loss, and — for the live extension below — that the
+window never shortens, that a missing or zero live price falls back instead of
+reporting −100%, and that a fallen share price still moves the headline down.
+Each was verified by mutation: break the guard, watch its test go red.
+
+### The headline runs to the LIVE share price, not to the bundle's last day
+
+PEX republishes once a day — `as_of` 00:00 UTC, posted around 00:10 — so a
+figure taken straight from the bundle is up to 24 hours stale and moves once a
+day. Measured 2026-10-28 it was **23.8 hours old** while the chain reads beside
+it were current.
+
+The vault's share price, by contrast, moves on **every re-mark**. So the window
+runs from the bundle's FIRST day to the live `total_nav_usd / total_cva_shares`:
+
+| | window | realised | annualized |
+|---|---|---|---|
+| bundle only | 55.0d | +17.01% | **184%** |
+| bundle + live price | 57.0d | +17.27% | **177%** |
+
+The property that makes this safe is that it only moves the **end** of the
+window forward. The window lengthens — 55 days became 57 and keeps growing — so
+none of the short-window volatility above is reintroduced. Shortening it to the
+user's own position, which was considered, would have done exactly that: their
+$25 is days old, and a 7-day window on this vault reads +812%.
+
+It falls back to the bundle's own figure whenever the live price or the start
+anchor is missing. A fresher figure is worth having, never at the cost of
+inventing one. `annualize.live.test.ts` runs the real path against the real
+bundle, because a `share_price_usd` parse that silently returns null would
+degrade to the stale figure without ever throwing — the same failure mode that
+shipped once in `costBasis`.
 
 ### The card carries TWO timestamps, because it has two vintages
 
-The position, pool liquidity and share count are **chain reads** — seconds old.
-The annualized figure, the realised ladder and the chart come from **PEX's
-daily bundle**, regenerated around 00:10 UTC. Measured 2026-10-28 that bundle
-was **16 hours old** while the chain reads were current.
-
-So the footer states both and does not reconcile them:
+Every **dollar** on the card is a chain read, seconds old — and so is the end
+of the return window. What is still a daily snapshot is PEX's **history**: the
+series the return is measured across, the ladder in the modal, and the chart.
 
 ```
-Your position and pool figures read 12:08 · performance to Oct 28
+All figures read 12:08 · PEX history to Oct 28
 ```
 
-A single "updated just now" would be false for half the card — and it is the
-half carrying the headline number. The bundle's own `as_of` is used, not the
-fetch time, and an expired bundle is flagged rather than hidden.
+It used to read `performance to Oct 28`, which became wrong the moment the
+headline started ending at the live mark: the performance figure is current,
+its history is not. The bundle's own `as_of` is used, not the fetch time, and
+an expired bundle is flagged rather than hidden.
 
-This matters more than it looks. A holder watching their position move during
-the day is watching a live number; the +183% beside it will not change until
-PEX republishes. Without the footer those two read as one snapshot.
+### One basis for every dollar: the contract's `total_nav_usd`
+
+Pool liquidity, Your position and the share price all read the vault's own
+`total_nav_usd` global. Mallow reads the same global, so the figures agree.
+
+Until 2026-10-28 Pool liquidity showed something else — a figure **we derived**
+from each market's `long_pool_amount` / `short_pool_amount` at spot ALGO, while
+the stat beside it priced the user's slice off the contract. The card
+contradicted itself, and a holder comparing it with Mallow found the pool
+figure low:
+
+| | |
+|---|---|
+| contract `total_nav_usd` (and Mallow) | **$1735.12** |
+| our derivation | **$1589.81** — 9.2% low |
+
+Price was ruled out by measurement: reproducing the contract's mark from those
+pools needs ALGO at **$0.1403** against a spot of $0.1041. What the derivation
+misses is the vault's claim on **accrued fees and open positions**, neither of
+which is in the pool amounts. It is a floor on the vault's value, not a measure
+of it, and survives only as the fallback for when the globals cannot be read.
 
 ### "Your position" measures against what left the wallet
 

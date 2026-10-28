@@ -93,6 +93,20 @@ export type PoolReturn = {
    * losing month — a number cannot show that shape.
    */
   series: { ts: number; product: number; hold: number }[];
+  /**
+   * Share price on the window's FIRST day, and that day's timestamp.
+   *
+   * The anchor that lets the annualized figure refresh faster than the bundle
+   * does. PEX republishes once a day at 00:10 UTC, but the share price itself
+   * moves on every re-mark — so pairing this historical start with the LIVE
+   * price extends the window to "now" instead of to midnight.
+   *
+   * Crucially this does not shorten the window, which is what would
+   * reintroduce the short-window volatility the headline is designed around.
+   * It only moves the end point forward: 55 days becomes 57 and keeps growing.
+   */
+  startSharePrice: number | null;
+  startTs: number;
 };
 
 export const PERF_PERIODS: readonly PerfPeriod[] = ["7d", "30d", "90d", "total"];
@@ -192,6 +206,12 @@ function parseReturn(raw: unknown, period: PerfPeriod): {
           hold: (num(o.hold_index) ?? 0) / 1e6,
         };
       }).filter((pt) => pt.ts > 0 && pt.product > 0 && pt.hold > 0),
+      startSharePrice: (() => {
+        const raw = (pts[0] as Record<string, unknown>)?.share_price_usd;
+        const v = num(raw);
+        return v !== null && v > 0 ? v / 1e6 : null;
+      })(),
+      startTs: num((pts[0] as Record<string, unknown>)?.timestamp) ?? 0,
       days: (() => {
         const t0 = Number((pts[0] as Record<string, unknown>)?.timestamp ?? 0);
         const t1 = Number((pts[pts.length - 1] as Record<string, unknown>)?.timestamp ?? 0);
@@ -345,7 +365,19 @@ export type AnnualizedReturn = {
 /** Days below which annualizing is refused outright, however it is labelled. */
 export const MIN_ANNUALIZE_DAYS = 14;
 
-export function pickLongest(stats: PoolStats | null): AnnualizedReturn | null {
+export function pickLongest(
+  stats: PoolStats | null,
+  /**
+   * The vault's live share price, `total_nav_usd / total_cva_shares`. When
+   * given, the window runs from the bundle's first day to NOW rather than to
+   * the bundle's last day — fresher by up to 24 hours, and refreshing on every
+   * re-mark instead of once daily.
+   *
+   * The same basis the rest of the card uses, so the figures agree.
+   */
+  liveSharePrice?: number | null,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): AnnualizedReturn | null {
   if (!stats) return null;
   // Longest first. `total` and `90d` are the same window until the vault has
   // more than 90 days of history, so either may be the longest.
@@ -354,16 +386,31 @@ export function pickLongest(stats: PoolStats | null): AnnualizedReturn | null {
     const r = stats.returns[p];
     if (r && r.days > (best?.days ?? 0)) best = r;
   }
-  if (!best || best.days < MIN_ANNUALIZE_DAYS) return null;
-  const growth = 1 + best.productPct / 100;
+  if (!best) return null;
+
+  // Extend to now when we have both ends. Falls back to the bundle's own
+  // summary whenever the live price or the start anchor is missing — a fresher
+  // figure is worth having, never at the cost of inventing one.
+  let days = best.days;
+  let realised = best.productPct;
+  if (liveSharePrice && liveSharePrice > 0 && best.startSharePrice && best.startTs > 0) {
+    const extended = (nowSec - best.startTs) / 86_400;
+    if (extended >= days) {
+      days = extended;
+      realised = (liveSharePrice / best.startSharePrice - 1) * 100;
+    }
+  }
+
+  if (days < MIN_ANNUALIZE_DAYS) return null;
+  const growth = 1 + realised / 100;
   // A total loss cannot be compounded; refuse rather than return NaN.
   if (growth <= 0) return null;
   return {
     period: best.period,
-    days: best.days,
-    realisedPct: best.productPct,
+    days,
+    realisedPct: realised,
     holdPct: best.holdPct,
     vsHoldingPoints: best.vsHoldingPoints,
-    annualizedPct: (Math.pow(growth, 365 / best.days) - 1) * 100,
+    annualizedPct: (Math.pow(growth, 365 / days) - 1) * 100,
   };
 }

@@ -192,6 +192,7 @@ export type MarketLiquidity = {
 export type StrategyLiquidity = {
   markets: MarketLiquidity[];
   cva: {
+    /** The vault's `total_nav_usd`, the basis `navPerShare` and `yourUsd` share. */
     navUsd: number | null;
     allocations: CvaAllocation[];
     totalMarkets: number;
@@ -199,14 +200,16 @@ export type StrategyLiquidity = {
     /**
      * Shares outstanding, and the price the CONTRACT prices them at.
      *
-     * Deliberately the vault's own `total_nav_usd / total_cva_shares` globals
-     * rather than `navUsd` above, which we derive live from the pools. The two
-     * agree closely (chain-derived $1.1907 against the contract's $1.1907 when
-     * last checked, and against PEX's published share price of $1.190755), but
-     * they are not the same quantity: the contract's is what a withdrawal is
-     * actually priced against, and it is the one the withdraw form already
-     * uses. A card that valued a position differently from the form that
-     * spends it would be reporting a discrepancy we invented.
+     * The vault's own `total_nav_usd / total_cva_shares` globals, agreeing
+     * with PEX's published share price ($1.190677 against $1.190755, a few
+     * hours apart) — and with Mallow, which reads the same globals.
+     *
+     * NOT our own derivation from the market pools, which measured 9.2% low
+     * on 2026-10-28; see `derivedNavUsd` for what it misses. An earlier
+     * version of this comment claimed the two "agree closely", which a
+     * measurement disproved. The contract's figure is what a withdrawal is
+     * actually priced against and what the withdraw form already uses, so it
+     * is the basis every displayed dollar on the card shares.
      *
      * Null when the globals could not be read, never 0 — "no shares exist" and
      * "we could not read it" are the same pixels meaning opposite things.
@@ -326,13 +329,39 @@ export async function readStrategyLiquidity(
   ]);
 
   const byMarketPre = new Map(markets.map((m) => [m.marketId, m]));
-  const navUsd = allocations.length > 0
+  /**
+   * What the vault is worth, DERIVED: its LP share of each market's pools,
+   * priced at Coinbase's ALGO/USD.
+   *
+   * Kept only as the fallback for when the globals cannot be read, because it
+   * runs materially LOW — $1,589.81 against the contract's $1,735.12 when
+   * measured on 2026-10-28, a 9.2% gap. Price is not the cause: reproducing
+   * the contract's mark from these pools needs ALGO at $0.1403 against a spot
+   * of $0.1041. What it misses is the vault's claim on accrued fees and on
+   * open positions, neither of which is in `long_pool_amount` /
+   * `short_pool_amount`.
+   *
+   * So this is a floor on the vault's value, not a measure of it.
+   */
+  const derivedNavUsd = allocations.length > 0
     ? allocations.reduce((acc, alloc) => {
         const mk = byMarketPre.get(alloc.marketId);
         if (!mk || mk.shareSupply <= 0) return acc;
         return acc + (alloc.lpShareAmount / mk.shareSupply) * mk.value.totalUsd;
       }, 0)
     : null;
+  /**
+   * The vault's `total_nav_usd` global — the SAME basis as `navPerShare`, and
+   * therefore as "Your position" beside it on the card.
+   *
+   * This used to show `derivedNavUsd`, which made the card contradict itself:
+   * one stat priced the whole pool off our derivation while the stat next to
+   * it priced the user's slice off the contract. It also disagreed with
+   * Mallow, which reads this same global. Whatever the vault's mark is worth,
+   * it is the number a withdrawal is actually priced against, so it is the one
+   * both stats use.
+   */
+  const navUsd = shareState?.navUsd ?? derivedNavUsd;
   return {
     markets,
     cva: {
@@ -374,7 +403,7 @@ export async function readStrategyLiquidity(
  */
 async function readCvaShareState(
   algod: algosdk.Algodv2,
-): Promise<{ totalShares: number; navPerShare: number } | null> {
+): Promise<{ totalShares: number; navPerShare: number; navUsd: number } | null> {
   try {
     const app = await algod.getApplicationByID(PEX_APPS.cvaVault).do();
     let navMicro: number | null = null;
@@ -389,7 +418,7 @@ async function readCvaShareState(
     // A vault with no shares has no share price. Returning 0 would value every
     // position at zero rather than declining to value it.
     if (totalShares <= 0) return null;
-    return { totalShares, navPerShare: navMicro / 1e6 / totalShares };
+    return { totalShares, navPerShare: navMicro / 1e6 / totalShares, navUsd: navMicro / 1e6 };
   } catch {
     return null;
   }

@@ -267,10 +267,13 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                   <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
                     The APR above counts fees and yield only. These returns are the whole picture —
                     the same income, plus or minus what the pool won or lost against traders.
-                    <strong className="text-gray-300"> Shown here as realised, never annualized</strong>,
+                    <strong className="text-gray-300"> Shown here as realized, never annualized</strong>,
                     because the windows disagree sharply: on 2026-10-28 these same figures
                     annualized to +812%, −26% and +183% depending on which one you picked. The
-                    card headlines the longest of them; this is the spread behind it.
+                    card headlines the longest of them,{" "}
+                    <strong className="text-gray-300">run on to the live share price</strong> so it
+                    refreshes between PEX&rsquo;s daily updates — which is why its window reads a
+                    day or two longer than the one above. This is the spread behind it.
                   </p>
                 </div>
               </div>

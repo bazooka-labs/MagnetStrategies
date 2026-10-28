@@ -89,7 +89,9 @@ const series = (productPct: number, holdPct: number, n = 6) =>
 const LIQUIDITY = {
   markets: [],
   cva: {
-    navUsd: 1557.42,
+    // The CONTRACT's `total_nav_usd`, deliberately consistent with
+    // navPerShare x totalShares below — see the basis test.
+    navUsd: 1667.726568,
     allocations: [{ marketId: 1 }, { marketId: 2 }],
     totalMarkets: 2,
     yourShares: 5.879,
@@ -98,7 +100,7 @@ const LIQUIDITY = {
     yourUsd: 6.999,
     participants: 9,
   },
-  totals: { totalUsd: 4689, directUsd: 3132, viaCvaUsd: 1557 },
+  totals: { totalUsd: 4689, directUsd: 3022, viaCvaUsd: 1667 },
   algoUsd: 0.1234,
 };
 const BUNDLE = {
@@ -310,18 +312,26 @@ describe("the C-Vault card", () => {
 
   it("timestamps the two sources separately, because they differ", async () => {
     /**
-     * Chain reads are seconds old; PEX's bundle is a daily snapshot. Measured
-     * 2026-10-28 the gap was 16 hours. A single "updated just now" would be
-     * false for the half of the card carrying the headline number.
+     * Every dollar on the card is a chain read, seconds old — and so is the
+     * end of the return window now that the headline runs to the live share
+     * price. What stays a daily snapshot is PEX's HISTORY: the series behind
+     * the return, the ladder, the chart. Measured 2026-10-28 that bundle was
+     * 23.8 hours old while the chain reads were current.
+     *
+     * The line must not claim the performance figure itself is bundle-dated.
+     * It said "performance to <date>" until the live price went in, which
+     * made it describe a vintage the headline no longer has.
      */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
-    const line = screen.getByText(/Your position and pool figures read/);
-    expect(line.textContent).toMatch(/performance to/);
+    const line = screen.getByText(/All figures read/);
+    expect(line.textContent).toMatch(/PEX history to/);
     // The bundle's own as_of, not the read time.
     expect(line.textContent).toMatch(/\d+ \w+/);
+    // And it does not date the performance FIGURE to the bundle.
+    expect(line.textContent).not.toMatch(/performance to/);
   });
 
   it("carries ONE figure — the per-window ladder lives in the modal", async () => {
@@ -389,7 +399,7 @@ describe("the C-Vault card", () => {
      * or down. Share counts were the contract's unit, not a depositor's, and
      * the dollar figures already carry the same information.
      *
-     * Against the vault's real numbers from 2026-10-28: $1,557.42 of NAV, 9
+     * Against the vault's real numbers from 2026-10-28: $1,667.73 of NAV, 9
      * `gu2:` holder boxes, 5.879 shares at $1.190677 = $7.00.
      */
     liquidity = LIQUIDITY;
@@ -397,12 +407,49 @@ describe("the C-Vault card", () => {
     await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
     const read = (label: string) =>
       screen.getByText(label).parentElement?.textContent ?? "";
-    expect(read("Pool liquidity")).toContain("$1,557");
+    expect(read("Pool liquidity")).toContain("$1,668");
     expect(read("Participants")).toContain("9");
     expect(read("Your position")).toContain("$7.00");
     // Share counts are gone — the contract's unit, not a depositor's.
     expect(screen.queryByText("Shares outstanding")).toBeNull();
     expect(screen.queryByText("Your shares")).toBeNull();
+  });
+
+  /**
+   * Pool liquidity and Your position must be priced on ONE basis.
+   *
+   * Until 2026-10-28 the card showed a Pool liquidity we derived ourselves
+   * from each market's `long_pool_amount` / `short_pool_amount` at spot ALGO,
+   * while the stat beside it priced the user's slice off the contract's
+   * `total_nav_usd`. The two disagreed by 9.2% ($1,589.81 against $1,735.12),
+   * and a user comparing the card with Mallow — which reads the same global —
+   * found the pool figure low.
+   *
+   * The derivation is a floor, not a measure: it omits the vault's claim on
+   * accrued fees and on open positions. Reproducing the contract's mark from
+   * those pools needed ALGO at $0.1403 against a spot of $0.1041, so price
+   * was never the cause.
+   *
+   * This asserts the relationship rather than the literal, so it fails if
+   * either stat is ever re-pointed at a different quantity.
+   */
+  it("prices Pool liquidity on the same basis as Your position", async () => {
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
+    const read = (label: string) =>
+      screen.getByText(label).parentElement?.textContent ?? "";
+    const dollars = (t: string) =>
+      Number((t.match(/\$([\d,]+(?:\.\d+)?)/)?.[1] ?? "").replace(/,/g, ""));
+
+    const pool = dollars(read("Pool liquidity"));
+    const yours = dollars(read("Your position"));
+    const { totalShares, navPerShare, yourShares } = LIQUIDITY.cva;
+
+    // Pool liquidity is the contract's NAV: shares x the contract's price.
+    expect(pool).toBeCloseTo(totalShares * navPerShare, 0);
+    // And the user's slice is that same NAV, pro rata.
+    expect(yours).toBeCloseTo(pool * (yourShares / totalShares), 1);
   });
 
   it("declines to value a position it could not read, rather than showing $0", async () => {
