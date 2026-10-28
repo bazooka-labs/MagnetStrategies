@@ -363,6 +363,8 @@ export function LiquidityView() {
    * the one line that shows it, never the position value.
    */
   const [basis, setBasis] = useState<CostBasis | null>(null);
+  /** When the chain reads completed — NOT when PEX last published. */
+  const [readAt, setReadAt] = useState<Date | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -376,6 +378,7 @@ export function LiquidityView() {
       setAlgoUsd(algoUsd);
       const liq = await readStrategyLiquidity(algodClient, algoUsd, address);
       setData(liq);
+      setReadAt(new Date());
       setErr(null);
       /**
        * PEX's own statistics, fetched separately and allowed to fail alone.
@@ -419,6 +422,7 @@ export function LiquidityView() {
       setPerf(null);
       setAlgoUsd(null);
       setBasis(null);
+      setReadAt(null);
       setErr(e instanceof Error ? e.message : "Could not read pool state");
     }
   }, [algodClient, address]);
@@ -618,6 +622,36 @@ export function LiquidityView() {
                 The direct pools have no such spread.
               </span>
             </div>
+
+            {/*
+              ── Two vintages, shown as two, because they are ──
+              The position and pool figures are chain reads, seconds old. The
+              performance figures are PEX's daily bundle, regenerated around
+              00:10 UTC — measured 2026-10-28 it was 16 hours old while the
+              chain reads were current.
+
+              A single "updated just now" covering both would be false for
+              half the card, and it is the half carrying the headline number.
+              So the line states each separately and makes no attempt to
+              reconcile them.
+            */}
+            {(readAt || perf) && (
+              <p className="text-[10px] leading-relaxed text-gray-600">
+                {readAt && <>Your position and pool figures read{" "}
+                  <span className="text-gray-500">
+                    {readAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span></>}
+                {readAt && perf && " · "}
+                {perf && <>performance to{" "}
+                  <span className="text-gray-500">
+                    {new Date(perf.asOf * 1000).toLocaleDateString([], {
+                      day: "numeric", month: "short", timeZone: "UTC",
+                    })}
+                  </span>
+                  {perf.stale && <span className="text-amber-300/80"> · expired</span>}
+                </>}
+              </p>
+            )}
 
             <CvaActions
               algoUsd={algoUsd}

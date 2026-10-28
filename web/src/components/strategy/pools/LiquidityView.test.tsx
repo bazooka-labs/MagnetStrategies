@@ -293,6 +293,22 @@ describe("the C-Vault card", () => {
     expect(label.textContent).toMatch(/derived from past 55 days performance/);
   });
 
+  it("timestamps the two sources separately, because they differ", async () => {
+    /**
+     * Chain reads are seconds old; PEX's bundle is a daily snapshot. Measured
+     * 2026-10-28 the gap was 16 hours. A single "updated just now" would be
+     * false for the half of the card carrying the headline number.
+     */
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const line = screen.getByText(/Your position and pool figures read/);
+    expect(line.textContent).toMatch(/performance to/);
+    // The bundle's own as_of, not the read time.
+    expect(line.textContent).toMatch(/\d+ \w+/);
+  });
+
   it("carries ONE figure — the per-window ladder lives in the modal", async () => {
     // The card is the headline and its basis; the 7d/30d/90d spread, the
     // benchmark chart and the risk disclosure are one click away.

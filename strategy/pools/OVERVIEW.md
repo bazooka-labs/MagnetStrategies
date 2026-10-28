@@ -128,6 +128,27 @@ and ALGO's price.
 span, a negative headline when the long window is negative, and a refusal
 rather than `NaN` on a total loss.
 
+### The card carries TWO timestamps, because it has two vintages
+
+The position, pool liquidity and share count are **chain reads** — seconds old.
+The annualised figure, the realised ladder and the chart come from **PEX's
+daily bundle**, regenerated around 00:10 UTC. Measured 2026-10-28 that bundle
+was **16 hours old** while the chain reads were current.
+
+So the footer states both and does not reconcile them:
+
+```
+Your position and pool figures read 12:08 · performance to Oct 28
+```
+
+A single "updated just now" would be false for half the card — and it is the
+half carrying the headline number. The bundle's own `as_of` is used, not the
+fetch time, and an expired bundle is flagged rather than hidden.
+
+This matters more than it looks. A holder watching their position move during
+the day is watching a live number; the +183% beside it will not change until
+PEX republishes. Without the footer those two read as one snapshot.
+
 ### "Your position" measures against what left the wallet
 
 The card shows a holder's change since they deposited — `+$0.32 since you paid
