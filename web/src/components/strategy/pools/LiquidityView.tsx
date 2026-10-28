@@ -214,7 +214,11 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
    */
   const ann = pickLongest(stats);
   return (
-    <div className="glow-white rounded-xl border border-white/10 bg-black/30 px-4 py-3.5">
+    /* mt-1 adds air above: the header row and the Learn more button sat
+       close enough to the halo that the two read as one block. py-5 balances
+       the box around its contents — the figure is tall, so equal padding
+       top and bottom leaves it looking high. */
+    <div className="glow-white mt-1 rounded-xl border border-white/10 bg-black/30 px-5 pb-4 pt-5">
       {/*
         ── One figure, inline with its label ──
         The label and the number read as a single statement, and the
@@ -227,11 +231,15 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
         of the large one in the wrong proportion. It lives in Learn more with
         the split that explains it.
       */}
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+      {/* items-center, not items-baseline. Sharing a baseline makes a 29px
+          figure ride high above a 15px label — the figure's mass is all above
+          the line while the label's sits on it. Centring drops the figure to
+          the label's mid-height, which is what reads as aligned. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <p className="text-[15px] font-semibold text-gray-200">
           {ann ? "12 Month Annualized Return:" : "Fees + Yield APR:"}
         </p>
-        <p className={`font-mono text-[30px] font-bold leading-[0.95] ${
+        <p className={`font-mono text-[29px] font-bold leading-none ${
           ann && ann.annualizedPct < 0 ? "text-red-300" : "text-green-400"
         }`}>
           {ann
@@ -244,7 +252,7 @@ function CvaRateBox({ stats, stale }: { stats: PoolStats | null; stale: boolean 
           </span>
         )}
       </div>
-      <p className="mt-1.5 text-[10.5px] text-gray-500">
+      <p className="mt-2 text-[10.5px] text-gray-500">
         {ann
           ? `Derived from past ${Math.round(ann.days)} days performance`
           : "Past 7 days · published by PEX"}
