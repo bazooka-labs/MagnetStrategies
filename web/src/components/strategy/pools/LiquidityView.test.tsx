@@ -360,31 +360,41 @@ describe("the C-Vault card", () => {
   });
 
   /**
-   * "Takes ALGO + USDC. You do not pick a market — the vault allocates across
-   * both and rebalances itself." came off the card on 2026-10-28. It explains
-   * how the product WORKS, which is the modal's job; the card is the numbers.
+   * The card is now the numbers and nothing else.
    *
-   * The cost deliberately did NOT follow it. The managed option is the only
-   * one of the three destinations carrying a fixed entry/exit cost and a lock,
-   * so a card showing its APR without its spread would flatter it against the
-   * direct pools. Both halves are asserted, because the obvious next edit is
-   * to sweep the whole panel into the modal.
+   * It used to carry two prose panels. "Takes ALGO + USDC. You do not pick a
+   * market — the vault allocates across both and rebalances itself." went to
+   * the Learn more modal on 2026-10-28; the cost panel — "Costs 0.2% in and
+   * 0.2% out ... Plus a ~1 hour withdrawal cooldown and a $5 minimum
+   * withdrawal." — went into the deposit/withdraw panel, split so each half
+   * appears beside the action it applies to.
+   *
+   * Nothing was deleted. CvaAbout.test.tsx pins the explanation, and
+   * CvaActions.test.tsx pins each cost beside its own field. This asserts the
+   * card itself is clear of all of it, so a future edit does not quietly
+   * reintroduce a summary that then drifts from the real figures.
    */
-  it("drops the how-it-works prose but KEEPS what it costs", async () => {
+  it("carries no prose panels — they moved to the modal and the actions", async () => {
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
     await mount("visitor");
     await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
     const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
 
+    // How it works -> the modal.
     expect(body).not.toMatch(/Takes ALGO \+ USDC/);
     expect(body).not.toMatch(/You do not pick a market/);
     expect(body).not.toMatch(/rebalances itself/);
 
-    // The spread, the lock and the minimum stay in front of the reader.
-    expect(body).toMatch(/0\.2% in and 0\.2% out/);
-    expect(body).toMatch(/stays in the vault/);
-    expect(body).toMatch(/\$5 minimum withdrawal/);
+    // What it costs -> the deposit and withdraw panels.
+    expect(body).not.toMatch(/0\.2% in and 0\.2% out/);
+    expect(body).not.toMatch(/stays in the vault/);
+    expect(body).not.toMatch(/minimum withdrawal/i);
+    expect(body).not.toMatch(/cooldown/i);
+
+    // The figures themselves are untouched.
+    expect(screen.getByText("Pool liquidity")).toBeTruthy();
+    expect(screen.getByText("Participants")).toBeTruthy();
   });
 
   it("carries ONE rate — the income APR is a different quantity and lives in the modal", async () => {

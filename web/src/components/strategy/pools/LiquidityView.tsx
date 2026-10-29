@@ -638,32 +638,6 @@ export function LiquidityView() {
             </dl>
 
             {/*
-              ── Only the COST stays on the card ──
-              "Takes ALGO + USDC. You do not pick a market — the vault
-              allocates across both and rebalances itself." came off on
-              2026-10-28: it describes how the product works, and the modal's
-              "How PEX manages it" explains that at length. The card is the
-              numbers and what they cost.
-
-              The cost does NOT follow it into the modal. The managed option is
-              the only one of the three destinations with a fixed entry/exit
-              cost and a lock, and a card showing its APR but not its spread
-              would flatter it against the direct pools. A reader must not have
-              to open anything to learn what it charges. Values are PEX's own
-              globals on app 3690309167.
-
-              "Stays in the vault" is verified, not assumed — see the long note
-              in CvaAbout.tsx. It reads as a fee to a third party otherwise,
-              which is the opposite of what it is.
-            */}
-            <div className="rounded-lg border border-white/[0.06] bg-black/30 px-3 py-2.5 text-[10.5px] leading-relaxed text-gray-400">
-              Costs <strong className="font-semibold text-gray-300">0.2% in and 0.2% out</strong> —
-              which <strong className="font-semibold text-gray-300">stays in the vault</strong>,
-              not paid to PEX. Plus a ~1 hour withdrawal cooldown and a $5 minimum withdrawal.
-              The direct pools have no such spread.
-            </div>
-
-            {/*
               ── Two vintages, shown as two, because they are ──
               Every DOLLAR on this card is a chain read, seconds old — and so
               is the end of the return window, since the headline now runs to

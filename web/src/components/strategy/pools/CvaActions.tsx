@@ -34,9 +34,38 @@ import {
 import { GatedError, PinDriftError, type LiquidityStage } from "@/lib/strategy/pools/client";
 import { SubmissionUnknownError, SubmissionRefusedError } from "@/lib/strategy/pools/submit";
 import { cvaStoragePaymentFor } from "@/lib/strategy/pools/cvaGroup";
-import { primaryGate, type Gate, type Notice } from "@/lib/strategy/pools/preflight";
+import {
+  primaryGate, phrase, SECONDS_PER_ROUND, type Gate, type Notice,
+} from "@/lib/strategy/pools/preflight";
 
 type Mode = "deposit" | "withdraw";
+
+/**
+ * One standalone cost/timing note, beneath the fields it applies to.
+ *
+ * ── Why these live here and not on the card ──
+ * The card used to carry a single panel: "Costs 0.2% in and 0.2% out — which
+ * stays in the vault, not paid to PEX. Plus a ~1 hour withdrawal cooldown and
+ * a $5 minimum withdrawal." It came off on 2026-10-28 for two reasons.
+ *
+ * It mixed an entry cost, an exit cost and a timing constraint into one
+ * paragraph, so each applied to a different moment and none of them appeared
+ * at the moment it mattered. And "stays in the vault, not paid to PEX" answers
+ * "where does my money go" — a real question, but not the one in front of
+ * someone about to sign. At the signature the fact is simply that it costs
+ * them. The verified long-form explanation stays in the Learn more modal.
+ *
+ * The original panel's claim that the direct pools have no such spread was
+ * also a comparison the page can no longer show: those pools are admin-only.
+ */
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-1.5 rounded-lg border border-white/[0.07] bg-black/25 px-2.5 py-1.5 text-[10.5px] leading-relaxed text-gray-400">
+      <Info className="mt-[2px] h-3 w-3 shrink-0 text-gray-500" aria-hidden="true" />
+      <span>{children}</span>
+    </div>
+  );
+}
 
 const STAGE_LABEL: Record<LiquidityStage, string> = {
   "verifying": "Checking PEX's contracts",
@@ -235,40 +264,74 @@ export function CvaActions({
             onMax={form ? () => setUsdcText(trim(form.usdcMicro / 1e6, 6)) : undefined}
           />
           {depositUsd > 0 && (
-            /*
-              ── Say what will ARRIVE, not just what is going in ──
-              This read "About $25.00 in total" and nothing else, so a $25.00
-              deposit showed up as a $24.95 position with no warning. The gap
-              is the entry spread and it is entirely predictable, which makes
-              it the worst kind of surprise: one we could have named before the
-              signature and did not.
-
-              Credited value is deposit / (1 + s), not deposit x (1 - s). The
-              contract adds the spread to the NAV DENOMINATOR before dividing
-              (cva.teal label51: `nav + nav*bps/10000`, then
-              `value * shares / nav'`), so fewer shares are minted for the same
-              money. The two forms differ in the 5th decimal at these sizes —
-              $24.9501 against $24.9500 on $25 — but the division is what the
-              chain does, and a figure shown next to a signature should be
-              derived the way the contract derives it.
-
-              Spread read live off the vault's globals, never hardcoded: PEX's
-              admin can change it.
-            */
             <p className="text-[10.5px] leading-relaxed text-gray-500">
               About ${depositUsd.toFixed(2)} in total.
-              {form && form.vault.mintSpreadBps > 0 && (
-                <>
-                  {" "}You&apos;ll start with{" "}
-                  <strong className="font-semibold text-gray-300">
-                    ≈${(depositUsd / (1 + form.vault.mintSpreadBps / 10_000)).toFixed(2)}
-                  </strong>{" "}
-                  of shares — the {(form.vault.mintSpreadBps / 100).toFixed(2)}% entry spread
-                  stays in the vault and accrues to the people already in it. It is not a fee
-                  to PEX.
-                </>
-              )}
             </p>
+          )}
+
+          {/*
+            ── The cool-down is a DEPOSIT-side fact ──
+            It is keyed off `last_deposit_round`, so depositing is the act that
+            starts it — but it only ever BLOCKS a withdrawal, where it already
+            appears as a gate. A gate is too late to act on: by then the money
+            is in. Stating it here is the only point at which the reader can
+            still decide.
+
+            "Every deposit restarts it" is not a guess. The deployed vault, on
+            a deposit into an EXISTING box:
+
+                box_get ; assert            # the box is already there
+                ... replace2 0              # new share total
+                global Round ; itob ; replace2 8
+
+            Offset 8 is the field the cool-down assert reads (label58), so a
+            top-up resets the clock on the WHOLE position, not just the part
+            added. The direct pools behave the same way and carry the same
+            warning via `depositRestartsCooldown`.
+
+            Duration is phrased from the vault's live `cooldownRounds` — PEX's
+            admin can change it, and §6b requires a duration rather than "a
+            short cool-down applies". Never the word "lock".
+          */}
+          {form && form.vault.cooldownRounds > 0 && (
+            <Note>
+              Withdrawals open{" "}
+              <strong className="font-semibold text-gray-300">
+                {phrase(form.vault.cooldownRounds * SECONDS_PER_ROUND)}
+              </strong>{" "}
+              after a deposit. Every deposit restarts it, including a top-up to a
+              position you already hold.
+            </Note>
+          )}
+
+          {/*
+            The entry cost, as a cost. Credited value is deposit / (1 + s), not
+            deposit x (1 - s): the contract adds the spread to the NAV
+            DENOMINATOR before dividing (cva.teal label51 — `nav + nav*bps/10000`,
+            then `value * shares / nav'`), so fewer shares are minted for the
+            same money. The two forms differ in the 5th decimal at these sizes
+            ($24.9501 against $24.9500 on $25), but a figure shown beside a
+            signature should be derived the way the chain derives it.
+
+            Read live off the vault's globals, never hardcoded.
+
+            This replaced "the entry spread stays in the vault and accrues to
+            the people already in it. It is not a fee to PEX." That is true and
+            verified, and it is in the Learn more modal — but at the signature
+            the only fact that changes a decision is that $25.00 buys $24.95.
+          */}
+          {form && form.vault.mintSpreadBps > 0 && (
+            <Note>
+              <strong className="font-semibold text-gray-300">
+                {(form.vault.mintSpreadBps / 100).toFixed(2)}% deposit fee
+              </strong>
+              {depositUsd > 0
+                ? <> — ${depositUsd.toFixed(2)} buys about{" "}
+                    <strong className="font-semibold text-gray-300">
+                      ${(depositUsd / (1 + form.vault.mintSpreadBps / 10_000)).toFixed(2)}
+                    </strong>{" "}of shares.</>
+                : <>, taken as you enter.</>}
+            </Note>
           )}
         </div>
       ) : (
@@ -337,9 +400,46 @@ export function CvaActions({
                 no conversion cost.
               </>
             )}{" "}
-            This vault&apos;s minimum withdrawal is $
-            {form ? form.vault.minWithdrawUsd.toFixed(2) : "5.00"}.
           </p>
+        </div>
+      )}
+
+      {/*
+        ── The exit cost had NO home until now ──
+        The card's panel said "0.2% in and 0.2% out" and was the only place the
+        exit spread appeared. Moving the entry half into the deposit screen
+        without this would have deleted the other half outright: the withdraw
+        screen named the minimum and the payout assets, and never what leaving
+        costs.
+
+        `burnSpreadBps`, read live — the same global the contract charges
+        against, and a different one from the mint spread even though both are
+        20bps today.
+
+        The minimum is PEX's, asserted on chain, and it is why our deposit gate
+        exists at all: a position below it cannot be withdrawn.
+      */}
+      {mode === "withdraw" && form && (
+        <div className="mt-2.5 space-y-2">
+          {form.vault.burnSpreadBps > 0 && (
+            <Note>
+              <strong className="font-semibold text-gray-300">
+                {(form.vault.burnSpreadBps / 100).toFixed(2)}% withdrawal fee
+              </strong>
+              {outUsd !== null && outUsd > 0
+                ? <> — about{" "}
+                    <strong className="font-semibold text-gray-300">
+                      ${(outUsd * form.vault.burnSpreadBps / 10_000).toFixed(2)}
+                    </strong>{" "}of this withdrawal.</>
+                : <>, taken from what you take out.</>}
+            </Note>
+          )}
+          <Note>
+            Minimum withdrawal is{" "}
+            <strong className="font-semibold text-gray-300">
+              ${form.vault.minWithdrawUsd.toFixed(2)}
+            </strong>.
+          </Note>
         </div>
       )}
 

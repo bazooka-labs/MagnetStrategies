@@ -32,16 +32,20 @@ type Opts = {
   depositPaused?: boolean;
   withdrawPaused?: boolean;
   address?: string | null;
+  /** Overrides for the vault's own globals — see the "follows the vault" tests. */
+  mintSpreadBps?: number;
+  burnSpreadBps?: number;
+  cooldownRounds?: number;
 };
 
 /** The live vault's globals, so a drift shows up as a failing test. */
 const GLOBALS = (o: Opts): Record<string, number> => ({
   deposit_paused: o.depositPaused ? 1 : 0,
   withdraw_paused: o.withdrawPaused ? 1 : 0,
-  cva_withdraw_cooldown_rounds: 1200,
+  cva_withdraw_cooldown_rounds: o.cooldownRounds ?? 1200,
   min_cva_withdraw_usd: 5_000_000,
-  cva_mint_spread_bps: 20,
-  cva_burn_spread_bps: 20,
+  cva_mint_spread_bps: o.mintSpreadBps ?? 20,
+  cva_burn_spread_bps: o.burnSpreadBps ?? 20,
   max_nav_age_rounds: 5,
   last_nav_update_round: 66_207_187,
   max_cva_deposit_usd_per_call: 0,
@@ -308,22 +312,38 @@ describe("what the vault exit pays out", () => {
  * it is entirely predictable, which makes naming it before the signature the
  * whole fix.
  */
-describe("the entry spread, before you sign", () => {
+/**
+ * The costs became CONTEXTUAL notes on 2026-10-28.
+ *
+ * They used to be one panel on the card — an entry cost, an exit cost and a
+ * timing constraint in a single paragraph, each applying to a different
+ * moment, none of them shown at the moment it mattered. Each now sits beneath
+ * the fields it applies to, and the tests follow them there.
+ */
+describe("the entry cost, before you sign", () => {
   it("names the amount that will arrive, not just the amount going in", async () => {
     await openPanel({ shares: 0 }, "deposit");
     fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
     await waitFor(() => expect(screen.getByText(/About \$25\.00 in total/)).toBeTruthy());
     // The exact figure from the report. 25 / 1.002 = 24.9501 -> $24.95.
-    expect(screen.getByText("≈$24.95")).toBeTruthy();
+    expect(screen.getByText("$24.95")).toBeTruthy();
   });
 
-  it("says where the spread goes, so it does not read as a fee", async () => {
+  it("states it as a COST, leaving where it goes to the modal", async () => {
+    /**
+     * "the entry spread stays in the vault and accrues to the people already
+     * in it. It is not a fee to PEX" was removed deliberately. It is true and
+     * verified against the bytecode, and it remains in the Learn more modal
+     * (CvaAbout.test.tsx pins it there) — but at the signature the only fact
+     * that changes a decision is that $25.00 buys $24.95.
+     */
     await openPanel({ shares: 0 }, "deposit");
     fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
-    await waitFor(() => expect(screen.getByText("≈$24.95")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("$24.95")).toBeTruthy());
+    expect(screen.getByText(/0\.20% deposit fee/)).toBeTruthy();
     const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
-    expect(body).toContain("stays in the vault");
-    expect(body).toContain("not a fee to PEX");
+    expect(body).not.toContain("stays in the vault");
+    expect(body).not.toContain("not a fee to PEX");
   });
 
   it("derives the figure the way the contract does, not with a flat multiply", async () => {
@@ -338,14 +358,126 @@ describe("the entry spread, before you sign", () => {
     await openPanel({ shares: 0 }, "deposit");
     fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "10000" } });
     await waitFor(() => expect(screen.getByText(/About \$10,?000\.00 in total/)).toBeTruthy());
-    expect(screen.getByText("≈$9980.04")).toBeTruthy();
+    expect(screen.getByText("$9980.04")).toBeTruthy();
   });
 
-  it("reads the spread off the vault rather than hardcoding 0.2%", async () => {
-    // PEX's admin can change it; a hardcoded string would quietly go stale.
-    await openPanel({ shares: 0 }, "deposit");
+  it("FOLLOWS the vault's spread rather than hardcoding 0.2%", async () => {
+    /**
+     * PEX's admin can change `cva_mint_spread_bps`, and a hardcoded string
+     * would go stale beside a signature.
+     *
+     * Asserting "0.20%" against a 20bps fixture cannot catch that — the string
+     * and the read agree, so a hardcoded literal passes. The previous version
+     * of this test did exactly that and survived the mutation. This one moves
+     * the vault instead: at 50bps the copy must say 0.50%, and $25 must buy
+     * $24.88 (25 / 1.005), not $24.95.
+     */
+    await openPanel({ shares: 0, mintSpreadBps: 50 }, "deposit");
     fireEvent.change(screen.getAllByPlaceholderText("0")[1], { target: { value: "25" } });
-    await waitFor(() => expect(screen.getByText("≈$24.95")).toBeTruthy());
-    expect(screen.getByText(/0\.20% entry spread/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/0\.50% deposit fee/)).toBeTruthy());
+    expect(screen.getByText("$24.88")).toBeTruthy();
+    expect(screen.queryByText(/0\.20% deposit fee/)).toBeNull();
+  });
+
+  it("shows the rate before an amount is typed", async () => {
+    // The cost is a property of the vault, not of the amount. A reader
+    // deciding whether to deposit at all should not have to type first.
+    await openPanel({ shares: 0 }, "deposit");
+    expect(screen.getByText(/0\.20% deposit fee/)).toBeTruthy();
+    expect(screen.getByText(/taken as you enter/)).toBeTruthy();
+  });
+});
+
+describe("the cool-down, stated where it can still be acted on", () => {
+  /**
+   * It is keyed off `last_deposit_round`, so DEPOSITING starts it, but it only
+   * ever blocks a WITHDRAWAL — where it already appears as a gate. A gate is
+   * too late: the money is in by then. The deposit screen is the only point
+   * at which the reader can still decide.
+   */
+  it("appears on the deposit side, with a real duration", async () => {
+    await openPanel({ shares: 0 }, "deposit");
+    // 1200 rounds x 2.8s = 3360s -> "56 minutes". Never "a short cool-down".
+    expect(screen.getByText(/Withdrawals open/)).toBeTruthy();
+    expect(screen.getByText("56 minutes")).toBeTruthy();
+  });
+
+  it("FOLLOWS the vault's cooldownRounds", async () => {
+    // 2400 rounds x 2.8s = 6720s = 112 min -> "1h 52m".
+    await openPanel({ shares: 0, cooldownRounds: 2400 }, "deposit");
+    expect(screen.getByText("1h 52m")).toBeTruthy();
+    expect(screen.queryByText("56 minutes")).toBeNull();
+  });
+
+  it("says nothing at all when the vault has no cool-down", async () => {
+    // The contract skips the assert entirely at 0, so claiming a wait would
+    // be inventing a constraint the chain does not impose.
+    await openPanel({ shares: 0, cooldownRounds: 0 }, "deposit");
+    expect(screen.queryByText(/Withdrawals open/)).toBeNull();
+  });
+
+  it("says a TOP-UP restarts it, because the contract does", async () => {
+    /**
+     * Verified in the deployed vault, on a deposit into an existing box:
+     *
+     *     box_get ; assert          # the box is already there
+     *     ... replace2 0            # new share total
+     *     global Round ; itob ; replace2 8
+     *
+     * Offset 8 is the field the cool-down assert reads (label58), so the clock
+     * resets on the WHOLE position, not just the part added. Copy that implied
+     * a one-time onboarding cost would be wrong.
+     */
+    await openPanel({ shares: 12 }, "deposit");
+    expect(screen.getByText(/Every deposit restarts it/)).toBeTruthy();
+    expect(screen.getByText(/a position you already hold/)).toBeTruthy();
+  });
+
+  it("never says the position is locked", async () => {
+    // Per the §6b wording rule the gate copy already follows.
+    await openPanel({ shares: 12 }, "deposit");
+    const body = (document.body.textContent ?? "").toLowerCase();
+    for (const w of ["locked", "frozen", "cannot withdraw"]) {
+      expect(body, w).not.toContain(w);
+    }
+  });
+});
+
+describe("the exit cost, which had no home before", () => {
+  /**
+   * The card's panel was the ONLY place the exit spread appeared. Moving the
+   * entry half to the deposit screen without this would have deleted the other
+   * half: the withdraw screen named the minimum and the payout assets, and
+   * never what leaving costs.
+   */
+  it("names the withdrawal fee on the withdraw side", async () => {
+    await openPanel({ shares: 12 }, "withdraw");
+    expect(screen.getByText(/0\.20% withdrawal fee/)).toBeTruthy();
+  });
+
+  it("FOLLOWS the vault's burn spread, which is its own global", async () => {
+    // A separate global from the mint spread even though both read 20bps
+    // today, so the copy must not derive one from the other.
+    await openPanel({ shares: 12, burnSpreadBps: 75 }, "withdraw");
+    expect(screen.getByText(/0\.75% withdrawal fee/)).toBeTruthy();
+  });
+
+  it("costs the actual amount once one is entered", async () => {
+    await openPanel({ shares: 12 }, "withdraw");
+    fireEvent.change(screen.getAllByPlaceholderText("0")[0], { target: { value: "10" } });
+    // 10 x 0.002 = $0.02.
+    await waitFor(() => expect(screen.getByText("$0.02")).toBeTruthy());
+  });
+
+  it("keeps the minimum withdrawal, read from the vault", async () => {
+    await openPanel({ shares: 12 }, "withdraw");
+    expect(screen.getByText(/Minimum withdrawal is/)).toBeTruthy();
+    expect(screen.getByText("$5.00")).toBeTruthy();
+  });
+
+  it("does not show the deposit fee on the withdraw side, or vice versa", async () => {
+    await openPanel({ shares: 12 }, "withdraw");
+    expect(screen.queryByText(/deposit fee/)).toBeNull();
+    expect(screen.queryByText(/Withdrawals open .* after a deposit/)).toBeNull();
   });
 });
