@@ -231,11 +231,29 @@ function CvaRateBox({ stats, stale, sharePrice }: {
    */
   const ann = pickLongest(stats, sharePrice);
   return (
-    /* mt-1 adds air above: the header row and the Learn more button sat
-       close enough to the halo that the two read as one block. py-5 balances
-       the box around its contents — the figure is tall, so equal padding
-       top and bottom leaves it looking high. */
-    <div className="glow-white mb-2 mt-1 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
+    /*
+      ── mt-4, and why not less ──
+      The heading carries `glow-text-card` (radii to 34px) and this box now
+      carries a white neon ring with a 60px bloom. At the original `mt-1` the
+      two halos overlapped across the whole gap and read as one continuous
+      bright band rather than two elements.
+
+      Swept the margin and sampled the luminance trough between them, in the
+      column under the heading glyphs:
+
+          mt    gap   trough   vs card background
+           4px  20px    27.4   1.53x   <- merged
+          12px  28px    19.3   1.08x
+          16px  32px    16.4   0.91x   <- separated
+          24px  40px    14.4   0.81x   diminishing
+
+      16px is where the trough reaches the card background; past it the gap
+      grows without separating anything further.
+
+      py-4 balances the box around its contents — the figure is tall, so equal
+      padding top and bottom leaves it looking high.
+    */
+    <div className="glow-white mb-2 mt-4 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
       {/*
         ── One figure, inline with its label ──
         The label and the number read as a single statement, and the
@@ -544,7 +562,7 @@ export function LiquidityView() {
                 radii are tuned for a 48-60px splash title and dilute at
                 heading size. The card variant has the same hue family with
                 tighter radii. All three were rasterised and compared; only
-                this one reads as a glow on a 22px heading. */}
+                this one reads as a glow at heading size. */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

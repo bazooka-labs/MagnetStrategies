@@ -96,6 +96,26 @@ against the card ring's **114**, so the box deliberately sits 1.46x above the
 frame it rests on, and the bloom reads **70.0** at 8px out against a **38.7**
 background.
 
+**Two glows need room between them.** The heading carries `glow-text-card`
+(radii to 34px) and the box a 60px bloom, so at the original `mt-1` the halos
+overlapped across the entire gap and read as one bright band rather than two
+elements. Swept the margin and sampled the luminance trough in the column
+under the heading glyphs:
+
+| `mt` | gap | trough | vs card background |
+|---|---|---|---|
+| 4px | 20px | 27.4 | **1.53x** — merged |
+| 12px | 28px | 19.3 | 1.08x |
+| **16px** | **32px** | **16.4** | **0.91x** — separated |
+| 24px | 40px | 14.4 | 0.81x — diminishing |
+
+16px is where the trough reaches the card background; past it the gap grows
+without separating anything further. The shipped build measures 16.4, matching
+the sweep exactly. There is no test for this — jsdom has no layout engine, and
+asserting the literal class would be the grep-style test this repo already got
+burned by — so the table lives in the code comment, where anyone tempted to
+tighten the spacing will see what it costs.
+
 **Card typography is ~15% up from the original**, landing on the sizes the
 Tokens and MagnetFi cards already use: 12px stat labels and 16px mono values
 against `HeaderMetric`'s 12px/18px. Verified from `getComputedStyle` on the
