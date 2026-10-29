@@ -78,23 +78,42 @@ modal, and `CvaAbout.test.tsx` pins each one there — deleting a box is not a
 reason to stop saying what it said.
 
 The C-Vault is the hero: `glow-text-card` heading, a drifting blob, and the
-headline in the token pages' metric box (`text-green-400`) inside a white neon
+headline in the token pages' metric box (`text-green-400`) inside a teal neon
 ring. The direct pool cards keep the quieter `YieldFigure` — a page where
 everything glows ranks nothing.
 
-**Neon needs an edge.** `.glow-white` was three blurs and no border, and it
+**Neon needs an edge.** `.glow-teal` was three blurs and no border, and it
 rendered as haze rather than as the neon the card frame has. What makes
 `MAGNET_GLOW` read as neon is `ring-1 ring-magnet-400/60` — a crisp 1px lit
 edge with the bloom behind it; a blur alone has nothing to bloom off. The
 class now mirrors that structure in white (ring, outer bloom, inner lift) and
-is asserted by `src/app/glowWhite.test.ts`, which parses the declaration with
+is asserted by `src/app/glowTeal.test.ts`, which parses the declaration with
 comments stripped, because the class carries a long comment that a grep-based
 test would match on prose alone.
 
-Measured rather than eyeballed: the white ring peaks at luminance **167**
-against the card ring's **114**, so the box deliberately sits 1.46x above the
-frame it rests on, and the bloom reads **70.0** at 8px out against a **38.7**
-background.
+**Teal, not the figure's own green.** The figure is conditionally toned —
+`text-green-400` while the annualized return is positive, `text-red-300` when
+negative, and the 30-day window has already read −26% on this vault. A glow
+matching the figure would ring a loss in red, dressing bad news as an alert;
+a glow fixed to green would ring one in celebration. Teal (`text-teal-400`,
+`rgb(45, 212, 191)` — STAT_TONES.teal, already on the token pages' metric
+boxes) belongs to neither state, so the frame stays neutral whichever way the
+number goes. Rendered against a forced −26% to confirm it.
+
+Measured rather than eyeballed:
+
+| | peak luminance | bloom 8px out |
+|---|---|---|
+| card's purple ring (the reference) | 114 | — |
+| **teal ring (shipped)** | **129.7** | 46.9 vs a 30.5 background |
+| an earlier white version | 167 | 70.0 vs 38.7 |
+
+Teal's alphas are higher than the white version's (0.62/0.60 against
+0.50/0.52) because teal is intrinsically darker — at full strength it carries
+luminance 175 against white's 255, so equal alpha renders visibly dimmer.
+It is not pushed to white's 167: a saturated hue reads more intense than its
+luminance suggests, and 129.7 already sits above the purple frame it has to
+out-rank.
 
 **Two glows need room between them.** The heading carries `glow-text-card`
 (radii to 34px) and the box a 60px bloom, so at the original `mt-1` the halos
@@ -110,8 +129,8 @@ under the heading glyphs:
 | 24px | 40px | 14.4 | 0.81x — diminishing |
 
 16px is where the trough reaches the card background; past it the gap grows
-without separating anything further. The shipped build measures 16.4, matching
-the sweep exactly. There is no test for this — jsdom has no layout engine, and
+without separating anything further. The shipped build measured 16.4 with the
+white glow and 14.7 with the dimmer teal — separated either way. There is no test for this — jsdom has no layout engine, and
 asserting the literal class would be the grep-style test this repo already got
 burned by — so the table lives in the code comment, where anyone tempted to
 tighten the spacing will see what it costs.

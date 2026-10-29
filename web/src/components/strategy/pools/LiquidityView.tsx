@@ -253,7 +253,7 @@ function CvaRateBox({ stats, stale, sharePrice }: {
       py-4 balances the box around its contents — the figure is tall, so equal
       padding top and bottom leaves it looking high.
     */
-    <div className="glow-white mb-2 mt-4 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
+    <div className="glow-teal mb-2 mt-4 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
       {/*
         ── One figure, inline with its label ──
         The label and the number read as a single statement, and the

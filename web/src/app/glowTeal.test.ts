@@ -1,5 +1,5 @@
 /**
- * `.glow-white` is neon, and neon needs an EDGE.
+ * `.glow-teal` is neon, and neon needs an EDGE.
  *
  * The first version of this class was three blurs and nothing else. It
  * rendered as a soft cloud rather than the lit edge the card's own
@@ -32,14 +32,14 @@ function declaration(selector: string, prop: string): string {
   return m![1].replace(/\s+/g, " ").trim();
 }
 
-describe(".glow-white", () => {
-  const shadow = declaration(".glow-white", "box-shadow");
+describe(".glow-teal", () => {
+  const shadow = declaration(".glow-teal", "box-shadow");
 
   it("carries a 1px ring, not only blurs", () => {
     // `0 0 0 1px <colour>` — no blur, 1px spread. Without this the class is
-    // haze: measured, the ringed version peaks at luminance 167 against the
-    // card background's 38.7.
-    expect(shadow).toMatch(/0\s+0\s+0\s+1px\s+rgba\(255,\s*255,\s*255/);
+    // haze: measured, the ringed version peaks well above the card
+    // background, the ringless one barely at all.
+    expect(shadow).toMatch(/^0\s+0\s+0\s+1px\s+rgba\(/);
   });
 
   it("never lets the spread cancel the blur", () => {
@@ -68,11 +68,26 @@ describe(".glow-white", () => {
     }
   });
 
-  it("stays white, so it lifts off the purple card rather than thickening it", () => {
-    // Purple glow on a purple-framed card reads as more frame, not as a
-    // highlight. Every term must be white.
+  it("is teal — not the purple frame, and not the figure's own green", () => {
+    /**
+     * Two colours are wrong here for different reasons.
+     *
+     * PURPLE: a purple glow on a purple-framed card reads as more frame
+     * rather than as a highlight, which is what the box is for.
+     *
+     * GREEN: the figure inside is conditionally toned — `text-green-400`
+     * while the return is positive, `text-red-300` when negative, and the
+     * 30-day window has already read −26% on this vault. A glow matching the
+     * figure would ring a loss in red; a glow fixed to green would ring one
+     * in celebration. Teal belongs to neither state.
+     *
+     * rgb(45, 212, 191) is `text-teal-400`, read from the rendered page —
+     * STAT_TONES.teal, already in use on the token pages' metric boxes.
+     */
     for (const term of shadow.split(/,(?![^(]*\))/)) {
-      expect(term, term).toMatch(/rgba\(255,\s*255,\s*255/);
+      expect(term, term).toMatch(/rgba\(45,\s*212,\s*191/);
+      expect(term, term).not.toMatch(/rgba\(74,\s*222,\s*128/);  // green-400
+      expect(term, term).not.toMatch(/rgba\(252,\s*165,\s*165/); // red-300
     }
   });
 });
