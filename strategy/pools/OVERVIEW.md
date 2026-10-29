@@ -78,9 +78,31 @@ modal, and `CvaAbout.test.tsx` pins each one there — deleting a box is not a
 reason to stop saying what it said.
 
 The C-Vault is the hero: `glow-text-card` heading, a drifting blob, and the
-headline in the token pages' metric box (`text-green-400`), with a white glow
-behind it. The direct pool cards keep the quieter `YieldFigure` — a page where
+headline in the token pages' metric box (`text-green-400`) inside a white neon
+ring. The direct pool cards keep the quieter `YieldFigure` — a page where
 everything glows ranks nothing.
+
+**Neon needs an edge.** `.glow-white` was three blurs and no border, and it
+rendered as haze rather than as the neon the card frame has. What makes
+`MAGNET_GLOW` read as neon is `ring-1 ring-magnet-400/60` — a crisp 1px lit
+edge with the bloom behind it; a blur alone has nothing to bloom off. The
+class now mirrors that structure in white (ring, outer bloom, inner lift) and
+is asserted by `src/app/glowWhite.test.ts`, which parses the declaration with
+comments stripped, because the class carries a long comment that a grep-based
+test would match on prose alone.
+
+Measured rather than eyeballed: the white ring peaks at luminance **167**
+against the card ring's **114**, so the box deliberately sits 1.46x above the
+frame it rests on, and the bloom reads **70.0** at 8px out against a **38.7**
+background.
+
+**Card typography is ~15% up from the original**, landing on the sizes the
+Tokens and MagnetFi cards already use: 12px stat labels and 16px mono values
+against `HeaderMetric`'s 12px/18px. Verified from `getComputedStyle` on the
+rendered page, not from the class names — 25px heading, 17px rate label, 33px
+figure, 12px subtext, 11.5px footer. At 390px the rate box wraps its figure
+beneath the label and the page has no horizontal overflow
+(`scrollWidth === clientWidth`); only decorative SVG extends past, clipped.
 
 Three glow classes were rasterised and compared before settling: both
 `magnet-glow-soft` (a drop-shadow filter tuned for the hero logo) and

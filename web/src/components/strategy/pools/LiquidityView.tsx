@@ -259,17 +259,17 @@ function CvaRateBox({ stats, stale, sharePrice }: {
       */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <p className="text-[15px] font-semibold leading-snug text-gray-200">
+          <p className="text-[17px] font-semibold leading-snug text-gray-200">
             {ann ? "12 Month Annualized Return" : "Fees + Yield APR"}
           </p>
-          <p className="mt-0.5 text-[10.5px] leading-snug text-gray-500">
+          <p className="mt-0.5 text-xs leading-snug text-gray-500">
             {ann
               ? `Derived from past ${Math.round(ann.days)} days performance`
               : "Past 7 days · published by PEX"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <p className={`font-mono text-[29px] font-bold leading-none ${
+          <p className={`font-mono text-[33px] font-bold leading-none ${
             ann && ann.annualizedPct < 0 ? "text-red-300" : "text-green-400"
           }`}>
             {ann
@@ -306,8 +306,8 @@ function Stat({ label, value, tone }: {
 }) {
   return (
     <div>
-      <dt className="text-[10.5px] text-gray-500">{label}</dt>
-      <dd className={`mt-0.5 font-mono text-sm ${
+      <dt className="text-xs text-gray-500">{label}</dt>
+      <dd className={`mt-0.5 font-mono text-base ${
         tone === "up" ? "text-green-400" : tone === "down" ? "text-red-300" : "text-gray-200"
       }`}>{value}</dd>
     </div>
@@ -549,7 +549,7 @@ export function LiquidityView() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-magnet-400" aria-hidden="true" />
-                  <h2 className="glow-text-card font-display text-[22px] font-bold tracking-tight text-white">
+                  <h2 className="glow-text-card font-display text-[25px] font-bold tracking-tight text-white">
                     C-Vault Strategy
                   </h2>
                 </div>
@@ -654,7 +654,7 @@ export function LiquidityView() {
               figure is current, its history is not.
             */}
             {(readAt || perf) && (
-              <p className="text-[10px] leading-relaxed text-gray-600">
+              <p className="text-[11.5px] leading-relaxed text-gray-600">
                 {readAt && <>All figures read{" "}
                   <span className="text-gray-500">
                     {readAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

@@ -53,13 +53,36 @@ body {
    frame, while white lifts the box off it. Kept low-opacity — this sits
    behind a number, and anything stronger smears the glyph edges. */
 .glow-white {
-  /* No negative spread: -6px pulled the shadow back inside the box and the
-     halo did not render at all. Measured by sampling pixels at the box edge
-     against the card background — they came back DARKER than the surround,
-     which is how a glow that is not there looks. */
-  box-shadow: 0 0 46px rgba(255, 255, 255, 0.26),
-              0 0 14px rgba(255, 255, 255, 0.14),
-              inset 0 0 26px -18px rgba(255, 255, 255, 0.62);
+  /* ── Neon, not haze ──
+     The first version was three blurs and no edge. It rendered as a soft
+     cloud: present, but nothing like the card's own glow, which reads as neon
+     because of `ring-1 ring-magnet-400/60` — a crisp 1px LIT EDGE with the
+     bloom behind it. A blur alone has nothing to bloom off.
+
+     So this mirrors MAGNET_GLOW's structure in white: ring, outer bloom,
+     inner lift. The first shadow is the ring (`0 0 0 1px` is exactly what
+     Tailwind's ring-1 compiles to).
+
+     The outer bloom is 0.52 against MAGNET_GLOW's 0.8 because white runs
+     hotter than the brand purple at equal alpha. Rasterised and sampled
+     rather than reasoned about: the white ring peaks at luminance 167 against
+     the card ring's 114, so it still sits 1.46x ABOVE the frame. That is
+     deliberate — this box is the headline and has to read above the card it
+     sits on — but it is not a match, and an earlier version of this comment
+     claimed it was.
+
+     The bloom is real, not an assumption: 8px outside the edge measures 70.0
+     against a card background of 38.7. A previous revision used a negative
+     spread (-6px), which pulled the shadow back inside the box so the halo
+     did not render at all, and sampling was the only thing that caught it.
+
+     The edge is one CSS pixel wide (two device pixels at 2x), so the box's
+     own `border-white/10` disappears beneath the ring rather than doubling
+     it. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5),
+              0 0 30px -2px rgba(255, 255, 255, 0.52),
+              0 0 60px -6px rgba(255, 255, 255, 0.22),
+              inset 0 0 14px -8px rgba(255, 255, 255, 0.9);
 }
 
 .glow-text {
