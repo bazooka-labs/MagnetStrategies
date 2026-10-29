@@ -359,6 +359,34 @@ describe("the C-Vault card", () => {
     expect(screen.queryByText(/opposite trade positions/)).toBeNull();
   });
 
+  /**
+   * "Takes ALGO + USDC. You do not pick a market — the vault allocates across
+   * both and rebalances itself." came off the card on 2026-10-28. It explains
+   * how the product WORKS, which is the modal's job; the card is the numbers.
+   *
+   * The cost deliberately did NOT follow it. The managed option is the only
+   * one of the three destinations carrying a fixed entry/exit cost and a lock,
+   * so a card showing its APR without its spread would flatter it against the
+   * direct pools. Both halves are asserted, because the obvious next edit is
+   * to sweep the whole panel into the modal.
+   */
+  it("drops the how-it-works prose but KEEPS what it costs", async () => {
+    bundle = BUNDLE;
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("+183%")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+
+    expect(body).not.toMatch(/Takes ALGO \+ USDC/);
+    expect(body).not.toMatch(/You do not pick a market/);
+    expect(body).not.toMatch(/rebalances itself/);
+
+    // The spread, the lock and the minimum stay in front of the reader.
+    expect(body).toMatch(/0\.2% in and 0\.2% out/);
+    expect(body).toMatch(/stays in the vault/);
+    expect(body).toMatch(/\$5 minimum withdrawal/);
+  });
+
   it("carries ONE rate — the income APR is a different quantity and lives in the modal", async () => {
     /**
      * 5.11% income against a +183% total on 2026-10-28, because income was

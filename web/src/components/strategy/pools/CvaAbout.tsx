@@ -87,7 +87,8 @@ const SECTIONS: { icon: React.ReactNode; title: string; body: React.ReactNode }[
     title: "How PEX manages it",
     body: (
       <>
-        This is the <em>managed</em> option, which is the difference between it and depositing into
+        You deposit <strong className="font-semibold text-gray-300">ALGO + USDC</strong>. This is
+        the <em>managed</em> option, which is the difference between it and depositing into
         a single market directly. The vault <strong className="font-semibold text-gray-300">spans
         both markets</strong> — ALGO/USD and BTC/USD — and PEX decides how much sits in each and
         rebalances between them; it marks the vault&apos;s net asset value on chain, and that mark
