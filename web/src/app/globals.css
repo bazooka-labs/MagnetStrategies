@@ -53,39 +53,51 @@ body {
    frame, while white lifts the box off it. Kept low-opacity — this sits
    behind a number, and anything stronger smears the glyph edges. */
 /* ── The rate box's neon ──
-   Teal, `rgb(45, 212, 191)` — `text-teal-400`, the accent the token pages'
-   metric boxes already use (STAT_TONES.teal).
+   `magnet-300`, rgb(216, 180, 254) — the lavender rung of the brand scale.
 
-   NOT the figure's own green. The figure is conditionally toned: green while
-   the annualized return is positive, `text-red-300` when it is negative, and
-   the 30-day window has already read −26% on this vault. A glow matching the
-   figure would therefore ring a loss in red, which dresses bad news as an
-   alert, while a glow hardcoded to green would ring it in celebration. Teal
-   belongs to neither state, so the frame stays neutral whichever way the
-   number goes — and it is already a Magnet accent rather than a new colour.
+   ── Named for its ROLE, not its hue ──
+   This class has been white, then teal, then lavender inside a single day. A
+   hue in the name is a comment that goes stale the moment anyone retunes it,
+   and `.glow-teal` holding lavender is worse than no name at all. It is "the
+   headline ring on the rate box", so that is what it is called.
+
+   ── Why not the figure's own green ──
+   The figure inside is conditionally toned: `text-green-400` while the
+   annualized return is positive, `text-red-300` when negative, and the
+   30-day window has already read −26% on this vault. A ring matching the
+   figure would frame a loss in red, dressing bad news as an alert; a ring
+   fixed to green would frame one in celebration. Lavender belongs to neither
+   state, so the frame stays neutral whichever way the number goes.
+
+   Teal shipped first and was neutral in the same way, but sat close enough to
+   `text-green-400` to read as the same family as the number it framed.
+
+   ── Why magnet-300 and not the card's own magnet-400 ──
+   The card frame is `ring-magnet-400/60`. Reusing that exact hue makes one
+   colour carry both the frame and the headline, so the box can only out-rank
+   the card on brightness — and it took 0.967 alpha, nearly opaque, to get
+   there. magnet-300 is a rung lighter: it separates by hue AND brightness,
+   and reaches the same peak at 0.66.
+
+   Four hues were rendered at matched peak luminance (~150) and compared
+   before this was chosen; the figures are in strategy/pools/OVERVIEW.md.
 
    ── Neon needs an edge ──
-   The first version of this class was three blurs and no border. It rendered
-   as a soft cloud, nothing like the card's own glow, which reads as neon
-   because of `ring-1 ring-magnet-400/60` — a crisp 1px LIT EDGE with the
-   bloom behind it. A blur alone has nothing to bloom off. So this mirrors
-   MAGNET_GLOW's structure: ring, outer bloom, inner lift. The first shadow is
-   the ring (`0 0 0 1px` is what Tailwind's ring-1 compiles to).
-
-   Alphas are higher than the white version's (0.62/0.60 against 0.50/0.52)
-   because teal is darker: at full strength it carries luminance 175 against
-   white's 255, so equal alpha renders visibly dimmer. Tuned by rasterising
-   and sampling the peak, not by reasoning — see the figures in
-   `glowTeal.test.ts` and in strategy/pools/OVERVIEW.md.
+   The first version of this class was three blurs and no border, and rendered
+   as a soft cloud. What makes the card frame read as neon is `ring-1` — a
+   crisp 1px LIT EDGE with the bloom behind it; a blur alone has nothing to
+   bloom off. So this mirrors MAGNET_GLOW's structure: ring, outer bloom,
+   inner lift. The first shadow is the ring (`0 0 0 1px` is what Tailwind's
+   ring-1 compiles to).
 
    No spread that cancels the blur: an early revision used `0 0 34px -6px`,
    which pulled the shadow inside the box so the halo did not render at all,
    and only pixel sampling caught it. */
-.glow-teal {
-  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.62),
-              0 0 30px -2px rgba(45, 212, 191, 0.60),
-              0 0 60px -6px rgba(45, 212, 191, 0.26),
-              inset 0 0 14px -8px rgba(45, 212, 191, 0.9);
+.glow-accent {
+  box-shadow: 0 0 0 1px rgba(216, 180, 254, 0.66),
+              0 0 30px -2px rgba(216, 180, 254, 0.64),
+              0 0 60px -6px rgba(216, 180, 254, 0.28),
+              inset 0 0 14px -8px rgba(216, 180, 254, 0.9);
 }
 
 .glow-text {

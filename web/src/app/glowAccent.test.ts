@@ -1,5 +1,5 @@
 /**
- * `.glow-teal` is neon, and neon needs an EDGE.
+ * `.glow-accent` is neon, and neon needs an EDGE.
  *
  * The first version of this class was three blurs and nothing else. It
  * rendered as a soft cloud rather than the lit edge the card's own
@@ -32,8 +32,8 @@ function declaration(selector: string, prop: string): string {
   return m![1].replace(/\s+/g, " ").trim();
 }
 
-describe(".glow-teal", () => {
-  const shadow = declaration(".glow-teal", "box-shadow");
+describe(".glow-accent", () => {
+  const shadow = declaration(".glow-accent", "box-shadow");
 
   it("carries a 1px ring, not only blurs", () => {
     // `0 0 0 1px <colour>` — no blur, 1px spread. Without this the class is
@@ -68,26 +68,31 @@ describe(".glow-teal", () => {
     }
   });
 
-  it("is teal — not the purple frame, and not the figure's own green", () => {
+  it("is magnet-300 — not the card frame, and not the figure's own green", () => {
     /**
-     * Two colours are wrong here for different reasons.
+     * Three colours are wrong here, each for its own reason.
      *
-     * PURPLE: a purple glow on a purple-framed card reads as more frame
-     * rather than as a highlight, which is what the box is for.
+     * GREEN / RED: the figure inside is conditionally toned —
+     * `text-green-400` while the return is positive, `text-red-300` when
+     * negative, and the 30-day window has already read −26% on this vault. A
+     * ring matching the figure would frame a loss in red; a ring fixed to
+     * green would frame one in celebration. Both are rejected by name so the
+     * next person who reaches for "just match the figure" gets a failing
+     * test rather than a red halo around a loss.
      *
-     * GREEN: the figure inside is conditionally toned — `text-green-400`
-     * while the return is positive, `text-red-300` when negative, and the
-     * 30-day window has already read −26% on this vault. A glow matching the
-     * figure would ring a loss in red; a glow fixed to green would ring one
-     * in celebration. Teal belongs to neither state.
+     * MAGNET-400: the card's own `ring-magnet-400/60`. Sharing that hue makes
+     * one colour carry both the frame and the headline, leaving the box to
+     * out-rank the card on brightness alone — and it needed 0.967 alpha,
+     * nearly opaque, to manage it.
      *
-     * rgb(45, 212, 191) is `text-teal-400`, read from the rendered page —
-     * STAT_TONES.teal, already in use on the token pages' metric boxes.
+     * magnet-300, rgb(216, 180, 254), is a rung lighter: it separates by hue
+     * and brightness both, and reaches the same peak at 0.66.
      */
     for (const term of shadow.split(/,(?![^(]*\))/)) {
-      expect(term, term).toMatch(/rgba\(45,\s*212,\s*191/);
+      expect(term, term).toMatch(/rgba\(216,\s*180,\s*254/);
       expect(term, term).not.toMatch(/rgba\(74,\s*222,\s*128/);  // green-400
       expect(term, term).not.toMatch(/rgba\(252,\s*165,\s*165/); // red-300
+      expect(term, term).not.toMatch(/rgba\(192,\s*132,\s*252/); // magnet-400, the frame
     }
   });
 });
