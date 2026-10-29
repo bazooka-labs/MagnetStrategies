@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 import { RAISED_AMBER } from "@/components/raisedButton";
 import { PerformanceChart } from "./PerformanceChart";
-import type { PoolStats, PerfPeriod } from "@/lib/strategy/pools/performance";
-import { benchmarkLabel } from "@/lib/strategy/pools/performance";
+import type { PoolStats, PoolReturn } from "@/lib/strategy/pools/performance";
+import { holdingPeriods, pickLongest } from "@/lib/strategy/pools/performance";
 
 /**
  * "What am I actually depositing into?" — the C-Vault explainer.
@@ -101,53 +101,63 @@ const SECTIONS: { icon: React.ReactNode; title: string; body: React.ReactNode }[
 ];
 
 /** One row of the return ladder. */
-function ReturnRow({ period, stats }: { period: PerfPeriod; stats: PoolStats }) {
-  const r = stats.returns[period];
-  const label = period === "total" ? "All time" : `${period.replace("d", "")} days`;
-  if (!r) {
-    const why = stats.reasons[period];
-    return (
-      <div className="flex items-baseline justify-between gap-3 py-1.5">
-        <span className="text-[11.5px] text-gray-500">{label}</span>
-        <span className="text-[11px] text-gray-600">
-          {why === "insufficient_history" || why === "no_valid_completed_samples"
-            ? "not enough history yet"
-            : "unavailable"}
-        </span>
-      </div>
-    );
-  }
+/**
+ * One window of the holding period return.
+ *
+ * ── One definition, one number ──
+ * This row used to carry TWO figures: the share-price return and, beside it,
+ * `+10.48pp vs benchmark`. Two numbers on one line invite the reader to treat
+ * them as alternative readings of the same thing, and they are not. The
+ * benchmark figure is a DIFFERENCE — how far the vault beat simply holding
+ * ALGO and USDC — not a return anyone earned.
+ *
+ * Measured 2026-10-29, the 29-day window shows why that distinction is not
+ * pedantry: the vault returned **+1.27%** while the benchmark LOST 9.21%, so
+ * the comparison reads +10.48pp. Presenting that as the return overstates
+ * what a depositor made by roughly eight times.
+ *
+ * So the comparison keeps its place as the grey line on the chart below,
+ * where it reads as a comparison, and the number here is the return.
+ */
+function ReturnRow({ ret }: { ret: PoolReturn }) {
+  const label = `${Math.round(ret.days)} days`;
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="text-[11.5px] text-gray-500">
-        {label}
-        {r.hasGaps && <span className="text-amber-300/90"> · gaps</span>}
-      </span>
-      <span className="flex items-baseline gap-2.5">
-        <span className={`font-mono text-[13px] font-semibold ${
-          r.productPct >= 0 ? "text-green-400" : "text-red-300"
-        }`}>
-          {signed(r.productPct)}%
-        </span>
-        {/* Spelled out, not "vs bm": the whole point of this column is that
-            the reader understands it is a COMPARISON, and an abbreviation they
-            have to decode is the same as no column. */}
-        <span className="w-[132px] text-right font-mono text-[11px] text-gray-500">
-          {signed(r.vsHoldingPoints)}pp vs benchmark
-        </span>
+    <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.05] py-2 last:border-0">
+      <span className="text-[12px] text-gray-400">{label}</span>
+      <span className={`font-mono text-[15px] font-semibold ${
+        ret.productPct >= 0 ? "text-green-400" : "text-red-300"
+      }`}>
+        {signed(ret.productPct)}%
       </span>
     </div>
   );
 }
 
-export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boolean }) {
+export function CvaAbout({ stats, stale, sharePrice = null }: {
+  stats: PoolStats | null;
+  stale: boolean;
+  /**
+   * The vault's live share price, passed through from the card.
+   *
+   * Only so the annualized figure quoted in here is built by the SAME call
+   * the card's headline uses — see `ann` below. Without it the modal would
+   * quote the bundle-only number and sit a few points off the card, which is
+   * precisely the disconnect this section exists to close.
+   */
+  sharePrice?: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const i = stats?.income ?? null;
-  const thirty = stats?.returns["30d"] ?? null;
+  /** Deduped by span: `90d` and `total` are one window under two labels. */
+  const periods = holdingPeriods(stats);
   /** The chart uses the longest real window — never a label, never padded. */
-  const longest = (["total", "90d", "30d", "7d"] as const)
-    .map((p) => stats?.returns[p])
-    .find((r): r is NonNullable<typeof r> => !!r && r.series.length > 1) ?? null;
+  const longest = [...periods].reverse().find((r) => r.series.length > 1) ?? null;
+  /** Identical to the card's headline, live price and all. */
+  const ann = pickLongest(stats, sharePrice);
+  /** Shorter windows, marked on the chart so the ladder maps onto the line. */
+  const marks = periods
+    .filter((r) => longest && r.days < longest.days - 1)
+    .map((r) => ({ days: r.days, label: `${Math.round(r.days)}d` }));
 
   return (
     <>
@@ -194,91 +204,69 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
             </div>
 
             <div className="max-h-[75vh] space-y-5 overflow-y-auto px-6 py-6 sm:px-7">
-              {/* ── The rate, up top, because it is what the button was pressed for ── */}
+              {/*
+                ── Holding period returns lead, and the APR follows ──
+                This section used to open with the fees+yield APR at 40px —
+                4.85% on 2026-10-29 — while the card the reader had just come
+                from headlined +209%. Both were correct and they answer
+                DIFFERENT QUESTIONS, so the eye landed on a number that could
+                not be reconciled with the one that brought them here.
+
+                The holding period return is the same quantity the card
+                annualizes, so it leads, and the arithmetic between them is
+                stated outright rather than left for the reader to attempt.
+              */}
               <div className="rounded-xl border border-green-500/20 bg-green-500/[0.04] p-5">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      Fees + yield APR
-                    </div>
-                    <div className="mt-1 flex items-baseline gap-2.5">
-                      <span className="font-mono text-[40px] font-bold leading-none tracking-tight text-green-400">
-                        {pct(i?.totalPct)}
-                      </span>
-                      {stale && (
-                        <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
-                          STALE
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-[11.5px] text-gray-400">
-                      {i
-                        ? <>{pct(i.feePct)} fees + {pct(i.yieldPct)} yield · published by PEX over the past 7 days</>
-                        : "PEX has not published a rate for this vault."}
-                    </p>
-                  </div>
-                  {thirty && (
-                    <div className="text-right">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                        Last 30 days
-                      </div>
-                      <div className={`mt-1 font-mono text-[26px] font-semibold leading-none ${
-                        thirty.productPct >= 0 ? "text-green-400" : "text-red-300"
-                      }`}>
-                        {signed(thirty.productPct)}%
-                      </div>
-                      <p className="mt-1.5 text-[11px] text-gray-500">
-                        share price, {signed(thirty.vsHoldingPoints)}pp {benchmarkLabel(thirty.benchmarkKind)}
-                      </p>
-                    </div>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Holding period returns
+                  </span>
+                  {stale && (
+                    <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9.5px] font-semibold text-amber-300">
+                      STALE
+                    </span>
                   )}
+                </div>
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-gray-400">
+                  What one share was worth at the start of the window against what it is
+                  worth at the end. Everything is in it &mdash; fees, yield, what the pool
+                  won or lost against traders, and the assets&rsquo; own price moves.
+                </p>
+
+                <div className="mt-3">
+                  {periods.length > 0
+                    ? periods.map((r) => <ReturnRow key={r.period} ret={r} />)
+                    : <p className="py-2 text-[11.5px] text-gray-500">No published history yet.</p>}
                 </div>
 
                 {/*
-                  ── Two different quantities, and the card headlines the
-                     second one ──
-                  INCOME APR (fees + yield) is published by PEX as
-                  `total_apr_7d_bps` and friends. It is already a rate, it is
-                  7-day only, and there is no longer-window equivalent.
-
-                  SHARE-PRICE RETURN is the whole picture — the same income
-                  plus or minus trader P&L and asset price moves. It is NOT a
-                  rate, and the card's headline annualizes it from the longest
-                  available window as a deliberate product decision.
-
-                  The ladder below is the counterweight to that headline, and
-                  it is why the headline is defensible: a reader who sees the
-                  30-day window negative cannot read the annualized figure as
-                  a promise. The reasoning and the three conditions the
-                  headline rests on are in pools/performance.ts, on
-                  `pickLongest`.
+                  ── Closing the gap to the card ──
+                  Same window, same basis, one compounding step apart. `ann`
+                  is built with the identical call the card uses, live share
+                  price included, so the figure quoted here IS the figure on
+                  the card rather than a near-miss the reader has to excuse.
                 */}
-                <div className="mt-5 border-t border-white/[0.07] pt-4">
-                  <div className="mb-1 flex items-baseline justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      Share price, by window
-                    </span>
-                    <span className="text-[9.5px] text-gray-600">incl. trader P&amp;L</span>
-                  </div>
-                  {stats
-                    ? (["7d", "30d", "90d", "total"] as const).map((p) => (
-                        <ReturnRow key={p} period={p} stats={stats} />
-                      ))
-                    : <p className="py-2 text-[11.5px] text-gray-500">No published history yet.</p>}
-                  <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
-                    The APR above counts fees and yield only. These returns are the whole picture —
-                    the same income, plus or minus what the pool won or lost against traders.
-                    <strong className="text-gray-300"> Shown here as realized, never annualized</strong>,
-                    because the windows disagree sharply: on 2026-10-28 these same figures
-                    annualized to +812%, −26% and +183% depending on which one you picked. The
-                    card headlines the longest of them,{" "}
-                    <strong className="text-gray-300">run on to the live share price</strong> so it
-                    refreshes between PEX&rsquo;s daily updates — which is why its window reads a
-                    day or two longer than the one above. This is the spread behind it.
+                {ann && longest && (
+                  <p className="mt-3 border-t border-white/[0.07] pt-3 text-[11px] leading-relaxed text-gray-400">
+                    The card annualizes the longest of these, carried on to the live share
+                    price:{" "}
+                    <strong className="font-semibold text-gray-200">
+                      {signed(ann.realisedPct)}% over {Math.round(ann.days)} days
+                    </strong>{" "}
+                    compounds out to{" "}
+                    <strong className="font-semibold text-gray-200">
+                      {ann.annualizedPct >= 0 ? "+" : "−"}{Math.abs(Math.round(ann.annualizedPct))}% a year
+                    </strong>
+                    {Math.round(ann.days) > Math.round(longest.days) && (
+                      <> &mdash; {Math.round(ann.days) - Math.round(longest.days)} days fresher than
+                        the row above, because PEX publishes once a day and the share price moves on
+                        every re-mark</>
+                    )}
+                    . One window extrapolated, not a promise &mdash; the shorter windows are there
+                    so the spread is visible.
                   </p>
-                </div>
+                )}
               </div>
-
               {/*
                 ── The chart, and why it is here rather than on the card ──
                 Nothing in it is extrapolated: every point is a day PEX
@@ -290,12 +278,47 @@ export function CvaAbout({ stats, stale }: { stats: PoolStats | null; stale: boo
                 different places for that reason.
               */}
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <PerformanceChart ret={longest} />
+                <PerformanceChart ret={longest} marks={marks} />
                 <p className="mt-2.5 text-[10.5px] leading-relaxed text-gray-500">
                   Both lines start at 0% on the same day, so they are directly
                   comparable. The grey line is what simply holding ALGO and USDC would
                   have done over the same period — when the vault stays above it, the
-                  strategy added value regardless of which way the market went.
+                  strategy added value regardless of which way the market went.{" "}
+                  <strong className="text-gray-400">That distance is not a return.</strong>{" "}
+                  Over the 29 days to 2026-10-29 the vault made +1.27% while holding lost
+                  9.21% — 10.48 points apart. That distance is how much better the strategy
+                  did, not what a depositor earned.
+                </p>
+              </div>
+
+              {/*
+                ── The APR, after the returns and clearly a different thing ──
+                It led this modal at 40px until 2026-10-29, which put 4.85%
+                directly under a card headlining +209%. PEX publishes it as
+                `total_apr_7d_bps`: already a rate, 7-day only, no longer
+                window exists, and it counts fees and yield while excluding
+                trader P&L and price moves. Keeping it matters — it is the
+                only figure that isolates what the pool EARNS from what the
+                market did to it — but it is not the headline.
+              */}
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Fees + yield APR
+                  </span>
+                  <span className="font-mono text-[20px] font-semibold leading-none text-green-400">
+                    {pct(i?.totalPct)}
+                  </span>
+                </div>
+                <p className="mt-2 text-[10.5px] leading-relaxed text-gray-500">
+                  {i
+                    ? <>{pct(i.feePct)} fees + {pct(i.yieldPct)} yield, published by PEX over the
+                        past 7 days. <strong className="text-gray-400">A different quantity from
+                        the returns above</strong> — it counts only what the pool earns in fees and
+                        yield, and excludes both trader P&amp;L and the assets&rsquo; price moves.
+                        That is why it can read small beside a large return, or positive beside a
+                        negative one.</>
+                    : "PEX has not published a rate for this vault."}
                 </p>
               </div>
 

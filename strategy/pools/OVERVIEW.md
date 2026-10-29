@@ -298,6 +298,57 @@ The read is separate from `readStrategyLiquidity` and allowed to fail alone: it
 needs the indexer, the pool read needs algod, and a basis we cannot fetch must
 cost the one line that shows it rather than the position value.
 
+### Holding period return is the one definition
+
+PEX's bundle offers two figures per window and only one of them is a return:
+
+| field | what it is |
+|---|---|
+| `product_return_bps` | **the holding period return** — what a share was worth at the start of the window against the end. This is what a depositor earned. |
+| `vs_holding_bps` | the **difference** against a 50/50 ALGO/USDC buy-and-hold benchmark. Not a return anyone received. |
+
+The ladder printed both side by side until 2026-10-29, which invited reading
+them as alternative measures of one thing. The 29-day window shows why that is
+not pedantry: the vault returned **+1.27%** while the benchmark **lost 9.21%**,
+so the comparison read +10.48pp. Presenting that as the return overstates what
+a depositor made by roughly eight times.
+
+The comparison keeps its place as the grey line on the chart, where its shape
+reads as a comparison. The numbers are returns.
+
+Windows are labelled by their **real elapsed span**, not the bundle's period
+name — `7d` holds 7 daily samples spanning 6 days, and `90d` currently holds
+56 days. `holdingPeriods()` dedupes by span, because `90d` and `total` are the
+same 48 points under two labels until there are 90 days of history.
+
+The amber `· gaps` tag is gone. The fact is not: the longest window carries 48
+samples across 56 days, so days really are missing, and the chart's caption
+states both counts. A warning badge made an ordinary property of a daily feed
+look like a fault.
+
+### The modal opened on a number that could not be reconciled
+
+It led with the fees + yield APR at 40px — **4.85%** on 2026-10-29 — while the
+card the reader had just left headlined **+232%**. Both correct; they answer
+different questions. Income APR counts fees and yield over 7 days and excludes
+trader P&L and price moves, so it is not the quantity the headline annualizes.
+
+Holding period returns now lead, the APR follows at a quarter the size with
+its difference stated, and the arithmetic between ladder and headline is
+written out rather than left for the reader:
+
+```
++20.98% over 58 days compounds out to +232% a year
+— 2 days fresher than the row above, because PEX publishes once a day
+```
+
+**All three figures come from one `pickLongest` call**, the same one the card
+uses. The first draft of that sentence paired the bundle's `+17.15% over 56
+days` with the live `+232%`, which does not compound: 17.15% over 56 days is
+181%. Both numbers were real and the sentence joining them was false.
+`CvaAbout.test.tsx` now recomputes the compounding from the rendered text, so
+the assertion cannot drift along with the bug.
+
 ### The card carries one number; the modal carries the detail
 
 A depositor arriving at the card is asking two things — what is the strategy,

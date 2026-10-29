@@ -579,6 +579,10 @@ export function LiquidityView() {
                 <CvaAbout
                   stats={perf?.byKey[cvaKey(PEX_APPS.cvaVault)] ?? null}
                   stale={!!perf?.stale}
+                  /* So the annualized figure quoted inside the modal is built
+                     by the same call as the headline, rather than landing a
+                     few points off it. */
+                  sharePrice={data?.cva.navPerShare ?? null}
                 />
               </div>
             </div>

@@ -17,7 +17,7 @@
  *      loss language is a test, not a convention.
  */
 import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CvaAbout } from "./CvaAbout";
 import type { PoolStats } from "@/lib/strategy/pools/performance";
 
@@ -59,10 +59,10 @@ const STATS: PoolStats = {
   reasons: { total: "insufficient_history" },
 };
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-const openIt = (stats: PoolStats | null = STATS, stale = false) => {
-  render(<CvaAbout stats={stats} stale={stale} />);
+const openIt = (stats: PoolStats | null = STATS, stale = false, sharePrice: number | null = null) => {
+  render(<CvaAbout stats={stats} stale={stale} sharePrice={sharePrice} />);
   fireEvent.click(screen.getByRole("button", { name: /Learn more/ }));
   return screen.getByRole("dialog");
 };
@@ -89,6 +89,15 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText(/1\.52% fees \+ 6\.05% yield/)).toBeTruthy();
   });
 
+  it("keeps the APR, but says outright that it measures something else", () => {
+    // It led at 40px under a card headlining +209%, which is the disconnect
+    // the rebuild fixed. It stays because it is the only figure isolating
+    // what the pool EARNS from what the market did to it.
+    const d = openIt();
+    expect(within(d).getByText(/A different quantity from/)).toBeTruthy();
+    expect(within(d).getByText(/excludes both trader P&L and/)).toBeTruthy();
+  });
+
   it("attributes the APR to a 7-DAY window, never a longer one", () => {
     // PEX publishes no 30-day APR. Relabelling this is the failure mode.
     const d = openIt();
@@ -97,52 +106,139 @@ describe("the rate it was opened for", () => {
     expect(apr).not.toMatch(/30[- ]?day/i);
   });
 
-  it("shows every window PEX published, as a return rather than a rate", () => {
+  it("shows ONE number per window — the return, never the benchmark gap", () => {
+    /**
+     * The row used to carry the share-price return AND `+Xpp vs benchmark`
+     * beside it. Two numbers on one line read as alternative measures of the
+     * same thing, and they are not: the benchmark figure is a DIFFERENCE,
+     * how far the vault beat simply holding the assets.
+     *
+     * The fixture is the real shape of that trap. The 30-day window returned
+     * +5.64% against a benchmark that lost 4.0%, so the comparison reads
+     * +9.64pp. Showing that as the return overstates it by 71%.
+     */
     const d = openIt();
     expect(within(d).getByText("+2.90%")).toBeTruthy();
     expect(within(d).getAllByText("+5.64%").length).toBeGreaterThan(0);
-    expect(within(d).getByText("+15.27%")).toBeTruthy();
-    // The LADDER is never annualized, even though the card's headline is.
-    // That split is the whole design: one derived figure, calibrated by the
-    // realised spread beneath it.
-    expect(within(d).getByText(/never annualized/)).toBeTruthy();
-    // And the modal states the spread explicitly, so the headline cannot be
-    // read as the only possible answer.
-    expect(within(d).getByText(/\+812%, −26% and \+183%/)).toBeTruthy();
+    // Twice now: the ladder row and the chart legend. They are the same
+    // measurement and must print identically — the legend used to round to
+    // one decimal, so the same number read +15.3% in one place and +15.27%
+    // in the other, inviting the reader to treat them as two figures.
+    expect(within(d).getAllByText("+15.27%")).toHaveLength(2);
+
+    // The comparison is gone from the ladder entirely.
+    expect(within(d).queryByText(/pp vs benchmark/)).toBeNull();
+    expect(within(d).queryByText(/\+9\.64/)).toBeNull();
+    expect(within(d).queryByText(/\+6\.15/)).toBeNull();
   });
 
-  /**
-   * The headline runs the longest window on to the LIVE share price, so its
-   * day count is a day or two beyond the ladder's. A reader checking the
-   * arithmetic — 90d shows +17.01%, the headline says 57 days — would
-   * otherwise find a discrepancy the modal never accounts for.
-   */
-  /**
-   * US spelling throughout the UI, per the correction on "annualised" ->
-   * "annualized". The modal is the longest body of copy on the site, so it is
-   * where a British form survives unnoticed.
-   */
-  it("uses US spelling in its copy", () => {
+  it("labels windows by their REAL span, not the bundle's period name", () => {
+    /**
+     * PEX's `7d` holds 7 daily samples spanning 6 days; its `90d` holds 56
+     * days of history. Labelling by the period name would claim history the
+     * vault does not have — the same error the headline avoids by annualizing
+     * the span rather than the label.
+     */
     const d = openIt();
-    expect(d.textContent).not.toMatch(/realis(ed|e|ing)\b/i);
-    expect(d.textContent).not.toMatch(/annualis/i);
-    expect(d.textContent).toMatch(/realized/);
+    expect(within(d).getByText("6 days")).toBeTruthy();
+    expect(within(d).getByText("29 days")).toBeTruthy();
+    expect(within(d).getByText("55 days")).toBeTruthy();
+    expect(within(d).queryByText("90 days")).toBeNull();
+    expect(within(d).queryByText("All time")).toBeNull();
   });
 
-  it("explains why the headline's window is longer than the ladder's", () => {
+  it("states the one definition it is using", () => {
     const d = openIt();
-    expect(within(d).getByText(/run on to the live share price/)).toBeTruthy();
-    expect(within(d).getByText(/refreshes between PEX.s daily updates/)).toBeTruthy();
+    expect(within(d).getByText("Holding period returns")).toBeTruthy();
+    expect(within(d).getByText(/worth at the start of the window/)).toBeTruthy();
   });
 
-  it("says a window is short of history instead of printing a zero", () => {
+  it("reconciles the ladder with the card's annualized headline", () => {
+    /**
+     * The disconnect this section was rebuilt to fix: the modal opened with a
+     * 4.85% APR directly beneath a card headlining +209%. Both correct, both
+     * answering different questions, with nothing joining them.
+     *
+     * 15.27% over 55 days compounds to +157% a year, computed by the same
+     * call the card uses.
+     */
     const d = openIt();
-    expect(within(d).getByText(/not enough history yet/)).toBeTruthy();
+    const line = within(d).getByText(/compounds out to/).textContent ?? "";
+    expect(line).toMatch(/\+15\.27% over 55 days/);
+    expect(line).toMatch(/\+157% a year/);
   });
 
-  it("marks a window whose history has gaps", () => {
+  it("quotes the LIVE window, and its arithmetic actually holds", () => {
+    /**
+     * The first version of this sentence read "+17.15% over 56 days compounds
+     * out to +232% a year" — the return and span from PEX's bundle, the
+     * annualized figure from the live share price. Both numbers were real and
+     * the sentence joining them was false: 17.15% over 56 days compounds to
+     * 181%, not 232%. A reader checking it would have found the error.
+     *
+     * So all three figures now come from the one `pickLongest` result. This
+     * recomputes the compounding from the rendered text, which is the only
+     * way the assertion cannot drift along with the bug.
+     */
+    const START = 1_790_000_000;
+    const withAnchor: PoolStats = {
+      ...STATS,
+      returns: {
+        "90d": { ...STATS.returns["90d"]!, days: 55, productPct: 15.27,
+          startSharePrice: 1.0, startTs: START },
+      },
+    };
+    vi.setSystemTime(new Date((START + 58 * 86_400) * 1000));
+    // Live price 1.21 over 58 days = +21.00%, not the bundle's +15.27%/55d.
+    const d = openIt(withAnchor, false, 1.21);
+    const line = within(d).getByText(/compounds out to/).textContent ?? "";
+
+    const m = line.match(/\+([\d.]+)% over (\d+) days compounds out to \+(\d+)% a year/);
+    expect(m, `could not parse: ${line}`).toBeTruthy();
+    const [realised, days, annual] = m!.slice(1).map(Number);
+
+    expect(realised).toBeCloseTo(21.0, 1);
+    expect(days).toBe(58);
+    // The claim the sentence makes, recomputed.
+    expect(annual).toBe(Math.round((Math.pow(1 + realised / 100, 365 / days) - 1) * 100));
+    // And it says why this window outruns the row above it.
+    expect(line).toMatch(/3 days fresher than the row above/);
+  });
+
+  it("omits the freshness clause when there is no live price to extend to", () => {
     const d = openIt();
-    expect(within(d).getAllByText(/gaps/).length).toBeGreaterThan(0);
+    const line = within(d).getByText(/compounds out to/).textContent ?? "";
+    expect(line).not.toMatch(/fresher than the row above/);
+  });
+
+  it("says plainly that the benchmark gap is not a return", () => {
+    const d = openIt();
+    expect(within(d).getByText(/That distance is not a return/)).toBeTruthy();
+  });
+
+  it("omits a window it has no history for, rather than printing a zero", () => {
+    // Only 7d exists here. The danger was ever showing "30 days 0.00%" for a
+    // window PEX could not compute; listing only what exists removes it.
+    const d = openIt({
+      income: null, ret: null, retUnavailableReason: null,
+      returns: { "7d": STATS.returns["7d"] },
+      reasons: { "30d": "insufficient_history" },
+    });
+    expect(within(d).getByText("6 days")).toBeTruthy();
+    expect(within(d).queryByText("29 days")).toBeNull();
+    expect(within(d).queryByText(/0\.00%/)).toBeNull();
+  });
+
+  it("shows the sample count instead of a gaps warning", () => {
+    /**
+     * `· gaps` in amber came off on 2026-10-29. The underlying fact stays:
+     * the longest window carries 48 samples across 56 days, so days really
+     * are missing. An amber tag made an ordinary property of a daily feed
+     * look like a fault; the two counts say the same thing plainly.
+     */
+    const d = openIt();
+    expect(within(d).queryByText(/gaps/i)).toBeNull();
+    expect(within(d).getByText(/daily samples across/)).toBeTruthy();
   });
 
   it("does not invent a rate when PEX published none", () => {

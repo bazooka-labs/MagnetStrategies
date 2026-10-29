@@ -7,7 +7,10 @@
  * the formula but the conditions around it, and those are what break silently.
  */
 import { describe, expect, it } from "vitest";
-import { pickLongest, MIN_ANNUALIZE_DAYS, type PoolStats, type PoolReturn } from "./performance";
+import {
+  pickLongest, holdingPeriods, MIN_ANNUALIZE_DAYS,
+  type PoolStats, type PoolReturn,
+} from "./performance";
 
 /** A plausible index series: both start at 1.0, each ends at its own return. */
 const series = (productPct: number, holdPct: number, n = 6) =>
@@ -149,5 +152,52 @@ describe("the live share price extends the window rather than shortening it", ()
     const short = stats({ "7d": ret("7d", 3.70, 6, 1.0, START_TS) });
     expect(pickLongest(short, 1.05, START_TS + 8 * 86_400)).toBeNull();
     expect(MIN_ANNUALIZE_DAYS).toBe(14);
+  });
+});
+
+/**
+ * `holdingPeriods` — what the modal's ladder lists.
+ *
+ * The bundle's period NAMES outrun its history. With 56 days recorded, `90d`
+ * and `total` are the same 48 points under two labels, and listing both padded
+ * the ladder with a duplicate row that read as a fourth data point.
+ */
+describe("holdingPeriods", () => {
+  it("collapses windows that cover the same span", () => {
+    // The real 2026-10-29 shape: 90d and total both 56 days, +17.15%.
+    const list = holdingPeriods(stats({
+      "7d": ret("7d", 2.08, 6),
+      "30d": ret("30d", 1.27, 29),
+      "90d": ret("90d", 17.15, 56),
+      "total": ret("total", 17.15, 56),
+    }));
+    expect(list.map((r) => Math.round(r.days))).toEqual([6, 29, 56]);
+  });
+
+  it("keeps the denser series when two labels tie on span", () => {
+    const sparse = { ...ret("90d", 17.15, 56), points: 20 };
+    const dense = { ...ret("total", 17.15, 56), points: 48 };
+    const list = holdingPeriods(stats({ "90d": sparse, "total": dense }));
+    expect(list).toHaveLength(1);
+    expect(list[0].points).toBe(48);
+  });
+
+  it("orders shortest first, so the ladder reads as a progression", () => {
+    const list = holdingPeriods(stats({
+      "90d": ret("90d", 17.15, 56),
+      "7d": ret("7d", 2.08, 6),
+      "30d": ret("30d", 1.27, 29),
+    }));
+    expect(list.map((r) => r.days)).toEqual([6, 29, 56]);
+  });
+
+  it("drops windows PEX could not compute, rather than zeroing them", () => {
+    const list = holdingPeriods(stats({ "7d": ret("7d", 2.08, 6), "30d": null }));
+    expect(list.map((r) => r.period)).toEqual(["7d"]);
+  });
+
+  it("returns nothing for a vault with no published history", () => {
+    expect(holdingPeriods(null)).toEqual([]);
+    expect(holdingPeriods(stats({}))).toEqual([]);
   });
 });

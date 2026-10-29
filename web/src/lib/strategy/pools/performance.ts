@@ -362,6 +362,30 @@ export type AnnualizedReturn = {
   annualizedPct: number;
 };
 
+/**
+ * The distinct windows PEX published, shortest first.
+ *
+ * Deduped by SPAN, because the bundle's period names outrun its history: with
+ * 56 days recorded, `90d` and `total` are the same 48 points under two names,
+ * and listing both padded the ladder with a duplicate row that looked like a
+ * fourth data point. Measured 2026-10-29 both carried product_return_bps 1715.
+ *
+ * Keyed on the real elapsed span rather than the label, for the same reason
+ * the headline annualizes the span: `7d` holds 7 daily samples spanning 6
+ * days, and the return it reports is the 6 days of movement between them.
+ */
+export function holdingPeriods(stats: PoolStats | null): PoolReturn[] {
+  const seen = new Map<number, PoolReturn>();
+  for (const w of Object.values(stats?.returns ?? {})) {
+    if (!w) continue;
+    const key = Math.round(w.days);
+    const prev = seen.get(key);
+    // Prefer the denser series when two labels cover one span.
+    if (!prev || w.points > prev.points) seen.set(key, w);
+  }
+  return [...seen.values()].sort((a, b) => a.days - b.days);
+}
+
 /** Days below which annualizing is refused outright, however it is labelled. */
 export const MIN_ANNUALIZE_DAYS = 14;
 
