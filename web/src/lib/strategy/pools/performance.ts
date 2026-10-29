@@ -363,6 +363,42 @@ export type AnnualizedReturn = {
 };
 
 /**
+ * What to call a window on screen.
+ *
+ * ── Why this is not just `days` ──
+ * `days` is the ELAPSED SPAN — last sample minus first — because that is the
+ * denominator compounding needs. Seven daily samples have six intervals
+ * between them, so a full 7-day window measures `days === 6`.
+ *
+ * That is right for the arithmetic and wrong on a label. PEX's `7d` carries
+ * exactly 7 daily samples and `30d` exactly 30 (verified against the live
+ * bundle 2026-10-29); they are the 7- and 30-day windows, and every other
+ * venue calls them that. Printing "6 days" and "29 days" made correct figures
+ * look like off-by-one bugs.
+ *
+ * So: the publisher's own name when the data FILLS the window, the measured
+ * span when it does not. `90d` holds 48 samples against a nominal 90 — short
+ * by 42 — so calling it "90 days" would claim history this vault has never
+ * had. It reads "56 days" and will say "90 days" on its own once there are 90
+ * days to say it about.
+ *
+ * `total` has no nominal length, so it always reports its span.
+ *
+ * This is a LABEL. Nothing here feeds annualization, which keeps using the
+ * elapsed span — compounding 15.27% over 57 days instead of 56 would quietly
+ * understate the result.
+ */
+export function periodDays(r: PoolReturn): number {
+  const nominal = /^(\d+)d$/.exec(r.period)?.[1];
+  return nominal && r.points >= Number(nominal) ? Number(nominal) : Math.round(r.days);
+}
+
+export function periodLabel(r: PoolReturn): string {
+  const d = periodDays(r);
+  return `${d} day${d === 1 ? "" : "s"}`;
+}
+
+/**
  * The distinct windows PEX published, shortest first.
  *
  * Deduped by SPAN, because the bundle's period names outrun its history: with

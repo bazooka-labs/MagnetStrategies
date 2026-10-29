@@ -8,7 +8,9 @@ import {
 import { RAISED_AMBER } from "@/components/raisedButton";
 import { PerformanceChart } from "./PerformanceChart";
 import type { PoolStats, PoolReturn } from "@/lib/strategy/pools/performance";
-import { holdingPeriods, pickLongest } from "@/lib/strategy/pools/performance";
+import {
+  holdingPeriods, periodDays, periodLabel, pickLongest,
+} from "@/lib/strategy/pools/performance";
 
 /**
  * "What am I actually depositing into?" — the C-Vault explainer.
@@ -120,7 +122,7 @@ const SECTIONS: { icon: React.ReactNode; title: string; body: React.ReactNode }[
  * where it reads as a comparison, and the number here is the return.
  */
 function ReturnRow({ ret }: { ret: PoolReturn }) {
-  const label = `${Math.round(ret.days)} days`;
+  const label = periodLabel(ret);
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.05] py-2 last:border-0">
       <span className="text-[12px] text-gray-400">{label}</span>
@@ -157,7 +159,9 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
   /** Shorter windows, marked on the chart so the ladder maps onto the line. */
   const marks = periods
     .filter((r) => longest && r.days < longest.days - 1)
-    .map((r) => ({ days: r.days, label: `${Math.round(r.days)}d` }));
+    /* Position from the elapsed span, label from the window's own name —
+       the tick sits where that window's data begins. */
+    .map((r) => ({ days: r.days, label: `${periodDays(r)}d` }));
 
   return (
     <>
@@ -257,8 +261,8 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                     <strong className="font-semibold text-gray-200">
                       {ann.annualizedPct >= 0 ? "+" : "−"}{Math.abs(Math.round(ann.annualizedPct))}% a year
                     </strong>
-                    {Math.round(ann.days) > Math.round(longest.days) && (
-                      <> &mdash; {Math.round(ann.days) - Math.round(longest.days)} days fresher than
+                    {Math.round(ann.days) > periodDays(longest) && (
+                      <> &mdash; {Math.round(ann.days) - periodDays(longest)} days fresher than
                         the row above, because PEX publishes once a day and the share price moves on
                         every re-mark</>
                     )}

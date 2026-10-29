@@ -140,8 +140,15 @@ describe("the rate it was opened for", () => {
      * the span rather than the label.
      */
     const d = openIt();
-    expect(within(d).getByText("6 days")).toBeTruthy();
-    expect(within(d).getByText("29 days")).toBeTruthy();
+    // PEX's 7d carries exactly 7 daily samples and its 30d exactly 30, so
+    // those windows are FULL and the publisher's own name for them is right.
+    // Printing the interval span — "6 days", "29 days" — made correct
+    // figures look like off-by-one bugs.
+    expect(within(d).getByText("7 days")).toBeTruthy();
+    expect(within(d).getByText("30 days")).toBeTruthy();
+    // 90d is the one that is genuinely short: 43 samples against a nominal
+    // 90, so it reports its measured span and will say "90 days" on its own
+    // once there are 90 days to say it about.
     expect(within(d).getByText("55 days")).toBeTruthy();
     expect(within(d).queryByText("90 days")).toBeNull();
     expect(within(d).queryByText("All time")).toBeNull();
@@ -224,8 +231,8 @@ describe("the rate it was opened for", () => {
       returns: { "7d": STATS.returns["7d"] },
       reasons: { "30d": "insufficient_history" },
     });
-    expect(within(d).getByText("6 days")).toBeTruthy();
-    expect(within(d).queryByText("29 days")).toBeNull();
+    expect(within(d).getByText("7 days")).toBeTruthy();
+    expect(within(d).queryByText("30 days")).toBeNull();
     expect(within(d).queryByText(/0\.00%/)).toBeNull();
   });
 

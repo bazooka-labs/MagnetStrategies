@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  pickLongest, holdingPeriods, MIN_ANNUALIZE_DAYS,
+  pickLongest, holdingPeriods, periodLabel, MIN_ANNUALIZE_DAYS,
   type PoolStats, type PoolReturn,
 } from "./performance";
 
@@ -199,5 +199,54 @@ describe("holdingPeriods", () => {
   it("returns nothing for a vault with no published history", () => {
     expect(holdingPeriods(null)).toEqual([]);
     expect(holdingPeriods(stats({}))).toEqual([]);
+  });
+});
+
+/**
+ * `periodLabel` — what a window is CALLED, which is not what it is annualized
+ * over.
+ *
+ * `days` is the elapsed span, last sample minus first, because that is the
+ * denominator compounding needs. Seven daily samples have six intervals, so a
+ * full 7-day window measures `days === 6`. Correct for the arithmetic, and it
+ * made the ladder read "6 days" and "29 days" — correct figures that look
+ * like off-by-one bugs.
+ */
+describe("periodLabel", () => {
+  it("uses PEX's own name when the window is FULL", () => {
+    // Verified against the live bundle 2026-10-29: 7d carries exactly 7 daily
+    // samples spanning 6 days, 30d exactly 30 spanning 29.
+    expect(periodLabel({ ...ret("7d", 2.08, 6), points: 7 })).toBe("7 days");
+    expect(periodLabel({ ...ret("30d", 1.27, 29), points: 30 })).toBe("30 days");
+  });
+
+  it("falls back to the measured span when the window is SHORT", () => {
+    // 90d held 48 samples against a nominal 90 — short by 42. Calling it
+    // "90 days" would claim history this vault has never had.
+    expect(periodLabel({ ...ret("90d", 17.15, 56), points: 48 })).toBe("56 days");
+  });
+
+  it("promotes itself once the history arrives", () => {
+    // The same window, a month of days later. No code change needed.
+    expect(periodLabel({ ...ret("90d", 17.15, 89), points: 90 })).toBe("90 days");
+  });
+
+  it("always reports the span for `total`, which has no nominal length", () => {
+    expect(periodLabel({ ...ret("total", 17.15, 56), points: 48 })).toBe("56 days");
+    expect(periodLabel({ ...ret("total", 17.15, 56), points: 900 })).toBe("56 days");
+  });
+
+  it("does not feed annualization, which keeps the elapsed span", () => {
+    /**
+     * The whole point of keeping the two apart. Compounding 15.27% over the
+     * LABEL's 90 days instead of the measured 89 understates the result, and
+     * the error grows as the label and the span diverge.
+     */
+    const w = { ...ret("90d", 15.27, 89, 1.0, 1_790_000_000), points: 90 };
+    expect(periodLabel(w)).toBe("90 days");
+    const a = pickLongest(stats({ "90d": w }))!;
+    expect(a.days).toBe(89);
+    expect(Math.round(a.annualizedPct))
+      .toBe(Math.round((Math.pow(1.1527, 365 / 89) - 1) * 100));
   });
 });

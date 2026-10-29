@@ -316,10 +316,35 @@ a depositor made by roughly eight times.
 The comparison keeps its place as the grey line on the chart, where its shape
 reads as a comparison. The numbers are returns.
 
-Windows are labelled by their **real elapsed span**, not the bundle's period
-name — `7d` holds 7 daily samples spanning 6 days, and `90d` currently holds
-56 days. `holdingPeriods()` dedupes by span, because `90d` and `total` are the
-same 48 points under two labels until there are 90 days of history.
+Windows are labelled by **the publisher's own name when the data fills the
+window, and the measured span when it does not** (`periodLabel`).
+
+`days` on a `PoolReturn` is the ELAPSED SPAN — last sample minus first —
+because that is the denominator compounding needs. Seven daily samples have
+six intervals between them, so a full 7-day window measures `days === 6`.
+Right for the arithmetic, wrong on a label: the ladder read "6 days" and
+"29 days", which made correct figures look like off-by-one bugs.
+
+Verified against the live bundle 2026-10-29:
+
+| window | samples | span | reads |
+|---|---|---|---|
+| `7d` | 7 | 6.0d | **7 days** — full, so PEX's name is right |
+| `30d` | 30 | 29.0d | **30 days** — full |
+| `90d` | 48 | 56.0d | **56 days** — short by 42, so the span |
+| `total` | 48 | 56.0d | deduped away; no nominal length |
+
+`90d` will say "90 days" on its own once there are 90 days to say it about —
+no code change. And the long window grows daily, so that third row was 55 on
+2026-10-28 and 56 on 2026-10-29.
+
+**The label never reaches the arithmetic.** `pickLongest` keeps using the
+elapsed span; compounding 15.27% over a label's 90 days instead of the
+measured 89 would quietly understate the result. A mutation that routes the
+label into the annualization fails eight tests.
+
+`holdingPeriods()` dedupes by span, because `90d` and `total` are the same 48
+points under two labels until there are 90 days of history.
 
 The amber `· gaps` tag is gone. The fact is not: the longest window carries 48
 samples across 56 days, so days really are missing, and the chart's caption
