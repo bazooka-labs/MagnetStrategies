@@ -220,23 +220,19 @@ describe("periodLabel", () => {
     expect(periodLabel({ ...ret("30d", 1.27, 29), points: 30 })).toBe("30 days");
   });
 
-  it("DATES a short window instead of counting it", () => {
+  it("falls back to the measured span when the window is SHORT", () => {
     /**
      * 90d held 48 samples against a nominal 90 — short by 42. Calling it
      * "90 days" would claim history this vault has never had.
      *
-     * It is dated rather than counted because its span is whatever history
-     * exists: 55 days on 2026-10-28, 56 on the 29th. A count is both
-     * arbitrary beside "7 days" and "30 days" and different every morning,
-     * and rounding it to something tidier would break the compounding the
-     * modal invites the reader to check — the same +17.16% reads 181% a year
-     * over its real 56 days, 186% over 55, and 218% over 50.
+     * The count drifts as history accrues — 55 on 2026-10-28, 56 on the 29th
+     * — and is deliberately not rounded: this label is the denominator of the
+     * compounding the modal invites the reader to check, and the same +17.16%
+     * reads 181% a year over 56 days, 186% over 55 and 218% over 50.
      */
     expect(periodLabel({ ...ret("90d", 17.15, 56, 1.0, 1_788_307_200), points: 48 }))
-      .toBe("Since Sep 2");
-  });
-
-  it("counts a short window when it has no start timestamp to date", () => {
+      .toBe("56 days");
+    // Same window, no start anchor: identical answer.
     expect(periodLabel({ ...ret("90d", 17.15, 56), points: 48 })).toBe("56 days");
   });
 
@@ -245,11 +241,11 @@ describe("periodLabel", () => {
     expect(periodLabel({ ...ret("90d", 17.15, 89), points: 90 })).toBe("90 days");
   });
 
-  it("always dates `total`, which has no nominal length to fill", () => {
+  it("always reports the span for `total`, which has no nominal length", () => {
     const at = (pts: number) =>
       periodLabel({ ...ret("total", 17.15, 56, 1.0, 1_788_307_200), points: pts });
-    expect(at(48)).toBe("Since Sep 2");
-    expect(at(900)).toBe("Since Sep 2");
+    expect(at(48)).toBe("56 days");
+    expect(at(900)).toBe("56 days");
   });
 
   it("does not feed annualization, which keeps the elapsed span", () => {

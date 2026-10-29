@@ -387,6 +387,18 @@ export type AnnualizedReturn = {
  * This is a LABEL. Nothing here feeds annualization, which keeps using the
  * elapsed span — compounding 15.27% over 57 days instead of 56 would quietly
  * understate the result.
+ *
+ * ── The short window's count drifts, and that is fine ──
+ * Its span is whatever history exists, so the row read 55 days on 2026-10-28
+ * and 56 on the 29th. Rounding it to something tidier was asked for and
+ * refused: this label is the DENOMINATOR of the compounding the modal invites
+ * the reader to check one line below it. The same +17.16% reads 181% a year
+ * over its real 56 days, 186% over 55, and 218% over 50 — a tidy label would
+ * make the page disagree with itself for anyone who did the arithmetic.
+ *
+ * Dating it instead ("Since Sep 2") was built and reverted: it is accurate,
+ * and it breaks the parallel with the two rows above for a problem that is
+ * only cosmetic.
  */
 export function periodDays(r: PoolReturn): number {
   const nominal = /^(\d+)d$/.exec(r.period)?.[1];
@@ -394,35 +406,7 @@ export function periodDays(r: PoolReturn): number {
 }
 
 export function periodLabel(r: PoolReturn): string {
-  const nominal = /^(\d+)d$/.exec(r.period)?.[1];
-  if (nominal && r.points >= Number(nominal)) {
-    const d = Number(nominal);
-    return `${d} day${d === 1 ? "" : "s"}`;
-  }
-  /**
-   * ── The short window is dated, not counted ──
-   * Its span is whatever history exists — 55 days on 2026-10-28, 56 on the
-   * 29th — so a count here is both arbitrary beside "7 days" and "30 days",
-   * and different every morning.
-   *
-   * Rounding it to something tidier was considered and rejected: this label
-   * is the DENOMINATOR of the compounding the next line invites the reader to
-   * check. The same +17.16% reads 181% a year over its real 56 days, 186%
-   * over 55, and 218% over 50. A tidy label would make the page disagree with
-   * itself for anyone who did the arithmetic.
-   *
-   * The start date is exact, stable to read, and already printed on the
-   * chart's own x-axis directly below. "All time" was the other candidate and
-   * is not true: the vault's app was created 2026-08-31 and PEX's first
-   * sample is 2026-09-02, by which point a share was already worth $1.032995.
-   */
-  if (r.startTs > 0) {
-    const on = new Date(r.startTs * 1000).toLocaleDateString([], {
-      day: "numeric", month: "short", timeZone: "UTC",
-    });
-    return `Since ${on}`;
-  }
-  const d = Math.round(r.days);
+  const d = periodDays(r);
   return `${d} day${d === 1 ? "" : "s"}`;
 }
 

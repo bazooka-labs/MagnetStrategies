@@ -149,16 +149,11 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText("7 days")).toBeTruthy();
     expect(within(d).getByText("30 days")).toBeTruthy();
     // 90d is the one that is genuinely short: 43 samples against a nominal
-    // 90. It is DATED rather than counted — its span is whatever history
-    // exists, so a count is arbitrary beside the two round ones and changes
-    // every morning. It will say "90 days" on its own once there are 90 days
-    // to say it about.
-    expect(within(d).getByText("Since Sep 2")).toBeTruthy();
+    // 90, so it reports its measured span and will say "90 days" on its own
+    // once there are 90 days to say it about. The count drifts as history
+    // accrues and is deliberately not rounded — see periodDays.
+    expect(within(d).getByText("55 days")).toBeTruthy();
     expect(within(d).queryByText("90 days")).toBeNull();
-    expect(within(d).queryByText("55 days")).toBeNull();
-    // "All time" is NOT the label: the vault app was created 2026-08-31 and
-    // PEX's first sample is 2026-09-02, by which point a share was already
-    // worth $1.032995.
     expect(within(d).queryByText("All time")).toBeNull();
   });
 
