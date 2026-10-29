@@ -54,7 +54,9 @@ const STATS: PoolStats = {
     "30d": { period: "30d", productPct: 5.64, holdPct: -4.0, vsHoldingPoints: 9.64,
       benchmarkKind: "geometric_mean_50_50", points: 30, days: 29, hasGaps: false, ...anchor, series: series(5.64, -4.0) },
     "90d": { period: "90d", productPct: 15.27, holdPct: 6.03, vsHoldingPoints: 9.24,
-      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true, ...anchor, series: series(15.27, 6.03) },
+      benchmarkKind: "geometric_mean_50_50", points: 43, days: 55, hasGaps: true,
+      /* Short of its nominal 90, so it is DATED rather than counted. */
+      startSharePrice: 1.0, startTs: 1_788_307_200, series: series(15.27, 6.03) },
   },
   reasons: { total: "insufficient_history" },
 };
@@ -147,10 +149,16 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText("7 days")).toBeTruthy();
     expect(within(d).getByText("30 days")).toBeTruthy();
     // 90d is the one that is genuinely short: 43 samples against a nominal
-    // 90, so it reports its measured span and will say "90 days" on its own
-    // once there are 90 days to say it about.
-    expect(within(d).getByText("55 days")).toBeTruthy();
+    // 90. It is DATED rather than counted — its span is whatever history
+    // exists, so a count is arbitrary beside the two round ones and changes
+    // every morning. It will say "90 days" on its own once there are 90 days
+    // to say it about.
+    expect(within(d).getByText("Since Sep 2")).toBeTruthy();
     expect(within(d).queryByText("90 days")).toBeNull();
+    expect(within(d).queryByText("55 days")).toBeNull();
+    // "All time" is NOT the label: the vault app was created 2026-08-31 and
+    // PEX's first sample is 2026-09-02, by which point a share was already
+    // worth $1.032995.
     expect(within(d).queryByText("All time")).toBeNull();
   });
 

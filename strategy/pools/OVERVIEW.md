@@ -331,12 +331,33 @@ Verified against the live bundle 2026-10-29:
 |---|---|---|---|
 | `7d` | 7 | 6.0d | **7 days** — full, so PEX's name is right |
 | `30d` | 30 | 29.0d | **30 days** — full |
-| `90d` | 48 | 56.0d | **56 days** — short by 42, so the span |
+| `90d` | 48 | 56.0d | **Since Sep 2** — short by 42, so dated |
 | `total` | 48 | 56.0d | deduped away; no nominal length |
 
 `90d` will say "90 days" on its own once there are 90 days to say it about —
-no code change. And the long window grows daily, so that third row was 55 on
-2026-10-28 and 56 on 2026-10-29.
+no code change.
+
+**The short window is dated rather than counted.** Its span is whatever
+history exists, so a count is both arbitrary beside two round numbers and
+different every morning — it read 55 on 2026-10-28 and 56 on the 29th.
+
+Rounding it to something tidier was asked for and refused, because this label
+is the **denominator of the compounding the next line invites the reader to
+check**. The same +17.16% reads:
+
+| labelled | annualizes to |
+|---|---|
+| 56 days (true) | **+181%** |
+| 55 days | +186% |
+| 50 days | +218% |
+
+A tidy label would make the page disagree with itself for anyone who did the
+arithmetic. The start date is exact, stable to read, and already printed on
+the chart's x-axis directly below it.
+
+"All time" was the other candidate and is **not true**: the vault app was
+created 2026-08-31, PEX's first sample is 2026-09-02, and by then a share was
+already worth $1.032995.
 
 **The label never reaches the arithmetic.** `pickLongest` keeps using the
 elapsed span; compounding 15.27% over a label's 90 days instead of the
