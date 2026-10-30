@@ -986,7 +986,7 @@ Built a full LocalNet integration test suite (`contracts/tests/`, 34 tests) that
 ### Coverage (all 34 passing)
 PSM mint/redeem/fee-routing/invariant-guard/pause; full vault lifecycle (open deferred + with-borrow, LTV caps, interest, overpayment→principal, repay, add_collateral, borrow_more); accrual incl. the **P21-01 multi-year catch-up** (regression test for the lost-time fix) and rate-lock; all liquidation paths (micro, partial tier1/2, full surplus + shortfall/bad-debt) with settlement end-states and PSM-invariant checks; two-role rotation/recovery/distinctness, pause (guardian-only unpause), 48h timelock + guardian veto on both repointing powers; oracle updater-auth, ±50% prior guard, ±25% anchor band, re-anchor, freshness-blocks-borrow.
 
-**Verdict:** contracts now compile clean AND pass executable integration tests covering every privileged path. The test suite is committed and re-runnable (`contracts/tests/README.md`). This materially de-risks mainnet beyond static review. A professional third-party audit is still recommended before significant TVL.
+**Verdict:** contracts now compile clean AND pass executable integration tests covering every privileged path. The test suite is committed and re-runnable (`contracts/tests/README.md`). This materially de-risks mainnet beyond static review. No external audit has been performed, and none is planned at current scale — see 'Review posture' below.
 
 ---
 
@@ -1010,7 +1010,7 @@ Added 33 adversarial tests (`test_attacks_authz.py`, `test_attacks_logic.py`) pr
 - **Impact is bounded and non-economic:** the grief only works while the position still has surplus equity (`lp_value > debt`), during which the protocol remains fully covered (collateral value exceeds debt — only the 0.75 safety buffer is breached, not solvency). Once the position goes underwater past the debt there is no surplus transfer and full-liquidation proceeds normally. Partial liquidation (seizes to admin, no borrower-bound transfer) is also unaffected at the appropriate HF band. The borrower cannot extract the locked LP and gains nothing but delay. Verified by `test_optout_griefing_is_bounded`.
 - **Future hardening (post-v2, optional):** custody surplus LP in the vault for the borrower to claim separately, rather than force-pushing it during liquidation. Not blocking for launch.
 
-**Verdict:** the contracts pass 67 functional + adversarial integration tests covering every privileged path and the major attack classes. Internal verification is now strong (23 passes incl. executable + adversarial testing). A professional third-party audit remains the recommended final gate before significant TVL.
+**Verdict:** the contracts pass 67 functional + adversarial integration tests covering every privileged path and the major attack classes. Internal verification is now strong (23 passes incl. executable + adversarial testing). No external audit has been performed; the gate before significant TVL is now the on-chain price bound described in ORACLE_LEAN_SPEC.md.
 
 ---
 
@@ -1074,7 +1074,7 @@ Decimal/ratio math verified correct against live mainnet reserves. Economics: wi
 - **F7:** TWAP discards readings older than `MAX_TWAP_AGE` (no averaging across a downtime gap). **F8:** tightened the absolute LP sanity ceiling (1.2 → 0.9).
 
 ### Deferred to before scaling TVL (not launch-blocking)
-**F2** (U priced circularly from the thin collateral pool): keep the initial ceiling small + LTV conservative; add a deeper/second independent U venue before raising TVL. The **F-1** contract tidy. The **external third-party audit**. **AUD-004** bot uptime/redundancy/alerting. Launch posture: a small PSM-seeded ceiling bounds residual risk — the audit quantified the safe envelope (< ~$100k collateral-pool TVL).
+**F2** (U priced circularly from the thin collateral pool): keep the initial ceiling small + LTV conservative; add a deeper/second independent U venue before raising TVL. The **F-1** contract tidy. **AUD-004** bot uptime/redundancy/alerting. Launch posture: a small PSM-seeded ceiling bounds residual risk — internal review quantified the safe envelope (< ~$100k collateral-pool TVL).
 
 ---
 
@@ -1121,3 +1121,31 @@ correct refund, reconciled on-chain). Supersedes the `repay_principal`-specific 
 Passes 1–27 cover the **v2 core** (Oracle / PSM / Vault) as built. The **mainnet launch build is v3** = v2 core + a **yield-bearing PSM** (Productive Reserves — see [PSM.md](./PSM.md#productive-reserves-v3)): an adapter pattern (≤5 vetted, timelocked, immutable adapters; Folks Finance first), a **redefined core invariant** (`circulating ≤ on-chain USDC + Σ recoverable strategy value`), a liquidity buffer, per-venue exposure caps, and a recall-under-stress path.
 
 This is **meaningful new attack surface on the contract that holds the reserve** and is **not covered by the passes above.** It requires its own **dedicated fresh audit before mainnet** — the redefined invariant is the highest-risk change (it changes what backs the dollar) and the recall-under-stress path is the classic stablecoin failure point. Treat none of v3 as audited until that pass is done and logged here.
+
+
+---
+
+## Review posture
+
+**No external third-party audit has been performed, and none is planned at
+current scale.** A commercial audit prices in the tens of thousands; measured
+2026-10-30 the protocol holds $2,537 of collateral and $151.40 of PSM USDC,
+with $50.00 of mintable headroom. The spend is not proportionate to the
+exposure, and pretending otherwise in the docs helped nobody.
+
+What stands in its place, and what that is worth:
+
+- **28 internal review passes**, recorded above, plus an executable adversarial
+  integration suite covering every privileged path.
+- **A reviewed ceiling**: < ~$100k collateral-pool TVL (§ above). Nothing on
+  chain enforces it — `scripts/envelope.mjs` checks it, and OPERATIONS.md says
+  when to run it.
+- **Crossing that ceiling requires restoring the on-chain price bound** removed
+  in the lean oracle, per ORACLE_LEAN_SPEC.md. That is now the gate; it used to
+  be "get an audit".
+
+**What this does not buy.** Internal review is performed by the people who
+wrote the code and shares their blind spots. It has never found a bug in a
+place nobody thought to look, because that is not a thing self-review can do.
+Every user-facing surface says plainly that these contracts are unaudited, and
+that disclosure stays regardless of this decision.

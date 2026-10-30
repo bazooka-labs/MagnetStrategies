@@ -78,6 +78,20 @@ describe("what you are trusting", () => {
     expect(d.textContent).toMatch(/under roughly \$100k of collateral/);
   });
 
+  it("does not promise an audit that is not coming", () => {
+    /**
+     * This said "an outside audit is the gate before going past it" until
+     * 2026-10-30, when the decision was taken not to commission one at this
+     * size. Leaving it would have been a commitment to users that nobody
+     * intended to keep — worse than the disclosure it sat inside.
+     */
+    const d = openIt();
+    expect(d.textContent).toMatch(/No outside audit is\s+planned/);
+    expect(d.textContent).not.toMatch(/audit is the\s+gate/);
+    // And it says what internal review is worth, rather than implying parity.
+    expect(d.textContent).toMatch(/shares their blind spots/);
+  });
+
   it("does not describe how to exploit any of it", () => {
     /**
      * The disclosure is a TRUST MODEL — whose key and whose judgement your

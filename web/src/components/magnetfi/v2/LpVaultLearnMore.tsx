@@ -160,9 +160,11 @@ export function LpVaultLearnMore() {
                     external audit.</strong>{" "}
                     They have been through a long run of internal review and an executable
                     adversarial test suite, and that review set a ceiling it considers safe:
-                    under roughly $100k of collateral across the pools. An outside audit is the
-                    gate before going past it. Every contract, every review pass and that ceiling
-                    are public in the repository — read them before you deposit.
+                    under roughly $100k of collateral across the pools. No outside audit is
+                    planned at this size — a commercial one costs many times what the protocol
+                    currently holds. Internal review is done by the people who wrote the code
+                    and shares their blind spots. Every contract, every review pass and that
+                    ceiling are public in the repository — read them before you deposit.
                   </li>
                 </ul>
               </div>

@@ -86,16 +86,16 @@ node scripts/envelope.mjs            # see below; prints TVL vs the $100k gate
 Measured 2026-10-30: **$2,534** of LP collateral, $151.40 PSM USDC, $50.00
 mintable headroom — 2.5% of the envelope, 39x of room.
 
-**If TVL approaches ~$100k**, two things are due before it crosses, and they
-are the same two `AUDIT.md` already names:
+**If TVL approaches ~$100k**, restore an on-chain bound on `update_lp_price`
+before it crosses — a **wide** one. The band that was removed was ±25%, and on
+2026-08-21 it rejected a valid post and froze the feed (`ADMIN.md:151`). Size
+any replacement to catch decimals slips and bad routes, which are orders of
+magnitude, not percentages.
 
-1. Restore an on-chain bound on `update_lp_price` — a **wide** one. The band
-   that was removed was ±25%, and on 2026-08-21 it rejected a valid post and
-   froze the feed (`ADMIN.md:151`). Size any replacement to catch decimals
-   slips and bad routes, which are orders of magnitude, not percentages.
-2. Commission the external third-party audit.
-
-Neither is urgent at present scale, and neither should be skipped past it.
+This is the whole gate. There is no external audit planned (AUDIT.md, "Review
+posture"), so nothing else is waiting behind it — which makes the bound the
+only thing standing between a bad post and the collateral, and it should not
+be skipped past.
 
 ## Diagnosing a stale feed
 

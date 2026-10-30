@@ -12,8 +12,9 @@ The justification is scale, and the scale is a number rather than a judgement:
 | PSM USDC / mintable headroom | $151.40 / $50.00 |
 | Headroom to the gate | **39x** |
 
-**Crossing ~$100k is the trigger to restore an on-chain bound**, and to get the
-external audit `AUDIT.md` names as the gate before significant TVL.
+**Crossing ~$100k is the trigger to restore an on-chain bound.** That is the
+entire gate: no external audit is planned (`AUDIT.md`, "Review posture"), so
+the bound is the only thing standing between a bad post and the collateral.
 
 If a bound comes back it should be a **wide** one. The band that was removed
 was ±25%, and on 2026-08-21 it rejected a perfectly valid post and froze the
