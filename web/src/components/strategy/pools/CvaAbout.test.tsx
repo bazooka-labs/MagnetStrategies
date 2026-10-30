@@ -264,6 +264,52 @@ describe("the rate it was opened for", () => {
   });
 });
 
+describe("the order it reads in", () => {
+  /**
+   * What it is, then what it returned, then what it costs you.
+   *
+   * The explainer panels sat FOURTH until 2026-10-30, under the ladder, the
+   * chart and the APR. A reader met +17.15% before learning the vault takes
+   * the other side of leveraged trades — a number with nothing to attach it
+   * to.
+   *
+   * "What you carry" stays last on purpose. It is the part that must not be
+   * skimmed, and the end of a scroll is where a reader stops rather than
+   * where they glance.
+   *
+   * Asserted on DOM order rather than on the presence of each heading,
+   * because every one of these already has its own test above: the thing
+   * that can regress here is the sequence, and only the sequence.
+   */
+  it("runs explainer, then returns, then risks", () => {
+    const d = openIt();
+    const body = d.textContent ?? "";
+    const at = (t: string) => {
+      const i = body.indexOf(t);
+      expect(i, `"${t}" is missing from the modal`).toBeGreaterThan(-1);
+      return i;
+    };
+    const marks = [
+      at("What PEX is"),            // first explainer panel
+      at("How PEX manages it"),     // last explainer panel
+      at("Holding period returns"),
+      at("Fees + yield APR"),
+      at("What you carry"),
+    ];
+    expect(marks).toEqual([...marks].sort((a, b) => a - b));
+  });
+
+  it("puts every explainer panel ahead of the first number", () => {
+    const d = openIt();
+    const body = d.textContent ?? "";
+    const firstFigure = body.indexOf("Holding period returns");
+    for (const title of ["What PEX is", "Who is on the other side",
+      "How it earns", "How PEX manages it"]) {
+      expect(body.indexOf(title), title).toBeLessThan(firstFigure);
+    }
+  });
+});
+
 describe("what it explains", () => {
   it("carries the detail the card no longer shows", () => {
     // "Managed by PEX · spans both markets" came off the card on 2026-10-28.

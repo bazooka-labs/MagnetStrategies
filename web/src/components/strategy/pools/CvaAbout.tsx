@@ -209,7 +209,32 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
 
             <div className="max-h-[75vh] space-y-5 overflow-y-auto px-6 py-6 sm:px-7">
               {/*
-                ── Holding period returns lead, and the APR follows ──
+                ── What it is, then what it returned, then what it costs you ──
+                The order is the order someone reads in. These four panels
+                answer "what am I looking at"; a reader who meets +17.15%
+                before knowing the vault takes the other side of leveraged
+                trades has a number with nothing to attach it to.
+
+                Returns follow, because that is what the button was pressed
+                for. "What you carry" is last: it is the part that must not be
+                skimmed past, and the end of a scroll is where a reader stops
+                rather than where they glance.
+              */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {SECTIONS.map((s) => (
+                  <div key={s.title} className="rounded-xl border border-white/10 bg-black/30 p-4">
+                    <div className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">
+                      {s.icon}
+                    </div>
+                    <p className="text-sm font-semibold text-white">{s.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-gray-400">{s.body}</p>
+                  </div>
+                ))}
+              </div>
+
+
+              {/*
+                ── The returns, and the APR after them ──
                 This section used to open with the fees+yield APR at 40px —
                 4.85% on 2026-10-29 — while the card the reader had just come
                 from headlined +209%. Both were correct and they answer
@@ -217,8 +242,9 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                 not be reconciled with the one that brought them here.
 
                 The holding period return is the same quantity the card
-                annualizes, so it leads, and the arithmetic between them is
-                stated outright rather than left for the reader to attempt.
+                annualizes, so it comes first of the two, and the arithmetic
+                between them is stated outright rather than left for the
+                reader to attempt.
               */}
               <div className="rounded-xl border border-green-500/20 bg-green-500/[0.04] p-5">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -326,20 +352,7 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                 </p>
               </div>
 
-              {/* ── The explainer ── */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                {SECTIONS.map((s) => (
-                  <div key={s.title} className="rounded-xl border border-white/10 bg-black/30 p-4">
-                    <div className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-magnet-600 to-magnet-800 text-white">
-                      {s.icon}
-                    </div>
-                    <p className="text-sm font-semibold text-white">{s.title}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-gray-400">{s.body}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* ── What you carry. Same weight as the four panels above it. ── */}
+              {/* ── What you carry. Last, and the only amber block on the page. ── */}
               <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-4">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
@@ -350,7 +363,8 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                     <strong className="font-semibold text-amber-100">You can lose money.</strong>{" "}
                     The share price falls when traders win against the pool, and it holds two
                     volatile assets — ALGO and USDC — so it moves with ALGO&apos;s price too. The
-                    benchmark column above is there to show when holding would have beaten it.
+                    grey line on the chart above is there to show when simply holding them would
+                    have beaten it.
                   </li>
                   {/*
                     ── Where the spread goes, verified against the bytecode ──

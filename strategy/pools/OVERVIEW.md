@@ -298,6 +298,26 @@ The read is separate from `readStrategyLiquidity` and allowed to fail alone: it
 needs the indexer, the pool read needs algod, and a basis we cannot fetch must
 cost the one line that shows it rather than the position value.
 
+### The modal reads: what it is, what it returned, what it costs you
+
+```
+What PEX is · Who is on the other side · How it earns · How PEX manages it
+Holding period returns  →  the chart  →  fees + yield APR
+What you carry
+```
+
+The four explainer panels sat **fourth** until 2026-10-30, under the ladder,
+the chart and the APR. A reader met +17.15% before learning that the vault
+takes the other side of leveraged trades — a number with nothing to attach it
+to.
+
+**"What you carry" stays last.** It is the part that must not be skimmed, and
+the end of a scroll is where a reader stops rather than where they glance.
+
+`CvaAbout.test.tsx` asserts the sequence on DOM order, not on the presence of
+each heading — every one of those already has its own test, so the thing that
+can regress here is the order and only the order.
+
 ### Holding period return is the one definition
 
 PEX's bundle offers two figures per window and only one of them is a return:
