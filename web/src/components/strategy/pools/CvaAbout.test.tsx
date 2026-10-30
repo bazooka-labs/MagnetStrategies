@@ -6,12 +6,12 @@
  * Two things are worth binding here, and they are both about HONESTY rather
  * than layout:
  *
- *   1. The APR is labelled with the window it covers. PEX publishes a 7-day
- *      income APR and nothing longer; the longer windows in the bundle are
- *      share-price RETURNS, which include trader P&L the APR excludes. A
- *      future edit that relabels the 7d figure as a 30d one, or annualizes a
- *      30-day return into an APR, is the exact mistake this repo already made
- *      and removed — so the "past 7 days" attribution is asserted.
+ *   1. ONE definition of return, labelled with the window it covers. The
+ *      fees+yield APR was removed from this modal on 2026-10-30 — a second
+ *      quantity that needed a paragraph defending why it disagreed with the
+ *      first. It survives only as the card's fallback when PEX has published
+ *      too little history for a return, and the guard that it stays labelled
+ *      "past 7 days" moved to LiquidityView.test.tsx with it.
  *   2. The downside is in the body. A modal that explains four ways to earn
  *      and buries the counterparty risk is a brochure, so the presence of the
  *      loss language is a test, not a convention.
@@ -84,30 +84,7 @@ describe("the trigger", () => {
   });
 });
 
-describe("the rate it was opened for", () => {
-  it("shows PEX's APR and its two components", () => {
-    const d = openIt();
-    expect(within(d).getByText("7.57%")).toBeTruthy();
-    expect(within(d).getByText(/1\.52% fees \+ 6\.05% yield/)).toBeTruthy();
-  });
-
-  it("keeps the APR, but says outright that it measures something else", () => {
-    // It led at 40px under a card headlining +209%, which is the disconnect
-    // the rebuild fixed. It stays because it is the only figure isolating
-    // what the pool EARNS from what the market did to it.
-    const d = openIt();
-    expect(within(d).getByText(/A different quantity from/)).toBeTruthy();
-    expect(within(d).getByText(/excludes both trader P&L and/)).toBeTruthy();
-  });
-
-  it("attributes the APR to a 7-DAY window, never a longer one", () => {
-    // PEX publishes no 30-day APR. Relabelling this is the failure mode.
-    const d = openIt();
-    expect(within(d).getByText(/past 7 days/)).toBeTruthy();
-    const apr = within(d).getByText("7.57%").parentElement?.parentElement?.textContent ?? "";
-    expect(apr).not.toMatch(/30[- ]?day/i);
-  });
-
+describe("the returns it was opened for", () => {
   it("shows ONE number per window — the return, never the benchmark gap", () => {
     /**
      * The row used to carry the share-price return AND `+Xpp vs benchmark`
@@ -251,10 +228,37 @@ describe("the rate it was opened for", () => {
     expect(within(d).getByText(/daily samples across/)).toBeTruthy();
   });
 
-  it("does not invent a rate when PEX published none", () => {
+  it("carries NO fees+yield APR — one quantity only", () => {
+    /**
+     * Removed 2026-10-30. It led this modal at 40px, then was demoted beneath
+     * the returns with a paragraph explaining why it disagreed with them, then
+     * removed outright: a figure that needs a paragraph defending its own
+     * inconsistency costs more than it pays.
+     *
+     * This guard exists because the first version of the removal had none, and
+     * pasting an APR block straight back in passed all 28 tests. The same
+     * thing happened once before on the card, which is why that file's test
+     * asserts on the rendered element rather than a substring.
+     *
+     * It survives as the CARD's fallback when PEX has published too little
+     * history for a return — LiquidityView.test.tsx owns that, and the 7-day
+     * attribution guard with it.
+     */
+    const d = openIt();
+    const body = (d.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).not.toMatch(/Fees \+ yield APR/i);
+    expect(body).not.toMatch(/fees \+ [\d.]+% yield/i);
+    expect(body).not.toMatch(/published by PEX over the past 7 days/i);
+    // The income figures from the fixture must appear nowhere.
+    expect(body).not.toContain("7.57%");
+    expect(body).not.toContain("1.52%");
+    expect(body).not.toContain("6.05%");
+  });
+
+  it("does not invent a figure when PEX published nothing", () => {
     const d = openIt({ income: null, ret: null, retUnavailableReason: "unavailable",
       returns: {}, reasons: {} });
-    expect(within(d).getByText(/has not published a rate/)).toBeTruthy();
+    expect(within(d).getByText(/No published history yet/)).toBeTruthy();
     expect(within(d).queryByText(/%\s*$/)).toBeNull();
   });
 
@@ -293,7 +297,6 @@ describe("the order it reads in", () => {
       at("What PEX is"),            // first explainer panel
       at("How PEX manages it"),     // last explainer panel
       at("Holding period returns"),
-      at("Fees + yield APR"),
       at("What you carry"),
     ];
     expect(marks).toEqual([...marks].sort((a, b) => a - b));
@@ -366,7 +369,6 @@ describe("what it explains", () => {
     const d = openIt();
     expect(within(d).getByText(/no external\s+audit/)).toBeTruthy();
     expect(within(d).getByText(/holds no\s+funds and operates no exchange/)).toBeTruthy();
-    expect(within(d).getByText(/positive APR can sit\s+alongside a negative return/)).toBeTruthy();
   });
 
   it("says which figures are chain reads and which are not", () => {

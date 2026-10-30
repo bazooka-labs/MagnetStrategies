@@ -22,10 +22,10 @@ import {
  * Everything here is a claim about someone else's protocol and someone else's
  * money. Two rules held throughout:
  *
- *   1. Nothing is a projection. Every figure comes from PEX's published
- *      bundle and is labelled with the window it covers. No annualizing of a
- *      short window — see the APR note below, which is the whole reason the
- *      headline is still 7d.
+ *   1. Every figure here comes from PEX's published bundle and is labelled
+ *      with the window it covers. The ladder is realized return and is never
+ *      annualized; the one derived figure on the page is the card's headline,
+ *      and the line beneath the ladder shows the arithmetic that produces it.
  *   2. The counterparty risk is stated in the body, not in a footnote. A
  *      depositor is the other side of every trade; a page that explains the
  *      upside in four panels and the downside in grey 10px type is a brochure.
@@ -149,7 +149,6 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
   sharePrice?: number | null;
 }) {
   const [open, setOpen] = useState(false);
-  const i = stats?.income ?? null;
   /** Deduped by span: `90d` and `total` are one window under two labels. */
   const periods = holdingPeriods(stats);
   /** The chart uses the longest real window — never a label, never padded. */
@@ -234,17 +233,23 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
 
 
               {/*
-                ── The returns, and the APR after them ──
+                ── The returns ──
                 This section used to open with the fees+yield APR at 40px —
                 4.85% on 2026-10-29 — while the card the reader had just come
-                from headlined +209%. Both were correct and they answer
+                from headlined +209%. Both were correct and they answered
                 DIFFERENT QUESTIONS, so the eye landed on a number that could
                 not be reconciled with the one that brought them here.
 
-                The holding period return is the same quantity the card
-                annualizes, so it comes first of the two, and the arithmetic
-                between them is stated outright rather than left for the
-                reader to attempt.
+                The APR was first demoted beneath the returns with a paragraph
+                explaining why it differed, then removed outright on
+                2026-10-30: a figure that needs a paragraph defending its own
+                inconsistency is costing more than it pays. The card still
+                falls back to it when PEX has published too little history to
+                show a return, which is the only place it now appears.
+
+                What is left is one quantity — the holding period return, the
+                same thing the card annualizes — and the arithmetic between
+                the two stated outright rather than left to the reader.
               */}
               <div className="rounded-xl border border-green-500/20 bg-green-500/[0.04] p-5">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -318,37 +323,6 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                   Over the 29 days to 2026-10-29 the vault made +1.27% while holding lost
                   9.21% — 10.48 points apart. That distance is how much better the strategy
                   did, not what a depositor earned.
-                </p>
-              </div>
-
-              {/*
-                ── The APR, after the returns and clearly a different thing ──
-                It led this modal at 40px until 2026-10-29, which put 4.85%
-                directly under a card headlining +209%. PEX publishes it as
-                `total_apr_7d_bps`: already a rate, 7-day only, no longer
-                window exists, and it counts fees and yield while excluding
-                trader P&L and price moves. Keeping it matters — it is the
-                only figure that isolates what the pool EARNS from what the
-                market did to it — but it is not the headline.
-              */}
-              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                    Fees + yield APR
-                  </span>
-                  <span className="font-mono text-[20px] font-semibold leading-none text-green-400">
-                    {pct(i?.totalPct)}
-                  </span>
-                </div>
-                <p className="mt-2 text-[10.5px] leading-relaxed text-gray-500">
-                  {i
-                    ? <>{pct(i.feePct)} fees + {pct(i.yieldPct)} yield, published by PEX over the
-                        past 7 days. <strong className="text-gray-400">A different quantity from
-                        the returns above</strong> — it counts only what the pool earns in fees and
-                        yield, and excludes both trader P&amp;L and the assets&rsquo; price moves.
-                        That is why it can read small beside a large return, or positive beside a
-                        negative one.</>
-                    : "PEX has not published a rate for this vault."}
                 </p>
               </div>
 
@@ -426,13 +400,6 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
                     audit.</strong>{" "}
                     Capital goes to a third-party protocol by Ultrade. Magnet Strategies holds no
                     funds and operates no exchange.
-                  </li>
-                  <li>
-                    <strong className="font-semibold text-amber-100">The APR is income, not a
-                    forecast.</strong>{" "}
-                    It excludes asset price moves and net trader P&amp;L, so a positive APR can sit
-                    alongside a negative return. It is not a promised future rate, and it is not
-                    APY.
                   </li>
                 </ul>
               </div>

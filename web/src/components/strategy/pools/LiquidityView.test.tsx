@@ -397,7 +397,41 @@ describe("the C-Vault card", () => {
     expect(screen.getByText("Participants")).toBeTruthy();
   });
 
-  it("carries ONE rate — the income APR is a different quantity and lives in the modal", async () => {
+  /**
+   * ── Where the APR survives, and the guard that came with it ──
+   * The fees+yield APR was removed from the Learn more modal on 2026-10-30 as
+   * a second quantity that needed a paragraph defending why it disagreed with
+   * the first. This fallback is the ONLY place it still renders: when PEX has
+   * published too little history to compute a return, the card shows the
+   * published rate rather than nothing.
+   *
+   * The 7-day attribution is asserted here because it used to be asserted in
+   * the modal. PEX publishes a 7-day income APR and nothing longer; relabelling
+   * it as a 30-day figure, or annualizing a 30-day return into an APR, is an
+   * error this repo has already made and removed once.
+   */
+  it("falls back to the published APR when there is no return to annualize", async () => {
+    bundle = {
+      ...BUNDLE,
+      byKey: {
+        "cva-3690309167": {
+          ...BUNDLE.byKey["cva-3690309167"],
+          ret: null, returns: {}, reasons: { total: "insufficient_history" },
+        },
+      },
+    };
+    liquidity = LIQUIDITY;
+    await mount("visitor");
+    await waitFor(() => expect(screen.getByText("Fees + Yield APR")).toBeTruthy());
+    expect(screen.getByText("7.57%")).toBeTruthy();
+    // The window it covers, never a longer one.
+    expect(screen.getByText(/Past 7 days/)).toBeTruthy();
+    const row = screen.getByText("Fees + Yield APR").parentElement?.parentElement;
+    expect(row?.textContent).not.toMatch(/30[- ]?day/i);
+    expect(row?.textContent).not.toMatch(/Annualized/i);
+  });
+
+  it("carries ONE rate — the income APR is a different quantity, and not on the card", async () => {
     /**
      * 5.11% income against a +183% total on 2026-10-28, because income was
      * ~2.6% of the return. Two rates side by side invited reading the small
@@ -407,6 +441,10 @@ describe("the C-Vault card", () => {
      * earlier version of this test matched "7.57% APR" as a literal and kept
      * passing after the APR came BACK onto the card, because the markup had
      * split the value from its label.
+     *
+     * This covers the NORMAL state, where an annualized return exists. The
+     * test above covers the fallback, which is the one place the APR still
+     * renders anywhere in the product.
      */
     bundle = BUNDLE;
     liquidity = LIQUIDITY;
