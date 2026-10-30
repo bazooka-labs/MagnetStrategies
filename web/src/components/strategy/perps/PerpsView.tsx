@@ -13,7 +13,7 @@ import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
-import { Panel } from "@/components/magnetfi/v2/shared";
+import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 
 // Sized and shaped like the section it replaces — no border or background of
 // its own, because the Panel around it already draws those.
@@ -172,7 +172,12 @@ export function PerpsView() {
           seams can run edge to edge. Each section draws the seam ABOVE itself,
           which is what lets `PositionsPanel` take its rule with it when no
           wallet is connected. */}
-      <Panel>
+      {/* Same MAGNET_GLOW the C-Vault card and the MagnetFi vault cards carry,
+          so the three arms read as one product. It REPLACES the Panel's default
+          drop shadow rather than stacking — that default sets
+          --tw-shadow-color: black, which would recolour the glow to black if
+          it were passed through className. */}
+      <Panel glowClass={MAGNET_GLOW}>
         <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
           onMarketChange={setMarketId} lines={lines} busy={busy}
           indexUsd={overlay?.indexPrice12 ? Number(overlay.indexPrice12) / 1e12 : null} />
