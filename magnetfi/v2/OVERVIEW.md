@@ -318,10 +318,6 @@ has been dead for four days.
 every startup. Three feed incidents have now run ~27h, ~48h and ~96min before
 anyone noticed. The feed restarts automatically; detection is the gap.
 
-**`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** Two prior feed outages ran
-~27h and ~48h before anyone noticed. The feed now auto-starts at logon, which
-addresses the restart but not the detection.
-
 **Bot redundancy.** A single instance is a single point of failure. Auto-start
 at logon is verified by an actual power cycle; a second host is not built.
 
@@ -349,6 +345,48 @@ proves borrow demand exists. [PSM.md](./PSM.md#public-deposits--pinned).
 supersedes the ordering this document's predecessor carried.
 
 ---
+
+**The committed PSM v3 artifact does not reproduce the deployed bytecode.**
+Found 2026-10-30 by compiling `artifacts/psm_v3/PSMv3.approval.teal` and
+comparing against app `3644230181`: **3,038 bytes on chain against 3,008 from
+source.** The oracle and vault both match their artifacts exactly; this is
+PSM v3 alone.
+
+The logic is equivalent — all 75 constants are byte-identical (every assert
+string, global key and method selector), and the semantic opcode sequence
+differs only by two redundant `intc_0` pushes where the deployed build dups
+instead. The stack-shuffling mix differs throughout (`frame_dig` against
+`swap`/`dup`), which is the signature of a different compiler version.
+
+The defect is **reproducibility, not behaviour**: the repo cannot currently
+prove what is deployed, so PSM v3 can only be reviewed by equivalence argument
+rather than by hash. Fix is to pin the puya version and regenerate the
+artifact. Verify with:
+
+```bash
+node magnetfi/v2/scripts/verify-bytecode.mjs   # exit 0 all match, 1 any differs
+```
+
+Worth doing on the next upgrade, when the contracts are rebuilt anyway — and
+worth re-running after any deploy, since a silent artifact drift is invisible
+until someone goes looking.
+
+**No method validates the sender of its paired group transaction.** Eight call
+sites, found 2026-10-30: `vault.open_vault` (`lp_xfer`, `mbr_pay`),
+`vault.pay_interest`, `vault.add_collateral`,
+`vault.settle_health_liquidation`, `psm_v3.mint_musd`, `psm_v3.redeem_musd`,
+`psm_v3.deposit_usdc`, `psm_v3.restore`. Each asserts the paired transfer's
+asset, receiver and amount, and none asserts `.sender == Txn.sender`.
+
+**Not exploitable in normal flows.** Algorand covers the group ID in the
+signature, so a signed transfer cannot be lifted into another group, and an
+ungrouped one cannot be added to a group at all. It becomes material only if a
+user signs an attacker-composed group, or if the protocol ever integrates a
+third-party router or aggregator that builds groups on the user's behalf —
+which is exactly when nobody will be thinking about it.
+
+One assert per site, no state and no schema change. Cheap enough to bundle
+into any future contract revision.
 
 ## Tripwires — conditions, not intentions
 

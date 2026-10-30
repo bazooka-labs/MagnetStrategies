@@ -66,6 +66,24 @@ step 6, but it is a known-exposed key.
 
 ---
 
+## Verifying the deployed bytecode
+
+Every review of these contracts assumes the repo describes what is live. Check
+it rather than assume it — **after any deploy, and before any review**:
+
+```bash
+node magnetfi/v2/scripts/verify-bytecode.mjs
+```
+
+Exit 0 if all three match their artifacts, 1 if any differs, 2 if a source
+artifact or the chain could not be read.
+
+Run 2026-10-30 it found PSM v3 differing from its committed artifact (3,038
+bytes on chain against 3,008). That turned out to be a compiler version
+difference rather than a logic change — but establishing that took comparing
+every constant and the whole semantic opcode sequence by hand. **A mismatch is
+not automatically a logic change; it is always a reason to stop and check.**
+
 ## Checking TVL against the reviewed envelope
 
 The lean oracle accepts any non-zero price from the bot key with **no on-chain
