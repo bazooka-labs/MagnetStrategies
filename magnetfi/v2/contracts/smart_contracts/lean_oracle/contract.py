@@ -25,7 +25,16 @@ _ACTIVE_PREFIX: bytes = b"lp_active_"
 #
 # Gone: the admin-set anchor, the ±25% band around it, and the ±50%-vs-prior
 # deviation guard. All three existed to bound a COMPROMISED BOT KEY, and that
-# risk is accepted at this scale. Their cost was not: on 2026-08-21 the band
+# risk is accepted at this scale.
+#
+# "This scale" is a NUMBER, not a feeling: AUDIT.md:1077 puts the reviewed
+# safe envelope at < ~$100k collateral-pool TVL. Measured 2026-10-30 the vault
+# held $2,534 of LP at the oracle's own posted prices — 2.5% of it, 39x of
+# headroom. Crossing that envelope is the trigger to restore a bound here (a
+# wide one: the 2026-08-21 freeze was a ±25% band rejecting a valid post, and
+# a limit set to catch decimals slips and bad routes would not have fired on
+# it). The check belongs in OPERATIONS.md; this comment exists so the decision
+# and the number it rests on cannot drift apart unnoticed. Their cost was not: on 2026-08-21 the band
 # rejected a perfectly valid post and froze the feed while the bot ran happily,
 # logging no error (ADMIN.md:151, pc=512). Of three oracle freezes, that one was
 # the contract's doing and it is the only structural cause left.

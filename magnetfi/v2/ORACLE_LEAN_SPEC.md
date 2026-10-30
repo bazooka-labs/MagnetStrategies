@@ -1,5 +1,32 @@
 # MagnetFi — Lean Oracle
 
+## The envelope this design is valid inside
+
+Every price gate was removed deliberately — see the contract header and §2.2b.
+The justification is scale, and the scale is a number rather than a judgement:
+
+| | |
+|---|---|
+| Reviewed safe envelope (`AUDIT.md:1077`) | **< ~$100k collateral-pool TVL** |
+| Measured 2026-10-30 | **$2,534** of LP in the vault, at the oracle's own posted prices |
+| PSM USDC / mintable headroom | $151.40 / $50.00 |
+| Headroom to the gate | **39x** |
+
+**Crossing ~$100k is the trigger to restore an on-chain bound**, and to get the
+external audit `AUDIT.md` names as the gate before significant TVL.
+
+If a bound comes back it should be a **wide** one. The band that was removed
+was ±25%, and on 2026-08-21 it rejected a perfectly valid post and froze the
+feed while the bot ran clean (`ADMIN.md:151`, pc=512). A limit sized to catch
+decimals slips and bad routes — orders of magnitude, not percentages — would
+not have fired on that post and still bounds the failures that matter.
+
+What is NOT a reason to revisit this: an unsolicited audit pitch. One arrived
+2026-10-30 describing the missing bound as a finding. It is not a finding; it
+is this document. The same mail asserted that PSMv3 and FolksAdapter hold mUSD
+reserves on mainnet, which is false — `adapter_ids` and `deployed_principal`
+on app 3644230181 are both all-zero and no adapter is wired.
+
 **Status: specification, pre-build.** Nothing here is implemented.
 
 _Revised 2026-10-13 after an independent review (SOUND-WITH-CHANGES, one

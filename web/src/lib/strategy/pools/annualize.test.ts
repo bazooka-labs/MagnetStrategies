@@ -192,7 +192,10 @@ describe("holdingPeriods", () => {
   });
 
   it("drops windows PEX could not compute, rather than zeroing them", () => {
-    const list = holdingPeriods(stats({ "7d": ret("7d", 2.08, 6), "30d": null }));
+    // `returns` is Partial<Record<...>>, so an uncomputed window is ABSENT.
+    // An earlier version of this test wrote `"30d": null`, which vitest ran
+    // happily and tsc rejected — the suite is not a typecheck.
+    const list = holdingPeriods(stats({ "7d": ret("7d", 2.08, 6), "30d": undefined }));
     expect(list.map((r) => r.period)).toEqual(["7d"]);
   });
 

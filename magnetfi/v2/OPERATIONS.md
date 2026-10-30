@@ -66,6 +66,37 @@ step 6, but it is a known-exposed key.
 
 ---
 
+## Checking TVL against the reviewed envelope
+
+The lean oracle accepts any non-zero price from the bot key with **no on-chain
+bound on how far it moves**. That is deliberate, and it is valid only inside
+the envelope the internal review set: **< ~$100k collateral-pool TVL**
+(`AUDIT.md:1077`). Nothing on chain enforces the envelope, so it has to be
+looked at.
+
+**Check it whenever the PSM is funded, a pool is added, or quarterly** —
+whichever comes first.
+
+```bash
+# Collateral in the vault, valued at the oracle's own posted prices,
+# plus PSM backing and the mUSD headroom that backing permits.
+node scripts/envelope.mjs            # see below; prints TVL vs the $100k gate
+```
+
+Measured 2026-10-30: **$2,534** of LP collateral, $151.40 PSM USDC, $50.00
+mintable headroom — 2.5% of the envelope, 39x of room.
+
+**If TVL approaches ~$100k**, two things are due before it crosses, and they
+are the same two `AUDIT.md` already names:
+
+1. Restore an on-chain bound on `update_lp_price` — a **wide** one. The band
+   that was removed was ±25%, and on 2026-08-21 it rejected a valid post and
+   froze the feed (`ADMIN.md:151`). Size any replacement to catch decimals
+   slips and bad routes, which are orders of magnitude, not percentages.
+2. Commission the external third-party audit.
+
+Neither is urgent at present scale, and neither should be skipped past it.
+
 ## Diagnosing a stale feed
 
 The bot logs the reason on every cycle. Read it before acting.

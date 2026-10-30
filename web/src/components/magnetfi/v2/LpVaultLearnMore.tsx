@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { RAISED_AMBER } from "@/components/raisedButton";
 import { createPortal } from "react-dom";
-import { X, BookOpen, TrendingUp, Lock, Clock, CircleDollarSign, ShieldCheck } from "lucide-react";
+import {
+  X, BookOpen, TrendingUp, Lock, Clock, CircleDollarSign, ShieldCheck, AlertTriangle,
+} from "lucide-react";
 
 const FEATURES = [
   { icon: <TrendingUp className="h-5 w-5" />, title: "Collateral keeps earning",
@@ -78,8 +80,9 @@ export function LpVaultLearnMore() {
                   <p className="text-sm font-semibold text-white">Staying healthy — and what happens if you don&apos;t</p>
                 </div>
                 <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                  Partial tiers are deliberate to avoid closing out borrowers for small mistakes. A live oracle prices your
-                  collateral, and borrows are temporarily blocked if the price feed goes stale.
+                  Partial tiers are deliberate to avoid closing out borrowers for small mistakes. An oracle prices your
+                  collateral; new borrowing and every liquidation trigger are blocked if that price goes stale.
+                  What the oracle is, and what you are trusting it with, is set out below.
                 </p>
 
                 <div className="space-y-2">
@@ -100,6 +103,68 @@ export function LpVaultLearnMore() {
                     Your principal loan is untouched, the loan continues and the 90-day clock resets.
                   </p>
                 </div>
+              </div>
+              {/*
+                ── What you are trusting ──
+                Added 2026-10-30. The modal explained the seizure ladder in
+                detail — 35%, 77%, everything — and said only that "a live
+                oracle prices your collateral". A depositor reading those tiers
+                would reasonably assume the price driving them is robust, and
+                nowhere did the product say what it actually is.
+
+                Every claim here is read off the deployed contracts:
+                  - lean_oracle `update_lp_price` asserts three things and no
+                    more: sender is `authorized_updater`, price > 0, pool
+                    whitelisted. No bound on movement, deliberately — see the
+                    contract header and ORACLE_LEAN_SPEC.md.
+                  - vault `ORACLE_FRESHNESS = 1_800`, asserted in open_vault,
+                    borrow_more and all three liquidation triggers.
+                  - `paused` gates borrowing only. Liquidation deliberately
+                    continues while paused.
+                  - off-chain guards are listed in lean_oracle/contract.py.
+
+                It describes the TRUST MODEL, not an attack. The distinction is
+                deliberate: what a depositor needs is to know whose judgement
+                and whose key their collateral depends on, which the source
+                already states publicly. A step-by-step failure path would add
+                nothing for them and is not ours to hand out.
+              */}
+              <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-5">
+                <div className="mb-1 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
+                  <p className="text-sm font-semibold text-amber-100">What you are trusting</p>
+                </div>
+                <ul className="mt-2.5 space-y-2 text-xs leading-relaxed text-amber-100/80">
+                  <li>
+                    <strong className="font-semibold text-amber-100">One key sets the price your
+                    health factor is measured against.</strong>{" "}
+                    Magnet runs a bot that posts each LP price on chain. The contract accepts any
+                    non-zero price from that key and places no limit on how far it may move between
+                    posts — a deliberate choice, made after an on-chain band rejected a valid price
+                    and froze the feed. The checks that catch a bad number — time-weighted
+                    averaging, several independent routes, a second opinion from CompX — run in the
+                    bot, off chain. They are built to catch our own bugs, and they would not stop
+                    someone who had stolen the key.
+                  </li>
+                  <li>
+                    <strong className="font-semibold text-amber-100">A stale price stops borrowing
+                    and liquidation both.</strong>{" "}
+                    If the most recent post is more than 30 minutes old, new borrowing and every
+                    liquidation trigger are refused until the feed recovers. A guardian key can
+                    also pause borrowing. Pausing does not stop liquidations — that is on purpose,
+                    so positions can still be made whole during an incident, but it does mean a
+                    pause will not protect an unhealthy vault.
+                  </li>
+                  <li>
+                    <strong className="font-semibold text-amber-100">These contracts have had no
+                    external audit.</strong>{" "}
+                    They have been through a long run of internal review and an executable
+                    adversarial test suite, and that review set a ceiling it considers safe:
+                    under roughly $100k of collateral across the pools. An outside audit is the
+                    gate before going past it. Every contract, every review pass and that ceiling
+                    are public in the repository — read them before you deposit.
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
