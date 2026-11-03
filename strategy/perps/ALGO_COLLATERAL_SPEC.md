@@ -230,6 +230,71 @@ back to USDC turns 3 tests red, and restoring the old label rule turns 3 more.
 
 ---
 
+## 5b. The close and cancel write paths — BUILT
+
+Found while starting the write path, not predicted by §4 or §5: **§5's table
+listed `PositionsPanel` as needing a label, and missed that the panel also
+CLOSES.** `collateralAssetId` is part of the `p2:` key, so in `closePosition`
+it does not describe the close — it selects the box.
+
+**What §5 also got wrong about the size of this.** It named "3 hardcoded
+`keeperFeeAssetId` sites in `client.ts`". The real count is ~26 hardcoded
+`COLLATERAL_ASSET_ID` uses across four functions: `openPositionInner` (11),
+`openLimitOrderInner` (6), `cancelOrder` (3), `closePositionInner` (4). Only
+the last two were reachable before the toggle exists.
+
+### Measured exposure, 2026-11-03
+
+Enumerated all `p2:` boxes on the trading app (33 boxes, 7 positions):
+
+| | |
+|---|---|
+| USDC-collateral positions | 6 |
+| ALGO-collateral positions | 1 ($20.02, market 1 long) |
+| wallets holding BOTH collaterals in one (market, side) | **1** |
+
+That one wallet is market 1 long, with `position_id` **125** (USDC, $1,805.50)
+and **137** (ALGO, $20.02). Both post-cutover and distinct, so the existing
+`position_id` guard catches the mismatch and the close fails closed.
+
+**So the live impact was a broken button, not a wrong-position close:** an
+ALGO position showed an enabled "Close position" that always threw "That
+position has been replaced since the page loaded" — false, and about the one
+thing a user most needs to trust.
+
+**The dangerous variant is real in code and had no instance on chain.**
+Pre-cutover positions all carry `position_id = 0` (SPEC.md:785), so a wallet
+with an id-0 position under each collateral in one market and side passes
+`0 !== 0` and reaches the builder against the wrong box, clamped to that
+box's size. No such pair exists today. The fix does not rely on that staying
+true.
+
+### What changed
+
+- `ClosePositionInput` and `CancelOrderInput` take the collateral explicitly;
+  neither defaults to USDC.
+- The close re-reads the box with the given key **and checks the box agrees**
+  (`live.collateral_asset_id`). That is the only place the two can be
+  compared, and it is what covers the id-0 case the `position_id` guard
+  cannot see.
+- Cancel takes `collateral_asset_id` and `keeper_fee_asset_id` straight off
+  the order box. **This one was not introduced by §5a**: `readOrders`
+  enumerates by owner, never by collateral, so an ALGO-collateral order has
+  always been listed and always been cancellable with USDC hardcoded as the
+  refund asset.
+- The close spinner was keyed `${marketId}-${side}` — a sixth identity
+  collision, putting "Closing…" on both same-side rows.
+
+### Why no test caught it
+
+`closeAssembly`, `closeReal` and `cancelAssert` all call the **assert**
+functions directly, each passing `COLLATERAL_ASSET_ID` as a fixture. None
+exercises `client.ts`, so the builder and the assertion were handed the same
+wrong constant and agreed with each other. `closeCollateral.test.ts` now
+covers the wiring; mutation-verified both ways.
+
+---
+
 ## 5. Everything else that needs widening
 
 | area | today | needed |
