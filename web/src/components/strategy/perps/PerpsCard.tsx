@@ -403,6 +403,21 @@ export function PerpsCard({
   const settledAmount = useDebounced(amount, 120);
   const collateralUsd = parseMoney(settledAmount) ?? 0;
   /**
+   * The collateral the card is currently composing with.
+   *
+   * Still USDC always — the pill toggle is not wired yet. It is named here
+   * rather than spelled `COLLATERAL_ASSET_ID` at each use so the toggle
+   * changes one line, and so the quote and the submit cannot drift apart by
+   * one of them being updated and the other missed.
+   */
+  const collateralAssetId = COLLATERAL_ASSET_ID;
+  /**
+   * The amount in the collateral asset's own micro-units — what actually gets
+   * transferred. Equal to the dollar figure only because that asset is USDC;
+   * see `pex/collateral.ts`.
+   */
+  const collateralAmountMicro = BigInt(Math.round(collateralUsd * 1e6));
+  /**
    * The field and the figures agree.
    *
    * For the debounce window plus the render that follows it, the input shows
@@ -447,9 +462,9 @@ export function PerpsCard({
     if (!data || !bar?.open) return null;
     try {
       return confirmCeiling({
-        state: data.state, oracle: data.oracle, side, collateralUsd,
+        state: data.state, oracle: data.oracle, side, collateralAmountMicro,
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
-        collateralAssetId: COLLATERAL_ASSET_ID,
+        collateralAssetId,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       // Must match the bar's. Widening the bar without widening this leaves
       // every candidate rejected by `quoteOpen` and the ceiling pinned at the
@@ -665,9 +680,9 @@ export function PerpsCard({
     try {
       return quoteOpen({
         state: data.state, oracle: quoteOracle, side,
-        collateralUsd, notionalUsd: notional,
+        collateralAmountMicro, notionalUsd: notional,
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
-        collateralAssetId: COLLATERAL_ASSET_ID,
+        collateralAssetId,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       });
     } catch { return null; }
@@ -1158,7 +1173,8 @@ export function PerpsCard({
         sender: wallet.address,
         marketId,
         side,
-        collateralUsd,
+        collateralAssetId,
+        collateralAmountMicro,
         notionalUsd: notional,
         takeProfitPrice12: tp12,
         stopLossPrice12: slEmpty ? BigInt(0) : sl12,

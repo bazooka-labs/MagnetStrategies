@@ -34,16 +34,17 @@ import { V2_ORDER_KIND, V2_ORDER_TARGET } from "@pdex/sdk";
 import {
   BUILDER_ADDRESS,
   CHILD_KEEPER_FEE_USDC,
-  CROSS_MARGIN_BPS,
   COLLATERAL_ASSET_ID,
+  CROSS_MARGIN_BPS,
   DEFAULT_SLIPPAGE_BPS,
   MAX_DISPLAY_DRIFT_BPS,
   MAX_ENTRY_DRIFT_BPS,
   MAX_LIQUIDATION_DRIFT_BPS,
   MAX_NET_COLLATERAL_DRIFT_BPS,
-  ORACLE_MAX_AGE_SEC,
   MIN_SIGNING_BUDGET_SEC,
+  ORACLE_MAX_AGE_SEC,
   PEX_APPS,
+  PEX_ASSETS,
   POSITION_BUILDER_FEE_BPS,
   TAKE_PROFIT_TIME_IN_FORCE,
 } from "@/lib/strategy/pex/config";
@@ -59,6 +60,10 @@ import {
   storagePaymentNeeded,
   type PositionState,
 } from "@/lib/strategy/pex/reads";
+import {
+  collateralUsd as collateralUsdOf,
+  collateralAmountMicro as collateralAmountMicroOf,
+} from "@/lib/strategy/pex/collateral";
 import { getOraclePayload } from "@/lib/strategy/pex/oracle";
 import { installProtocolManifest } from "@/lib/strategy/pex/manifest";
 import { exitBlocked, preflight } from "@/lib/strategy/perps/preflight";
@@ -100,8 +105,25 @@ export type OpenPositionInput = {
   sender: string;
   marketId: number;
   side: Side;
-  /** Collateral in whole USDC, as shown. */
-  collateralUsd: number;
+  /**
+   * Which asset backs the position, and how much of it — in THAT asset's
+   * micro-units, not in dollars.
+   *
+   * These replaced `collateralUsd: number`. For USDC the two were the same
+   * number, which is how the conflation survived: `collateral_amount` on the
+   * live ALGO position is 210.873916 ALGO against $20.02 of size, so against
+   * ALGO a dollar figure in this field is wrong by the ALGO price. See
+   * `pex/collateral.ts`.
+   */
+  collateralAssetId: number;
+  collateralAmountMicro: bigint;
+  /**
+   * ALGO/USD as Price12, required when `collateralAssetId` is ALGO.
+   *
+   * Needed because the dollar-denominated checks — the exchange minimum, the
+   * leverage the user was shown — cannot be evaluated against µALGO.
+   */
+  algoPrice12?: bigint | null;
   /** Notional in whole USD, as shown. */
   notionalUsd: number;
   /** Take-profit trigger, Price12, exactly as displayed. */
@@ -259,8 +281,14 @@ export async function openPosition(input: OpenPositionInput): Promise<OpenPositi
 async function openPositionInner(input: OpenPositionInput): Promise<OpenPositionResult> {
   const {
     algod, signTransactions, sender, marketId, side,
-    collateralUsd, notionalUsd, takeProfitPrice12, displayed,
+    collateralAmountMicro, collateralAssetId, notionalUsd, takeProfitPrice12, displayed,
   } = input;
+  /**
+   * The collateral's dollar value, for the checks that are genuinely about
+   * dollars. Throws rather than guessing when it cannot be priced — better
+   * than a leverage figure computed from an unpriced number.
+   */
+  const collateralUsd = collateralUsdOf(collateralAssetId, collateralAmountMicro, input.algoPrice12);
   const stopLossPrice12 = input.stopLossPrice12 ?? BigInt(0);
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const stage = (s: OpenStage) => input.onStage?.(s);
@@ -271,7 +299,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // `BigInt(Math.round(NaN))` and surface as a raw RangeError with no wallet
   // prompt and no explanation. Infinity did the same.
   if (!Number.isFinite(collateralUsd) || !Number.isFinite(notionalUsd)
-    || collateralUsd <= 0 || notionalUsd <= 0) {
+    || collateralAmountMicro <= BigInt(0) || collateralUsd <= 0 || notionalUsd <= 0) {
     throw new Error("Enter an amount first.");
   }
   /**
@@ -297,6 +325,36 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const wantsStopLoss = stopLossPrice12 > BigInt(0);
   if (stopLossPrice12 < BigInt(0)) {
     throw new Error("That stop-loss price is not valid.");
+  }
+  /**
+   * **Protection on ALGO collateral is refused, deliberately.**
+   *
+   * Not because it cannot be built — it can. `keeperFeeAssetId` follows the
+   * collateral through the SDK, our assertions already require exactly that,
+   * and $0.10 of ALGO clears the contract's `min_keeper_fee_usd` of $0.05.
+   * Every check would pass.
+   *
+   * It is refused because of what SPEC.md:248 describes as the failure mode of
+   * a mis-specified keeper fee: an order that "passes every assertion, renders
+   * as armed, and no keeper will ever execute". Whether keepers take an ALGO
+   * fee is an economic question about third parties, not a property of the
+   * group, so no amount of local checking answers it — and SPEC.md:514
+   * records that across 49 MainNet cleanups `keeper_fee_paid = 0` every time,
+   * which is not encouraging about assuming good will here.
+   *
+   * An unexecuted take-profit is worse than none: it is the only automated
+   * exit a leveraged position has, and it would be displayed as armed.
+   *
+   * Lifting this needs one thing — a MainNet ALGO-fee protective order
+   * observed being executed by a keeper. Until then an ALGO position opens
+   * bare, which is honest, and can still be closed by hand.
+   */
+  if (collateralAssetId !== COLLATERAL_ASSET_ID && (wantsTakeProfit || wantsStopLoss)) {
+    throw new Error(
+      "A take-profit or stop-loss cannot be attached to an ALGO-collateral position yet: "
+      + "the keeper fee would have to be paid in ALGO, and we have not confirmed keepers "
+      + "execute those. Open it without one, or use USDC as collateral.",
+    );
   }
   /**
    * How many protective orders ride along: 0, 1 or 2.
@@ -348,20 +406,38 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // Fail with something actionable rather than letting the chain reject it.
   // The ALGO check waits until the storage payment is known — see below.
   const algoSpendable = BigInt(account.amount) - BigInt(account.minBalance);
-  const usdcHeld = (account.assets ?? []).find(
-    (a: { assetId?: bigint | number }) => Number(a.assetId) === COLLATERAL_ASSET_ID,
+  /**
+   * The keeper fee is escrowed in the SAME asset as the collateral.
+   *
+   * Not a preference — `assertOpenWithAttachedOrders` fails
+   * `child_keeper_fee_asset` unless `keeperFeeAssetId` equals the position's
+   * collateral asset, and the contract's own minimum is USD-denominated
+   * (`min_keeper_fee_usd`, $0.05, admin-mutable). So the $0.10 we escrow is a
+   * dollar amount converted into whatever backs the position.
+   *
+   * §5 of the spec had this backwards — it expected ALGO collateral to still
+   * need a USDC balance for the fee.
+   */
+  const keeperFeeMicro = collateralAmountMicroOf(
+    collateralAssetId, micro(CHILD_KEEPER_FEE_USDC), input.algoPrice12,
   );
-  if (!usdcHeld) throw new Error("This wallet does not hold USDC.");
-  // The keeper fee is only escrowed when a take-profit is attached. Demanding it
-  // unconditionally refused a wallet that held exactly enough. Audit 8 MEDIUM 8.
-  const usdcNeeded = micro(collateralUsd)
-    // One keeper fee per attached order, not per trade.
-    + BigInt(legCount) * micro(CHILD_KEEPER_FEE_USDC);
-  if (BigInt(usdcHeld.amount) < usdcNeeded) {
-    throw new Error(wantsTakeProfit
-      ? "Not enough USDC for the position plus its keeper fee."
-      : "Not enough USDC for the position.");
+  const collateralNeeded = collateralAmountMicro + BigInt(legCount) * keeperFeeMicro;
+  if (collateralAssetId === COLLATERAL_ASSET_ID) {
+    const usdcHeld = (account.assets ?? []).find(
+      (a: { assetId?: bigint | number }) => Number(a.assetId) === COLLATERAL_ASSET_ID,
+    );
+    if (!usdcHeld) throw new Error("This wallet does not hold USDC.");
+    if (BigInt(usdcHeld.amount) < collateralNeeded) {
+      throw new Error(wantsTakeProfit
+        ? "Not enough USDC for the position plus its keeper fee."
+        : "Not enough USDC for the position.");
+    }
   }
+  // The ALGO case is NOT checked here. ALGO collateral comes out of the same
+  // spendable balance as the group's fees and the storage escrow, and the
+  // storage payment is not known until the trader box has been read — so
+  // checking it now would be checking the wrong number. It is folded into the
+  // single ALGO requirement below.
 
   // ── One position per (market, side) ──────────────────────────────────────
   // PEX keeps exactly one position per (market, collateral asset, side) and a
@@ -374,7 +450,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // Both boxes in one round trip: the position guard, and the trader-state box
   // that decides whether this group must fund storage.
   const [existing, trader] = await Promise.all([
-    readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2),
+    readPosition(algod, sender, marketId, collateralAssetId, side === "long" ? 1 : 2),
     readTraderState(algod, sender),
   ]);
   if (existing && existing.size_usd > BigInt(0)) {
@@ -396,7 +472,13 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const fundsStorage = storagePayment > BigInt(0);
 
   // Now the ALGO requirement is knowable, so it can be both correct and honest.
-  const algoNeeded = minAlgoMicro(storagePayment, legCount);
+  //
+  // With ALGO collateral the position and its keeper fees leave the SAME
+  // spendable balance as the fees and the storage escrow, so they belong in
+  // this one number rather than in a separate check that would each pass while
+  // their sum does not.
+  const algoNeeded = minAlgoMicro(storagePayment, legCount)
+    + (collateralAssetId === PEX_ASSETS.algo ? collateralNeeded : BigInt(0));
   if (algoSpendable < algoNeeded) {
     throw new Error(
       `Needs about ${(Number(algoNeeded) / 1e6).toFixed(2)} spendable ALGO${
@@ -460,8 +542,9 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // Slippage is anchored to the quoted execution price, not the index — an
   // index-anchored bound fails at every size once impact is charged.
   const probe = quoteOpen({
-    state, oracle, side, collateralUsd, notionalUsd,
-    builderAddress: BUILDER_ADDRESS, collateralAssetId: COLLATERAL_ASSET_ID, slippageBps,
+    state, oracle, side, collateralAmountMicro, notionalUsd,
+    builderAddress: BUILDER_ADDRESS, collateralAssetId, slippageBps,
+    algoPrice12: input.algoPrice12,
   });
   if (!probe.ok) {
     throw new Error(`The exchange will not accept this position: ${probe.reasons.join(", ")}`);
@@ -577,7 +660,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       triggerPrice12: takeProfitPrice12,
       acceptablePrice12: tpAcceptable,
       keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
-      collateralAssetId: COLLATERAL_ASSET_ID,
+      collateralAssetId,
       builderAddress: BUILDER_ADDRESS,
     });
     if (tpCross.blocking) {
@@ -604,7 +687,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       triggerPrice12: stopLossPrice12,
       acceptablePrice12: slAcceptable,
       keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
-      collateralAssetId: COLLATERAL_ASSET_ID,
+      collateralAssetId,
       builderAddress: BUILDER_ADDRESS,
     });
     if (slCross.blocking) {
@@ -645,9 +728,9 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
    */
   const openInput = {
     sender, marketId,
-    collateralAssetId: COLLATERAL_ASSET_ID,
+    collateralAssetId,
     side: sideCode,
-    collateralAmount: micro(collateralUsd),
+    collateralAmount: collateralAmountMicro,
     sizeUsdDelta: micro(notionalUsd),
     acceptablePrice,
     oracleMessage: oracle.message,
@@ -666,7 +749,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       acceptablePrice: slAcceptable,
       sizeUsdDelta: micro(notionalUsd),
       collateralAmount: BigInt(0),
-      keeperFeeAssetId: COLLATERAL_ASSET_ID,
+      keeperFeeAssetId: collateralAssetId,
       keeperFeeAmount: keeperFee,
       outputSwapMode: BigInt(0),
       minPrimaryOutputAmount: BigInt(0),
@@ -683,7 +766,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       acceptablePrice: tpAcceptable,
       sizeUsdDelta: micro(notionalUsd),
       collateralAmount: BigInt(0),
-      keeperFeeAssetId: COLLATERAL_ASSET_ID,
+      keeperFeeAssetId: collateralAssetId,
       keeperFeeAmount: keeperFee,
       outputSwapMode: BigInt(0),
       minPrimaryOutputAmount: BigInt(0),
@@ -710,8 +793,8 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   const shownOpen = {
     storagePaymentMicro: storagePayment,
     sender, marketId, side: (side === "long" ? 1 : 2) as 1 | 2,
-    collateralAssetId: COLLATERAL_ASSET_ID,
-    collateralAmountMicro: micro(collateralUsd),
+    collateralAssetId,
+    collateralAmountMicro,
     sizeUsdDeltaMicro: micro(notionalUsd),
     acceptablePrice12: acceptablePrice,
     executionPrice12: probe.executionPrice12,
@@ -763,8 +846,8 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     : assertOpenGroup(group, {
       storagePaymentMicro: storagePayment,
       sender, marketId, side: side === "long" ? 1 : 2,
-      collateralAssetId: COLLATERAL_ASSET_ID,
-      collateralAmountMicro: micro(collateralUsd),
+      collateralAssetId,
+      collateralAmountMicro,
       sizeUsdDeltaMicro: micro(notionalUsd),
       acceptablePrice12: acceptablePrice,
       executionPrice12: probe.executionPrice12,
@@ -794,7 +877,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // Re-check immediately before the prompt. This narrows the window rather than
   // closing it: two tabs could still both pass, and because positions MERGE the
   // loser is not rejected — it increases. Nothing off chain can close that gap.
-  const stillClear = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, side === "long" ? 1 : 2);
+  const stillClear = await readPosition(algod, sender, marketId, collateralAssetId, side === "long" ? 1 : 2);
   if (stillClear && stillClear.size_usd > BigInt(0)) {
     throw new PositionAlreadyOpenError(stillClear.size_usd);
   }
@@ -888,6 +971,11 @@ export type OpenLimitInput = {
   marketId: number;
   side: Side;
   collateralUsd: number;
+  /**
+   * Present so the card can pass what the user picked and be REFUSED loudly.
+   * Optional only so existing USDC callers need no change; absent means USDC.
+   */
+  collateralAssetId?: number;
   notionalUsd: number;
   /** The price the order waits for, Price12, exactly as displayed. */
   triggerPrice12: bigint;
@@ -930,6 +1018,24 @@ export async function openLimitOrder(input: OpenLimitInput): Promise<OpenPositio
 
 async function openLimitOrderInner(input: OpenLimitInput): Promise<OpenPositionResult> {
   const { algod, signTransactions, sender, marketId, side, collateralUsd, notionalUsd } = input;
+  /**
+   * **Limit entries are USDC-only**, for the same reason a take-profit is —
+   * see the note in `openPositionInner`. A limit entry always escrows a keeper
+   * fee, so there is no bare variant of this path the way there is for a
+   * market open: the whole order depends on a keeper acting on a fee we have
+   * not confirmed they accept in ALGO.
+   *
+   * Stated as a refusal rather than left implicit, because the card offers one
+   * collateral toggle across both order types and a silent USDC assumption
+   * here would open the position in the wrong asset.
+   */
+  if ((input.collateralAssetId ?? COLLATERAL_ASSET_ID) !== COLLATERAL_ASSET_ID) {
+    throw new Error(
+      "Limit orders are USDC-only for now: a resting order's keeper fee would have to be "
+      + "paid in ALGO, and we have not confirmed keepers execute those. Use a market order, "
+      + "or switch the collateral to USDC.",
+    );
+  }
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const stage = (s: OpenStage) => input.onStage?.(s);
   const sideCode: 1 | 2 = side === "long" ? 1 : 2;

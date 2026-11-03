@@ -26,6 +26,7 @@ import {
   POSITION_BUILDER_FEE_BPS,
 } from "@/lib/strategy/pex/config";
 import { USD_SCALE, type MarketFunding, type MarketState } from "@/lib/strategy/pex/reads";
+import { collateralUsd as collateralUsdOf } from "@/lib/strategy/pex/collateral";
 import type { OraclePayload } from "@/lib/strategy/pex/oracle";
 import { solveBar, steppedCeilingUsd, type Side } from "@/lib/strategy/perps/solver";
 
@@ -158,7 +159,18 @@ export function acceptableFromExecution(executionPrice12: bigint, side: Side, sl
 
 function shape(
   raw: Record<string, unknown>, side: Side, collateralUsd: number, oracle: OraclePayload,
+  collateralAssetId: number, algoPrice12?: bigint | null,
 ): OpenQuote {
+  /**
+   * `position_collateral_after` is collateral, so it is in ASSET units for the
+   * same reason the box's `collateral_amount` is. Running it through `toUsd`
+   * unconverted is exactly the bug this whole change exists to remove — and
+   * `netCollateralUsd` is the figure the card headlines as "backing the
+   * position", so it would have been wrong by the ALGO price on screen.
+   */
+  const netCollateralUsd = collateralUsdOf(
+    collateralAssetId, big(raw.position_collateral_after), algoPrice12,
+  );
   const notionalUsd = toUsd(raw.size_usd_delta);
   return {
     ok: Boolean(raw.ok),
@@ -178,7 +190,7 @@ function shape(
     openFeeUsd: toUsd(raw.platform_fee_amount),
     builderFeeUsd: toUsd(raw.builder_fee_paid),
     impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
-    netCollateralUsd: toUsd(raw.position_collateral_after),
+    netCollateralUsd,
     effectiveInitialMarginBps: Number(raw.effective_initial_margin_bps ?? 0),
     raw,
   };
@@ -236,10 +248,26 @@ export type QuoteInput = {
   state: MarketState;
   oracle: OraclePayload;
   side: Side;
-  collateralUsd: number;
+  /**
+   * Collateral in the COLLATERAL ASSET's micro-units — µUSDC or µALGO.
+   *
+   * This replaced a `collateralUsd: number`. The two are the same number for
+   * USDC and differ by the ALGO price otherwise, and the contract stores and
+   * transfers asset units: the live ALGO position carries
+   * `collateral_amount = 210.873916` against `size_usd = 20.02`. The USD value
+   * is derived from this, never the other way round — see `collateral.ts`.
+   */
+  collateralAmountMicro: bigint;
   notionalUsd: number;
   builderAddress: string;
   collateralAssetId: number;
+  /**
+   * ALGO/USD as Price12. Required when the collateral is ALGO, ignored for
+   * USDC. On the ALGO/USD market this is the market's own index price; on any
+   * other market it has to be fetched from market 1, because this market's
+   * oracle prices something else entirely.
+   */
+  algoPrice12?: bigint | null;
   slippageBps?: number;
   builderFeeBps?: number;
 };
@@ -252,12 +280,18 @@ export type QuoteInput = {
  * and is the only one whose result is returned.
  */
 export function quoteOpen(input: QuoteInput): OpenQuote {
-  const { state, oracle, side, collateralUsd, notionalUsd } = input;
+  const { state, oracle, side, notionalUsd } = input;
   const market = marketRecord(state);
   const pool = { ...state.pool };
   const prices = priceInput(oracle);
   const sideCode = SIDE_CODE[side];
-  const collateralAmount = BigInt(Math.round(collateralUsd * Number(USD_SCALE)));
+  const collateralAmount = input.collateralAmountMicro;
+  // What the position is WORTH, for leverage and for display. Equal to the
+  // amount for USDC; priced for ALGO. Throws rather than guessing if the
+  // collateral cannot be valued, which is the same rule `payoutUsd` follows.
+  const collateralUsd = collateralUsdOf(
+    input.collateralAssetId, collateralAmount, input.algoPrice12,
+  );
   const sizeUsdDelta = BigInt(Math.round(notionalUsd * Number(USD_SCALE)));
   const builderFee = {
     builderAddress: input.builderAddress,
@@ -279,7 +313,7 @@ export function quoteOpen(input: QuoteInput): OpenQuote {
     executionPrice12, side, input.slippageBps ?? DEFAULT_SLIPPAGE_BPS,
   );
   const real = quoteV2OpenPosition({ ...base, acceptablePrice }) as unknown as Record<string, unknown>;
-  return shape(real, side, collateralUsd, oracle);
+  return shape(real, side, collateralUsd, oracle, input.collateralAssetId, input.algoPrice12);
 }
 
 /**
@@ -347,7 +381,13 @@ export function confirmCeiling(
   const acceptable = (q: OpenQuote): boolean =>
     q.ok || (!capacityApplies && q.reasons.length > 0 && q.reasons.every((r) => CAPACITY_REASONS.has(r)));
   const d = input.oracle.decoded;
-  const bar = solveBar(input.state, input.side, input.collateralUsd, input.oracle.indexPrice12, {
+  // The bar solver reasons in dollars — margin ratios, minimum notional, fee
+  // coverage are all USD properties — so the collateral is valued here rather
+  // than passed through in asset units.
+  const collateralUsd = collateralUsdOf(
+    input.collateralAssetId, input.collateralAmountMicro, input.algoPrice12,
+  );
+  const bar = solveBar(input.state, input.side, collateralUsd, input.oracle.indexPrice12, {
     builderFeeBps: input.builderFeeBps,
     marketCapacityApplies: capacityApplies,
     prices: {

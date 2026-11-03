@@ -71,9 +71,11 @@ it.skipIf(!CAPTURE)("captures real SDK groups", async () => {
       getOraclePayload(PEX_APPS.orderOps, marketId),
     ]);
     const sender = BUILDER_ADDRESS;
+    // $50 of USDC, which for USDC is also 50_000_000 micro-units.
     const collateralUsd = 50;
     const base = {
-      state, oracle, side, collateralUsd, builderAddress: BUILDER_ADDRESS,
+      state, oracle, side, collateralAmountMicro: BigInt(50_000_000),
+      builderAddress: BUILDER_ADDRESS,
       collateralAssetId: COLLATERAL_ASSET_ID, slippageBps: DEFAULT_SLIPPAGE_BPS,
       builderFeeBps: POSITION_BUILDER_FEE_BPS,
     };
