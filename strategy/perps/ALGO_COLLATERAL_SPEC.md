@@ -1,8 +1,9 @@
 # Trading Terminal — ALGO collateral
 
-**Status: spec, not built.** Written 2026-11-03. Audited against the live
-contracts and our own group assertions; the audit found one change that must
-land *before* the feature, not with it. Read §4 first.
+**Status: §4 is BUILT and shipped. The toggle is not.** Written 2026-11-03.
+The assertion fix in §4 landed on its own, verifiable against today's USDC
+fixtures — see `pex/collateralLeg.test.ts`. Everything from §5 onward remains
+spec.
 
 ---
 
@@ -130,7 +131,7 @@ if (bigint(assetId) === BigInt(NATIVE_ALGO_ASSET_ID)) {
 }
 ```
 
-**Required fix, ahead of the feature.** Two parts:
+**Required fix, ahead of the feature — DONE.** Two parts:
 
 1. **Anchor the collateral leg to the open call, not to transaction type.** In
    both SDK variants the collateral is the transaction immediately before the
@@ -150,6 +151,17 @@ if (bigint(assetId) === BigInt(NATIVE_ALGO_ASSET_ID)) {
 2. **Convert collateral to USD before dividing** in the leverage check, using
    the same oracle price the quote was built from — never a second price read,
    or the assertion drifts from the screen it is meant to be checking.
+   **Not done, deliberately**: it cannot be verified without an ALGO group to
+   test it against. Instead the assertion now REFUSES an ALGO collateral leg
+   outright (`collateral_asset_unsupported`). The feature removes that refusal
+   and brings the conversion and its tests together.
+
+**What the old rule actually did, measured.** With an ALGO payment as
+collateral the only remaining axfer is the keeper escrow, so
+`filter(assetTransfer)[0]` selected the ESCROW and validated it against the
+displayed collateral. It failed — but only because the escrow's amount
+happened to differ. Had the keeper fee equalled the collateral, an ALGO group
+would have passed every check with nothing about the real money examined.
 
 Both are changes to `pex/group.ts` alone, testable against today's captured
 fixtures with no UI involved.

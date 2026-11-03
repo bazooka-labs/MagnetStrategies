@@ -915,29 +915,6 @@ export function assertOpenGroup(
   // Count is asserted by `checkTxnShape` against the flow's shape; this path
   // only needs the collateral leg, which is the first transfer in every real
   // group the SDK builds.
-  const transfers = txns.filter((t) => t.assetTransfer);
-  const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
-  const xfer = transfers[0]?.assetTransfer;
-  if (xfer) {
-    if (Number(xfer.assetIndex) !== shown.collateralAssetId) {
-      fail("transfer_asset", `transfer asset ${xfer.assetIndex}, displayed ${shown.collateralAssetId}`);
-    }
-    if (big(xfer.amount) !== shown.collateralAmountMicro) {
-      fail("transfer_amount", `transfer ${xfer.amount}, displayed ${shown.collateralAmountMicro}`);
-    }
-    // Against the PINNED trading app address, never one derived from a manifest.
-    if (String(xfer.receiver) !== tradingAddr) {
-      fail("transfer_receiver", `transfer receiver is not the pinned Trading app address`);
-    }
-    // The collateral leg carries NO note in any real group. Without this, a
-    // well-formed `pdex-v2-linked-*` marker passes here on the strength of
-    // being well-formed, even though it belongs on the escrow leg — the shape
-    // gate alone cannot tell the two transfers apart.
-    if (transfers[0].note && transfers[0].note.length > 0) {
-      fail("note", "the collateral transfer carries a note");
-    }
-  }
-  did("collateral transfer: asset, amount, receiver, no note");
 
   // ── open_or_increase ────────────────────────────────────────────────────────
   //
@@ -985,9 +962,86 @@ export function assertOpenGroup(
   }
   did("marketId, side, sizeUsdDelta, acceptablePrice");
 
+  const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
+
+  /**
+   * ── The collateral leg is found by POSITION, not by transaction type ──
+   *
+   * This used to be `txns.filter((t) => t.assetTransfer)[0]`, which is wrong
+   * the moment collateral is anything but an ASA. `makeTokenTransferTxn`
+   * returns a PAYMENT when the asset id is 0, so an ALGO-collateral group has
+   * no axfer to find and `if (xfer)` silently skipped every check below —
+   * including the leverage check, which is the only thing binding
+   * `sizeUsdDelta`. With protection on it was worse: the keeper-fee escrow IS
+   * an axfer, so the checks ran against that instead.
+   *
+   * Selecting "the leg paying the trading app" does not disambiguate either,
+   * because the storage variant emits an un-noted payment to the same address.
+   *
+   * In both SDK variants the collateral sits immediately before the
+   * `open_or_increase` call:
+   *
+   *     no storage:   [maintenance…] collateral              open  carrier
+   *     with storage: [maintenance…] storagePay  fund  collateral  open  carrier
+   *
+   * So it is `openIdx - 1`. That is relative to a call located by PINNED
+   * SELECTOR, not an absolute group position — the distinction that matters,
+   * since an absolute index is exactly what broke the C-Vault mark preamble.
+   *
+   * Spec: strategy/perps/ALGO_COLLATERAL_SPEC.md §4.
+   */
+  const openIdx = txns.indexOf(mainCalls[0]);
+  const legTxn = openIdx > 0 ? txns[openIdx - 1] : undefined;
+  const legAsset = legTxn?.assetTransfer
+    ? Number(legTxn.assetTransfer.assetIndex)
+    : legTxn?.payment ? 0 : null;
+  const legAmount = legTxn?.assetTransfer
+    ? big(legTxn.assetTransfer.amount)
+    : legTxn?.payment ? big(legTxn.payment.amount) : null;
+  const legReceiver = legTxn?.assetTransfer
+    ? String(legTxn.assetTransfer.receiver)
+    : legTxn?.payment ? String(legTxn.payment.receiver) : null;
+
+  if (legAsset === null || legAmount === null) {
+    fail("collateral_leg", "no collateral transfer immediately before open_or_increase");
+  } else {
+    if (legAsset !== shown.collateralAssetId) {
+      fail("transfer_asset", `transfer asset ${legAsset}, displayed ${shown.collateralAssetId}`);
+    }
+    if (legAmount !== shown.collateralAmountMicro) {
+      fail("transfer_amount", `transfer ${legAmount}, displayed ${shown.collateralAmountMicro}`);
+    }
+    // Against the PINNED trading app address, never one derived from a manifest.
+    if (legReceiver !== tradingAddr) {
+      fail("transfer_receiver", `transfer receiver is not the pinned Trading app address`);
+    }
+    // The collateral leg carries NO note in any real group. Without this, a
+    // well-formed `pdex-v2-linked-*` marker passes here on the strength of
+    // being well-formed, even though it belongs on the escrow leg — the shape
+    // gate alone cannot tell the two transfers apart.
+    if (legTxn?.note && legTxn.note.length > 0) {
+      fail("note", "the collateral transfer carries a note");
+    }
+    /**
+     * ── ALGO collateral is refused here until the feature lands ──
+     * The protocol accepts it (210.87 ALGO is posted on market 1 today) and
+     * the UI does not offer it. The leverage check below divides
+     * `sizeUsdDelta` by the raw transfer amount, which is only a leverage
+     * because µUSDC equals µUSD; against µALGO it is wrong by the ALGO price,
+     * roughly 10.7x. Rather than let an unverifiable ratio through, this
+     * refuses what it cannot check. The feature removes this line and brings
+     * the USD conversion and its own tests with it.
+     */
+    if (legAsset === 0) {
+      fail("collateral_asset_unsupported",
+        "ALGO collateral is not supported yet; the leverage check is denominated in USDC");
+    }
+  }
+  did("collateral leg sits before the open call: asset, amount, receiver, no note");
+
   // Leverage is the whole point: size is a free integer and the transfer is not.
-  if (xfer && shown.collateralAmountMicro > BigInt(0)) {
-    const argLev = Number(u64(aSize)) / Number(big(xfer.amount));
+  if (legAmount !== null && shown.collateralAmountMicro > BigInt(0)) {
+    const argLev = Number(u64(aSize)) / Number(legAmount);
     const shownLev = Number(shown.sizeUsdDeltaMicro) / Number(shown.collateralAmountMicro);
     if (Math.abs(argLev - shownLev) > 1e-9) {
       fail("leverage", `group encodes ${argLev.toFixed(6)}x, screen showed ${shownLev.toFixed(6)}x`);
