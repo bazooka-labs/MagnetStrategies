@@ -40,7 +40,6 @@ import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
 import { CvaAbout } from "./CvaAbout";
-import { readCostBasis, type CostBasis } from "@/lib/strategy/pools/costBasis";
 import { getIndexerClient } from "@/lib/algorand";
 import {
   benchmarkLabel, cvaKey, fetchPerformanceBundle, marketKey, pickLongest,
@@ -66,6 +65,13 @@ import {
  * Magnet UI." So the market pools sign here, and the C-Vault says it is not
  * ready rather than sending anyone anywhere.
  */
+
+/**
+ * A holder's share of the vault. Two decimals under 1% so a small depositor
+ * sees "0.23%" rather than a rounded "0%", which reads as holding nothing.
+ */
+const pctShare = (f: number) =>
+  f > 0 && f < 0.0001 ? "<0.01%" : `${(f * 100).toFixed(f < 0.01 ? 2 : 1)}%`;
 
 const usd = (v: number | null, dp = 0) =>
   v === null ? "—" : `$${v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
@@ -397,12 +403,14 @@ export function LiquidityView() {
    */
   const [algoUsd, setAlgoUsd] = useState<number | null>(null);
   /**
-   * Cost basis is read SEPARATELY from the main pool read, and allowed to fail
-   * on its own. `readStrategyLiquidity` is the money path and uses algod; this
-   * needs the indexer and is pure decoration. A basis we cannot read must cost
-   * the one line that shows it, never the position value.
+   * The holder's fraction of the vault. Both numbers are always available —
+   * their `gu2:` box and the `total_cva_shares` global — so unlike the cost
+   * basis this never fails for a reason the reader cannot see.
    */
-  const [basis, setBasis] = useState<CostBasis | null>(null);
+  const share = data?.cva.yourShares != null && data.cva.totalShares
+    ? data.cva.yourShares / data.cva.totalShares
+    : null;
+
   /** When the chain reads completed — NOT when PEX last published. */
   const [readAt, setReadAt] = useState<Date | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -434,15 +442,6 @@ export function LiquidityView() {
        * failure does not blank the pool sizes, which ARE chain reads.
        */
       try {
-        const shares = liq.cva.yourShares;
-        setBasis(address && shares
-          ? await readCostBasis(getIndexerClient("mainnet"), address, shares)
-          : null);
-      } catch {
-        setBasis(null);
-      }
-
-      try {
         setPerf(await fetchPerformanceBundle("30d"));
       } catch {
         // A 404 "must not be presented as zero performance" — so the figure is
@@ -461,7 +460,6 @@ export function LiquidityView() {
       setData(null);
       setPerf(null);
       setAlgoUsd(null);
-      setBasis(null);
       setReadAt(null);
       setErr(e instanceof Error ? e.message : "Could not read pool state");
     }
@@ -643,19 +641,34 @@ export function LiquidityView() {
                 every time PEX re-marks, and it is only realised on exit, where
                 the 0.2% burn spread applies again.
               */}
+              {/*
+                ── Share of the pool, not profit and loss ──
+                This was "Unrealized gain/loss" until 2026-11-03. It needed a
+                cost basis rebuilt from `v2_cva_deposited` receipts, and
+                measured against the live vault it resolved for only FIVE of
+                nine holders:
+
+                  - two hold shares with no deposit receipts at all — they
+                    arrived through Mallow or PEX directly, so there is
+                    nothing for us to read;
+                  - two had partially withdrawn, which breaks the suffix match
+                    (it assumes withdrawals consume oldest-first);
+                  - one of the four was the largest holder in the vault.
+
+                A stat that is blank for 44% of the people it is for, with no
+                explanation they could act on, is worse than no stat. Share of
+                pool is computed from two numbers that always exist — the
+                holder's `gu2:` box and `total_cva_shares` — so it is blank
+                only when someone genuinely holds nothing.
+
+                It also surfaces something the card otherwise hides: with one
+                wallet at 60.9%, "Participants: 9" does not mean nine equal
+                depositors, and a small holder seeing their own percentage
+                learns that without us having to spell it out.
+              */}
               <Stat
-                label="Unrealized gain/loss"
-                /* The sign goes BEFORE the currency symbol: "+$0.30", not
-                   "+0.30". An earlier version sliced the symbol off and
-                   rendered a bare number, which reads as a share count on a
-                   card that also shows those. */
-                value={data?.cva.yourUsd != null && basis
-                  ? `${data.cva.yourUsd - basis.paidUsd >= 0 ? "+" : "−"}${usd(
-                      Math.abs(data.cva.yourUsd - basis.paidUsd), 2)}`
-                  : "—"}
-                tone={data?.cva.yourUsd != null && basis
-                  ? (data.cva.yourUsd >= basis.paidUsd ? "up" : "down")
-                  : undefined}
+                label="Your share of pool"
+                value={share != null ? pctShare(share) : "—"}
               />
             </dl>
 

@@ -54,11 +54,7 @@ vi.mock("@/hooks/useWallet", () => ({
  */
 let liquidity: unknown = null;
 let bundle: unknown = null;
-let costBasis: unknown = null;
 
-vi.mock("@/lib/strategy/pools/costBasis", () => ({
-  readCostBasis: () => Promise.resolve(costBasis),
-}));
 vi.mock("@/lib/strategy/pools/reads", () => ({
   readStrategyLiquidity: () => liquidity
     ? Promise.resolve(liquidity)
@@ -141,7 +137,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   liquidity = null;
   bundle = null;
-  costBasis = null;
 });
 
 async function mount(as: "visitor" | "admin" | "disconnected") {
@@ -536,40 +531,54 @@ describe("the C-Vault card", () => {
   });
 });
 
-describe("unrealized gain/loss", () => {
+describe("your share of pool", () => {
   /**
-   * Replaces the "+$0.32 since you paid $25.00" subtext that hung under Your
-   * position. Same number, its own slot, and measured against what LEFT THE
-   * WALLET rather than the value credited after the 0.2% entry spread.
+   * Replaced "Unrealized gain/loss" on 2026-11-03.
+   *
+   * That stat needed a cost basis rebuilt from `v2_cva_deposited` receipts,
+   * and against the live vault it resolved for only FIVE of nine holders —
+   * two held shares with no deposit receipts at all (arrived via Mallow or
+   * PEX directly), two had partially withdrawn, which breaks the suffix
+   * match, and one of the four blanks was the largest holder in the vault.
+   *
+   * Share of pool comes from two numbers that always exist: the holder's
+   * `gu2:` box and `total_cva_shares`. It is blank only when someone
+   * genuinely holds nothing, which is a state they can understand.
    */
-  it("shows the gain in green, against what was actually paid", async () => {
-    liquidity = LIQUIDITY;        // $6.999 held
-    costBasis = { paidUsd: 6.70, shares: 5.879, deposits: 1 };
+  it("shows the holder's fraction of the vault", async () => {
+    liquidity = LIQUIDITY;
     await mount("visitor");
-    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
-    const el = screen.getByText("Unrealized gain/loss").parentElement;
-    expect(el?.textContent).toContain("+$0.30");
-    expect(el?.querySelector("dd:last-of-type")?.className).toContain("text-green-400");
+    await waitFor(() => expect(screen.getByText("Your share of pool")).toBeTruthy());
+    // 5.879 of 1400.654055 shares = 0.42%
+    expect(screen.getByText("Your share of pool").parentElement?.textContent)
+      .toContain("0.42%");
   });
 
-  it("shows a loss in red, not as a smaller gain", async () => {
-    liquidity = LIQUIDITY;
-    costBasis = { paidUsd: 8.00, shares: 5.879, deposits: 1 };
+  it("never shows a rounded 0% to someone who holds shares", async () => {
+    // A small depositor reading "0%" would think their position had gone.
+    liquidity = { ...LIQUIDITY, cva: { ...LIQUIDITY.cva, yourShares: 0.05 } };
     await mount("visitor");
-    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
-    const el = screen.getByText("Unrealized gain/loss").parentElement;
-    expect(el?.textContent).toContain("−$1.00");
-    expect(el?.querySelector("dd:last-of-type")?.className).toContain("text-red-300");
+    await waitFor(() => expect(screen.getByText("Your share of pool")).toBeTruthy());
+    const row = screen.getByText("Your share of pool").parentElement?.textContent ?? "";
+    expect(row).not.toMatch(/\s0%/);
+    expect(row).toMatch(/<0\.01%|0\.\d\d%/);
   });
 
-  it("declines rather than showing zero when the basis is unknown", async () => {
-    // A basis we cannot reconcile must never render as "no change".
+  it("shows a dash only when there is genuinely no position", async () => {
+    liquidity = { ...LIQUIDITY, cva: { ...LIQUIDITY.cva, yourShares: null, yourUsd: null } };
+    await mount("disconnected");
+    await waitFor(() => expect(screen.getByText("Your share of pool")).toBeTruthy());
+    expect(screen.getByText("Your share of pool").parentElement?.textContent).toContain("—");
+  });
+
+  it("carries no profit-and-loss figure anywhere on the card", async () => {
+    // The cost basis read is gone entirely, not merely hidden.
     liquidity = LIQUIDITY;
-    costBasis = null;
     await mount("visitor");
-    await waitFor(() => expect(screen.getByText("Unrealized gain/loss")).toBeTruthy());
-    const el = screen.getByText("Unrealized gain/loss").parentElement;
-    expect(el?.textContent).toContain("—");
-    expect(el?.textContent).not.toContain("$0.00");
+    await waitFor(() => expect(screen.getByText("Pool liquidity")).toBeTruthy());
+    const body = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(body).not.toMatch(/Unrealized/i);
+    expect(body).not.toMatch(/gain.loss/i);
+    expect(body).not.toMatch(/since you paid/i);
   });
 });
