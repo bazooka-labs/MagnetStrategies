@@ -151,7 +151,30 @@ export function ArrivalSplash({
           rule and subtext land AFTER the mark: together reads as one image
           appearing, staggered reads as a thing being introduced. */}
       <div className="relative flex flex-col items-center px-6 text-center">
-        <div className="animate-splash-mark transform-gpu">{mark}</div>
+        {/*
+            `[&_img]:transform-gpu` promotes the MARK ITSELF, not just this
+            wrapper — and that is the whole fix.
+
+            The note above explains why a layer appearing late composites over
+            a stale backdrop and shows as a rectangle. The promotion it
+            describes was applied here, to the wrapper. But the wrapper is not
+            the filtered element: every mark carries its glow on the `<img>`
+            (`magnet-glow-soft`, or MagnetFi's inline drop-shadow), and it is
+            the FILTER that forces a layer. Measured 2026-11-02 on /strategy
+            with the cache disabled:
+
+                wrapper   filter: none    transform: matrix(1,0,0,1,0,0)
+                img       filter: drop-shadow(...)   transform: none
+
+            So the promoted element had no filter and the filtered element had
+            no promotion. The img's layer still materialised at decode, which
+            is exactly the cold-cache case the box appears in — and why a
+            reload, served from cache, never showed it.
+
+            Targeted from here with a child selector rather than by editing the
+            four splash files, so a new arrival cannot forget it, and so
+            MagnetFi's inline drop-shadow is covered without being normalised. */}
+        <div className="animate-splash-mark transform-gpu [&_img]:transform-gpu">{mark}</div>
         <div className="animate-splash-rule mt-5 h-px w-32 bg-gradient-to-r from-transparent via-white/50 to-transparent" />
         <p className="animate-splash-sub font-display mt-4 max-w-md text-sm font-semibold leading-relaxed text-white/80 sm:text-base">
           {subtext}

@@ -69,13 +69,31 @@ describe("the scrim is a sibling, never an ancestor of the mark", () => {
 });
 
 describe("both compositing layers are promoted up front", () => {
-  it("promotes the scrim and the mark wrapper", () => {
-    // Cold-load fix: both layers must exist on the first frame, so the mark's
-    // layer cannot materialise on image decode AFTER the scrim has rasterised
-    // its backdrop.
+  it("promotes the scrim, the mark wrapper, AND the mark itself", () => {
+    /**
+     * Cold-load fix: every layer must exist on the first frame, so none can
+     * materialise on image decode AFTER the scrim has rasterised its backdrop.
+     *
+     * This test asserted only the first two for weeks while the box kept
+     * appearing on mobile, because it was checking the wrong element. Measured
+     * 2026-11-02 on /strategy with the cache disabled:
+     *
+     *     wrapper   filter: none              transform: matrix(1,0,0,1,0,0)
+     *     img       filter: drop-shadow(...)  transform: none
+     *
+     * The promoted element had no filter and the filtered element had no
+     * promotion. It is the FILTER that forces a compositing layer, so the
+     * img's layer was still arriving at decode — the exact mechanism the
+     * comment in the component describes, applied to the wrong node.
+     *
+     * `[&_img]:transform-gpu` on the wrapper covers every arrival, including
+     * MagnetFi's inline drop-shadow, without each splash having to remember.
+     */
     const { scrim, markWrap } = mount();
     expect(scrim.className).toContain("transform-gpu");
     expect(markWrap.className).toContain("transform-gpu");
+    // The one that actually carries the filter.
+    expect(markWrap.className).toContain("[&_img]:transform-gpu");
   });
 
   it("drives both layers from one duration variable", () => {
