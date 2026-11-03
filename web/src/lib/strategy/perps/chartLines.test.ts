@@ -35,11 +35,13 @@ describe("held and composed are told apart", () => {
     expect(viewSrc).toContain('add(overlay.liquidationPrice12, "Liquidation", "#f87171", "2 3");');
   });
 
-  it("names the side only when both sides are held", () => {
-    // Two positions in one market would otherwise produce two lines labelled
-    // "Your entry" at different prices.
-    expect(viewSrc).toContain("const bothSides = held.length > 1;");
-    expect(viewSrc).toContain("const who = bothSides ? `${l.side} ` : \"\";");
+  it("takes its line labels from heldLineQualifiers", () => {
+    // The label RULE is tested behaviourally in positionLines.test.ts. All this
+    // needs to pin is that the view still routes through it \u2014 previously the
+    // rule was inlined here and the only test of it was this file matching the
+    // source text of the expression, which a comment could have satisfied.
+    expect(viewSrc).toContain("const qualifiers = heldLineQualifiers(held);");
+    expect(viewSrc).toContain("const who = qualifiers[i];");
   });
 });
 

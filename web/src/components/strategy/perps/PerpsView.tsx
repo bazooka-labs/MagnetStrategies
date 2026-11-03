@@ -13,6 +13,7 @@ import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
 import { Info } from "lucide-react";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
+import { heldLineQualifiers } from "@/lib/strategy/perps/positionLines";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 
 // Sized and shaped like the section it replaces — no border or background of
@@ -91,13 +92,14 @@ export function PerpsView() {
      * and it survives both being on screen at once — which happens whenever
      * someone sizes a second order while already holding one.
      *
-     * Named by side only when both sides are held in this market, which is
-     * possible on PEX and would otherwise produce two identical labels.
+     * Labels are qualified only as far as it takes to tell them apart — the
+     * rule, and why it has three cases rather than two, lives in
+     * `heldLineQualifiers` beside its tests.
      */
     const held = positionLines.filter((l) => l.marketId === marketId);
-    const bothSides = held.length > 1;
-    for (const l of held) {
-      const who = bothSides ? `${l.side} ` : "";
+    const qualifiers = heldLineQualifiers(held);
+    for (const [i, l] of held.entries()) {
+      const who = qualifiers[i];
       add(l.entryPrice12, `Your ${who}entry`, "#e5e7eb", "");
       /*
        * The liquidation level is drawn only when it is a BOUNDARY AHEAD of the

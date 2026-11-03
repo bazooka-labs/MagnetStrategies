@@ -42,6 +42,27 @@ export const PEX_ASSETS = {
   btcIndex: 9000000000000000,
 } as const;
 
+/**
+ * An asset id in words, for display.
+ *
+ * Lives here rather than in a component because two surfaces now name the same
+ * ids — the positions list and the chart's line labels — and a second copy of
+ * this mapping is a second place for it to go stale.
+ *
+ * An unknown id is rendered as its NUMBER rather than guessed at, the same rule
+ * `payoutUsd` follows when it cannot value a leg: a wrong ticker beside a real
+ * balance is worse than an unfamiliar one.
+ */
+const ASSET_NAMES: Record<number, string> = {
+  [PEX_ASSETS.algo]: "ALGO",
+  [PEX_ASSETS.usdc]: "USDC",
+  [PEX_ASSETS.xAlgo]: "xALGO",
+  [PEX_ASSETS.fUsdc]: "fUSDC",
+  [PEX_ASSETS.frUsdc]: "frUSDC",
+};
+
+export const assetName = (id: number) => ASSET_NAMES[id] ?? `asset ${id}`;
+
 // ── Markets ───────────────────────────────────────────────────────────────────
 // Both are ALGO/USDC-backed and share no capital. The distinction matters:
 // ALGO/USD is asset-backed, so the pool holds its own index asset and partially
@@ -69,8 +90,36 @@ export const ENABLED_MARKET_IDS: readonly number[] = [
 /** Which market the card opens on. */
 export const ACTIVE_MARKET_ID = PEX_MARKETS.algoUsd.id;
 
-/** USDC only in v1 — see SPEC "Collateral". Keeps one position per (market, side). */
+/**
+ * What the terminal OPENS with by default.
+ *
+ * This used to say "Keeps one position per (market, side)". That property was a
+ * consequence of the restriction, not a fact about PEX, and the read path no
+ * longer has it — see POSITION_COLLATERAL_ASSETS.
+ */
 export const COLLATERAL_ASSET_ID = PEX_ASSETS.usdc;
+
+/**
+ * Every collateral asset a position box can be keyed by — what we LOOK FOR,
+ * as distinct from what we open with.
+ *
+ * The box key is `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner`, so
+ * collateral asset is part of a position's IDENTITY. A wallet can hold a
+ * USDC-collateral long and an ALGO-collateral long in the same market, with
+ * different liquidation prices, as separate boxes.
+ *
+ * ALGO collateral is live on PEX today: measured 2026-11-03, market 1 holds
+ * 210.87 ALGO of long collateral against $20.02 of OI. Those positions can be
+ * opened on PEX's own UI, so reading only USDC means a user who did that sees
+ * NOTHING of it here — independent of whether our own toggle offers ALGO.
+ *
+ * Reading this is unconditionally correct and costs one extra box read per
+ * (market, side). Spec: strategy/perps/ALGO_COLLATERAL_SPEC.md §5.
+ */
+export const POSITION_COLLATERAL_ASSETS: readonly number[] = [
+  PEX_ASSETS.usdc,
+  PEX_ASSETS.algo,
+];
 
 // ── Integrity pins ────────────────────────────────────────────────────────────
 // Captured 2026-09-23, post-cutover. App IDs do not change on a PEX upgrade, so

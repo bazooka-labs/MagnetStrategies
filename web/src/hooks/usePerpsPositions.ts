@@ -2,12 +2,18 @@
 
 // Every open position the connected wallet holds, with a live close quote.
 //
-// ── Why this reads all four keys rather than listing boxes ──────────────────
-// PEX keys positions by `(marketId, collateralAssetId, side, owner)`, so a
-// wallet has at most one per market and side — four reads across two markets,
-// all of which 404 cheaply when there is nothing there. Enumerating `p2:` boxes
-// by prefix would return every trader on the exchange and force us to filter
-// client-side, which is both slower and a privacy smell.
+// ── Why this enumerates keys rather than listing boxes ──────────────────
+// PEX keys positions by `(marketId, collateralAssetId, side, owner)`, so the
+// key space for one wallet is small and known: two markets × two collaterals
+// × two sides, eight reads, all of which 404 cheaply when there is nothing
+// there. Enumerating `p2:` boxes by prefix would return every trader on the
+// exchange and force us to filter client-side, which is both slower and a
+// privacy smell.
+//
+// It was four reads while only USDC collateral was looked at. That restriction
+// described OUR UI, never PEX — an ALGO-collateral position opened on PEX's
+// own front end is a real position in a real box, and reading one collateral
+// meant its holder saw NOTHING of it here.
 //
 // ── What a quote failure means here ─────────────────────────────────────────
 // A position that cannot be quoted is still a position the user holds. It is
@@ -24,6 +30,7 @@ import {
   ENABLED_MARKET_IDS,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
+  POSITION_COLLATERAL_ASSETS,
 } from "@/lib/strategy/pex/config";
 import {
   readMarketFunding,
@@ -37,6 +44,15 @@ import { quoteClose, quoteLiquidationPrice, type CloseQuote } from "@/lib/strate
 export type OpenPosition = {
   marketId: number;
   side: "long" | "short";
+  /**
+   * Which asset backs this position.
+   *
+   * Part of the position's IDENTITY, not a label: the box key is
+   * `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner`, so the same wallet
+   * can hold a USDC-collateral long and an ALGO-collateral long in one market
+   * and they are different positions with different liquidation prices.
+   */
+  collateralAssetId: number;
   position: PositionState;
   /** Live full-close quote, or null when it could not be priced. */
   close: CloseQuote | null;
@@ -160,54 +176,68 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
         try {
           algoPrice12 = (await getOraclePayload(PEX_APPS.trading, 1)).indexPrice12;
         } catch { /* a BTC payout stays unpriced, exactly as before */ }
+        /**
+         * ── Both collaterals, not just USDC ──
+         * PEX keys positions by collateral asset, so a wallet can hold four
+         * per market. Reading only `COLLATERAL_ASSET_ID` meant an
+         * ALGO-collateral position — openable on PEX's own UI today, and
+         * 210.87 ALGO is posted on market 1 — was invisible here. A position
+         * we do not show is one the holder cannot close from our terminal.
+         *
+         * Four box reads per market instead of two. They are cheap and run in
+         * parallel; the market state and oracle below are still fetched only
+         * when something is actually open.
+         */
         for (const marketId of ENABLED_MARKET_IDS) {
-          // Both sides first: if neither exists, the market's state and oracle
-          // are never fetched at all.
-          const [long, short] = await Promise.all([
-            readPosition(algod, owner, marketId, COLLATERAL_ASSET_ID, 1),
-            readPosition(algod, owner, marketId, COLLATERAL_ASSET_ID, 2),
-          ]);
-          const live = ([[1, long], [2, short]] as const)
-            .filter(([, p]) => p && p.size_usd > BigInt(0));
-          if (live.length === 0) continue;
+          for (const collateralAssetId of POSITION_COLLATERAL_ASSETS) {
+            // Both sides first: if neither exists, the market's state and oracle
+            // are never fetched at all.
+            const [long, short] = await Promise.all([
+              readPosition(algod, owner, marketId, collateralAssetId, 1),
+              readPosition(algod, owner, marketId, collateralAssetId, 2),
+            ]);
+            const live = ([[1, long], [2, short]] as const)
+              .filter(([, p]) => p && p.size_usd > BigInt(0));
+            if (live.length === 0) continue;
 
-          const [state, funding, oracle] = await Promise.all([
-            readMarketState(algod, marketId),
-            readMarketFunding(algod, marketId),
-            getOraclePayload(PEX_APPS.trading, marketId),
-          ]);
+            const [state, funding, oracle] = await Promise.all([
+              readMarketState(algod, marketId),
+              readMarketFunding(algod, marketId),
+              getOraclePayload(PEX_APPS.trading, marketId),
+            ]);
 
-          for (const [sideCode, p] of live) {
-            const side = sideCode === 1 ? "long" as const : "short" as const;
-            let close: CloseQuote | null = null;
-            let quoteError: string | null = null;
-            try {
-              close = quoteClose({
-                state, funding, oracle, side, owner,
+            for (const [sideCode, p] of live) {
+              const side = sideCode === 1 ? "long" as const : "short" as const;
+              let close: CloseQuote | null = null;
+              let quoteError: string | null = null;
+              try {
+                close = quoteClose({
+                  state, funding, oracle, side, owner,
+                  position: p as unknown as Record<string, bigint>,
+                  sizeUsdMicro: p!.size_usd,
+                  collateralAssetId,
+                  builderAddress: BUILDER_ADDRESS,
+                  builderFeeBps: POSITION_BUILDER_FEE_BPS,
+                  ...(algoPrice12 !== null ? { algoPrice12 } : {}),
+                });
+              } catch (e) {
+                // A position that cannot be priced is still a position. Show it.
+                quoteError = e instanceof Error ? e.message : String(e);
+              }
+              // Pure computation over state already fetched — no extra round trip.
+              const liq = quoteLiquidationPrice({
+                state, funding, oracle, side,
                 position: p as unknown as Record<string, bigint>,
-                sizeUsdMicro: p!.size_usd,
-                collateralAssetId: COLLATERAL_ASSET_ID,
-                builderAddress: BUILDER_ADDRESS,
-                builderFeeBps: POSITION_BUILDER_FEE_BPS,
-                ...(algoPrice12 !== null ? { algoPrice12 } : {}),
+                collateralAssetId,
               });
-            } catch (e) {
-              // A position that cannot be priced is still a position. Show it.
-              quoteError = e instanceof Error ? e.message : String(e);
+              found.push({
+                marketId, side, collateralAssetId, position: p!, close, quoteError,
+                liquidationPrice12: liq?.price12 ?? null,
+                liquidationDirection: liq?.direction ?? "",
+                liquidatableNow: liq?.liquidatableNow ?? false,
+                indexPrice12: oracle.indexPrice12,
+              });
             }
-            // Pure computation over state already fetched — no extra round trip.
-            const liq = quoteLiquidationPrice({
-              state, funding, oracle, side,
-              position: p as unknown as Record<string, bigint>,
-              collateralAssetId: COLLATERAL_ASSET_ID,
-            });
-            found.push({
-              marketId, side, position: p!, close, quoteError,
-              liquidationPrice12: liq?.price12 ?? null,
-              liquidationDirection: liq?.direction ?? "",
-              liquidatableNow: liq?.liquidatableNow ?? false,
-              indexPrice12: oracle.indexPrice12,
-            });
           }
         }
         if (!alive) return;

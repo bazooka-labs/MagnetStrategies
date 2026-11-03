@@ -12,7 +12,7 @@
 // were on screen when the position was opened.
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
-import { COLLATERAL_ASSET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
+import { PEX_MARKETS, assetName } from "@/lib/strategy/pex/config";
 import { ORDER_KIND } from "@/lib/strategy/pex/reads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
@@ -33,16 +33,6 @@ const price12ToUsd = (p: bigint) => Number(p) / 1e12;
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
-
-/**
- * Asset names for the payout breakdown.
- *
- * Only the ones a pair market actually pays out in. An unknown id is shown as
- * its number rather than guessed at — the same reason `payoutUsd` goes null
- * when it cannot value every leg.
- */
-const assetName = (id: number) =>
-  id === COLLATERAL_ASSET_ID ? "USDC" : id === 0 ? "ALGO" : `asset ${id}`;
 
 const marketLabel = (id: number) =>
   Object.values(PEX_MARKETS).find((m) => m.id === id)?.label ?? `Market ${id}`;
@@ -99,6 +89,12 @@ const ORDER_KIND_LABEL: Record<number, string> = {
 export type PositionLine = {
   marketId: number;
   side: "long" | "short";
+  /**
+   * Needed by the chart, not decorative: (market, side) stopped being unique
+   * when the read path widened to both collaterals, and PerpsView's label
+   * disambiguator keys off it.
+   */
+  collateralAssetId: number;
   entryPrice12: bigint;
   liquidationPrice12: bigint | null;
   /** Checked against the side before the level is drawn — see PerpsView. */
@@ -125,13 +121,14 @@ export function PositionsPanel({ onLinesChange }: {
   const notify = useRef(onLinesChange);
   notify.current = onLinesChange;
   const signature = positions
-    .map((p) => `${p.marketId}:${p.side}:${p.position.entry_price}:${p.liquidationPrice12 ?? "-"}`
-      + `:${p.liquidationDirection}:${p.liquidatableNow}`)
+    .map((p) => `${p.marketId}:${p.collateralAssetId}:${p.side}:${p.position.entry_price}`
+      + `:${p.liquidationPrice12 ?? "-"}:${p.liquidationDirection}:${p.liquidatableNow}`)
     .join("|");
   useEffect(() => {
     notify.current?.(positions.map((p) => ({
       marketId: p.marketId,
       side: p.side,
+      collateralAssetId: p.collateralAssetId,
       entryPrice12: p.position.entry_price,
       liquidationPrice12: p.liquidationPrice12,
       liquidationDirection: p.liquidationDirection,
@@ -360,10 +357,19 @@ export function PositionsPanel({ onLinesChange }: {
             ? Math.abs(liqUsd - indexUsd) / indexUsd * 100 : null;
 
           return (
-            <div key={`${p.marketId}-${p.side}`}
+            <div key={`${p.marketId}-${p.collateralAssetId}-${p.side}`}
               className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              {/*
+                Wraps rather than overflows. Rasterised at 360px: the identity
+                group grew by the collateral badge and pushed the net figure
+                PAST the card's right edge — and `<body>` carries
+                `overflow-x-hidden`, so the number a holder most wants was
+                clipped away entirely rather than merely cramped. The row was
+                already near its limit before the badge; "Net vs collateral"
+                wraps to two lines at this width either way.
+              */}
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                     up ? "bg-green-500/15 text-green-300" : "bg-red-500/15 text-red-300"}`}>
                     {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -371,6 +377,19 @@ export function PositionsPanel({ onLinesChange }: {
                   </span>
                   <span className="text-sm font-semibold text-white">{marketLabel(p.marketId)}</span>
                   <span className="text-[11px] text-white/35">{leverage.toFixed(2)}×</span>
+                  {/*
+                    Which asset backs the position. Shown ALWAYS, not only on
+                    the ALGO case: two rows here can now differ in nothing but
+                    this, so a badge that appears on one of them reads as a
+                    property of that row rather than as the field separating
+                    the pair. It is also what decides where the position
+                    liquidates — an ALGO-collateral long is hit by a fall in
+                    ALGO twice, at −22.1% against −29.8% for the same leverage
+                    in USDC.
+                  */}
+                  <span className="rounded border border-white/10 px-1.5 py-px text-[10px] font-medium text-white/45">
+                    {assetName(p.collateralAssetId)}
+                  </span>
                 </div>
                 {netUsd !== null && (
                   <span className="flex items-baseline gap-1.5">
@@ -464,10 +483,17 @@ export function PositionsPanel({ onLinesChange }: {
                       Ranking by true value would need per-asset prices, which
                       this component does not have. Leading with the asset the
                       user deposited fixes the misreading without inventing an
-                      ordering we cannot justify. */}
+                      ordering we cannot justify.
+
+                      That lead asset is `p.collateralAssetId`, not
+                      `COLLATERAL_ASSET_ID`. The constant is what the terminal
+                      opens with; on an ALGO-collateral position it is the asset
+                      the user did NOT deposit, so the comment above described
+                      something the code had stopped doing. */}
                   {[...p.close.outputs].sort((a, b) =>
-                    (a.assetId === COLLATERAL_ASSET_ID ? -1 : b.assetId === COLLATERAL_ASSET_ID ? 1
-                      : a.assetId - b.assetId),
+                    (a.assetId === p.collateralAssetId ? -1
+                      : b.assetId === p.collateralAssetId ? 1
+                        : a.assetId - b.assetId),
                   ).map((o, i) => (
                     <span key={o.assetId}>
                       {i > 0 && <span className="text-white/25"> + </span>}

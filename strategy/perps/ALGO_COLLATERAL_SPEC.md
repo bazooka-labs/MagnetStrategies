@@ -1,9 +1,19 @@
 # Trading Terminal — ALGO collateral
 
-**Status: §4 is BUILT and shipped. The toggle is not.** Written 2026-11-03.
-The assertion fix in §4 landed on its own, verifiable against today's USDC
-fixtures — see `pex/collateralLeg.test.ts`. Everything from §5 onward remains
-spec.
+**Status: §4 and the READ PATH are built. The toggle and the write path are
+not.** Written 2026-11-03.
+
+- §4 (group assertion) landed on its own, verifiable against today's USDC
+  fixtures — see `pex/collateralLeg.test.ts`.
+- The read path landed next: both hooks now enumerate both collaterals, and
+  the UI labels and distinguishes them. See §5a.
+- Everything else from §5 onward remains spec.
+
+The read path went first deliberately, and **not** because it was easy. It is
+correct on its own merits regardless of whether the toggle ever ships: ALGO
+collateral is live on PEX today, so a holder who opened one on PEX's own front
+end was seeing NOTHING of it in our terminal. That is a reporting bug against
+real money, independent of what our own UI offers.
 
 ---
 
@@ -168,14 +178,66 @@ fixtures with no UI involved.
 
 ---
 
+## 5a. The read path — BUILT
+
+What it turned out to touch, beyond the two hooks named in §5's table. Each of
+these was a place where "one position per (market, side)" had been assumed
+rather than stated, which is why the table under-counted:
+
+| file | change |
+|---|---|
+| `pex/config.ts` | `POSITION_COLLATERAL_ASSETS` added; `COLLATERAL_ASSET_ID`'s comment corrected — it claimed to keep one position per (market, side), a property that was never PEX's |
+| `pex/config.ts` | `assetName` moved here from `PositionsPanel`, now that two surfaces name the same ids |
+| `usePerpsPositions` | 4 box reads → 8; `collateralAssetId` added to `OpenPosition` |
+| `usePerpsOrders` | same widening — see the note below, this one is not cosmetic |
+| `PositionsPanel` | React key, the chart-notify signature, a collateral badge on every row, and the payout sort |
+| `PerpsView` | chart line labels |
+| `perps/positionLines.ts` | new — the label rule, extracted so it could be tested |
+
+**The orders hook was the dangerous one.** `analyzeV2OrderLifecycle` resolves
+an order against the position set it is handed. An ALGO-collateral order read
+against a USDC-only set resolves to nothing — which is the state SPEC.md
+requires be displayed as *"Orphaned — funds still locked"*. So the narrow read
+would not merely have hidden something; it would have told a user their healthy
+protective order was orphaned.
+
+**Three latent duplicate-identity bugs** were found by asking what stops being
+unique, rather than by testing the feature:
+
+1. The React key was `${marketId}-${side}` — two rows, one key.
+2. The chart-notify signature was keyed the same way, so a second position in a
+   market would have been collapsed out of the chart's line set.
+3. `PerpsView` labelled lines by side alone. Its own comment said it existed to
+   stop "two identical labels", and two longs would have reproduced exactly
+   that.
+
+The payout sort had a fourth, quieter version: it led with `COLLATERAL_ASSET_ID`
+under a comment saying it led with "the asset the user deposited". On an
+ALGO-collateral position those are different assets, so the comment described
+behaviour the code had stopped having.
+
+**A layout defect, found by rasterising.** The collateral badge pushed the net
+figure past the card's right edge at 360px, and `<body>` carries
+`overflow-x-hidden` — so the number was clipped away entirely, not merely
+cramped. The header row now wraps. Caught only by rendering it; the row was
+already near its limit before the badge.
+
+**Tests.** `hooks/collateralReads.test.ts` asserts the actual arguments both
+hooks pass to `readPosition`, so it cannot be satisfied by a comment mentioning
+ALGO; `perps/positionLines.test.ts` is exhaustive over all 16 combinations of
+positions in one market. Both were mutation-verified: narrowing either hook
+back to USDC turns 3 tests red, and restoring the old label rule turns 3 more.
+
+---
+
 ## 5. Everything else that needs widening
 
 | area | today | needed |
 |---|---|---|
 | `COLLATERAL_ASSET_ID` | one constant, USDC | per-order selection; the constant becomes a default |
-| `usePerpsPositions` | reads 2 boxes/market | **4** — both collaterals × both sides |
-| `usePerpsOrders` | reads USDC orders | both collaterals |
-| `PositionsPanel` | one row per (market, side) | up to two; must label which collateral |
+| ~~`usePerpsPositions`~~ | ~~reads 2 boxes/market~~ | **DONE — §5a** |
+| ~~`usePerpsOrders`~~ | ~~reads USDC orders~~ | **DONE — §5a** |
+| ~~`PositionsPanel`~~ | ~~one row per (market, side)~~ | **DONE — §5a** |
 | balance preflight | `amount + keeperFee` in USDC | ALGO path needs **spendable ALGO** (`amount − min-balance`), and still needs **USDC for the keeper fee** |
 | min collateral | `$5` compared to a USDC figure | convert µALGO at the oracle price before comparing |
 | `MAX` control | `balance − Σ keeperFee` | for ALGO, also reserve min-balance **and** group fees |
@@ -192,8 +254,13 @@ whether the pill disables Protection.
 
 ## 6. Open questions
 
-1. **Can `keeperFeeAssetId` be ALGO?** Decides whether ALGO + protection is
-   possible at all. Answerable by one simulated `submit_linked_order`.
+1. ~~**Can `keeperFeeAssetId` be ALGO?**~~ **Answered: it already follows the
+   collateral.** `quote.ts:810` sets `keeperFeeAssetId: BigInt(input.collateralAssetId)`
+   and `group.ts:2060` asserts it equals the displayed collateral. So Protection
+   does NOT need disabling for ALGO, and the pill does not gate it. Worth one
+   MainNet simulate to confirm the contract accepts an ALGO keeper fee before
+   the write path ships — the SDK offering the field is not proof the app
+   honours it.
 2. **Does PEX's liquidation engine treat ALGO-collateral positions
    differently?** Correlated collateral liquidates earlier (a long with ALGO
    collateral is hit twice when ALGO falls). We should warn on that combination

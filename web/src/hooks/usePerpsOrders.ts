@@ -37,7 +37,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import algosdk from "algosdk";
 import { analyzeV2OrderLifecycle } from "@pdex/sdk";
 import { ALGOD_URLS } from "@/lib/constants";
-import { COLLATERAL_ASSET_ID, ENABLED_MARKET_IDS, PEX_APPS } from "@/lib/strategy/pex/config";
+import { ENABLED_MARKET_IDS, PEX_APPS, POSITION_COLLATERAL_ASSETS } from "@/lib/strategy/pex/config";
 import { readOrders, readPosition, type OrderState, type PositionState } from "@/lib/strategy/pex/reads";
 import { getOraclePayload } from "@/lib/strategy/pex/oracle";
 
@@ -100,12 +100,20 @@ export function usePerpsOrders(owner: string | null): OrdersStatus {
 
         // The analyzer needs every position the account holds, not just the one
         // an order points at: it resolves the order's key against the whole set.
+        //
+        // "Every" includes both collaterals. An order carries its own
+        // `collateralAssetId`, so an ALGO-collateral order read against a
+        // USDC-only position set resolves against NOTHING — which the analyzer
+        // reads as "bound to no position", the state reserved for an order whose
+        // position has closed. It would be reported as a stale reduce order
+        // holding escrow while the position is in fact open.
         const positions: PositionState[] = [];
         await Promise.all(ENABLED_MARKET_IDS.flatMap((marketId) =>
-          ([1, 2] as const).map(async (side) => {
-            const p = await readPosition(algod, owner, marketId, COLLATERAL_ASSET_ID, side);
-            if (p) positions.push(p);
-          })));
+          POSITION_COLLATERAL_ASSETS.flatMap((collateralAssetId) =>
+            ([1, 2] as const).map(async (side) => {
+              const p = await readPosition(algod, owner, marketId, collateralAssetId, side);
+              if (p) positions.push(p);
+            }))));
 
         // One oracle read per market that actually has an order, not per order.
         const marketIds = [...new Set(found.map((o) => Number(o.market_id)))];
