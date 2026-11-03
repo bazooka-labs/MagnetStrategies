@@ -464,7 +464,8 @@ export type CvaBuildResult = {
   signingBudgetSec: number;
 };
 
-const refs = (snap: CvaSnapshot) => ({
+/** Exported for tests: the two market lists must not be conflated. */
+export const refs = (snap: CvaSnapshot) => ({
   v2CvaVaultAppId: PEX_APPS.cvaVault,
   v2MarketsAppId: PEX_APPS.markets,
   v2MathAppId: PEX_APPS.math,
@@ -472,7 +473,28 @@ const refs = (snap: CvaSnapshot) => ({
   longAssetId: PEX_ASSETS.algo,
   shortAssetId: PEX_ASSETS.usdc,
   indexAssetId: PEX_ASSETS.algo,
-  activeMarketIds: snap.state.activeMarkets,
+  /**
+   * ── Two different lists, and conflating them broke every deposit ──
+   * `activeMarketIds` drives the SDK's MARK CALLS. `activeAllocationMarketIds`
+   * drives the BOX REFERENCES. We passed `state.activeMarkets` for both, which
+   * is wrong on the mark side the moment a market is active but unfunded.
+   *
+   * The vault counts marks in `label145`: it reads each `gm2:` box and SKIPS
+   * the market when `lp_share_amount` (offset 16) is zero. On 2026-11-03 PEX
+   * rebalanced to 100% market 1, leaving market 2 active with 0 LP — so the
+   * contract expected ONE mark while the SDK built two:
+   *
+   *     [0] mark(1)  [1] mark(2)  [2] long  [3] short  [4] storage  [5] deposit
+   *     contract: base = GroupIndex - count - 3 = 5 - 1 - 3 = 1
+   *     index 1 is mark(2); it asserts that market id == 1  -> pc 8526
+   *
+   * The box list must stay WIDE regardless: `label145` does `box_get; assert`
+   * on every active market's allocation, including the unfunded one, so
+   * narrowing both lists together would trade this failure for a missing-box
+   * failure.
+   */
+  activeMarketIds: markMarketsFor(snap),
+  activeAllocationMarketIds: snap.state.activeMarkets,
   activeMarketOracles: snap.activeMarketOracles,
   oracleMessage: snap.oracle.message,
   oracleSignature: snap.oracle.signature,
