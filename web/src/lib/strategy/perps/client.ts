@@ -1355,6 +1355,21 @@ export type CancelOrderInput = {
   sender: string;
   /** The order the user clicked on. */
   ownerOrderId: bigint;
+  /**
+   * The asset ids the ORDER BOX itself declares — `collateral_asset_id` and
+   * `keeper_fee_asset_id`, straight off `readOrders`.
+   *
+   * Not defaulted to USDC. These tell the contract what to refund, and an
+   * order placed on PEX's own front end with ALGO collateral has always been
+   * listed here: `readOrders` enumerates by owner, never by collateral, so
+   * this path could meet one long before our own UI could create one.
+   *
+   * They are two fields rather than one because the box has two. It is the
+   * same asset on everything we build, but that is OUR convention, and a
+   * cancel refunds what the ORDER took.
+   */
+  collateralAssetId: number;
+  keeperFeeAssetId: number;
   /** Its attached children, so their boxes are released in the same call. */
   attachedOrderIds?: bigint[];
   /**
@@ -1389,6 +1404,7 @@ export type CancelOrderInput = {
  */
 export async function cancelOrder(input: CancelOrderInput): Promise<OpenPositionResult> {
   const { algod, signTransactions, sender, ownerOrderId } = input;
+  const { collateralAssetId, keeperFeeAssetId } = input;
   /**
    * A bracket parent's cancel must declare its whole reserved STRIDE, whether
    * or not children exist.
@@ -1491,8 +1507,8 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
   const built = buildV2CancelOrderTransactions({
     sender,
     ownerOrderId,
-    collateralAssetId: COLLATERAL_ASSET_ID,
-    keeperFeeAssetId: COLLATERAL_ASSET_ID,
+    collateralAssetId,
+    keeperFeeAssetId,
     // Named so their boxes are in the call's reference set; without this a
     // bracket parent cannot release its children and their escrow stays locked.
     ...(attachedOrderIds[0] !== undefined ? { attachedTakeProfitOrderId: attachedOrderIds[0] } : {}),
@@ -1507,7 +1523,7 @@ export async function cancelOrder(input: CancelOrderInput): Promise<OpenPosition
 
   stage("checking");
   const assertion = assertCancelGroup(built, {
-    sender, ownerOrderId, attachedOrderIds, collateralAssetId: COLLATERAL_ASSET_ID,
+    sender, ownerOrderId, attachedOrderIds, collateralAssetId,
   });
   if (!assertion.ok) {
     console.error("perps: cancel assertion failed", assertion.findings);
@@ -1570,6 +1586,20 @@ export type ClosePositionInput = {
   side: Side;
   /** How much to close, 1e6 USD. Must equal the position size for a full close. */
   sizeUsdMicro: bigint;
+  /**
+   * Which asset backs the position being closed.
+   *
+   * **Required, and not defaulted to USDC.** It is part of the `p2:` key, so
+   * it selects WHICH BOX this close acts on — a wrong value here does not
+   * fail, it targets a different position. Pass the `collateralAssetId` of the
+   * row the user clicked.
+   *
+   * It cannot be read from the box first, because it is an input to reading
+   * the box. What `closePositionInner` does instead is read the box with it
+   * and then check the box agrees, which catches a caller that passed the
+   * wrong one.
+   */
+  collateralAssetId: number;
   /** The live position, read immediately before this call. */
   position: PositionState;
   /** The close quote the user was shown — its execution price anchors slippage. */
@@ -1610,6 +1640,7 @@ export async function closePosition(input: ClosePositionInput): Promise<OpenPosi
 
 async function closePositionInner(input: ClosePositionInput): Promise<OpenPositionResult> {
   const { algod, signTransactions, sender, marketId, side, position, quote } = input;
+  const collateralAssetId = input.collateralAssetId;
   const slippageBps = input.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const stage = (s: OpenStage) => input.onStage?.(s);
   const sideCode: 1 | 2 = side === "long" ? 1 : 2;
@@ -1641,9 +1672,25 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   // Re-read rather than trusting the panel's copy: a position that moved, was
   // liquidated, or had its take-profit fire between render and click must not
   // be closed against stale numbers.
-  const live = await readPosition(algod, sender, marketId, COLLATERAL_ASSET_ID, sideCode);
+  const live = await readPosition(algod, sender, marketId, collateralAssetId, sideCode);
   if (!live || live.size_usd === BigInt(0)) {
     throw new Error("That position is no longer open — it may have just closed or been liquidated.");
+  }
+  /**
+   * The box we read must be backed by the asset we were told to close.
+   *
+   * Belt to the key's braces: `collateralAssetId` is part of the `p2:` key, so
+   * a wrong value reads a DIFFERENT position rather than failing, and every
+   * check below would then pass honestly against the wrong box. This is the
+   * one place the two can be compared, because the box states its own backing.
+   *
+   * It also closes a gap in the `position_id` check beneath it. Pre-cutover
+   * positions all carry id 0 (SPEC.md), so for a wallet holding two id-0
+   * positions in one market and side — one per collateral — `0 !== 0` is
+   * false and that check waves the mismatch through.
+   */
+  if (Number(live.collateral_asset_id) !== collateralAssetId) {
+    throw new Error("That position is not backed by the asset this close was built for. Nothing was sent.");
   }
   if (live.position_id !== position.position_id) {
     throw new Error("That position has been replaced since the page loaded. Refresh and try again.");
@@ -1662,7 +1709,7 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   const indexAssetId = Number(state.core.index_asset_id);
   const longAssetId = Number(state.core.long_asset_id);
   const shortAssetId = Number(state.core.short_asset_id);
-  const registry = await readYieldRegistry(algod, marketId, COLLATERAL_ASSET_ID, indexAssetId);
+  const registry = await readYieldRegistry(algod, marketId, collateralAssetId, indexAssetId);
 
   /**
    * Recall caps, from our own close quote.
@@ -1732,7 +1779,7 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   function buildCloseGroup(longCap: bigint, shortCap: bigint) {
     return buildV2DecreaseOrCloseTransactions({
     sender, marketId,
-    collateralAssetId: COLLATERAL_ASSET_ID,
+    collateralAssetId,
     side: BigInt(sideCode),
     sizeUsdDelta: sizeToClose,
     acceptablePrice,
@@ -1767,7 +1814,7 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
     stage("checking");
     return assertCloseGroup(group, {
     sender, marketId, side: sideCode,
-    collateralAssetId: COLLATERAL_ASSET_ID,
+    collateralAssetId,
     sizeUsdDeltaMicro: sizeToClose,
     positionSizeUsdMicro: livePos.size_usd,
     fullClose: sizeToClose === livePos.size_usd,

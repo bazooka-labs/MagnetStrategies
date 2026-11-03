@@ -13,7 +13,7 @@
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
 import { PEX_MARKETS, assetName } from "@/lib/strategy/pex/config";
-import { ORDER_KIND } from "@/lib/strategy/pex/reads";
+import { ORDER_KIND, type OrderState } from "@/lib/strategy/pex/reads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
 import { useEffect, useRef, useState } from "react";
@@ -33,6 +33,16 @@ const price12ToUsd = (p: bigint) => Number(p) / 1e12;
 const fmtPrice = (p: number) =>
   p >= 1000 ? `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   : p >= 1 ? `$${p.toFixed(2)}` : `$${p.toFixed(6)}`;
+
+/**
+ * Identifies a position ROW, for the in-flight close spinner.
+ *
+ * Includes the collateral because (market, side) stopped being unique: without
+ * it, closing one of two same-side positions puts "Closing…" on both buttons
+ * and the user cannot tell which one they actually sent.
+ */
+const closeKey = (p: { marketId: number; collateralAssetId: number; side: string }) =>
+  `${p.marketId}-${p.collateralAssetId}-${p.side}`;
 
 const marketLabel = (id: number) =>
   Object.values(PEX_MARKETS).find((m) => m.id === id)?.label ?? `Market ${id}`;
@@ -206,7 +216,7 @@ export function PositionsPanel({ onLinesChange }: {
   async function doClose(p: (typeof positions)[number]) {
     if (!wallet.address || closing || !p.close?.ok) return;
     setCloseError(null);
-    setClosing(`${p.marketId}-${p.side}`);
+    setClosing(closeKey(p));
     try {
       await closePosition({
         algod: new algosdk.Algodv2("", ALGOD_URLS.mainnet, ""),
@@ -214,6 +224,8 @@ export function PositionsPanel({ onLinesChange }: {
         sender: wallet.address,
         marketId: p.marketId,
         side: p.side,
+        // Selects WHICH position box this closes. See ClosePositionInput.
+        collateralAssetId: p.collateralAssetId,
         sizeUsdMicro: p.position.size_usd,
         position: p.position,
         quote: p.close,
@@ -227,7 +239,12 @@ export function PositionsPanel({ onLinesChange }: {
     }
   }
 
-  async function doCancel(orderId: bigint, isBracketParent: boolean) {
+  /**
+   * Takes the ORDER, not just its id, so the cancel refunds in the assets the
+   * order box itself declares rather than in whatever our UI usually uses.
+   */
+  async function doCancel(order: OrderState, isBracketParent: boolean) {
+    const orderId = order.owner_order_id;
     if (!wallet.address || cancelling) return;
     setCancelError(null);
     setCancelling(String(orderId));
@@ -237,6 +254,8 @@ export function PositionsPanel({ onLinesChange }: {
         signTransactions: (txns) => wallet.signTransactions(txns),
         sender: wallet.address,
         ownerOrderId: orderId,
+        collateralAssetId: Number(order.collateral_asset_id),
+        keeperFeeAssetId: Number(order.keeper_fee_asset_id),
         // A limit entry is a bracket parent: `cancelOrder` then declares its
         // whole reserved stride rather than only the children we can see, which
         // is what a real cancel failed on. See the note there.
@@ -543,7 +562,7 @@ export function PositionsPanel({ onLinesChange }: {
                     {/* Gated for the same reason Close is: `cancelOrder`
                         consults the preflight now, so an ungated button is one
                         that is offered and then throws. */}
-                    <button onClick={() => doCancel(order.owner_order_id, false)}
+                    <button onClick={() => doCancel(order, false)}
                       disabled={!!cancelling || !!closing || !!blocked}
                       title={blocked ?? undefined}
                       className="ml-auto text-[10px] text-white/35 underline underline-offset-2 transition-colors hover:text-white/70 disabled:opacity-40">
@@ -563,7 +582,7 @@ export function PositionsPanel({ onLinesChange }: {
                   disabled={!p.close?.ok || !!closing || !!cancelling || !!blocked}
                   title={blocked ?? undefined}
                   className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
-                  {closing === `${p.marketId}-${p.side}` ? "Closing…" : "Close position"}
+                  {closing === closeKey(p) ? "Closing…" : "Close position"}
                 </button>
                 <span className="text-[10px] text-white/30">
                   {netUsd !== null
@@ -659,7 +678,7 @@ export function PositionsPanel({ onLinesChange }: {
                             liquidates.
                           </p>
                         )}
-                        <button onClick={() => doCancel(order.owner_order_id, isEntry)}
+                        <button onClick={() => doCancel(order, isEntry)}
                           disabled={!!cancelling || !!blocked}
                           title={blocked ?? undefined}
                           className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/60 transition-colors hover:border-white/30 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40">
