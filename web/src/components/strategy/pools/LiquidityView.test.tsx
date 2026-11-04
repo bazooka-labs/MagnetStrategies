@@ -145,6 +145,15 @@ async function mount(as: "visitor" | "admin" | "disconnected") {
     : { address: as === "admin" ? ADMIN : VISITOR, isConnected: true };
   const { LiquidityView } = await import("./LiquidityView");
   render(<LiquidityView />);
+  /**
+   * The page lands on Liquidity Pools, so the vault column has to be chosen.
+   *
+   * Almost everything in this file is about the C-Vault, which was the only
+   * thing here until the $U pools arrived. Selecting the tab inside `mount`
+   * keeps those tests about what they were always about, rather than making
+   * each one re-learn the page's new front door.
+   */
+  fireEvent.click(await screen.findByRole("button", { name: /^Vaults$/ }));
   await waitFor(() => {
     expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
   });
@@ -599,10 +608,21 @@ describe("the two pills separate vaults from liquidity pools", () => {
     expect(screen.queryByRole("button", { name: /^Pools$/ })).toBeNull();
   });
 
-  it("opens on Vaults, so the C-Vault is what a visitor lands on", async () => {
-    // `mount` already waits for the C-Vault heading, so reaching here is it.
+  it("lands on Liquidity Pools, not on the vault", async () => {
+    // Deliberately NOT via `mount`, which selects the vault tab for the rest
+    // of this file. This is the one test about what loads first.
+    wallet = { address: VISITOR, isConnected: true };
+    const { LiquidityView } = await import("./LiquidityView");
+    render(<LiquidityView />);
+    expect(await screen.findByText(/\$U Liquidity Pools/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
+  });
+
+  it("keeps the vault reachable, and shows it only when chosen", async () => {
+    // mount() selects Vaults, so this asserts the pairing holds in both
+    // directions rather than just that one tab renders.
     await mount("visitor");
-    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
+    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
   });
 
   it("swaps the column when Liquidity Pools is picked", async () => {

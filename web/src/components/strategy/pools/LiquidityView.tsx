@@ -205,7 +205,7 @@ function NextStrategyTile() {
 /**
  * The C-Vault's rate, in the metric box the token pages use.
  *
- * Same frame as PoolsSection's "Total 7-Day APR" headline — `rounded-xl
+ * Same frame as LpPoolsSection's "Total 7-Day APR" headline — `rounded-xl
  * border-white/5 bg-black/30 p-4`, uppercase label, `font-mono text-3xl
  * font-bold text-green-400`, components in a small row beneath. Matching it
  * exactly is the point: an APR should look the same wherever this site shows
@@ -397,9 +397,9 @@ export function LiquidityView() {
    * pattern and same address as /magnetfi and /contact.
    */
   const isAdmin = isConnected && address === MAGNETFI_ADMIN_ADDRESS;
-  const [showPools, setShowPools] = useState(false);
+  const [showDirectPools, setShowDirectPools] = useState(false);
   /** The direct pools render only for an admin who has opened them. */
-  const showDirect = isAdmin && showPools;
+  const showDirect = isAdmin && showDirectPools;
   const [data, setData] = useState<StrategyLiquidity | null>(null);
   const [perf, setPerf] = useState<PerformanceBundle | null>(null);
   /**
@@ -475,7 +475,10 @@ export function LiquidityView() {
   useEffect(() => { void load(); }, [load]);
 
   const m = (id: "algo-usd" | "btc-usd") => data?.markets.find((x) => x.id === id) ?? null;
-  const [tab, setTab] = useState<Tab>("vaults");
+  // Liquidity pools first: they are the lower-commitment product and the one
+  // a visitor is most likely to have come for. The vault is a managed
+  // strategy, which is a second question, not the opening one.
+  const [tab, setTab] = useState<Tab>("liquidity");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -510,25 +513,25 @@ export function LiquidityView() {
       <div className="animate-enter mb-7 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
           <TabButton
-            active={tab === "vaults"}
-            onClick={() => setTab("vaults")}
-            icon={Layers}
-            label="Vaults"
-          />
-          <TabButton
             active={tab === "liquidity"}
             onClick={() => setTab("liquidity")}
             icon={Droplets}
             label="Liquidity Pools"
+          />
+          <TabButton
+            active={tab === "vaults"}
+            onClick={() => setTab("vaults")}
+            icon={Layers}
+            label="Vaults"
           />
         </div>
         {/* Amber, like every other "this is not ordinary browsing" control in
             the app. Pressed-in when open, so the row shows its own state. */}
         {isAdmin && tab === "vaults" && (
           <button
-            onClick={() => setShowPools((v) => !v)}
-            aria-pressed={showPools}
-            className={showPools ? RAISED_AMBER_ON : RAISED_AMBER}
+            onClick={() => setShowDirectPools((v) => !v)}
+            aria-pressed={showDirectPools}
+            className={showDirectPools ? RAISED_AMBER_ON : RAISED_AMBER}
           >
             <Shield className="h-3.5 w-3.5" /> Direct pools
           </button>

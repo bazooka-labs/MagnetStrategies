@@ -21,7 +21,7 @@
 import { useEffect, useState } from "react";
 import { Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
-import { Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
+import { MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
@@ -43,7 +43,17 @@ function PoolCard({ p }: { p: PoolData }) {
   const farmRate = p.farmApr != null && p.farmApr > 0;
   const farming = p.farmLive || farmRate;
   return (
-    <Panel className="animate-enter-1 hover-depth flex flex-col p-6">
+    /*
+      The shared magnet-400 neon, the same ring-plus-shadow every other card
+      on the site carries — the vaults, the MagnetFi collateral cards and the
+      Trade terminal. These pools arrived from the Tokens page without it and
+      read as a different product beside the vault they now sit next to.
+
+      `MAGNET_GLOW` rather than a copy of its values: it was tuned against the
+      red a stale card carries, and a second set of numbers would drift from
+      the rest of the site the first time either moved.
+    */
+    <Panel className={`animate-enter-1 hover-depth flex flex-col p-6 ${MAGNET_GLOW}`}>
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={["$U", p.partner]} />
