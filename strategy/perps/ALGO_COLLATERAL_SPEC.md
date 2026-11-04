@@ -1,19 +1,65 @@
 # Trading Terminal — ALGO collateral
 
-**Status: §4 and the READ PATH are built. The toggle and the write path are
-not.** Written 2026-11-03.
+**Status: PARKED 2026-11-03, after three independent audits.** The read,
+display and close/cancel paths are collateral-correct and shipped. The toggle
+is NOT built, and both ALGO opens and ALGO closes are refused before any
+signature.
 
-- §4 (group assertion) landed on its own, verifiable against today's USDC
-  fixtures — see `pex/collateralLeg.test.ts`.
-- The read path landed next: both hooks now enumerate both collaterals, and
-  the UI labels and distinguishes them. See §5a.
-- Everything else from §5 onward remains spec.
+| Layer | State |
+|---|---|
+| §4 group assertion — collateral leg found by position | shipped |
+| §5a read path — both collaterals, labelled, distinct identities | shipped |
+| §5b close/cancel — follow the position's own collateral | shipped |
+| §5c audit fixes — four live display bugs, one dead guard, test gaps | shipped |
+| unit plumbing — asset units authoritative, USD derived | shipped |
+| the pill toggle | **not built** |
+| ALGO open | refused: `collateral_asset_unsupported` |
+| ALGO close | refused: `foreign_asset`; button disabled with the reason shown |
 
-The read path went first deliberately, and **not** because it was easy. It is
-correct on its own merits regardless of whether the toggle ever ships: ALGO
-collateral is live on PEX today, so a holder who opened one on PEX's own front
-end was seeing NOTHING of it in our terminal. That is a reporting bug against
-real money, independent of what our own UI offers.
+**Why parked rather than finished.** Measured on chain the same day: ONE
+ALGO-collateral position exists on the entire exchange, worth $20.02, held by
+a wallet that may not use this terminal. Finishing requires loosening two
+fund-safety assertions, and the audits showed that work in this area
+introduces defects that only independent review catches — four live wrong
+numbers and a tautological guard survived the author's own review. The
+cost-to-value ratio does not currently justify it.
+
+**What was worth it anyway**, all independent of the toggle: ALGO-collateral
+orders no longer resolve as "Orphaned — funds still locked"; four
+collateral-denominated figures stopped being displayed as dollars; close and
+cancel target the right box and refund the right asset; and the suite now
+catches wiring mutations that previously passed.
+
+## Decisions taken, for whenever this resumes
+
+1. **The amount box means ALGO when ALGO is selected** — the figure the user
+   types and that MAX fills is ALGO available in their wallet as collateral,
+   not a dollar amount. Settled by the product owner 2026-11-03. It is also
+   what the write path already expects: asset units are authoritative and USD
+   is derived (see `pex/collateral.ts`), so the box feeds
+   `collateralAmountMicro` directly with no conversion between typing and
+   signing.
+2. **Protection and limit orders stay refused on ALGO** until an ALGO-fee
+   order is observed being executed by a keeper on MainNet. Evidence as of
+   2026-11-03: of 328 historical order submissions, 10 used an ALGO keeper
+   fee — all from ONE sender, inside a ~2-hour window, all at round ~64.67M,
+   i.e. before the order-box cutover at 65,266,976. Zero orders rest on the
+   exchange today. That is one account's experiment in the previous contract
+   generation, not evidence about today's keepers.
+3. **Before the open refusal is lifted**, the leverage assertion must be
+   rebuilt — see §5c. The existing one cannot fail.
+
+## Verified facts worth keeping
+
+- The contract's `min_keeper_fee_usd` is **$0.05**, read live from the
+  OrderOps `op` global (50000, 2592000, 1e12). Admin-mutable; read it, do not
+  hardcode it.
+- `keeperFeeAssetId == collateralAssetId` in **all 328** historical
+  submissions. The invariant our assertions enforce is the one PEX's own users
+  follow, not a convention we invented.
+- `collateral_amount` is denominated in the collateral ASSET. Measured:
+  210.873916 (ALGO) against size_usd 20.02, and 566.816347 (USDC) against
+  size_usd 1805.50.
 
 ---
 

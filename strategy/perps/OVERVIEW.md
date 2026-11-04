@@ -150,6 +150,36 @@ MagnetFi state at all.
 Carried over from the former `NEXT.md` on 2026-10-27 and each re-checked
 against the code at that date.
 
+**ALGO collateral is PARKED, not abandoned — 2026-11-03.** The read, display
+and close/cancel paths are collateral-correct and shipped; the toggle is not
+built and ALGO opens and closes are both refused before signing. The decision
+and the remaining work are in
+[ALGO_COLLATERAL_SPEC.md §5c](./ALGO_COLLATERAL_SPEC.md). Measured demand was
+one $20 ALGO position on the whole exchange, against two fund-safety
+assertions that would have to be loosened.
+
+**The leverage assertion in `group.ts` is a tautology, for USDC too.**
+`argLev = sizeUsdDelta / legAmount` versus
+`shownLev = shown.sizeUsdDeltaMicro / shown.collateralAmountMicro` is implied
+by the `transfer_amount` and `size_usd_delta` checks that run before it, so
+both sides are the same two numbers and it cannot fail. SPEC.md:117 calls the
+leverage binding "the whole point" of the open assertion, because
+`sizeUsdDelta` is otherwise a free frontend integer bound only by the
+transfer. That binding exists (via `transfer_amount`); what does NOT exist is
+any check that the group matches the leverage the USER WAS SHOWN. Found by
+independent review 2026-11-03. **Not ALGO-specific and worth fixing on its own
+merits** — a real check binds the displayed figure to the price inside the
+group's own signed oracle message, never to a caller-supplied price.
+
+**A private test surface, gated to the admin wallet.** Proposed 2026-11-03: a
+hidden Admin route, in the nav only for the admin address, that can exercise
+money paths against MainNet without shipping the controls to users — the ALGO
+open and close being the immediate case, since both currently need a real
+signature to learn anything. Would want the gate to be honest about what it is
+(a convenience, not a security boundary: anything the browser can reach, a
+determined visitor can reach), so it must not be the only thing standing
+between a user and a dangerous control.
+
 **`PerpsCard.tsx` has no behavioural test.** It is 1,994 lines on the money
 path. The *blocker* that NEXT.md recorded — "no React component here can be
 tested behaviourally", no jsdom, no `.tsx` in the vitest glob — **is fixed**:
