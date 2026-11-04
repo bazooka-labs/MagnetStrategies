@@ -505,6 +505,62 @@ BTC/USD earned **$0.00** in fees over the measured week.
 annualizes to +14,813% from 6 days and +97% from 55 — short windows are
 nonsense here too.
 
+## Open items — C-Vault withdrawal (2026-11-03)
+
+Found while fixing the `gm2:` box-reference failure
+([CVA_WITHDRAW_BOX_FIX.md](./CVA_WITHDRAW_BOX_FIX.md)). All measured by live
+MainNet simulation; none is a defect in that fix.
+
+**Dust is strandable, and there is now a real instance of it.** The admin
+wallet exited on 2026-11-03 and was left with **2,071 shares (~$0.003)** —
+too small to withdraw and too small to be worth a transaction. The box stays
+open, so the holder count still reads 9. Harmless at this size, but it means
+*"participants"* counts positions nobody can close, and the number will only
+grow. **Unresolved:** either let a withdrawal close the box by sweeping the
+remainder, or stop counting sub-minimum boxes as participants.
+
+**Small withdrawals are refused below roughly $10.** A $5 exit returns
+`split_cva_withdrawal_required` — PEX wants the amount split across sources
+and we do not build that group. $10 and up route cleanly. The contract's own
+`min_cva_withdraw_usd` is **$5.00**, read live, so the refusal sits just above
+the advertised minimum. A depositor with a small balance, or anyone left with
+dust after a partial exit, can be stranded. **Unresolved:** either build the
+split route, or raise the UI's minimum to the figure that actually works and
+say so on the card.
+
+**Recall caps must scale with the withdrawal, and nothing enforces it.**
+`cvaClient.ts` sets `maxLongReceipt`/`maxShortReceipt` to
+`max(withdrawUsd * 20, 100)` micro-units. That is generous and works to at
+least a full $2,150 exit. But the caps are a *silent* dependency: with a fixed
+cap of 500 the same path fails at **pc=8944**
+(`itxn_field Fee; itxn_submit`) somewhere past $400, and the error says
+nothing about caps. If that formula is ever tuned down, large withdrawals
+break with an error that points at the wrong thing. **Worth a comment at the
+constant, and a live test at a large size.**
+
+**The largest holder CAN exit in full — verified, recorded so nobody
+re-investigates.** Simulated at 10 / 25 / 50 / 75 / 100% of the biggest
+position ($2,150, 60.9% of the vault): all succeed, 13 transactions each.
+There is no practical upper bound on a single withdrawal at the current vault
+size.
+
+**Our group assertion does not inspect box references at all.** `cvaGroup.ts`
+has no `boxes` check, so `assertCvaWithdrawGroup` cannot catch a wrong or
+missing reference — including the one that caused this outage. Judged a gap
+rather than a safety hole, by both the author and an independent reviewer: a
+bad reference fails simulation and nothing is sent, so it cannot produce a
+different *outcome*, only a failed attempt. The final `simulateGroup` on the
+patched bytes is what actually catches it. **Revisit if box references ever
+become attacker-influenced**; today they are derived from our own snapshot.
+
+**Concentration is not disclosed.** One wallet holds **60.9%** of the vault
+($2,150 of $3,530, 9 holders). The card shows a participant count and no
+concentration figure, so the number reads as more diversified than it is. A
+single exit of that size is simulated to succeed, which is the good news and
+also the point: it would move the remaining holders' share of the pool
+sharply. **Unresolved:** decide whether the card discloses largest-holder
+share.
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |
