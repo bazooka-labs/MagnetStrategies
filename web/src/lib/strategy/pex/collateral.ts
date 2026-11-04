@@ -48,10 +48,24 @@ export class UnpricedCollateralError extends Error {
 /**
  * What one whole unit of the collateral asset is worth, as Price12.
  *
- * USDC is pinned to exactly 1.0 rather than read from an oracle. PEX prices
- * markets, not stablecoins, so there is no USDC/USD feed to read — and
- * inventing one would make the $5 minimum wobble against a peg this protocol
- * does not take a view on. The contract makes the same assumption.
+ * USDC is pinned to exactly 1.0 here rather than read from the signed band.
+ *
+ * ── Two claims this comment used to make, both wrong ──────────────────────
+ * It said there is "no USDC/USD feed to read". There is: the oracle message
+ * carries a short-asset band, measured live around 0.9998 with a ~4bp spread.
+ * It also said "the contract makes the same assumption", which is
+ * unverified — the SDK's own `priceSet` values collateral at the LOWER band
+ * edge, not at 1.0 and not at the mid. Review caught both.
+ *
+ * The pin is kept, as a deliberate choice rather than a fact about the data:
+ * these figures drive display and the $5 minimum, and letting that minimum
+ * wobble against a peg this protocol takes no view on is worse than a ~2bp
+ * difference. Where a price genuinely matters — the leverage the group is
+ * checked against — the signed band is used instead, in `assetPrice12`.
+ *
+ * The gap is therefore real but bounded at a few basis points, and it is
+ * between the SCREEN and the SDK's internal margin check, never between the
+ * screen and what is signed.
  */
 function price12For(assetId: number, algoPrice12?: bigint | null): bigint {
   if (assetId === PEX_ASSETS.usdc) return PRICE12;

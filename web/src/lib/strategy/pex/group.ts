@@ -1259,7 +1259,21 @@ export function assertOpenGroup(
    * the render, which is deliberate and moves leverage legitimately whenever
    * the collateral is not a dollar.
    */
-  if (legAmount !== null && legAsset !== null && shown.asRenderedLeverage > 0) {
+  /**
+   * A leverage that is not a positive finite number FAILS; it does not skip.
+   *
+   * This used to read `shown.asRenderedLeverage > 0`, which skipped the whole
+   * check for 0, NaN and ±Infinity — and `NaN > 0` being false meant the
+   * skip was silent. Infinity was worse: it reached the comparison, produced
+   * a NaN drift, and `NaN > MAX` is false, so it PASSED. A caller supplying
+   * any of them lost the only guard against reading µALGO as µUSD. Found in
+   * review; the test that enshrined the skip is replaced.
+   */
+  if (legAmount !== null && legAsset !== null) {
+    if (!Number.isFinite(shown.asRenderedLeverage) || shown.asRenderedLeverage <= 0) {
+      fail("leverage_missing",
+        `the screen's leverage is ${shown.asRenderedLeverage}, which cannot be checked against`);
+    } else {
     const priced = collateralPriceFromMessage(msg, legAsset);
     if (priced === null) {
       // No price for this collateral in the message that the contract itself
@@ -1275,12 +1289,15 @@ export function assertOpenGroup(
         const groupLev = Number(u64(aSize)) / Number(collateralUsdMicro);
         const shownLev = shown.asRenderedLeverage;
         const driftBps = Math.abs(groupLev - shownLev) / shownLev * 10_000;
-        if (driftBps > MAX_LEVERAGE_DRIFT_BPS) {
+        // Written as a NEGATED bound so a NaN drift fails rather than passes:
+        // `NaN > MAX` is false, `!(NaN <= MAX)` is true.
+        if (!(driftBps <= MAX_LEVERAGE_DRIFT_BPS)) {
           fail("leverage",
             `group encodes ${groupLev.toFixed(4)}x at the signed price, `
             + `screen showed ${shownLev.toFixed(4)}x (${driftBps.toFixed(0)} bps apart)`);
         }
       }
+    }
     }
   }
   did("group leverage, priced from its own signed oracle message, matches the screen");

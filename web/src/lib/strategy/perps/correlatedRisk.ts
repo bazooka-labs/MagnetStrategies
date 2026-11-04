@@ -40,24 +40,47 @@ export type CorrelatedRisk = "none" | "notice" | "severe";
 /**
  * Whether this combination is the doubly-exposed one.
  *
- * By ROLE, not by asset id: the market's own long asset is whatever the
- * market says it is. Hardcoding ALGO would quietly stop warning if PEX ever
- * listed a market backed by something else.
+ * ── Against the INDEX asset, not the long asset ────────────────────────────
+ * The index is what the position tracks. The long asset is what the pool is
+ * backed with, and the two are only the same on an asset-backed market.
+ *
+ * An earlier version compared against the long asset and was wrong on
+ * market 2: BTC/USD is backed with ALGO and USDC, so `long_asset_id` is ALGO
+ * there too. A BTC long posted with ALGO collateral was flagged as doubly
+ * exposed and could be BLOCKED behind the acknowledgement — but BTC and ALGO
+ * are different assets, nothing about that position is correlated, and the
+ * copy telling the user their collateral falls with the price was simply
+ * false. Found in review.
+ *
+ * By ROLE rather than by asset id, so this keeps working if PEX lists a
+ * market tracking something else.
  */
 export function isCorrelatedLong(
-  side: "long" | "short", collateralAssetId: number, marketLongAssetId: number,
+  side: "long" | "short", collateralAssetId: number, marketIndexAssetId: number,
 ): boolean {
-  return side === "long" && collateralAssetId === marketLongAssetId;
+  return side === "long" && collateralAssetId === marketIndexAssetId;
 }
 
 /** What to show, given how far this position is from liquidation. */
 export function correlatedRisk(
   correlated: boolean, dropToLiquidation: number | null,
 ): CorrelatedRisk {
-  if (!correlated || dropToLiquidation === null) return "none";
-  if (!Number.isFinite(dropToLiquidation) || dropToLiquidation <= 0) {
-    // Unknown or already past it. Treated as severe: the one state where
-    // silence would be worst is the one where we cannot tell.
+  if (!correlated) return "none";
+  /**
+   * Correlated but unmeasurable is SEVERE, not silent.
+   *
+   * `null` reaches here when the counterfactual could not be quoted; the
+   * caller has already established there is a real quote for the trade
+   * itself. An earlier version returned "none" for this, which made the gate
+   * FAIL OPEN: a failed comparison quote let a correlated long through
+   * un-warned and un-gated. The one state where silence is worst was the one
+   * that produced it.
+   *
+   * Zero, negative and NaN land here too: all mean the distance could not be
+   * established, and none of them is a reason to say nothing.
+   */
+  if (dropToLiquidation === null
+    || !Number.isFinite(dropToLiquidation) || dropToLiquidation <= 0) {
     return "severe";
   }
   return dropToLiquidation < SEVERE_LIQUIDATION_DROP ? "severe" : "notice";

@@ -67,8 +67,17 @@ describe("ALGO conversion", () => {
   });
 
   it("truncates rather than rounding up, so a derived amount is never short", () => {
-    // Matters for MAX: a figure rounded UP would exceed the balance it came
-    // from and fail at signing.
+    /**
+     * The direction matters because a value rounded UP could exceed the
+     * balance it was derived from.
+     *
+     * An earlier comment here justified this by "MAX". There is no MAX
+     * control on the order card — notional comes from the risk slider —
+     * so that was a reason for a button that does not exist. Review caught
+     * it. The real consumers are the minimum-collateral comparison and the
+     * displayed USD value, where understating is the safe direction: it
+     * overstates leverage slightly rather than flattering it.
+     */
     expect(collateralUsdMicro(PEX_ASSETS.algo, BigInt(1), ALGO_PRICE12)).toBe(BigInt(0));
   });
 

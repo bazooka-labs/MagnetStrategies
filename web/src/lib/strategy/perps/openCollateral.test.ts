@@ -66,6 +66,8 @@ const open = (over: Record<string, unknown> = {}) => openPosition({
     asRenderedEntryPrice12: ALGO_PRICE12,
     asRenderedLiquidationPrice12: BigInt(1),
     asRenderedNetCollateralMicro: BigInt(0),
+    // $25 notional against ~$9.58 of ALGO.
+    asRenderedLeverage: 2.6,
   },
   ...over,
 } as never);
@@ -205,6 +207,7 @@ describe("the signed group carries the collateral the user chose", () => {
         asRenderedEntryPrice12: ALGO_PRICE12,
         asRenderedLiquidationPrice12: BigInt(1),
         asRenderedNetCollateralMicro: BigInt(9_580_000),
+        asRenderedLeverage: 2.6,
       },
     } as never).catch(() => {});
 

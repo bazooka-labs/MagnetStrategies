@@ -315,6 +315,17 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     throw new Error("Enter an amount first.");
   }
   /**
+   * The displayed leverage must be a usable number BEFORE anything is built.
+   *
+   * The group assertion now fails on 0, NaN and ±Infinity rather than
+   * skipping, but a caller should never get that far: a bad value here means
+   * the card could not compute what it rendered, and the honest response is
+   * to stop rather than to assemble a group whose only unit guard cannot run.
+   */
+  if (!Number.isFinite(displayed.asRenderedLeverage) || displayed.asRenderedLeverage <= 0) {
+    throw new Error("The leverage on screen could not be read, so nothing was sent. Re-enter the amount.");
+  }
+  /**
    * A take-profit is OPTIONAL now, and zero is how "none" is expressed.
    *
    * It used to be mandatory, because with no close path it was the only exit a

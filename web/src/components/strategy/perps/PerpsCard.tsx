@@ -764,7 +764,9 @@ export function PerpsCard({
     if (!data || !quoteOracle) return null;
     // By the market's own long asset, not by a hardcoded ALGO. See
     // `isCorrelatedLong`.
-    if (!isCorrelatedLong(side, collateralAssetId, Number(data.state.core.long_asset_id))) {
+    // The INDEX asset: what the position tracks. On the BTC market the long
+    // asset is ALGO, and a BTC long backed by ALGO is not correlated at all.
+    if (!isCorrelatedLong(side, collateralAssetId, Number(data.state.core.index_asset_id))) {
       return null;
     }
     if (!quote?.ok || notional <= 0 || collateralUsd <= 0) return null;
@@ -795,10 +797,41 @@ export function PerpsCard({
    * Note, gate, or nothing. The rule lives in `correlatedRisk` with its own
    * tests; this file only supplies the two distances PEX quoted.
    */
-  const risk = correlatedRisk(correlated !== null, correlated?.dropAlgo ?? null);
+  /**
+   * Whether this is the doubly-exposed combination AT ALL — independent of
+   * whether the counterfactual could be quoted.
+   *
+   * These were conflated, and that made the gate fail OPEN: if the USDC
+   * counterfactual quote failed or threw, `correlated` was null, the risk
+   * read as "none", and a correlated long went through un-warned and
+   * un-gated. The one state where silence is worst was the one that produced
+   * it. Found in review.
+   */
+  const isCorrelated = !!data
+    && isCorrelatedLong(side, collateralAssetId, Number(data.state.core.index_asset_id))
+    && !!quote?.ok;
+  const risk = correlatedRisk(isCorrelated, correlated?.dropAlgo ?? null);
   const correlatedSevere = risk === "severe";
   /** An acknowledgement only counts for the trade it was shown for. */
-  useEffect(() => { setRiskAck(false); }, [side, collateralAssetId, settledAmount, notional]);
+  useEffect(() => {
+    setRiskAck(false);
+  }, [side, collateralAssetId, settledAmount, notional, marketId, isLimit]);
+
+  /**
+   * Switching to Limit while ALGO is selected returns the card to USDC.
+   *
+   * Without this the pill is merely disabled in the state it is already in,
+   * and the card would sit showing an ALGO-denominated quote that the limit
+   * path refuses at submit. The amount goes with it, because the unit
+   * changes.
+   */
+  useEffect(() => {
+    if (isLimit && collateralAssetId !== COLLATERAL_ASSET_ID) {
+      setCollateralAssetId(COLLATERAL_ASSET_ID);
+      setAmount("");
+      setAmountHint("Limit orders are USDC-only, so the collateral was switched back.");
+    }
+  }, [isLimit, collateralAssetId]);
 
 
   /**
@@ -1181,6 +1214,28 @@ export function PerpsCard({
    * A target that is TYPED but invalid still blocks: that is a half-finished
    * input, not a decision.
    */
+  /**
+   * Protective legs are refused on non-USDC collateral.
+   *
+   * `openPositionInner` already refuses them, because the keeper fee would
+   * have to be paid in ALGO and no keeper has been observed executing one.
+   * But refusing only at submit meant the button looked ENABLED and the click
+   * ended in an error — the user had already decided. Blocked here instead,
+   * so the state is simply unreachable.
+   */
+  /**
+   * Protective legs are refused on non-USDC collateral.
+   *
+   * `openPositionInner` refuses them, because the keeper fee would have to be
+   * paid in ALGO and no keeper has been observed executing one.
+   *
+   * Enforced by NOT OFFERING the sections rather than by falsifying `tpOk` /
+   * `slOk`. A disabling condition with no visible cause is the exact failure
+   * `formSections.test.ts` exists to prevent — the button greys out and its
+   * reason is nowhere on the card. Not rendering them leaves no unreachable
+   * state to explain.
+   */
+  const protectionAllowed = collateralAssetId === COLLATERAL_ASSET_ID;
   const tpOk = tpEmpty || tpValid;
   // Same rule: no stop-loss is fine, a stop-loss on the wrong side is not.
   // A stop-loss cannot block a LIMIT entry, which never carries one.
@@ -1205,7 +1260,7 @@ export function PerpsCard({
    * them to click past warnings. Close to liquidation it is a gate, because
    * that is where the thing being explained actually happens.
    */
-  const correlatedNotice = correlated && (
+  const correlatedNotice = risk !== "none" && (
     <div className={`mt-3 rounded-xl border p-3 text-[11.5px] leading-relaxed ${
       correlatedSevere
         ? "border-amber-400/40 bg-amber-400/[0.06] text-amber-100/90"
@@ -1216,11 +1271,25 @@ export function PerpsCard({
         </span>{" "}
         The position loses as the price falls and your collateral is worth less
         at the same moment, so liquidation arrives sooner than the same
-        leverage in USDC: <span className="font-mono">
-          −{(correlated.dropAlgo * 100).toFixed(1)}%
-        </span>{" "}against{" "}<span className="font-mono">
-          −{(correlated.dropUsdc * 100).toFixed(1)}%
-        </span>. Both figures are PEX’s own, for this exact size.
+        leverage in USDC
+        {/*
+          The comparison renders only when BOTH distances were quoted. When
+          the counterfactual could not be priced the warning still shows and
+          still gates — it simply stops short of numbers it does not have,
+          rather than going silent, which is what it used to do.
+        */}
+        {correlated ? (
+          <>
+            : <span className="font-mono">
+              −{(correlated.dropAlgo * 100).toFixed(1)}%
+            </span>{" "}against{" "}<span className="font-mono">
+              −{(correlated.dropUsdc * 100).toFixed(1)}%
+            </span>. Both figures are PEX’s own, for this exact size.
+          </>
+        ) : (
+          <>. The exact distance could not be quoted just now, so this is
+          shown at its most cautious.</>
+        )}
       </p>
       {correlatedSevere && (
         <label className="mt-2 flex items-start gap-2 font-medium text-amber-100">
@@ -1228,8 +1297,9 @@ export function PerpsCard({
             onChange={(e) => setRiskAck(e.target.checked)}
             className="mt-0.5 h-3.5 w-3.5 accent-amber-400" />
           <span>
-            I understand this liquidates after a{" "}
-            {(correlated.dropAlgo * 100).toFixed(1)}% fall.
+            {correlated
+              ? `I understand this liquidates after a ${(correlated.dropAlgo * 100).toFixed(1)}% fall.`
+              : "I understand this position is exposed to the same asset twice."}
           </span>
         </label>
       )}
@@ -1298,6 +1368,16 @@ export function PerpsCard({
           signTransactions: (txns) => wallet.signTransactions(txns),
           sender: wallet.address,
           marketId, side,
+          /**
+           * Passed so the client's USDC-only guard can actually FIRE.
+           *
+           * It reads `input.collateralAssetId ?? COLLATERAL_ASSET_ID`, so
+           * omitting it defaulted to USDC and the refusal never ran: picking
+           * ALGO and switching to Limit built a USDC escrow of the dollar
+           * value instead, in an asset the user may not even hold. The UI
+           * prevents that state as well (see the pill), and this is the belt.
+           */
+          collateralAssetId,
           collateralUsd,
           notionalUsd: notional,
           triggerPrice12: trigger12,
@@ -1330,6 +1410,10 @@ export function PerpsCard({
         side,
         collateralAssetId,
         collateralAmountMicro,
+        // Without this `openPosition` cannot value ALGO collateral and throws
+        // AFTER the button was enabled. Sizing and submitting are separate
+        // call sites and fixing one left the other broken.
+        algoPrice12,
         notionalUsd: notional,
         takeProfitPrice12: tp12,
         stopLossPrice12: slEmpty ? BigInt(0) : sl12,
@@ -1515,7 +1599,14 @@ export function PerpsCard({
           */}
           <div className="flex items-center gap-1 rounded-lg border border-white/10 p-0.5">
             {[COLLATERAL_ASSET_ID, PEX_ASSETS.algo].map((id) => (
-              <button key={id} type="button" disabled={submitting}
+              <button key={id} type="button"
+                // A limit entry always escrows a keeper fee, which would have
+                // to be ALGO, which is refused. Blocked HERE rather than at
+                // submit so the state cannot be entered at all.
+                disabled={submitting || (isLimit && id !== COLLATERAL_ASSET_ID)}
+                title={isLimit && id !== COLLATERAL_ASSET_ID
+                  ? "Limit orders are USDC-only: a resting order's keeper fee would have to be paid in ALGO."
+                  : undefined}
                 onClick={() => {
                   if (id === collateralAssetId) return;
                   setCollateralAssetId(id);
@@ -1525,6 +1616,13 @@ export function PerpsCard({
                   setAmount("");
                   setAmountHint(null);
                   setRiskAck(false);
+                  // A target typed under USDC cannot ride on an ALGO
+                  // position: protection is refused there. Cleared rather
+                  // than left to fail at submit.
+                  if (id !== COLLATERAL_ASSET_ID) {
+                    setTpPrice("");
+                    setSlPrice("");
+                  }
                 }}
                 className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
                   id === collateralAssetId
@@ -1802,6 +1900,19 @@ export function PerpsCard({
           truth: the position opens without either. The old title named the
           market ("Take profit at ALGO price"), which the market pills and the
           chart above already say twice. */}
+      {!protectionAllowed && (
+        <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-[11.5px] leading-relaxed text-white/50">
+          <span className="font-semibold text-white/70">
+            No take-profit or stop on {assetName(collateralAssetId)} collateral.
+          </span>{" "}
+          A protective order escrows its keeper fee in the same asset as the
+          position, and we have not seen a keeper execute an
+          {" "}{assetName(collateralAssetId)}-denominated fee. An order that
+          shows as armed and never fires is worse than not having one. Close by
+          hand, or use USDC collateral.
+        </p>
+      )}
+      {protectionAllowed && (
       <FormSection
         title={<>Take profit <span className="normal-case tracking-normal text-white/30">· optional</span></>}
         summary={view.tpEmpty ? "None" : `$${view.tpPrice}`}
@@ -1928,6 +2039,7 @@ export function PerpsCard({
         )}
       </label>
       </FormSection>
+      )}
 
       {view.waitsForRoom && (
         /* Honest about what letting a limit order past the capacity check means:
@@ -1947,6 +2059,7 @@ export function PerpsCard({
           without one; the header keeps the price visible when it is set, and a
           problem with it forces this open rather than hiding a disabled
           button's reason. */}
+      {protectionAllowed && (
       <FormSection
         title={<>Stop loss <span className="normal-case tracking-normal text-white/30">· optional</span></>}
         summary={view.slEmpty ? "None" : `$${view.slPrice}`}
@@ -2009,6 +2122,7 @@ export function PerpsCard({
         </div>
       )}
       </FormSection>
+      )}
 
       {/* The one state that disabled submit with its reason nowhere on the
           card. `bothLegs` reached `canSubmit` and nothing else: both sections

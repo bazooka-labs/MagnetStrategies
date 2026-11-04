@@ -98,6 +98,10 @@ function group(opts: {
       type: "appl", fee: BigInt(30_000),
       applicationCall: {
         appIndex: BigInt(PEX_APPS.trading),
+        // A real open references the pool's short asset. With USDC collateral
+        // that IS the collateral; with ALGO it is not, which is why the
+        // allowed set had to be extended.
+        foreignAssets: [BigInt(PEX_ASSETS.usdc)],
         appArgs: [
           sel(PEX_SELECTORS.openOrIncrease),
           u64(BigInt(1)), u64(BigInt(1)), u64(opts.sizeMicro),
@@ -256,12 +260,24 @@ describe("the drift budget", () => {
     expect(codes(r)).toContain("leverage");
   });
 
-  it("is skipped when the screen showed no leverage", () => {
-    const r = run(group(base), shown({
-      collateralAmountMicro: USDC_25, sizeUsdDeltaMicro: SIZE_100,
-      asRenderedLeverage: 0,
-    }));
-    expect(codes(r)).not.toContain("leverage");
+  it("FAILS, rather than skipping, when the screen's leverage is unusable", () => {
+    /**
+     * This test used to assert the opposite — that a zero was skipped — and
+     * review showed the skip was a hole in the only guard against reading
+     * µALGO as µUSD. Any caller passing 0 silently lost it.
+     *
+     * Infinity was worse than a skip: it reached the comparison, produced a
+     * NaN drift, and `NaN > MAX` is false, so the group PASSED. The bound is
+     * now written negated so NaN fails.
+     */
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const r = run(group(base), shown({
+        collateralAmountMicro: USDC_25, sizeUsdDeltaMicro: SIZE_100,
+        asRenderedLeverage: bad,
+      }));
+      expect(r.ok, `leverage ${bad} was accepted`).toBe(false);
+      expect(codes(r), `leverage ${bad}`).toContain("leverage_missing");
+    }
   });
 });
 
@@ -304,5 +320,59 @@ describe("the open shapes keep their transfer budget", () => {
     expect(openShapeFor(PEX_ASSETS.usdc, true)).toBe(SHAPE_OPEN_STORAGE);
     expect(openShapeFor(PEX_ASSETS.algo, false)).toBe(SHAPE_OPEN_ALGO);
     expect(openShapeFor(PEX_ASSETS.algo, true)).toBe(SHAPE_OPEN_ALGO_STORAGE);
+  });
+});
+
+
+describe("the pool-asset enumeration", () => {
+  const algoShownBase = {
+    collateralAssetId: PEX_ASSETS.algo,
+    collateralAmountMicro: BigInt(100_000_000),
+    sizeUsdDeltaMicro: BigInt(27_000_000),
+    asRenderedLeverage: 2.978,
+  };
+  const algoGroup = () => group({
+    assetId: PEX_ASSETS.algo, collateralMicro: BigInt(100_000_000),
+    sizeMicro: BigInt(27_000_000),
+  });
+
+  it("lets an ALGO group reference the pool's USDC side", () => {
+    // Without the enumeration this is `foreign_asset` and every ALGO open
+    // and close fails. That was the live symptom.
+    const r = run(algoGroup(), shown({
+      ...algoShownBase, poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
+    }));
+    expect(codes(r)).not.toContain("foreign_asset");
+  });
+
+  it("refuses that reference when the pool assets are NOT supplied", () => {
+    // Proves the allowance is doing the work, rather than something else
+    // having quietly stopped checking.
+    const r = run(algoGroup(), shown({ ...algoShownBase, poolAssets: [] }));
+    expect(r.ok).toBe(false);
+    expect(codes(r)).toContain("foreign_asset");
+  });
+
+  it("PINS what may be enumerated, so a caller cannot widen it", () => {
+    /**
+     * The enumeration is supplied by the caller from its own chain read. The
+     * pin is what stops that becoming "allow whatever you like". Review found
+     * it had no test at all: replacing the condition with `if (false)` left
+     * the whole suite green.
+     */
+    const r = run(algoGroup(), shown({
+      ...algoShownBase, poolAssets: [PEX_ASSETS.algo, 999_999],
+    }));
+    expect(r.ok).toBe(false);
+    expect(codes(r)).toContain("pool_asset_unpinned");
+  });
+
+  it("does not let a pinned-out asset through on the back of a valid one", () => {
+    // The junk id must be rejected AND not silently added to the allowed set.
+    const r = run(algoGroup(), shown({
+      ...algoShownBase, poolAssets: [999_999],
+    }));
+    expect(codes(r)).toContain("pool_asset_unpinned");
+    expect(codes(r)).toContain("foreign_asset");
   });
 });
