@@ -582,3 +582,49 @@ describe("your share of pool", () => {
     expect(body).not.toMatch(/since you paid/i);
   });
 });
+
+describe("the two pills separate vaults from liquidity pools", () => {
+  /**
+   * The $U liquidity pools moved here from the Tokens page on 2026-11-04.
+   *
+   * The existing pill said "Pools" and held the C-Vault. Two different things
+   * on one page could not both be "Pools", so it became "Vaults" and the
+   * arrivals got their own. The LABELS are the point of the change, so they
+   * are asserted rather than the tab keys behind them.
+   */
+  it("offers Vaults and Liquidity Pools, and no pill called just 'Pools'", async () => {
+    await mount("visitor");
+    expect(screen.getByRole("button", { name: /^Vaults$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Liquidity Pools$/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Pools$/ })).toBeNull();
+  });
+
+  it("opens on Vaults, so the C-Vault is what a visitor lands on", async () => {
+    // `mount` already waits for the C-Vault heading, so reaching here is it.
+    await mount("visitor");
+    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
+  });
+
+  it("swaps the column when Liquidity Pools is picked", async () => {
+    await mount("visitor");
+    fireEvent.click(screen.getByRole("button", { name: /^Liquidity Pools$/ }));
+    expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
+    expect(screen.getByText(/\$U Liquidity Pools/)).toBeTruthy();
+  });
+
+  it("goes back, rather than being a one-way door", async () => {
+    await mount("visitor");
+    fireEvent.click(screen.getByRole("button", { name: /^Liquidity Pools$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Vaults$/ }));
+    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
+  });
+
+  it("hides the admin direct-pools control on the liquidity tab", async () => {
+    // It reveals cards that live in the vaults column, so offering it beside
+    // the $U pools would be a control with nothing to act on.
+    await mount("admin");
+    expect(screen.getByRole("button", { name: /Direct pools/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Liquidity Pools$/ }));
+    expect(screen.queryByRole("button", { name: /Direct pools/ })).toBeNull();
+  });
+});

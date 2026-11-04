@@ -39,6 +39,7 @@ import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
 import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
+import { LpPoolsSection } from "@/components/strategy/pools/LpPoolsSection";
 import { CvaAbout } from "./CvaAbout";
 import { getIndexerClient } from "@/lib/algorand";
 import {
@@ -79,8 +80,15 @@ const pct = (v: number | null, dp = 1) => (v === null ? "—" : `${v.toFixed(dp)
 const num = (v: number | null, dp = 0) =>
   v === null ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 
-/** The page's sections. One today; the track exists because more are coming. */
-type Tab = "pools";
+/**
+ * The page's sections.
+ *
+ * `vaults` was called `pools` and its pill read "Pools" — renamed when the $U
+ * liquidity pools arrived from the Tokens page, because two different things
+ * on one page could not both be "Pools". What this tab holds is managed
+ * vaults; what the other holds is DEX liquidity.
+ */
+type Tab = "vaults" | "liquidity";
 
 /**
  * One pill, identical to the Finance and Tokens tracks.
@@ -467,7 +475,7 @@ export function LiquidityView() {
   useEffect(() => { void load(); }, [load]);
 
   const m = (id: "algo-usd" | "btc-usd") => data?.markets.find((x) => x.id === id) ?? null;
-  const [tab, setTab] = useState<Tab>("pools");
+  const [tab, setTab] = useState<Tab>("vaults");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -492,7 +500,7 @@ export function LiquidityView() {
         C-Vault's are.
       */}
 
-      {err && (
+      {err && tab === "vaults" && (
         <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>Could not read pool state: {err}. Figures below are omitted rather than guessed.</span>
@@ -502,15 +510,21 @@ export function LiquidityView() {
       <div className="animate-enter mb-7 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
           <TabButton
-            active={tab === "pools"}
-            onClick={() => setTab("pools")}
+            active={tab === "vaults"}
+            onClick={() => setTab("vaults")}
+            icon={Layers}
+            label="Vaults"
+          />
+          <TabButton
+            active={tab === "liquidity"}
+            onClick={() => setTab("liquidity")}
             icon={Droplets}
-            label="Pools"
+            label="Liquidity Pools"
           />
         </div>
         {/* Amber, like every other "this is not ordinary browsing" control in
             the app. Pressed-in when open, so the row shows its own state. */}
-        {isAdmin && (
+        {isAdmin && tab === "vaults" && (
           <button
             onClick={() => setShowPools((v) => !v)}
             aria-pressed={showPools}
@@ -537,6 +551,11 @@ export function LiquidityView() {
         panel made the warning the largest object on the page. Both checked by
         rasterising, not by reasoning about it.
       */}
+      {/*
+        Each pill owns its own column. The vaults block is unchanged;
+        it is simply no longer the only thing on the page.
+      */}
+      {tab === "vaults" && (
       <div className="max-w-5xl">
       <div className="grid gap-5 md:grid-cols-2">
         {/* ── C-Vault ──
@@ -841,6 +860,18 @@ export function LiquidityView() {
         was lost.
       */}
       </div>
+      )}
+
+      {tab === "liquidity" && (
+        <div className="max-w-5xl">
+          {/*
+            Moved here from the Tokens page on 2026-11-04. It fetches its
+            own data and carries its own heading, so it needs no wiring
+            beyond being placed — see LpPoolsSection.
+          */}
+          <LpPoolsSection />
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
-import { PoolsSection } from "@/components/tokens/PoolsSection";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
 import { GovernanceSection } from "@/components/tokens/GovernanceSection";
@@ -103,8 +102,12 @@ export function MagnetTokenView({
         </div>
       </Panel>
 
-      {/* $U liquidity pools */}
-      <PoolsSection />
+      {/*
+        The $U liquidity pools MOVED to the Strategy page on 2026-11-04,
+        under the "Liquidity Pools" pill beside the vaults. Providing
+        liquidity is a strategy; this page is about the token itself.
+        See components/strategy/pools/LpPoolsSection.tsx.
+      */}
 
       {/* Governance — last, because it is the part a reader comes to after
           deciding they hold $U, not before. */}

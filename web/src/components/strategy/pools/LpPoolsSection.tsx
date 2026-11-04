@@ -1,5 +1,23 @@
 "use client";
 
+/**
+ * The $U liquidity pools on Tinyman and Pact.
+ *
+ * ── Why this lives under `strategy/pools/` ─────────────────────────────────
+ * It rendered on the Tokens page until 2026-11-04 and moved to Strategy,
+ * under the "Liquidity Pools" pill, beside the vaults. The file moved with
+ * it: a component in `components/tokens/` that renders only on Strategy is
+ * the exact trap CLAUDE.md records under "deliberate oddities", where
+ * `StrategySplash` once lived in `liquidity/` and `TradeSplash` in
+ * `strategy/`, each named for the page the other directory served.
+ *
+ * ── What it is NOT ─────────────────────────────────────────────────────────
+ * Named `LpPoolsSection`, not `PoolsSection`, because `strategy/pools/`
+ * already means PEX's perpetual-market pools — the C-Vault and the direct
+ * market pools. These are DEX liquidity pools for the $U token on third-party
+ * AMMs, which is a different thing that happens to share the word.
+ */
+
 import { useEffect, useState } from "react";
 import { Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
@@ -93,7 +111,7 @@ function PoolCard({ p }: { p: PoolData }) {
   );
 }
 
-export function PoolsSection() {
+export function LpPoolsSection() {
   const [pools, setPools] = useState<PoolData[] | null>(null);
   const [err, setErr] = useState(false);
 

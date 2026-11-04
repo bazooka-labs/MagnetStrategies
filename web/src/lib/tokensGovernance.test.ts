@@ -58,9 +58,22 @@ describe("the treasury is the fifth box on both tabs", () => {
 });
 
 describe("governance is a section of the $U tab", () => {
-  it("sits on the Magnet tab, after the pools", () => {
+  it("sits on the Magnet tab", () => {
     expect(magnet).toContain("<GovernanceSection />");
-    expect(magnet.indexOf("<PoolsSection />")).toBeLessThan(magnet.indexOf("<GovernanceSection />"));
+  });
+
+  it("no longer shares that tab with the liquidity pools", () => {
+    /**
+     * The $U pools moved to the Strategy page on 2026-11-04.
+     *
+     * This test used to assert they came BEFORE governance, by comparing
+     * `indexOf`. Once the section was removed that comparison became
+     * `-1 < someIndex` — true for ever, asserting nothing. A test that keeps
+     * passing after the thing it describes is deleted is worse than no test,
+     * so it asserts the absence instead, which is the fact that now holds.
+     */
+    expect(magnet).not.toContain("<PoolsSection />");
+    expect(magnet).not.toContain("<LpPoolsSection />");
   });
 
   it("is not on the mUSD tab", () => {
