@@ -24,6 +24,13 @@ import { Navbar } from "./Navbar";
 vi.mock("@/components/WalletButton", () => ({
   WalletButton: () => <button type="button">Connect Wallet</button>,
 }));
+/**
+ * The nav asks the wallet who is connected, so it can show the admin entry.
+ * Mocked rather than wrapped in a provider: these tests are about which links
+ * render, and a real provider would drag in wallet discovery for nothing.
+ */
+const wallet = vi.hoisted(() => ({ isConnected: false, address: null as string | null }));
+vi.mock("@/hooks/useWallet", () => ({ useWallet: () => wallet }));
 vi.mock("next/image", () => ({
   default: ({ alt }: { alt: string }) => <span role="presentation" aria-label={alt} />,
 }));
@@ -125,5 +132,40 @@ describe("the entries that are hidden on purpose", () => {
   // "add Predict to the nav" looks like a fix rather than a reversal.
   it.each(["/predict", "/vote", "/dao"])("does not link to %s", (route) => {
     expect(hrefs()).not.toContain(route);
+  });
+});
+
+
+describe("the admin entry is not part of the public nav", () => {
+  /**
+   * The nav is a shopping surface; this one is a tool that spends real money
+   * on MainNet. Hiding it is a convenience and not a boundary — the route is
+   * public and the page gates itself — but a visitor must never be invited to
+   * it, and "shown to everyone" is exactly the regression nobody would notice.
+   */
+  afterEach(() => { wallet.isConnected = false; wallet.address = null; });
+
+  it("is absent for a disconnected visitor", () => {
+    render(<Navbar />);
+    expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
+    expect(document.querySelectorAll('a[href="/trade/admin"]')).toHaveLength(0);
+  });
+
+  it("is absent for a connected NON-admin wallet", () => {
+    wallet.isConnected = true;
+    wallet.address = "SOMEONEELSESOMEONEELSESOMEONEELSESOMEONEELSESOMEONEEL";
+    render(<Navbar />);
+    expect(document.querySelectorAll('a[href="/trade/admin"]')).toHaveLength(0);
+  });
+
+  it("appears for the admin wallet, in both the desktop row and the mobile sheet", async () => {
+    const { MAGNETFI_ADMIN_ADDRESS } = await import("@/lib/magnetfi");
+    wallet.isConnected = true;
+    wallet.address = MAGNETFI_ADMIN_ADDRESS;
+    render(<Navbar />);
+    // Desktop row only until the sheet is opened.
+    expect(document.querySelectorAll('a[href="/trade/admin"]').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /menu|open/i }));
+    expect(document.querySelectorAll('a[href="/trade/admin"]').length).toBeGreaterThan(1);
   });
 });

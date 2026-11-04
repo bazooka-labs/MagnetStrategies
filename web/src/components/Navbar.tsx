@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { WalletButton } from "@/components/WalletButton";
+import { useWallet } from "@/hooks/useWallet";
+import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { XIcon, DiscordIcon, SOCIALS } from "@/components/SocialIcons";
 
 const navLinks = [
@@ -79,6 +81,19 @@ const navLinkClass = "text-sm font-medium text-white/60 hover:text-white transit
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  /**
+   * The admin entry, shown only to the admin wallet.
+   *
+   * Hiding a link is a CONVENIENCE, not a boundary: the route is public, it
+   * is in the client bundle, and anyone can type it. The gate that matters is
+   * in the page itself, which builds nothing for another wallet. This keeps
+   * a tool that spends real money off every other visitor's nav, which is the
+   * whole of its job.
+   */
+  const { isConnected, address } = useWallet();
+  const links = isConnected && address === MAGNETFI_ADMIN_ADDRESS
+    ? [...navLinks, { href: "/trade/admin", label: "Admin", external: false }]
+    : navLinks;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 overflow-x-hidden">
@@ -128,7 +143,7 @@ export function Navbar() {
           A future sixth item needs no change here.
         */}
         <div className="hidden lg:flex items-center gap-6">
-          {navLinks.map((link) =>
+          {links.map((link) =>
             link.external ? (
               <a
                 key={link.href}
@@ -195,7 +210,7 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div id="mobile-nav" className="relative lg:hidden border-t border-white/10 bg-[#0a0010]/95 backdrop-blur-md px-4 py-4 space-y-1">
-          {navLinks.map((link) =>
+          {links.map((link) =>
             link.external ? (
               <a
                 key={link.href}
