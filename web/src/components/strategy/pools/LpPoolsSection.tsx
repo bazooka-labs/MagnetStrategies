@@ -44,20 +44,27 @@ function PoolCard({ p }: { p: PoolData }) {
   const farming = p.farmLive || farmRate;
   return (
     /*
-      The shared magnet-400 neon, the same ring-plus-shadow every other card
-      on the site carries — the vaults, the MagnetFi collateral cards and the
-      Trade terminal. These pools arrived from the Tokens page without it and
-      read as a different product beside the vault they now sit next to.
+      The shared neon, the same ring-plus-shadow every other card on the site
+      carries — the vaults, the MagnetFi collateral cards, the Trade terminal.
+      These pools arrived from the Tokens page without it and read as a
+      different product beside the vault they now sit next to.
 
-      `MAGNET_GLOW` rather than a copy of its values: it was tuned against the
-      red a stale card carries, and a second set of numbers would drift from
-      the rest of the site the first time either moved.
+      ── Through `glowClass`, NOT `className` ──
+      Panel's default shadow includes `shadow-black/40`, which sets
+      `--tw-shadow-color` and recolours any shadow arriving via `className`
+      to black. The glow then shows as its ring alone: a thin neon border
+      with no halo. Panel's own doc comment warns about this and says it is
+      how the prop first shipped; it is also how THIS first shipped, one
+      commit ago, until the border-with-no-glow was spotted on the page.
+
+      Gold for the ALGO-family pool, purple for the rest — the same split
+      MagnetFi draws between its ALGO/USDC vault and the $U ones. Read off
+      the pool, so this knows about an ACCENT, not about a pool id.
     */
-    <Panel className={`animate-enter-1 hover-depth flex flex-col p-6 ${
-      // Gold for the ALGO-family pool, purple for the rest — the same split
-      // MagnetFi draws between its ALGO/USDC vault and the $U ones. Read off
-      // the pool, so the component knows about an ACCENT, not about an id.
-      p.accent === "gold" ? ALGO_GLOW : MAGNET_GLOW}`}>
+    <Panel
+      className="animate-enter-1 hover-depth flex flex-col p-6"
+      glowClass={p.accent === "gold" ? ALGO_GLOW : MAGNET_GLOW}
+    >
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={["$U", p.partner]} />
