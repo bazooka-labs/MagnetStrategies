@@ -135,6 +135,8 @@ function openGroup(): Leg[] {
 const shownOpen = (): DisplayedOpen => ({
   storagePaymentMicro: BigInt(0),
   sender: USER, marketId: 1, side: 1, collateralAssetId: PEX_ASSETS.usdc,
+  // Market 1 is ALGO-backed and USDC-quoted, like both live markets.
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   collateralAmountMicro: COLLATERAL, sizeUsdDeltaMicro: SIZE,
   /**
    * What a card would have shown for this group.
@@ -255,6 +257,7 @@ function closeGroup(): Leg[] {
 
 const shownClose = (): DisplayedClose => ({
   sender: USER, marketId: 1, side: 1, collateralAssetId: PEX_ASSETS.usdc,
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   sizeUsdDeltaMicro: SIZE, positionSizeUsdMicro: SIZE, fullClose: true,
   acceptablePrice12: (EXEC * BigInt(9_970)) / BigInt(10_000),
   executionPrice12: EXEC, indexPrice12: INDEX, slippageBps: 50,

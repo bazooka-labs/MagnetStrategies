@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import fixture from "@/lib/strategy/pex/__fixtures__/perpsGroups.json";
 import { assertCloseGroup, POSITION_ID_WILDCARD, type DisplayedClose } from "@/lib/strategy/pex/group";
-import { COLLATERAL_ASSET_ID, PEX_APPS } from "@/lib/strategy/pex/config";
+import { COLLATERAL_ASSET_ID, PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 type Captured = {
   marketId: number; side: "long" | "short"; sender: string;
@@ -45,6 +45,8 @@ const decode = (c: Captured) =>
 const shown = (c: Captured): DisplayedClose => ({
   sender: c.sender, marketId: c.marketId, side: c.side === "long" ? 1 : 2,
   collateralAssetId: COLLATERAL_ASSET_ID,
+  // Market 1 is ALGO-backed and USDC-quoted, like both live markets.
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   sizeUsdDeltaMicro: BigInt(c.sizeUsdDeltaMicro),
   positionSizeUsdMicro: BigInt(c.positionSizeUsdMicro),
   fullClose: c.fullClose,

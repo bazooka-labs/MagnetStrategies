@@ -140,7 +140,6 @@ const CVA_NOTE_RE = /^pdex-v2-cva-(deposit|withdraw)-storage$/;
 /** Exported for the liquidity flow — see the note on `checkEveryTransaction`. */
 export function checkMathCarriers(
   txns: AnyTxn[], fail: (code: string, detail: string) => void, did: (n: string) => void,
-  /** The close path's enumerated recall resources — see `checkEveryTransaction`. */
   allow?: { accounts?: Set<string>; assets?: Set<number>; collateralAssetId?: number },
 ): void {
   /**
@@ -376,6 +375,46 @@ export const SHAPE_OPEN: GroupShape = {
 export const SHAPE_OPEN_STORAGE: GroupShape = {
   axfer: 1, pay: 1, applMin: 2, applMax: 11, trading: 2, orderOps: 0,
 };
+/**
+ * The same two shapes with ALGO collateral.
+ *
+ * `makeTokenTransferTxn` emits a PAYMENT when the asset id is 0, so the
+ * collateral leg moves from the axfer budget to the pay budget. The TOTAL
+ * number of value-moving transactions is unchanged — one, or two when
+ * storage is funded — which is what the shape gate is actually bounding.
+ *
+ * Written as separate constants rather than by widening `SHAPE_OPEN` to
+ * `axfer: 0..1, pay: 0..1`. Each kind is pinned to an EXACT count, so the
+ * total number of value-moving transactions is fixed at one, or two when
+ * storage is funded. A range would admit `axfer: 1, pay: 1` for a
+ * non-storage open — one more transfer than any honest group of that shape
+ * has — and the gate exists to make exactly that impossible.
+ *
+ * (`SHAPE_OPEN_STORAGE` is itself `axfer: 1, pay: 1`: a USDC collateral
+ * transfer alongside the storage payment. So "never both kinds" is NOT the
+ * invariant here, and an earlier draft of this note claimed it was. The
+ * invariant is the exact count per kind.)
+ */
+export const SHAPE_OPEN_ALGO: GroupShape = {
+  axfer: 0, pay: 1, applMin: 1, applMax: 10, trading: 1, orderOps: 0,
+};
+export const SHAPE_OPEN_ALGO_STORAGE: GroupShape = {
+  axfer: 0, pay: 2, applMin: 2, applMax: 11, trading: 2, orderOps: 0,
+};
+
+/**
+ * The shape a bare open should have, given its collateral and whether this
+ * group funds the storage escrow.
+ *
+ * One place to choose, so a caller cannot pick the USDC shape for an ALGO
+ * group and have the mismatch surface as a confusing count failure.
+ */
+export function openShapeFor(collateralAssetId: number, fundsStorage: boolean): GroupShape {
+  if (collateralAssetId === PEX_ASSETS.algo) {
+    return fundsStorage ? SHAPE_OPEN_ALGO_STORAGE : SHAPE_OPEN_ALGO;
+  }
+  return fundsStorage ? SHAPE_OPEN_STORAGE : SHAPE_OPEN;
+}
 /** Adds the keeper-fee escrow transfer and the order-box MBR payment. */
 export const SHAPE_OPEN_TP: GroupShape = { axfer: 2, pay: 1, applMin: 2, applMax: 10, trading: 1 };
 /**
@@ -632,11 +671,59 @@ export type DisplayedOpen = {
    * same convention `asRenderedLiquidationPrice12` uses for an absent value.
    */
   asRenderedLeverage: number;
+  /**
+   * The market's long and short asset ids, from the caller's OWN chain read
+   * of market state. Added to the allowed-asset enumeration and pinned — see
+   * `pinnedPoolAssets`. Required because an ALGO-collateral group references
+   * the pool's USDC side, which is not the collateral, so without this every
+   * ALGO open and close fails `foreign_asset`.
+   */
+  poolAssets: readonly number[];
   slippageBps: number;
   /** The exact verified payload bytes — not a re-fetch. */
   oracleMessage: Uint8Array;
   oracleSignature: Uint8Array;
 };
+
+/**
+ * The market's own pool assets, as an addition to the allowed-asset
+ * enumeration — NOT a relaxation of it.
+ *
+ * ── Why this is needed at all ──────────────────────────────────────────────
+ * `checkEveryTransaction` allows the collateral asset and nothing else
+ * (beyond the close path's enumerated recall set). Measured against a real
+ * SDK group 2026-11-03, an open references exactly one asset: **31566704**,
+ * the pool's short asset. With USDC collateral that IS the collateral, so it
+ * passes and always has. With ALGO collateral it is not, and every ALGO open
+ * and close fails `foreign_asset` — which is what a user hit.
+ *
+ * ALGO itself never appears in `foreignAssets` because it is not an ASA.
+ *
+ * ── Why it stays tight ─────────────────────────────────────────────────────
+ * The ids come from the CALLER's own chain read of market state, not from the
+ * group, and each is pinned here to an asset PEX actually backs a market
+ * with. That mirrors `recall_asset_unpinned`: if PEX ever lists a market
+ * against something else, this fires and we look at it, rather than silently
+ * widening to whatever the group happens to name.
+ *
+ * So the rule is still "an explicit enumeration we built ourselves", which is
+ * what the note on `checkEveryTransaction` promises.
+ */
+function pinnedPoolAssets(
+  poolAssets: readonly number[] | undefined,
+  fail: (code: string, detail: string) => void,
+): Set<number> {
+  const out = new Set<number>();
+  for (const a of poolAssets ?? []) {
+    if (a !== PEX_ASSETS.algo && a !== PEX_ASSETS.usdc) {
+      fail("pool_asset_unpinned",
+        `market names pool asset ${a}, which is neither ALGO nor USDC (${PEX_ASSETS.usdc})`);
+      continue;
+    }
+    out.add(a);
+  }
+  return out;
+}
 
 /** Price12 fixed-point scale, as PEX signs prices. */
 import { decodeOracleMessage } from "@/lib/strategy/pex/oracle";
@@ -966,7 +1053,12 @@ export function assertOpenGroup(
   did("distinct transaction IDs");
 
   const totalFee = checkEveryTransaction(
-    txns, { sender: shown.sender, collateralAssetId: shown.collateralAssetId }, fail, did,
+    txns,
+    {
+      sender: shown.sender, collateralAssetId: shown.collateralAssetId,
+      allowAssets: pinnedPoolAssets(shown.poolAssets, fail),
+    },
+    fail, did,
   );
   checkTxnShape(txns, shape, fail, did);
   /**
@@ -1111,19 +1203,24 @@ export function assertOpenGroup(
       fail("note", "the collateral transfer carries a note");
     }
     /**
-     * ── ALGO collateral is refused here until the feature lands ──
-     * The protocol accepts it (210.87 ALGO is posted on market 1 today) and
-     * the UI does not offer it. The leverage check below divides
-     * `sizeUsdDelta` by the raw transfer amount, which is only a leverage
-     * because µUSDC equals µUSD; against µALGO it is wrong by the ALGO price,
-     * roughly 10.7x. Rather than let an unverifiable ratio through, this
-     * refuses what it cannot check. The feature removes this line and brings
-     * the USD conversion and its own tests with it.
+     * ── ALGO collateral is checked now, not refused ──
+     * This used to `fail("collateral_asset_unsupported")` because the leverage
+     * check divided `sizeUsdDelta` by the raw transfer amount, which is a
+     * leverage only while µUSDC equals µUSD. Refusing was right while that
+     * was true.
+     *
+     * It is no longer true of this file. The leverage check below values the
+     * collateral in USD at a price read from the group's own signed oracle
+     * message, so it is a leverage for ALGO as much as for USDC, and the
+     * `foreign_asset` enumeration now carries the market's pool assets so an
+     * ALGO group's reference to the pool's USDC side is allowed rather than
+     * rejected.
+     *
+     * What still bounds this is NOT here: the client refuses protective
+     * orders and limit entries on ALGO collateral, because their keeper fee
+     * would have to be paid in ALGO and no keeper has been observed executing
+     * one. See `openPositionInner`.
      */
-    if (legAsset === 0) {
-      fail("collateral_asset_unsupported",
-        "ALGO collateral is not supported yet; the leverage check is denominated in USDC");
-    }
   }
   did("collateral leg sits before the open call: asset, amount, receiver, no note");
 
@@ -1346,6 +1443,13 @@ export type DisplayedClose = {
   marketId: number;
   side: 1 | 2;
   collateralAssetId: number;
+  /**
+   * The market's long and short asset ids, from the caller's OWN chain read.
+   * Pinned and added to the allowed set — see `pinnedPoolAssets`. A close
+   * references the pool's short asset, so without this an ALGO-collateral
+   * close fails `foreign_asset` at txn 0.
+   */
+  poolAssets: readonly number[];
   /** Exactly the size shown. For a full close this must equal position_size_usd. */
   sizeUsdDeltaMicro: bigint;
   /** The live position size, so a "close everything" can be proven complete. */
@@ -1427,7 +1531,18 @@ export function assertCloseGroup(txnsIn: unknown[], shown: DisplayedClose): Grou
     }
   }
   const allowAccounts = new Set(shown.recall.accounts);
-  const allowAssets = new Set(shown.recall.assets);
+  /**
+   * The recall receipts PLUS the market's own pool assets.
+   *
+   * Both are enumerations we built from our own chain reads, and both are
+   * pinned — receipts to xALGO/fUSDC just above, pool assets to ALGO/USDC in
+   * `pinnedPoolAssets`. A close references the pool's short asset, so without
+   * the second set an ALGO-collateral close fails `foreign_asset` at txn 0.
+   */
+  const allowAssets = new Set([
+    ...shown.recall.assets,
+    ...pinnedPoolAssets(shown.poolAssets, fail),
+  ]);
   const allowApps = new Set(shown.recall.apps);
   const totalFee = checkEveryTransaction(
     txns,

@@ -79,6 +79,7 @@ import {
   simulateGroup,
   ORDER_BOX_MBR_MICRO_ALGO,
   SHAPE_OPEN,
+  openShapeFor,
   SHAPE_OPEN_STORAGE,
   type DisplayedLimit,
 } from "@/lib/strategy/pex/group";
@@ -824,6 +825,11 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     // What the SCREEN said, not what this function just computed. Passing
     // `probe.leverage` here would restore the tautology by another route.
     asRenderedLeverage: displayed.asRenderedLeverage,
+    // The market's own pool assets, from the chain read above — the same ids
+    // handed to the builder. An ALGO-collateral group references the pool's
+    // USDC side, which is not the collateral, so the assertion needs them
+    // enumerated or it refuses the group.
+    poolAssets: [Number(state.core.long_asset_id), Number(state.core.short_asset_id)],
     slippageBps,
     oracleMessage: oracle.message,
     oracleSignature: oracle.signature,
@@ -878,10 +884,11 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       executionPrice12: probe.executionPrice12,
       indexPrice12: oracle.indexPrice12,
       asRenderedLeverage: displayed.asRenderedLeverage,
+      poolAssets: [Number(state.core.long_asset_id), Number(state.core.short_asset_id)],
       slippageBps,
       oracleMessage: oracle.message,
       oracleSignature: oracle.signature,
-    }, storagePayment > BigInt(0) ? SHAPE_OPEN_STORAGE : SHAPE_OPEN);
+    }, openShapeFor(collateralAssetId, storagePayment > BigInt(0)));
   if (!assertion.ok) {
     // Nothing is presented for signature. The detail is deliberately verbose —
     // this should never fire, and if it does someone needs the specifics.
@@ -1956,6 +1963,8 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
     return assertCloseGroup(group, {
     sender, marketId, side: sideCode,
     collateralAssetId,
+    // Same ids the builder received; see the open path's note.
+    poolAssets: [longAssetId, shortAssetId],
     sizeUsdDeltaMicro: sizeToClose,
     positionSizeUsdMicro: livePos.size_usd,
     fullClose: sizeToClose === livePos.size_usd,

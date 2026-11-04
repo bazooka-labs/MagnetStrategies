@@ -24,7 +24,8 @@
 import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import {
-  assertOpenGroup, SHAPE_OPEN, PEX_SELECTORS, type DisplayedOpen,
+  assertOpenGroup, SHAPE_OPEN, SHAPE_OPEN_STORAGE, SHAPE_OPEN_ALGO,
+  SHAPE_OPEN_ALGO_STORAGE, openShapeFor, PEX_SELECTORS, type DisplayedOpen,
 } from "@/lib/strategy/pex/group";
 import {
   PEX_APPS, PEX_ASSETS, POSITION_BUILDER_FEE_BPS,
@@ -123,6 +124,7 @@ const shown = (o: Partial<DisplayedOpen> & {
   acceptablePrice12: (EXEC * BigInt(10_030)) / BigInt(10_000),
   executionPrice12: EXEC, indexPrice12: INDEX, slippageBps: 50,
   oracleMessage: oracleMessage(), oracleSignature: new Uint8Array(64).fill(9),
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   ...o,
 } as DisplayedOpen);
 
@@ -260,5 +262,47 @@ describe("the drift budget", () => {
       asRenderedLeverage: 0,
     }));
     expect(codes(r)).not.toContain("leverage");
+  });
+});
+
+describe("the open shapes keep their transfer budget", () => {
+  it("pins an EXACT count per transfer kind, so none can be added", () => {
+    /**
+     * The reason these are four constants rather than one widened shape.
+     *
+     * Note what the invariant is NOT: `SHAPE_OPEN_STORAGE` is
+     * `axfer: 1, pay: 1`, because a USDC open that funds storage carries the
+     * collateral transfer AND the storage payment. An earlier version of this
+     * test asserted "never both kinds" and went red here — correctly.
+     *
+     * The real property is that every count is exact, so a range like
+     * `axfer: 0..1, pay: 0..1` would let a non-storage open carry two
+     * transfers where an honest one carries a single leg.
+     */
+    for (const [name, sh] of Object.entries({
+      SHAPE_OPEN, SHAPE_OPEN_STORAGE, SHAPE_OPEN_ALGO, SHAPE_OPEN_ALGO_STORAGE,
+    })) {
+      expect(Number.isInteger(sh.axfer), `${name} axfer is not an exact count`).toBe(true);
+      expect(Number.isInteger(sh.pay), `${name} pay is not an exact count`).toBe(true);
+    }
+    // One transfer bare, two when storage is funded — for either collateral.
+    expect(SHAPE_OPEN.axfer + SHAPE_OPEN.pay).toBe(1);
+    expect(SHAPE_OPEN_ALGO.axfer + SHAPE_OPEN_ALGO.pay).toBe(1);
+    expect(SHAPE_OPEN_STORAGE.axfer + SHAPE_OPEN_STORAGE.pay).toBe(2);
+    expect(SHAPE_OPEN_ALGO_STORAGE.axfer + SHAPE_OPEN_ALGO_STORAGE.pay).toBe(2);
+  });
+
+  it("moves the collateral leg between budgets without adding one", () => {
+    // Same total transfers, reclassified: ALGO collateral is a payment.
+    expect(SHAPE_OPEN.axfer + SHAPE_OPEN.pay).toBe(SHAPE_OPEN_ALGO.axfer + SHAPE_OPEN_ALGO.pay);
+    expect(SHAPE_OPEN_STORAGE.axfer + SHAPE_OPEN_STORAGE.pay)
+      .toBe(SHAPE_OPEN_ALGO_STORAGE.axfer + SHAPE_OPEN_ALGO_STORAGE.pay);
+  });
+
+  it("picks by collateral and by whether storage is funded", () => {
+    expect(openShapeFor(PEX_ASSETS.usdc, false)).toBe(SHAPE_OPEN);
+    expect(openShapeFor(PEX_ASSETS.usdc, true)).toBe(SHAPE_OPEN_STORAGE);
+    expect(openShapeFor(PEX_ASSETS.algo, false)).toBe(SHAPE_OPEN_ALGO);
+    expect(openShapeFor(PEX_ASSETS.algo, true)).toBe(SHAPE_OPEN_ALGO_STORAGE);
   });
 });

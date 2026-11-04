@@ -28,7 +28,7 @@ import {
   type DisplayedOpen,
   type DisplayedTakeProfit,
 } from "@/lib/strategy/pex/group";
-import { COLLATERAL_ASSET_ID, PEX_APPS } from "@/lib/strategy/pex/config";
+import { COLLATERAL_ASSET_ID, PEX_APPS, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 /**
  * The old single-leg call shape, for the fixtures captured under it.
@@ -86,6 +86,8 @@ const shownOpen = (c: Captured): DisplayedOpen => ({
   storagePaymentMicro: BigInt(0),
   sender: c.sender, marketId: c.marketId, side: c.side === "long" ? 1 : 2,
   collateralAssetId: COLLATERAL_ASSET_ID,
+  // Market 1 is ALGO-backed and USDC-quoted, like both live markets.
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   collateralAmountMicro: BigInt(c.collateralAmountMicro),
   sizeUsdDeltaMicro: BigInt(c.sizeUsdDeltaMicro),
   /**

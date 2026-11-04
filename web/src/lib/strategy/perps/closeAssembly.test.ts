@@ -19,7 +19,7 @@ vi.mock("@pdex/sdk", async (orig) => ({
 }));
 
 const { quoteClose } = await import("@/lib/strategy/pex/quote");
-const { COLLATERAL_ASSET_ID } = await import("@/lib/strategy/pex/config");
+const { COLLATERAL_ASSET_ID, PEX_ASSETS } = await import("@/lib/strategy/pex/config");
 
 const ALGO = 0;
 /** Only the fields quoteClose reaches for. */
@@ -44,6 +44,8 @@ const INPUT = {
   owner: "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A",
   sizeUsdMicro: BigInt(88_479_362),
   collateralAssetId: COLLATERAL_ASSET_ID,
+  // Market 1 is ALGO-backed and USDC-quoted, like both live markets.
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   builderAddress: "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A",
 };
 const close = (r: Record<string, unknown>) => {

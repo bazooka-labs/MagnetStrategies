@@ -34,7 +34,7 @@ import {
   assertOpenWithAttachedOrders, ORDER_KIND_TAKE_PROFIT,
   type DisplayedOpen, type DisplayedTakeProfit,
 } from "@/lib/strategy/pex/group";
-import { COLLATERAL_ASSET_ID } from "@/lib/strategy/pex/config";
+import { COLLATERAL_ASSET_ID, PEX_ASSETS } from "@/lib/strategy/pex/config";
 
 type Captured = Record<string, string | number | string[]>;
 const groups = fixture.groups as unknown as Record<string, Captured>;
@@ -50,6 +50,8 @@ const shownOpen = (storage = false): DisplayedOpen => ({
   marketId: c.marketId as number,
   side: c.side === "long" ? 1 : 2,
   collateralAssetId: COLLATERAL_ASSET_ID,
+  // Market 1 is ALGO-backed and USDC-quoted, like both live markets.
+  poolAssets: [PEX_ASSETS.algo, PEX_ASSETS.usdc],
   collateralAmountMicro: BigInt(c.collateralAmountMicro as string),
   sizeUsdDeltaMicro: BigInt(c.sizeUsdDeltaMicro as string),
   /**
@@ -157,24 +159,26 @@ describe("tampering the group cannot move the check onto another leg", () => {
 });
 
 describe("ALGO collateral", () => {
-  it("is REFUSED rather than waved through unchecked", () => {
+  it("is LOCATED and checked, no longer refused for being ALGO", () => {
     /**
-     * PEX accepts ALGO collateral today — 210.87 ALGO is posted on market 1.
-     * Our UI does not offer it, and the leverage check below divides
-     * `sizeUsdDelta` by the raw transfer amount, which is a leverage only
-     * because µUSDC equals µUSD. Against µALGO it is wrong by the ALGO price,
-     * roughly 10.7x at $0.0935.
+     * This test used to assert `collateral_asset_unsupported`.
      *
-     * So until the feature lands with the USD conversion, an ALGO leg must
-     * FAIL here rather than pass an unverifiable ratio.
+     * That refusal existed because the leverage check divided `sizeUsdDelta`
+     * by the raw transfer amount, which is a leverage only while µUSDC
+     * equals µUSD. It no longer does: the check values the collateral at the
+     * price in the group's own signed oracle message, and the `foreign_asset`
+     * enumeration carries the market's pool assets. So an ALGO leg is now
+     * CHECKED rather than turned away.
      *
-     * Worth being precise about what the old rule did here, because it is the
-     * sharpest version of the danger. With an ALGO payment as collateral the
-     * only axfer left is the keeper escrow, so `filter(assetTransfer)[0]`
-     * selected the ESCROW and validated it against the displayed collateral.
-     * It failed — but only because the escrow's amount happened to differ.
-     * Had the keeper fee equalled the collateral, an ALGO group would have
-     * passed every check while nothing about the actual money was examined.
+     * The property this FILE exists for is unchanged and still pinned: the
+     * leg is found at `openIdx - 1`, so with an ALGO payment the assertion
+     * examines the payment rather than silently validating the keeper-fee
+     * escrow instead — which is what the old `filter(assetTransfer)[0]` rule
+     * did, and it passed only because the escrow's amount happened to differ.
+     *
+     * The group here is a USDC fixture with one leg swapped, so its shape
+     * counts no longer match and it fails on those. What matters is WHICH
+     * failures appear: not "ALGO is unsupported", and not silence.
      */
     const txns = decode(c.txns as string[]);
     const ci = collateralIdx(txns);
@@ -190,7 +194,11 @@ describe("ALGO collateral", () => {
       },
     });
     const r = run(txns);
-    expect(r.ok).toBe(false);
-    expect(codes(r)).toContain("collateral_asset_unsupported");
+    // Gone: the blanket refusal.
+    expect(codes(r)).not.toContain("collateral_asset_unsupported");
+    // Present: the leg was located and its ASSET compared against the
+    // displayed collateral, which is the check the old rule skipped entirely
+    // when there was no axfer to find.
+    expect(codes(r)).toContain("transfer_asset");
   });
 });
