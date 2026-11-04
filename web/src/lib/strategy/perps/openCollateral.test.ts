@@ -10,7 +10,7 @@
 //      asset's own micro-units. Passing µALGO as though it were µUSD is the
 //      ~10.7x error, and it would produce a plausible-looking leverage.
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 const quoteOpen = vi.fn();
 const readPosition = vi.fn();
@@ -45,8 +45,9 @@ const ALGO_PRICE12 = BigInt(95_822_000_000);
 /** 100 ALGO. As µUSD this would read as $100; it is about $9.58. */
 const HUNDRED_ALGO = BigInt(100_000_000);
 
+const balance = { amount: BigInt(500_000_000), minBalance: BigInt(100_000) };
 const algod = {
-  accountInformation: () => ({ do: async () => ({ amount: BigInt(500_000_000), minBalance: BigInt(100_000), assets: [] }) }),
+  accountInformation: () => ({ do: async () => ({ ...balance, assets: [] }) }),
   getTransactionParams: () => ({ do: async () => ({ fee: BigInt(1000), minFee: BigInt(1000) }) }),
 } as never;
 
@@ -223,5 +224,50 @@ describe("the signed group carries the collateral the user chose", () => {
     const shown = grp.assertOpen.mock.calls[0][1] as Record<string, unknown>;
     expect(shown.collateralAmountMicro).toBe(built.collateralAmount);
     expect(shown.collateralAssetId).toBe(built.collateralAssetId);
+  });
+});
+
+
+describe("ALGO is held back so the position can be closed", () => {
+  /**
+   * With ALGO collateral the stake, the fees and the storage escrow all leave
+   * the same spendable balance. Before this reserve a user could commit the
+   * rest and have nothing left to pay the EXIT with — a position that cannot
+   * be closed from the wallet that owns it, reachable by entering a sensible
+   * number. Found by review.
+   *
+   * 250,000 µALGO, against 93,000-123,000 observed on real closes.
+   */
+  const spendable = (micro: bigint) => {
+    balance.amount = micro + balance.minBalance;
+  };
+  afterEach(() => { balance.amount = BigInt(500_000_000); });
+
+  it("refuses an amount that leaves nothing for the exit", async () => {
+    // Enough for 100 ALGO of collateral and the group's own fees, and NOT
+    // enough for the reserve on top.
+    spendable(BigInt(100_000_000) + BigInt(80_000));
+    await expect(open()).rejects.toThrow(/close this position later/i);
+  });
+
+  it("names the reserve in the message, rather than just a bigger number", async () => {
+    spendable(BigInt(100_000_000) + BigInt(80_000));
+    await expect(open()).rejects.toThrow(/0\.25/);
+  });
+
+  it("allows the same amount once the reserve fits", async () => {
+    spendable(BigInt(100_000_000) + BigInt(80_000) + BigInt(250_000));
+    // Gets past the balance check and on to the stubbed quote.
+    await expect(open()).rejects.toThrow(/will not accept this position/);
+  });
+
+  it("does NOT hold a reserve against USDC collateral", async () => {
+    // The stake does not come out of ALGO there, so the only ALGO needed is
+    // fees — reserving a quarter of an ALGO would refuse honest trades.
+    spendable(BigInt(80_000));
+    await expect(open({
+      collateralAssetId: PEX_ASSETS.usdc,
+      collateralAmountMicro: BigInt(10_000_000),
+    })).rejects.not.toThrow(/close this position later/i);
   });
 });

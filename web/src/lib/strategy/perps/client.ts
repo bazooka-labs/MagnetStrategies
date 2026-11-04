@@ -37,6 +37,7 @@ import {
   COLLATERAL_ASSET_ID,
   CROSS_MARGIN_BPS,
   DEFAULT_SLIPPAGE_BPS,
+  EXIT_RESERVE_MICRO_ALGO,
   MAX_DISPLAY_DRIFT_BPS,
   MAX_ENTRY_DRIFT_BPS,
   MAX_LIQUIDATION_DRIFT_BPS,
@@ -500,12 +501,22 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   // spendable balance as the fees and the storage escrow, so they belong in
   // this one number rather than in a separate check that would each pass while
   // their sum does not.
+  //
+  // With ALGO collateral a reserve is also held back for the EXIT. Without it
+  // a user could commit everything spendable and be unable to pay the close
+  // group's fees — see EXIT_RESERVE_MICRO_ALGO.
+  const exitReserve = collateralAssetId === PEX_ASSETS.algo
+    ? EXIT_RESERVE_MICRO_ALGO : BigInt(0);
   const algoNeeded = minAlgoMicro(storagePayment, legCount)
-    + (collateralAssetId === PEX_ASSETS.algo ? collateralNeeded : BigInt(0));
+    + (collateralAssetId === PEX_ASSETS.algo ? collateralNeeded : BigInt(0))
+    + exitReserve;
   if (algoSpendable < algoNeeded) {
     throw new Error(
       `Needs about ${(Number(algoNeeded) / 1e6).toFixed(2)} spendable ALGO${
         fundsStorage ? " — this is your first trade on PEX, which sets up an on-chain storage record" : ""
+      }${exitReserve > BigInt(0)
+        ? `, which includes ${(Number(exitReserve) / 1e6).toFixed(2)} kept back so you can close this position later`
+        : ""
       }. You have ${(Number(algoSpendable) / 1e6).toFixed(2)}.`,
     );
   }

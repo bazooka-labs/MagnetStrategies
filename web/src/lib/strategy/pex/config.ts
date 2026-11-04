@@ -491,6 +491,28 @@ export const MAX_NET_COLLATERAL_DRIFT_BPS = 50;
  */
 export const MAX_LEVERAGE_DRIFT_BPS = 150;
 
+/**
+ * ALGO held back so the position can still be CLOSED.
+ *
+ * ── The trap this exists for ───────────────────────────────────────────────
+ * With ALGO collateral the stake, the network fees and the storage escrow all
+ * leave the same spendable balance. The open preflight made sure all three
+ * fit — and then a user could commit the rest, leaving nothing to pay the
+ * EXIT with. A position that cannot be closed from the wallet that owns it is
+ * the worst state this product can put somebody in, and it was reachable by
+ * entering a sensible number.
+ *
+ * ── Why 250,000 ───────────────────────────────────────────────────────────
+ * Measured across 329 close-shaped groups on MainNet 2026-11-04: fees cluster
+ * at 93,000-95,000 µALGO, the widest observed was 114,000, and our own ALGO
+ * close paid 123,000. 250,000 is about twice the worst seen, which leaves
+ * room for a close that needs more recall carriers than any yet observed.
+ *
+ * Erring high costs a user a quarter of an ALGO of headroom on the way in.
+ * Erring low costs them the ability to get out.
+ */
+export const EXIT_RESERVE_MICRO_ALGO = BigInt(250_000);
+
 /** Keeper fee escrowed per bracket, in USDC. Floor 0.10; read policy live. */
 export const CHILD_KEEPER_FEE_USDC = 0.1;
 

@@ -25,7 +25,8 @@ import { describe, expect, it } from "vitest";
 import algosdk from "algosdk";
 import {
   assertOpenGroup, SHAPE_OPEN, SHAPE_OPEN_STORAGE, SHAPE_OPEN_ALGO,
-  SHAPE_OPEN_ALGO_STORAGE, openShapeFor, PEX_SELECTORS, type DisplayedOpen,
+  SHAPE_OPEN_ALGO_STORAGE, openShapeFor, PEX_SELECTORS,
+  STORAGE_ESCROW_MICRO_ALGO, type DisplayedOpen,
 } from "@/lib/strategy/pex/group";
 import {
   PEX_APPS, PEX_ASSETS, POSITION_BUILDER_FEE_BPS,
@@ -374,5 +375,191 @@ describe("the pool-asset enumeration", () => {
     }));
     expect(codes(r)).toContain("pool_asset_unpinned");
     expect(codes(r)).toContain("foreign_asset");
+  });
+});
+
+
+describe("where value may go", () => {
+  const ATTACKER = "7777777777777777777777777777777777777777777777777774MSJUVU";
+  const pay = (to: string, amount: bigint) =>
+    leg({ type: "pay", payment: { amount, receiver: to } });
+
+  it("refuses a payment to anywhere that is not a PEX app", () => {
+    /**
+     * The hole review built by hand. Each LEG had its receiver bound — the
+     * collateral, the keeper escrow, the storage payment — and a payment
+     * belonging to none of them was bound by nothing. Survivable while a
+     * group could hold one transfer; `SHAPE_OPEN_ALGO_STORAGE` allows two.
+     *
+     * 50 ALGO to an arbitrary address, beside an otherwise honest group.
+     */
+    const g = group({ collateralMicro: USDC_25, sizeMicro: SIZE_100 });
+    g.splice(1, 0, pay(ATTACKER, BigInt(50_000_000)));
+    const r = run(g, shown({
+      collateralAmountMicro: USDC_25, sizeUsdDeltaMicro: SIZE_100,
+      asRenderedLeverage: 4.0,
+    }));
+    expect(r.ok).toBe(false);
+    expect(codes(r)).toContain("value_leaves_pex");
+  });
+
+  it("refuses an asset transfer to anywhere that is not a PEX app", () => {
+    const g = group({ collateralMicro: USDC_25, sizeMicro: SIZE_100 });
+    g.splice(1, 0, leg({
+      type: "axfer",
+      assetTransfer: {
+        assetIndex: BigInt(PEX_ASSETS.usdc), amount: BigInt(9_000_000), receiver: ATTACKER,
+      },
+    }));
+    const r = run(g, shown({
+      collateralAmountMicro: USDC_25, sizeUsdDeltaMicro: SIZE_100,
+      asRenderedLeverage: 4.0,
+    }));
+    expect(codes(r)).toContain("value_leaves_pex");
+  });
+
+  it("still accepts an honest group, so the rule is not simply refusing everything", () => {
+    const r = run(group({ collateralMicro: USDC_25, sizeMicro: SIZE_100 }), shown({
+      collateralAmountMicro: USDC_25, sizeUsdDeltaMicro: SIZE_100,
+      asRenderedLeverage: 4.0,
+    }));
+    expect(codes(r)).not.toContain("value_leaves_pex");
+  });
+});
+
+describe("the storage payment is not confused with the collateral", () => {
+  it("refuses when the collateral is the only thing that looks like storage", () => {
+    /**
+     * The exact shape review described, built so the SHAPE GATE cannot be
+     * what catches it — two payments, which `SHAPE_OPEN_ALGO_STORAGE` allows.
+     *
+     *   [0] collateral: exactly the storage constant, to Trading
+     *   [1] open call            <- collateral is at openIdx - 1, as required
+     *   [2] 50 ALGO to Trading   <- examined by nothing
+     *
+     * Taking the FIRST payment to Trading finds the collateral, matches the
+     * pinned storage amount, and passes — leaving the 50 ALGO unaccounted
+     * for. Trading is a PEX app, so the receiver rule does not catch it
+     * either. Only excluding the collateral leg by identity does.
+     */
+    const msg = oracleMessage();
+    const collateral = leg({
+      type: "pay",
+      payment: { amount: STORAGE_ESCROW_MICRO_ALGO, receiver: TRADING_ADDR },
+    });
+    const openCall = leg({
+      type: "appl", fee: BigInt(30_000),
+      applicationCall: {
+        appIndex: BigInt(PEX_APPS.trading),
+        foreignAssets: [BigInt(PEX_ASSETS.usdc)],
+        appArgs: [
+          sel(PEX_SELECTORS.openOrIncrease),
+          u64(BigInt(1)), u64(BigInt(1)), u64(BigInt(27_000)),
+          u64((EXEC * BigInt(10_030)) / BigInt(10_000)),
+          builderTuple(),
+          abiBytes(msg), abiBytes(new Uint8Array(64).fill(9)),
+        ],
+        accounts: [USER],
+      },
+    });
+    const siphon = leg({
+      type: "pay",
+      payment: { amount: BigInt(50_000_000), receiver: TRADING_ADDR },
+    });
+    const math = leg({
+      type: "appl",
+      applicationCall: { appIndex: BigInt(PEX_APPS.math), appArgs: [sel(PEX_SELECTORS.mathNoop)] },
+    });
+
+    // The storage shape leads with fund_storage, so the group needs it too —
+    // otherwise the call budget refuses before the storage logic is reached
+    // and the test proves nothing about what it claims to.
+    const fundStorage = leg({
+      type: "appl",
+      applicationCall: {
+        appIndex: BigInt(PEX_APPS.trading),
+        appArgs: [sel(PEX_SELECTORS.fundStorage)],
+      },
+    });
+
+    const r = assertOpenGroup([collateral, fundStorage, openCall, siphon, math] as never, shown({
+      collateralAssetId: PEX_ASSETS.algo,
+      collateralAmountMicro: STORAGE_ESCROW_MICRO_ALGO,
+      sizeUsdDeltaMicro: BigInt(27_000),
+      asRenderedLeverage: 2.7,
+      storagePaymentMicro: STORAGE_ESCROW_MICRO_ALGO,
+      oracleMessage: msg,
+    }), SHAPE_OPEN_ALGO_STORAGE);
+
+    expect(r.ok, "a group with an unaccounted 50 ALGO payment was accepted").toBe(false);
+    // Specifically a STORAGE finding: the shape gate is satisfied here, so if
+    // this passes on `pay_count` the test is proving nothing.
+    expect(codes(r).join(",")).toMatch(/storage_payment_/);
+  });
+
+  it("ACCEPTS the honest ALGO group that funds storage", () => {
+    /**
+     * The other half, and the one that pins the EXCLUSION specifically.
+     *
+     * An honest ALGO open with storage carries two payments to Trading: the
+     * escrow and the collateral. Refusing the pair as "ambiguous" would block
+     * every first ALGO trade — so the collateral is excluded by identity
+     * before the ambiguity rule is applied, and what remains is the one real
+     * storage payment.
+     *
+     * Without that exclusion this group is refused, which is how the two
+     * rules are told apart.
+     */
+    const msg = oracleMessage();
+    const storagePay = leg({
+      type: "pay",
+      payment: { amount: STORAGE_ESCROW_MICRO_ALGO, receiver: TRADING_ADDR },
+    });
+    const fundStorage = leg({
+      type: "appl",
+      applicationCall: {
+        appIndex: BigInt(PEX_APPS.trading),
+        appArgs: [sel(PEX_SELECTORS.fundStorage)],
+      },
+    });
+    const collateral = leg({
+      type: "pay",
+      payment: { amount: BigInt(100_000_000), receiver: TRADING_ADDR },
+    });
+    const openCall = leg({
+      type: "appl", fee: BigInt(30_000),
+      applicationCall: {
+        appIndex: BigInt(PEX_APPS.trading),
+        foreignAssets: [BigInt(PEX_ASSETS.usdc)],
+        appArgs: [
+          sel(PEX_SELECTORS.openOrIncrease),
+          u64(BigInt(1)), u64(BigInt(1)), u64(BigInt(27_000_000)),
+          u64((EXEC * BigInt(10_030)) / BigInt(10_000)),
+          builderTuple(),
+          abiBytes(msg), abiBytes(new Uint8Array(64).fill(9)),
+        ],
+        accounts: [USER],
+      },
+    });
+    const math = leg({
+      type: "appl",
+      applicationCall: { appIndex: BigInt(PEX_APPS.math), appArgs: [sel(PEX_SELECTORS.mathNoop)] },
+    });
+
+    const r = assertOpenGroup(
+      [storagePay, fundStorage, collateral, openCall, math] as never,
+      shown({
+        collateralAssetId: PEX_ASSETS.algo,
+        collateralAmountMicro: BigInt(100_000_000),
+        sizeUsdDeltaMicro: BigInt(27_000_000),
+        asRenderedLeverage: 2.978,
+        storagePaymentMicro: STORAGE_ESCROW_MICRO_ALGO,
+        oracleMessage: msg,
+      }),
+      SHAPE_OPEN_ALGO_STORAGE,
+    );
+    expect(codes(r)).not.toContain("storage_payment_ambiguous");
+    expect(codes(r)).not.toContain("storage_payment_missing");
+    expect(codes(r)).not.toContain("value_leaves_pex");
   });
 });

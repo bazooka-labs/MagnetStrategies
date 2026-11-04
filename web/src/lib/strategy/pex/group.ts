@@ -909,6 +909,35 @@ export function checkEveryTransaction(
     // A lease squats the sender+lease pair for the validity window. Nothing
     // here sets one, so anything that does was not put there by us.
     if (t.lease && t.lease.length > 0) fail("lease", `txn ${i} sets a lease`);
+
+    /**
+     * ── Where value may GO ────────────────────────────────────────────────
+     *
+     * Every leg's receiver was bound individually — the collateral leg, the
+     * keeper escrow, the storage payment — and nothing bound a leg that
+     * belonged to none of them. That was survivable while a group could hold
+     * exactly one transfer. `SHAPE_OPEN_ALGO_STORAGE` allows TWO payments,
+     * and review built a group carrying a 50 ALGO payment to an arbitrary
+     * address beside a collateral leg of exactly the storage constant: the
+     * storage check found the collateral, matched the pinned amount, and the
+     * other payment was examined by nothing at all.
+     *
+     * So the rule is now stated once, over every transfer in the group: value
+     * may only move to a PEX app address. Every honest leg in every shape
+     * does — the collateral and storage go to Trading, the keeper escrow to
+     * Trading or OrderOps. The builder fee is paid by the CONTRACT as an
+     * inner transaction and is never a group member, so no exception is
+     * needed for it.
+     *
+     * This is the check that makes the per-leg receiver checks a belt rather
+     * than the only thing standing there.
+     */
+    const dest = t.payment ? String(t.payment.receiver)
+      : t.assetTransfer ? String(t.assetTransfer.receiver) : null;
+    if (dest !== null && !PEX_APP_ADDRESSES.has(dest)) {
+      fail("value_leaves_pex",
+        `txn ${i} (${t.type}) moves value to ${dest.slice(0, 10)}…, which is not a PEX app`);
+    }
     // Resource references. Inert on their own — PEX decides what it touches —
     // but these are unbound fields on the calls that move money, and the Math
     // carriers beside them already bind exactly this. Real groups reference
@@ -984,14 +1013,38 @@ export function checkEveryTransaction(
 function checkStoragePayment(
   txns: AnyTxn[], storagePaymentMicro: bigint,
   fail: (code: string, detail: string) => void, did: (n: string) => void,
+  /**
+   * The collateral leg, when it is itself a PAYMENT.
+   *
+   * With ALGO collateral the group holds two payments to the Trading app:
+   * the storage escrow and the collateral. This used to take the FIRST and
+   * leave the other bound by nothing here — so a collateral amount equal to
+   * the storage constant was accepted as the storage payment, and the real
+   * second payment went unexamined. Excluded by identity, not by amount,
+   * because the amounts are exactly what an attacker would choose.
+   */
+  collateralLeg?: AnyTxn | null,
 ): void {
   const tradingAddr = algosdk.getApplicationAddress(PEX_APPS.trading).toString();
-  const payments = txns.filter((t) => t.payment);
-  const storagePay = payments.find((t) => String(t.payment!.receiver) === tradingAddr);
-  if (!storagePay) {
+  const payments = txns.filter((t) => t.payment && t !== collateralLeg);
+  const toTrading = payments.filter((t) => String(t.payment!.receiver) === tradingAddr);
+  if (toTrading.length === 0) {
     fail("storage_payment_missing", "no storage escrow payment to the pinned Trading app address");
     return;
   }
+  /**
+   * Exactly one, never "the first of several".
+   *
+   * Two payments to Trading beside the collateral would mean one of them is
+   * doing something this assertion has no account of, and picking either
+   * would be a guess.
+   */
+  if (toTrading.length > 1) {
+    fail("storage_payment_ambiguous",
+      `${toTrading.length} payments to the Trading app besides the collateral leg`);
+    return;
+  }
+  const storagePay = toTrading[0];
   const amt = big(storagePay.payment!.amount);
   if (amt !== storagePaymentMicro) {
     fail("storage_payment_amount", `storage payment ${amt}, displayed ${storagePaymentMicro}`);
@@ -1061,9 +1114,6 @@ export function assertOpenGroup(
    * against the pinned constants. Both halves are needed: the shape alone would
    * accept 50 ALGO, and the amount alone would accept an extra payment.
    */
-  if (shown.storagePaymentMicro > BigInt(0)) {
-    checkStoragePayment(txns, shown.storagePaymentMicro, fail, did);
-  }
   checkCallBudget(txns, fail, shape);
   checkMathCarriers(txns, fail, did);
   did("sender is the user on every transaction");
@@ -1156,6 +1206,14 @@ export function assertOpenGroup(
    */
   const openIdx = txns.indexOf(mainCalls[0]);
   const legTxn = openIdx > 0 ? txns[openIdx - 1] : undefined;
+
+  // Storage is checked HERE, not earlier, because it needs the collateral
+  // leg to exclude it: with ALGO collateral both are payments to Trading.
+  if (shown.storagePaymentMicro > BigInt(0)) {
+    // The collateral leg is passed so it cannot be mistaken FOR the storage
+    // payment: with ALGO collateral both are payments to the same address.
+    checkStoragePayment(txns, shown.storagePaymentMicro, fail, did, legTxn ?? null);
+  }
   const legAsset = legTxn?.assetTransfer
     ? Number(legTxn.assetTransfer.assetIndex)
     : legTxn?.payment ? 0 : null;
