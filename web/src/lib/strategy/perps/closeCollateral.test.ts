@@ -93,25 +93,36 @@ describe("the close reads the box the user clicked on", () => {
 });
 
 describe("a box backed by a different asset is refused", () => {
-  it("refuses rather than closing the position it happened to find", async () => {
-    // The box that came back is USDC-backed though ALGO was asked for. With a
-    // correct key this cannot happen; the check is the belt, and it is the
-    // only place the two can be compared because the box states its backing.
-    readPosition.mockResolvedValue(box(PEX_ASSETS.usdc, BigInt(48)));
-    await expect(call(PEX_ASSETS.algo, box(PEX_ASSETS.algo, BigInt(48))))
+  it("refuses when the caller's two arguments disagree", async () => {
+    /**
+     * The mismatch that can actually occur: the `position` object from one row
+     * passed with another row's `collateralAssetId`. `readPosition` is NOT
+     * stubbed inconsistently here — it returns the box that really would be
+     * found under the asked-for key, which is a DIFFERENT position.
+     *
+     * An earlier version of this test stubbed the box to report an asset it
+     * could not have been stored under, which made the guard look effective
+     * when it was a tautology. Review caught that; this is the replacement.
+     */
+    readPosition.mockResolvedValue(box(PEX_ASSETS.algo, BigInt(52)));
+    await expect(call(PEX_ASSETS.algo, box(PEX_ASSETS.usdc, BigInt(48))))
       .rejects.toThrow(/not backed by the asset/i);
   });
 
   it("catches the pre-cutover case the position_id check cannot", async () => {
     /**
-     * Both boxes carry `position_id = 0` before the identity cutover
-     * (SPEC.md:785), so `live.position_id !== position.position_id` is
-     * `0 !== 0` — false — and that guard waves the mismatch through. This is
-     * the one combination where a wrong collateral would have reached the
-     * builder, and it is why the check is not merely defensive.
+     * Before the identity cutover every position carries `position_id = 0`
+     * (SPEC.md:785). So for a wallet holding one position per collateral in
+     * the same market and side, `live.position_id !== position.position_id`
+     * is `0 !== 0` — false — and that guard passes the mismatch straight
+     * through to the builder, clamped to the WRONG position's size.
+     *
+     * This is the only combination where a wrong collateral reaches the
+     * group, which is why the asset check is load-bearing rather than
+     * defensive.
      */
-    readPosition.mockResolvedValue(box(PEX_ASSETS.usdc, BigInt(0)));
-    await expect(call(PEX_ASSETS.algo, box(PEX_ASSETS.algo, BigInt(0))))
+    readPosition.mockResolvedValue(box(PEX_ASSETS.algo, BigInt(0)));
+    await expect(call(PEX_ASSETS.algo, box(PEX_ASSETS.usdc, BigInt(0))))
       .rejects.toThrow(/not backed by the asset/i);
   });
 

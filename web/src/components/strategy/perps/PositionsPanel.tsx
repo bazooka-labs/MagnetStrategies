@@ -12,7 +12,8 @@
 // were on screen when the position was opened.
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
-import { PEX_MARKETS, assetName } from "@/lib/strategy/pex/config";
+import { PEX_ASSETS, PEX_MARKETS, assetName } from "@/lib/strategy/pex/config";
+import { collateralUsd as collateralUsdOf } from "@/lib/strategy/pex/collateral";
 import { ORDER_KIND, type OrderState } from "@/lib/strategy/pex/reads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
 import { usePerpsOrders } from "@/hooks/usePerpsOrders";
@@ -41,6 +42,40 @@ const fmtPrice = (p: number) =>
  * it, closing one of two same-side positions puts "Closing…" on both buttons
  * and the user cannot tell which one they actually sent.
  */
+/**
+ * An escrowed amount in the asset it is actually held in.
+ *
+ * USDC keeps the familiar "$12.34"; anything else is shown as a quantity with
+ * its ticker, never converted and never given a dollar sign it has not earned.
+ */
+const amountIn = (micro: bigint, assetId: bigint | number) => {
+  const n = Number(micro) / 1e6;
+  return Number(assetId) === PEX_ASSETS.usdc
+    ? fmtUsd(n)
+    : `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${assetName(Number(assetId))}`;
+};
+
+/**
+ * Why a position cannot be closed from here, or null when it can.
+ *
+ * ALGO-collateral closes are refused in the UI rather than attempted. The
+ * group assertion's `foreign_asset` check admits only the collateral asset and
+ * the yield-recall set, and a close on market 1 references USDC as the pool's
+ * short asset — so an ALGO close fails the safety check every time, after the
+ * preflights, with "txn 0 references asset 31566704".
+ *
+ * That is safe: nothing is signed, nothing moves. But an enabled button that
+ * always ends in a cryptic safety error is worse than a disabled one that says
+ * why. Found in review; the assertion needs widening to the market's own
+ * long/short/index assets before this can be lifted, and widening a
+ * fund-safety check is not something to do in passing.
+ */
+const closeUnavailable = (collateralAssetId: number) =>
+  collateralAssetId === PEX_ASSETS.usdc
+    ? null
+    : `Closing ${assetName(collateralAssetId)}-collateral positions from this terminal is `
+      + "not supported yet. You can close it on PEX directly.";
+
 const closeKey = (p: { marketId: number; collateralAssetId: number; side: string }) =>
   `${p.marketId}-${p.collateralAssetId}-${p.side}`;
 
@@ -315,7 +350,29 @@ export function PositionsPanel({ onLinesChange }: {
         {positions.map((p) => {
           const up = p.side === "long";
           const sizeUsd = Number(p.position.size_usd) / 1e6;
-          const collateralUsd = Number(p.position.collateral_amount) / 1e6;
+          /**
+           * The collateral, in its OWN asset and in dollars.
+           *
+           * `collateral_amount` is denominated in the collateral asset, so
+           * dividing it by 1e6 and printing a "$" was right only for USDC.
+           * On the live ALGO position it would have read "$210.87" against a
+           * real value near $20, and three further figures are computed from
+           * it — leverage, net-vs-collateral and the exit-cost line — so one
+           * conflation became four wrong numbers sitting beside a badge that
+           * says which asset it is.
+           *
+           * Null when the collateral cannot be priced. Every dollar figure
+           * derived from it is then suppressed rather than guessed, which is
+           * the rule `payoutUsd` already follows.
+           */
+          const collateralNative = Number(p.position.collateral_amount) / 1e6;
+          const collateralUsd = (() => {
+            try {
+              return collateralUsdOf(
+                p.collateralAssetId, p.position.collateral_amount, p.algoPrice12,
+              );
+            } catch { return null; }
+          })();
           const entry = price12ToUsd(p.position.entry_price);
           /**
            * What the position returns, against the collateral currently backing it.
@@ -353,10 +410,11 @@ export function PositionsPanel({ onLinesChange }: {
            * label and the note beneath it now do, rather than to imply a
            * round-trip figure we cannot compute.
            */
-          const netUsd = p.close?.payoutUsd != null ? p.close.payoutUsd - collateralUsd : null;
+          const netUsd = p.close?.payoutUsd != null && collateralUsd !== null
+            ? p.close.payoutUsd - collateralUsd : null;
           /** Price movement alone. Not wrong, and not the same thing. */
           const priceMove = p.close?.pnlUsd ?? null;
-          const leverage = collateralUsd > 0 ? sizeUsd / collateralUsd : 0;
+          const leverage = collateralUsd !== null && collateralUsd > 0 ? sizeUsd / collateralUsd : null;
           /**
            * Where this position liquidates, and how far that is.
            *
@@ -395,7 +453,9 @@ export function PositionsPanel({ onLinesChange }: {
                     {up ? "Long" : "Short"}
                   </span>
                   <span className="text-sm font-semibold text-white">{marketLabel(p.marketId)}</span>
-                  <span className="text-[11px] text-white/35">{leverage.toFixed(2)}×</span>
+                  {leverage !== null && (
+                    <span className="text-[11px] text-white/35">{leverage.toFixed(2)}×</span>
+                  )}
                   {/*
                     Which asset backs the position. Shown ALWAYS, not only on
                     the ALGO case: two rows here can now differ in nothing but
@@ -427,7 +487,15 @@ export function PositionsPanel({ onLinesChange }: {
               <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4">
                 {([
                   ["Size", fmtUsd(sizeUsd)],
-                  ["Collateral", fmtUsd(collateralUsd)],
+                  // Shown in the asset the position is actually backed by, with
+                  // the dollar value after it. Printing only a converted dollar
+                  // figure hides which asset is at risk, and that asset's price
+                  // IS the risk on an ALGO-collateral long.
+                  ["Collateral", p.collateralAssetId === PEX_ASSETS.usdc
+                    ? fmtUsd(collateralNative)
+                    : `${collateralNative.toLocaleString("en-US", { maximumFractionDigits: 4 })}`
+                      + ` ${assetName(p.collateralAssetId)}`
+                      + (collateralUsd !== null ? ` · ${fmtUsd(collateralUsd)}` : "")],
                   ["Entry", fmtPrice(entry)],
                   ["If closed now", p.close
                     ? (p.close.payoutUsd !== null ? fmtUsd(p.close.payoutUsd) : "see below")
@@ -579,15 +647,16 @@ export function PositionsPanel({ onLinesChange }: {
                   error. The blocked reason is already stated above it. */}
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <button onClick={() => doClose(p)}
-                  disabled={!p.close?.ok || !!closing || !!cancelling || !!blocked}
-                  title={blocked ?? undefined}
+                  disabled={!p.close?.ok || !!closing || !!cancelling || !!blocked
+                    || !!closeUnavailable(p.collateralAssetId)}
+                  title={closeUnavailable(p.collateralAssetId) ?? blocked ?? undefined}
                   className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
                   {closing === closeKey(p) ? "Closing…" : "Close position"}
                 </button>
                 <span className="text-[10px] text-white/30">
-                  {netUsd !== null
+                  {closeUnavailable(p.collateralAssetId) ?? (netUsd !== null
                     ? `Pays out ${p.close!.outputs.length > 1 ? "in two assets" : "in one asset"}, ${fmtSigned(netUsd)} against your collateral.`
-                    : "Pays out in the assets listed above."}
+                    : "Pays out in the assets listed above.")}
                 </span>
               </div>
             </div>
@@ -641,10 +710,20 @@ export function PositionsPanel({ onLinesChange }: {
                       [isEntry ? "Opens" : "Closes", fmtUsd(Number(order.size_usd_delta) / 1e6)],
                       // Only an entry escrows collateral; a reduce order draws
                       // from the position it closes, and reports zero here.
+                      /*
+                        Stake and keeper fee are denominated in the ORDER's own
+                        assets, which the box states (`collateral_asset_id`,
+                        `keeper_fee_asset_id`). They were printed as dollars,
+                        which is right only while both are USDC — and
+                        `readOrders` enumerates by owner, so an ALGO order
+                        placed on PEX's own front end has always been listed
+                        here. Shown in their asset rather than converted,
+                        because that is what the escrow returns on a cancel.
+                      */
                       ...(isEntry
-                        ? [["Your stake", fmtUsd(Number(order.collateral_amount) / 1e6)] as const]
+                        ? [["Your stake", amountIn(order.collateral_amount, order.collateral_asset_id)] as const]
                         : [["On position", order.position_id > BigInt(0) ? `#${order.position_id}` : "not bound yet"] as const]),
-                      ["Keeper fee", fmtUsd(Number(order.keeper_fee_amount) / 1e6)],
+                      ["Keeper fee", amountIn(order.keeper_fee_amount, order.keeper_fee_asset_id)],
                       ["Price now", indexUsd === null ? "unavailable" : fmtPrice(indexUsd)],
                     ] as const).map(([k, v]) => (
                       <div key={k}>

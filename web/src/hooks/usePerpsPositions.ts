@@ -26,7 +26,6 @@ import algosdk from "algosdk";
 import { ALGOD_URLS } from "@/lib/constants";
 import {
   BUILDER_ADDRESS,
-  COLLATERAL_ASSET_ID,
   ENABLED_MARKET_IDS,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
@@ -58,6 +57,19 @@ export type OpenPosition = {
   close: CloseQuote | null;
   /** Why the quote is missing, for the "couldn't price this" line. */
   quoteError: string | null;
+  /**
+   * ALGO/USD at the time of this read, Price12 — null if it could not be had.
+   *
+   * Carried on the position because `collateral_amount` is denominated in the
+   * COLLATERAL ASSET, so anything wanting a dollar figure needs this to get
+   * one. Without it the panel divided µALGO by 1e6 and printed the result
+   * with a dollar sign.
+   *
+   * Null is a real state, not a default. When it is null the dollar figures
+   * are SUPPRESSED rather than computed from a guess — the same rule
+   * `payoutUsd` follows.
+   */
+  algoPrice12: bigint | null;
   /**
    * Where PEX liquidates this position, and on which side of the price.
    *
@@ -232,6 +244,7 @@ export function usePerpsPositions(owner: string | null): PositionsStatus {
               });
               found.push({
                 marketId, side, collateralAssetId, position: p!, close, quoteError,
+                algoPrice12,
                 liquidationPrice12: liq?.price12 ?? null,
                 liquidationDirection: liq?.direction ?? "",
                 liquidatableNow: liq?.liquidatableNow ?? false,

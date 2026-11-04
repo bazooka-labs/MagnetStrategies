@@ -302,7 +302,7 @@ covers the wiring; mutation-verified both ways.
 | `COLLATERAL_ASSET_ID` | one constant, USDC | per-order selection; the constant becomes a default |
 | ~~`usePerpsPositions`~~ | ~~reads 2 boxes/market~~ | **DONE — §5a** |
 | ~~`usePerpsOrders`~~ | ~~reads USDC orders~~ | **DONE — §5a** |
-| ~~`PositionsPanel`~~ | ~~one row per (market, side)~~ | **DONE — §5a** |
+| ~~`PositionsPanel`~~ | ~~one row per (market, side)~~ | labels DONE §5a; the NUMBERS were not — see §5c |
 | balance preflight | `amount + keeperFee` in USDC | ALGO path needs **spendable ALGO** (`amount − min-balance`), and still needs **USDC for the keeper fee** |
 | min collateral | `$5` compared to a USDC figure | convert µALGO at the oracle price before comparing |
 | `MAX` control | `balance − Σ keeperFee` | for ALGO, also reserve min-balance **and** group fees |
@@ -379,3 +379,79 @@ Land §4 first, on its own, as a correctness fix to the assertion that is
 independently verifiable against today's fixtures. Then the toggle. Shipping
 them together means the test that proves the assertion works is the same change
 that first exercises it, and a mistake in either hides the other.
+
+
+---
+
+## 5c. What three independent reviews found — 2026-11-03
+
+§5a and §5b were both audited by three fresh reviewers with no context from
+the work. They found real defects in it. Recorded here because the pattern
+matters more than the individual bugs: **every one was the same conflation the
+change set existed to remove, surviving in places the author did not think to
+look.**
+
+### Live defects, now fixed
+
+| # | Where | What a user saw |
+|---|---|---|
+| 1 | `PositionsPanel` collateral/leverage/net | `collateral_amount / 1e6` with a "$". The live ALGO position read **"$210.87"** against a real $20.21, leverage **0.095×** instead of 0.99×, and a large false loss |
+| 2 | `quote.ts valueCloseOutputs` | The `collateralAssetId` branch came FIRST and added `amount / 1e6` — a flat **$1 per unit** — short-circuiting the ALGO branch below it. `payoutUsd` ~10× too large |
+| 3 | `quote.ts shape()` × 7 fields | `platform_fee_amount`, `builder_fee_paid`, `funding_fee_collateral_amount`, `borrowing_fee_collateral_amount`, `collateral_funding_net_amount` are `tokenAmountFromUsd(..., collateralPrice)` in the SDK (v2Quotes.js:1562, 1987) — collateral units, read as USD. The author had converted only `netCollateralUsd` |
+| 4 | order rows | stake and keeper fee printed as dollars regardless of `collateral_asset_id` / `keeper_fee_asset_id` |
+
+### The guard that did nothing
+
+§5b's close check compared `live.collateral_asset_id` against the
+`collateralAssetId` used to READ `live`. The box is keyed by that asset, so it
+always agrees: a **tautology**, and the test only passed because the mock
+returned a box that cannot exist under that key. It now compares against the
+`position` object the CALLER passed, which is the mismatch that can really
+happen (row A's position with row B's asset).
+
+### The tests did not test what the commits claimed
+
+One reviewer mutated the source 11 ways. **10 survived all 937 tests**,
+including `collateralAmount: micro(collateralUsd)` — the 10.4× bug in the
+number that actually gets signed.
+
+Cause: `openCollateral.test.ts` stubbed `quoteOpen` to return `ok: false`, so
+execution stopped at the probe and never reached `openInput`, `shownOpen` or
+`assertOpenGroup`. Its "asset units" test only inspected the arguments to its
+own mock. `closeCollateral.test.ts` covered the box read and the refusal, but
+its header claimed to cover the builder/assertion wiring, which it did not.
+
+**So "mutation-verified both ways" in those commit messages was true only of
+the two mutations the author personally tried.** The suite now reaches the
+builder and pins that the builder and the assertion receive the same numbers;
+the previously-surviving mutation fails with `expected 9582200n to be
+100000000n`.
+
+### Corrections to this document
+
+- **§4c is misleading.** It says the leverage assertion is "wrong by the ALGO
+  price". It is not — it is a **tautology**: `argLev` and `shownLev` are
+  implied by the earlier `transfer_amount` and `size_usd_delta` checks, so both
+  sides use the same number and it passes rather than misfires, for USDC as
+  well. The §8 test plan's "a 1% price error must fail" **cannot** fail as
+  written. A real check must bind the group to the DISPLAYED USD leverage using
+  the price from the signed oracle message in the group, not a caller-supplied
+  one.
+- The "10.7×" in `collateral.ts` came from $0.0935 while its test fixture uses
+  $0.0958 (10.44×). Both are real prices from different moments; the figures
+  should not be quoted as one constant.
+
+### Known, not fixed: ALGO positions cannot be closed from the terminal
+
+`group.ts`'s `foreign_asset` check admits only the collateral asset plus the
+yield-recall set. A close on market 1 references USDC as the pool's short
+asset, so **every ALGO close fails the safety check** with "txn 0 references
+asset 31566704" — after the preflights, before any signature. Nothing moves.
+
+The Close button is now **disabled** for ALGO-collateral positions with that
+stated, rather than offering a control that always ends in a cryptic error.
+Lifting it means widening a fund-safety assertion to the market's own
+long/short/index assets, which deserves its own change and its own review.
+
+Same cause: a cancel of an order whose collateral and keeper-fee assets differ
+also fails `foreign_asset`. Our own UI never builds one.

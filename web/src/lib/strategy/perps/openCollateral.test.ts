@@ -134,3 +134,91 @@ describe("an unpriceable ALGO collateral is refused before anything is built", (
     await expect(open({ algoPrice12: null })).rejects.toThrow(/No price available/);
   });
 });
+
+/**
+ * ── What the BUILDER and the ASSERTION actually receive ─────────────────────
+ *
+ * The tests above stop at the quote, which review showed is not far enough:
+ * five separate mutations to the open path survived the whole 937-test suite
+ * because nothing executed past the probe. In particular,
+ * `collateralAmount: micro(collateralUsd)` in `openInput` — the ~10.4x unit
+ * bug, in the number that actually gets SIGNED — went undetected.
+ *
+ * These reach the builder by letting the quote succeed, then capture its
+ * arguments. The SDK builder and the group assertion are stubbed because the
+ * subject here is the WIRING, not their internals: what matters is which
+ * numbers arrive.
+ */
+describe("the signed group carries the collateral the user chose", () => {
+  const sdk = vi.hoisted(() => ({ bare: vi.fn(), withOrders: vi.fn() }));
+  const grp = vi.hoisted(() => ({ assertOpen: vi.fn(), simulate: vi.fn() }));
+
+  beforeEach(() => {
+    sdk.bare.mockReset(); sdk.withOrders.mockReset();
+    grp.assertOpen.mockReset(); grp.simulate.mockReset();
+    sdk.bare.mockReturnValue([]);
+    grp.assertOpen.mockReturnValue({ ok: true, checks: [], findings: [] });
+    grp.simulate.mockResolvedValue({ ok: false, message: "stop after assert" });
+    quoteOpen.mockReturnValue({
+      ok: true, reasons: [],
+      executionPrice12: ALGO_PRICE12,
+      entryPrice12: ALGO_PRICE12,
+      indexPrice12: ALGO_PRICE12,
+      liquidationPrice12: BigInt(1),
+      netCollateralUsd: 9.58,
+      acceptablePrice12: ALGO_PRICE12,
+    });
+  });
+
+  it("passes µALGO as collateralAmount, not a dollar figure", async () => {
+    vi.doMock("@pdex/sdk/transactions", async (o) => ({
+      ...(await o() as object),
+      buildV2OpenOrIncreaseWithStorageTransactions: sdk.bare,
+      buildV2MarketOpenWithAttachedOrdersTransactions: sdk.withOrders,
+    }));
+    vi.doMock("@/lib/strategy/pex/oracle", () => ({
+      getOraclePayload: vi.fn(async () => ({
+        signatureVerified: true, ageSeconds: 1,
+        indexPrice12: ALGO_PRICE12,
+        message: new Uint8Array(8), signature: new Uint8Array(8),
+        decoded: {
+          indexMinPrice: ALGO_PRICE12, indexMaxPrice: ALGO_PRICE12,
+          longMinPrice: ALGO_PRICE12, longMaxPrice: ALGO_PRICE12,
+          shortMinPrice: BigInt(1_000_000_000_000), shortMaxPrice: BigInt(1_000_000_000_000),
+        },
+      })),
+    }));
+    vi.doMock("@/lib/strategy/pex/group", async (o) => ({
+      ...(await o() as object),
+      assertOpenGroup: grp.assertOpen,
+      simulateGroup: grp.simulate,
+    }));
+    vi.resetModules();
+    const { openPosition: fresh } = await import("@/lib/strategy/perps/client");
+
+    await fresh({
+      algod, signTransactions: async () => [], sender: SENDER, marketId: 1, side: "long",
+      collateralAssetId: PEX_ASSETS.algo, collateralAmountMicro: HUNDRED_ALGO,
+      algoPrice12: ALGO_PRICE12, notionalUsd: 25, takeProfitPrice12: BigInt(0),
+      displayed: {
+        asRenderedIndexPrice12: ALGO_PRICE12,
+        asRenderedEntryPrice12: ALGO_PRICE12,
+        asRenderedLiquidationPrice12: BigInt(1),
+        asRenderedNetCollateralMicro: BigInt(9_580_000),
+      },
+    } as never).catch(() => {});
+
+    expect(sdk.bare, "the bare-open builder was never reached").toHaveBeenCalled();
+    const built = sdk.bare.mock.calls[0][0] as Record<string, unknown>;
+    // THE assertion: 100 ALGO must be 100_000_000 µALGO, not $9.58 of µUSD.
+    expect(built.collateralAmount).toBe(HUNDRED_ALGO);
+    expect(built.collateralAssetId).toBe(PEX_ASSETS.algo);
+
+    // And the group assertion must be shown the same numbers as the builder,
+    // or it is checking a different transaction than the one being signed.
+    expect(grp.assertOpen).toHaveBeenCalled();
+    const shown = grp.assertOpen.mock.calls[0][1] as Record<string, unknown>;
+    expect(shown.collateralAmountMicro).toBe(built.collateralAmount);
+    expect(shown.collateralAssetId).toBe(built.collateralAssetId);
+  });
+});

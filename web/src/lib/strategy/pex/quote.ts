@@ -24,9 +24,12 @@ import {
   MAX_TAKE_PROFIT_MULTIPLE,
   PEX_APPS,
   POSITION_BUILDER_FEE_BPS,
+  PEX_ASSETS,
 } from "@/lib/strategy/pex/config";
 import { USD_SCALE, type MarketFunding, type MarketState } from "@/lib/strategy/pex/reads";
-import { collateralUsd as collateralUsdOf } from "@/lib/strategy/pex/collateral";
+import {
+  collateralUsd as collateralUsdOf, isUsdDenominated,
+} from "@/lib/strategy/pex/collateral";
 import type { OraclePayload } from "@/lib/strategy/pex/oracle";
 import { solveBar, steppedCeilingUsd, type Side } from "@/lib/strategy/perps/solver";
 
@@ -171,6 +174,8 @@ function shape(
   const netCollateralUsd = collateralUsdOf(
     collateralAssetId, big(raw.position_collateral_after), algoPrice12,
   );
+  /** Any field the SDK denominates in collateral tokens, valued in dollars. */
+  const colUsd = (v: unknown) => collateralUsdOf(collateralAssetId, big(v), algoPrice12);
   const notionalUsd = toUsd(raw.size_usd_delta);
   return {
     ok: Boolean(raw.ok),
@@ -187,8 +192,14 @@ function shape(
     acceptablePrice12: big(raw.acceptable_price),
     liquidationPrice12: big(raw.liquidation_price_estimate),
     liquidationDirection: String(raw.liquidation_price_direction ?? ""),
-    openFeeUsd: toUsd(raw.platform_fee_amount),
-    builderFeeUsd: toUsd(raw.builder_fee_paid),
+    /**
+     * Fees come back in COLLATERAL TOKEN units, not USD. The SDK computes both
+     * as `tokenAmountFromUsd(feeFromBps(sizeUsdDelta, bps), collateralPrice)`
+     * (v2Quotes.js:1562-1563), so against ALGO they are ALGO counts and
+     * running them through `toUsd` labels an ALGO figure with a dollar sign.
+     */
+    openFeeUsd: colUsd(raw.platform_fee_amount),
+    builderFeeUsd: colUsd(raw.builder_fee_paid),
     impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
     netCollateralUsd,
     effectiveInitialMarginBps: Number(raw.effective_initial_margin_bps ?? 0),
@@ -677,6 +688,19 @@ export function quoteClose(input: {
     algoPrice12: input.algoPrice12,
   });
 
+  /**
+   * Collateral-token fields, valued in dollars.
+   *
+   * Falls back to the raw number when the collateral cannot be priced, which
+   * is exact for USDC and the previous behaviour everywhere else. It does not
+   * return null: these are cost breakdown lines, and dropping them silently
+   * would be worse than the pre-existing approximation.
+   */
+  const closeColUsd = (v: unknown) => {
+    try { return collateralUsdOf(input.collateralAssetId, big(v), input.algoPrice12); }
+    catch { return toUsd(v); }
+  };
+
   return {
     ok: Boolean(raw.ok),
     reasons: ((raw.failure_reasons as string[]) ?? []).slice(),
@@ -687,9 +711,18 @@ export function quoteClose(input: {
     outputs,
     payoutUsd,
     /** Signed: PEX reports profit and loss separately. */
+    // effective_profit_usd / loss_usd really are USD; the fee fields are not.
     pnlUsd: toUsd(raw.effective_profit_usd) - toUsd(raw.loss_usd),
-    closeFeeUsd: toUsd(raw.close_fee_usd ?? raw.platform_fee_amount),
-    builderFeeUsd: toUsd(raw.builder_fee_paid),
+    /**
+     * `close_fee_usd` is genuinely USD, but the FALLBACK is not:
+     * `platform_fee_amount` is `tokenAmountFromUsd(closeFeeUsd,
+     * collateralPrice)` (v2Quotes.js:1987). So the two arms need different
+     * treatment — collapsing them into one `toUsd` was right only for USDC.
+     */
+    closeFeeUsd: raw.close_fee_usd !== undefined
+      ? toUsd(raw.close_fee_usd)
+      : closeColUsd(raw.platform_fee_amount),
+    builderFeeUsd: closeColUsd(raw.builder_fee_paid),
     /**
      * Funding as a **gross accrued cost**, and never the settlement.
      *
@@ -699,8 +732,9 @@ export function quoteClose(input: {
      * wrong on 5 of 8 live positions, where funding had in fact been CREDITED.
      * Use `fundingNetUsd` for anything a user reads.
      */
-    fundingFeeUsd: toUsd(raw.funding_fee_collateral_amount),
-    borrowingFeeUsd: toUsd(raw.borrowing_fee_collateral_amount),
+    // The field names say "collateral_amount" outright.
+    fundingFeeUsd: closeColUsd(raw.funding_fee_collateral_amount),
+    borrowingFeeUsd: closeColUsd(raw.borrowing_fee_collateral_amount),
     /**
      * Funding and borrowing as actually settled into collateral. **Signed.**
      *
@@ -713,7 +747,7 @@ export function quoteClose(input: {
      * Verified against the WHOLE live population, 9 of 9 positions on
      * 2026-09-29: this equals `collateral_delta - collateral_amount` exactly.
      */
-    fundingNetUsd: toUsd(raw.collateral_funding_net_amount),
+    fundingNetUsd: closeColUsd(raw.collateral_funding_net_amount),
     impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
     liquidatable: Boolean(raw.liquidatable),
     raw,
@@ -1030,10 +1064,19 @@ export function valueCloseOutputs(
 ): number | null {
   let total = 0;
   for (const o of outputs) {
-    if (o.assetId === ctx.collateralAssetId) total += Number(o.amount) / 1e6;
+    /**
+     * The collateral branch used to come FIRST and add `amount / 1e6`, i.e. a
+     * flat $1 per unit. That is only true when the collateral is USDC, and it
+     * short-circuited the ALGO branch below: an ALGO-collateral close valued
+     * every ALGO it paid out at a dollar, making `payoutUsd` — and the
+     * "net vs collateral" figure derived from it — about 10x too large.
+     *
+     * The asset's PRICE decides its value, never its role in the position.
+     */
+    if (isUsdDenominated(o.assetId)) total += Number(o.amount) / 1e6;
     else if (o.assetId === ctx.indexAssetId) {
       total += (Number(o.amount) / 1e6) * (Number(ctx.indexPrice12) / 1e12);
-    } else if (o.assetId === 0 && ctx.algoPrice12 !== undefined
+    } else if (o.assetId === PEX_ASSETS.algo && ctx.algoPrice12 !== undefined
       && ctx.algoPrice12 > BigInt(0)) {
       total += (Number(o.amount) / 1e6) * (Number(ctx.algoPrice12) / 1e12);
     } else return null;

@@ -659,7 +659,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       state, oracle, side, owner: sender, notionalUsd,
       triggerPrice12: takeProfitPrice12,
       acceptablePrice12: tpAcceptable,
-      keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
+      keeperFeeMicro,
       collateralAssetId,
       builderAddress: BUILDER_ADDRESS,
     });
@@ -686,7 +686,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       state, oracle, side, owner: sender, notionalUsd,
       triggerPrice12: stopLossPrice12,
       acceptablePrice12: slAcceptable,
-      keeperFeeMicro: micro(CHILD_KEEPER_FEE_USDC),
+      keeperFeeMicro,
       collateralAssetId,
       builderAddress: BUILDER_ADDRESS,
     });
@@ -716,7 +716,18 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
   sp.fee = sp.minFee;
   sp.flatFee = true;
   const sideCode = side === "long" ? BigInt(1) : BigInt(2);
-  const keeperFee = micro(CHILD_KEEPER_FEE_USDC);
+  /**
+   * The keeper fee, in the collateral asset — the SAME figure the balance
+   * check above reserved.
+   *
+   * It was `micro(CHILD_KEEPER_FEE_USDC)` here while the balance check used
+   * the converted amount, so the two disagreed by the ALGO price. Harmless
+   * today because protection on ALGO is refused, and precisely the trap
+   * someone would fall into on lifting that refusal: $0.10 of ALGO is ~1.07
+   * ALGO, but 100,000 µALGO is $0.009 — under the contract's $0.05 floor, so
+   * the order would be built, escrowed and never executed.
+   */
+  const keeperFee = keeperFeeMicro;
 
   /**
    * Two builders, one input.
@@ -1783,20 +1794,29 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
     throw new Error("That position is no longer open — it may have just closed or been liquidated.");
   }
   /**
-   * The box we read must be backed by the asset we were told to close.
+   * The position the CALLER handed us must be the one its key names.
    *
-   * Belt to the key's braces: `collateralAssetId` is part of the `p2:` key, so
-   * a wrong value reads a DIFFERENT position rather than failing, and every
-   * check below would then pass honestly against the wrong box. This is the
-   * one place the two can be compared, because the box states its own backing.
+   * An earlier version of this compared `live.collateral_asset_id` against
+   * `collateralAssetId` and was a TAUTOLOGY: `live` is read with that very
+   * asset as part of the `p2:` key, so a box stored under asset X always
+   * reports X. It could not fail in production, and the test that "proved" it
+   * only passed because the mock returned a box that cannot exist under that
+   * key. Caught in review.
    *
-   * It also closes a gap in the `position_id` check beneath it. Pre-cutover
-   * positions all carry id 0 (SPEC.md), so for a wallet holding two id-0
-   * positions in one market and side — one per collateral — `0 !== 0` is
-   * false and that check waves the mismatch through.
+   * The real risk is a caller whose two arguments disagree — passing row A's
+   * `position` with row B's `collateralAssetId`. Then `live` is a DIFFERENT
+   * position, `sizeToClose` is clamped to ITS size, and the `position_id`
+   * guard below waves it through whenever both ids are 0, which every
+   * pre-cutover position is (SPEC.md:785). The builder and the assertion then
+   * receive the same wrong asset and agree with each other.
+   *
+   * So the comparison that means something is against the object the caller
+   * passed, not against the box we fetched with the value under test.
    */
-  if (Number(live.collateral_asset_id) !== collateralAssetId) {
-    throw new Error("That position is not backed by the asset this close was built for. Nothing was sent.");
+  if (Number(position.collateral_asset_id) !== collateralAssetId) {
+    throw new Error(
+      "That position is not backed by the asset this close was built for. Nothing was sent.",
+    );
   }
   if (live.position_id !== position.position_id) {
     throw new Error("That position has been replaced since the page loaded. Refresh and try again.");
