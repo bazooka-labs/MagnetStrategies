@@ -18,15 +18,17 @@ import { FormSection } from "./FormSection";
 import {
   ACTIVE_MARKET_ID,
   BUILDER_ADDRESS,
-  COLLATERAL_ASSET_ID,
   CHILD_KEEPER_FEE_USDC,
+  COLLATERAL_ASSET_ID,
   DEFAULT_SLIPPAGE_BPS,
   ENABLED_MARKET_IDS,
   MAX_TAKE_PROFIT_MULTIPLE,
   OI_HEADROOM_SHARE,
+  PEX_ASSETS,
   PEX_MARKETS,
   POSITION_BUILDER_FEE_BPS,
   PROTECTION_ENABLED,
+  assetName,
 } from "@/lib/strategy/pex/config";
 // The MBRs the client actually bills, so the disclosure cannot drift from the
 // group it describes — audit 9, MEDIUM 3.
@@ -58,6 +60,11 @@ import {
 } from "@/lib/strategy/pex/quote";
 import { sideOiUsd } from "@/lib/strategy/pex/reads";
 import { oracleAgeSeconds, usePerpsMarket } from "@/hooks/usePerpsMarket";
+import { assetPrice12 } from "@/lib/strategy/pex/oracle";
+import { collateralUsd as collateralUsdOf } from "@/lib/strategy/pex/collateral";
+import {
+  isCorrelatedLong, correlatedRisk, riskPermitsSubmit,
+} from "@/lib/strategy/perps/correlatedRisk";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
 import { useWallet } from "@/hooks/useWallet";
 import { ALGOD_URLS } from "@/lib/constants";
@@ -301,6 +308,21 @@ export function PerpsCard({
    * untouched card was quoting a real $100 position at a real liquidation price.
    */
   const [amount, setAmount] = useState<string>("");
+  /**
+   * Which asset backs the position being composed.
+   *
+   * Named once and threaded, rather than spelled `COLLATERAL_ASSET_ID` at
+   * each use, so the quote and the submit cannot drift apart by one being
+   * updated and the other missed.
+   */
+  const [collateralAssetId, setCollateralAssetId] = useState<number>(COLLATERAL_ASSET_ID);
+  /**
+   * Whether the user has acknowledged the correlated-collateral warning.
+   *
+   * Cleared whenever the combination that raised it changes, so an
+   * acknowledgement cannot carry over to a trade it was never shown for.
+   */
+  const [riskAck, setRiskAck] = useState(false);
   const [barPos, setBarPos] = useState<number>(0.5);
   const [tpPrice, setTpPrice] = useState<string>("");
   /**
@@ -401,22 +423,37 @@ export function PerpsCard({
   }, [marketId]);
 
   const settledAmount = useDebounced(amount, 120);
-  const collateralUsd = parseMoney(settledAmount) ?? 0;
   /**
-   * The collateral the card is currently composing with.
+   * What the user TYPED, in the units of whichever collateral is selected.
    *
-   * Still USDC always — the pill toggle is not wired yet. It is named here
-   * rather than spelled `COLLATERAL_ASSET_ID` at each use so the toggle
-   * changes one line, and so the quote and the submit cannot drift apart by
-   * one of them being updated and the other missed.
+   * With USDC this is dollars. With ALGO it is ALGO — the figure that leaves
+   * the wallet and the figure MAX fills, decided deliberately: a dollar
+   * amount would have to be converted at some price, and that price moves
+   * between typing and signing.
    */
-  const collateralAssetId = COLLATERAL_ASSET_ID;
+  const typedAmount = parseMoney(settledAmount) ?? 0;
+  /** What actually gets transferred, in the collateral asset's micro-units. */
+  const collateralAmountMicro = BigInt(Math.round(typedAmount * 1e6));
   /**
-   * The amount in the collateral asset's own micro-units — what actually gets
-   * transferred. Equal to the dollar figure only because that asset is USDC;
-   * see `pex/collateral.ts`.
+   * ALGO/USD from the market's OWN signed message, by the asset's ROLE.
+   *
+   * Not `oracle.indexPrice12`: on market 1 the index is ALGO and the two
+   * agree, but on market 2 the index is BTC, and valuing ALGO collateral at
+   * the BTC price would be wrong by orders of magnitude. ALGO is the long
+   * asset on both markets. Same helper the group assertion prices with, so
+   * the figure on screen and the figure checked before signing cannot come
+   * from different rules.
    */
-  const collateralAmountMicro = BigInt(Math.round(collateralUsd * 1e6));
+  const algoPrice12 = data ? assetPrice12(data.oracle.decoded, PEX_ASSETS.algo) : null;
+  /**
+   * The collateral's DOLLAR value, which is what every downstream figure —
+   * leverage, the bar, the minimum — is actually denominated in.
+   */
+  const collateralUsd = (() => {
+    if (collateralAmountMicro <= BigInt(0)) return 0;
+    try { return collateralUsdOf(collateralAssetId, collateralAmountMicro, algoPrice12); }
+    catch { return 0; }
+  })();
   /**
    * The field and the figures agree.
    *
@@ -446,7 +483,7 @@ export function PerpsCard({
         shortPrice12: (d.shortMinPrice + d.shortMaxPrice) / BigInt(2),
       },
     });
-  }, [data, side, collateralUsd, isLimit]);
+  }, [data, side, collateralUsd, collateralAssetId, collateralAmountMicro, isLimit]);
 
   /**
    * The bar's right end must be a size the chain will actually accept.
@@ -471,7 +508,7 @@ export function PerpsCard({
       // floor — the same wrong answer by a longer route.
       }, { marketCapacityApplies: !isLimit });
     } catch { return null; }
-  }, [data, bar, side, collateralUsd]);
+  }, [data, bar, side, collateralUsd, collateralAssetId, collateralAmountMicro]);
 
   /**
    * Would this size open RIGHT NOW, ignoring that it is a limit order?
@@ -495,7 +532,7 @@ export function PerpsCard({
         shortPrice12: (d.shortMinPrice + d.shortMaxPrice) / BigInt(2),
       },
     });
-  }, [data, side, collateralUsd, isLimit]);
+  }, [data, side, collateralUsd, collateralAssetId, collateralAmountMicro, isLimit]);
 
   const ceilingUsd = confirmed?.notionalUsd ?? 0;
 
@@ -686,7 +723,74 @@ export function PerpsCard({
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       });
     } catch { return null; }
-  }, [data, quoteOracle, bar, notional, side, collateralUsd, isLimit, trigger12]);
+  // `collateralAssetId` and the micro amount belong here too: the quote is
+  // built from them, and without them switching the toggle would reuse a
+  // stale result computed for the other asset.
+  }, [data, quoteOracle, bar, notional, side, collateralUsd, collateralAssetId,
+      collateralAmountMicro, algoPrice12, isLimit, trigger12]);
+
+  /**
+   * ── Correlated collateral: the warning, and when it interrupts ────────────
+   *
+   * A LONG backed by ALGO on an ALGO market is exposed twice. The position
+   * loses as the price falls, and the collateral securing it is worth less at
+   * the same moment, so liquidation arrives sooner than the leverage figure
+   * suggests. A SHORT backed by ALGO is the opposite and is a legitimate
+   * delta-neutral construction — measured on a real round trip 2026-11-04,
+   * ALGO fell 0.6%, the short gained $0.11, and the two very nearly cancelled.
+   *
+   * ── Why this is QUOTED rather than modelled ───────────────────────────────
+   * The obvious implementation is a closed form from `maintenance_margin_bps`
+   * (250, read live). But a model in a risk warning is a second opinion about
+   * liquidation that can drift from the contract's own, and this file has
+   * already been bitten by numbers that were coherent and wrong. So the
+   * counterfactual is a REAL quote: the same notional, the same side, backed
+   * by the same dollar value of USDC. Both liquidation prices then come from
+   * PEX's own quoter and the comparison is between two things it said.
+   *
+   * It runs only for the long+ALGO combination, which is rare, so the extra
+   * quote costs nothing on the common path.
+   */
+  const correlated = useMemo(() => {
+    if (!data || !quoteOracle) return null;
+    // By the market's own long asset, not by a hardcoded ALGO. See
+    // `isCorrelatedLong`.
+    if (!isCorrelatedLong(side, collateralAssetId, Number(data.state.core.long_asset_id))) {
+      return null;
+    }
+    if (!quote?.ok || notional <= 0 || collateralUsd <= 0) return null;
+    try {
+      const asUsdc = quoteOpen({
+        state: data.state, oracle: quoteOracle, side,
+        // The same DOLLAR value, posted in USDC instead.
+        collateralAmountMicro: BigInt(Math.round(collateralUsd * 1e6)),
+        notionalUsd: notional,
+        builderAddress: BUILDER_ADDRESS || "A".repeat(58),
+        collateralAssetId: COLLATERAL_ASSET_ID,
+        slippageBps: DEFAULT_SLIPPAGE_BPS,
+      });
+      if (!asUsdc.ok) return null;
+      const index = Number(quote.indexPrice12) / 1e12;
+      const liqAlgo = Number(quote.liquidationPrice12) / 1e12;
+      const liqUsdc = Number(asUsdc.liquidationPrice12) / 1e12;
+      if (!(index > 0) || !(liqAlgo > 0) || !(liqUsdc > 0)) return null;
+      // How far the price must fall, as a fraction, in each case.
+      const dropAlgo = (index - liqAlgo) / index;
+      const dropUsdc = (index - liqUsdc) / index;
+      if (!(dropAlgo > 0) || !(dropUsdc > 0)) return null;
+      return { dropAlgo, dropUsdc };
+    } catch { return null; }
+  }, [data, quoteOracle, side, collateralAssetId, quote, notional, collateralUsd]);
+
+  /**
+   * Note, gate, or nothing. The rule lives in `correlatedRisk` with its own
+   * tests; this file only supplies the two distances PEX quoted.
+   */
+  const risk = correlatedRisk(correlated !== null, correlated?.dropAlgo ?? null);
+  const correlatedSevere = risk === "severe";
+  /** An acknowledgement only counts for the trade it was shown for. */
+  useEffect(() => { setRiskAck(false); }, [side, collateralAssetId, settledAmount, notional]);
+
 
   /**
    * The take-profit follows a chosen profit target, or nothing at all.
@@ -1084,9 +1188,51 @@ export function PerpsCard({
   // assembled above this point and now carries it. `slOk` stays here.
   const slOk = (slEmpty || slValid) && !bothLegs;
 
+  /**
+   * The correlated-collateral notice.
+   *
+   * Two registers on purpose. Far from liquidation it is a line of context,
+   * because interrupting someone over a 60% move they will never see trains
+   * them to click past warnings. Close to liquidation it is a gate, because
+   * that is where the thing being explained actually happens.
+   */
+  const correlatedNotice = correlated && (
+    <div className={`mt-3 rounded-xl border p-3 text-[11.5px] leading-relaxed ${
+      correlatedSevere
+        ? "border-amber-400/40 bg-amber-400/[0.06] text-amber-100/90"
+        : "border-white/10 bg-white/[0.02] text-white/55"}`}>
+      <p>
+        <span className="font-semibold">
+          {assetName(collateralAssetId)} collateral on a long is exposed twice.
+        </span>{" "}
+        The position loses as the price falls and your collateral is worth less
+        at the same moment, so liquidation arrives sooner than the same
+        leverage in USDC: <span className="font-mono">
+          −{(correlated.dropAlgo * 100).toFixed(1)}%
+        </span>{" "}against{" "}<span className="font-mono">
+          −{(correlated.dropUsdc * 100).toFixed(1)}%
+        </span>. Both figures are PEX’s own, for this exact size.
+      </p>
+      {correlatedSevere && (
+        <label className="mt-2 flex items-start gap-2 font-medium text-amber-100">
+          <input type="checkbox" checked={riskAck} disabled={submitting}
+            onChange={(e) => setRiskAck(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-amber-400" />
+          <span>
+            I understand this liquidates after a{" "}
+            {(correlated.dropAlgo * 100).toFixed(1)}% fall.
+          </span>
+        </label>
+      )}
+    </div>
+  );
+
   const canSubmit = !!(
     tradable && tpOk && slOk && quoteUsable && !submitting && triggerReady
     && wallet.isConnected && wallet.address && notional > 0
+    // A long backed by its own index asset, close enough to liquidation to
+    // matter, has to be acknowledged. See `correlatedSevere`.
+    && riskPermitsSubmit(risk, riskAck)
   );
 
   /**
@@ -1342,10 +1488,46 @@ export function PerpsCard({
       </div>
 
       {/* Amount */}
-      <label className="mt-4 block">
-        <span className="text-xs font-medium uppercase tracking-wide text-white/50">Amount</span>
+      {/*
+        NOT a wrapping <label>. The collateral pills are buttons, and a label
+        that wraps them both forwards their clicks to the input and folds
+        their text into the field's accessible name — it announced as
+        "Amount ALGO $ USDC". Associated by `htmlFor` instead, so the label
+        names the field and nothing else.
+      */}
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="perps-amount"
+            className="text-xs font-medium uppercase tracking-wide text-white/50">Amount</label>
+          {/*
+            Which asset backs the position. Beside the amount because it
+            changes what the amount MEANS: with ALGO selected the figure below
+            is ALGO, not dollars.
+          */}
+          <div className="flex items-center gap-1 rounded-lg border border-white/10 p-0.5">
+            {[COLLATERAL_ASSET_ID, PEX_ASSETS.algo].map((id) => (
+              <button key={id} type="button" disabled={submitting}
+                onClick={() => {
+                  if (id === collateralAssetId) return;
+                  setCollateralAssetId(id);
+                  // The amount means something different now, and an
+                  // acknowledgement given for the old combination must not
+                  // survive into the new one.
+                  setAmount("");
+                  setAmountHint(null);
+                  setRiskAck(false);
+                }}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                  id === collateralAssetId
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70"}`}>
+                {assetName(id)}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="mt-1.5 flex items-center rounded-xl border border-white/10 bg-black/40 px-3">
-          <span className="text-white/40">$</span>
+          {collateralAssetId === COLLATERAL_ASSET_ID && <span className="text-white/40">$</span>}
           <input id="perps-amount" {...NO_AUTOFILL} inputMode="decimal" value={amount}
             onChange={(e) => {
               // Strip only what cannot change the number; refuse the rest and
@@ -1365,10 +1547,19 @@ export function PerpsCard({
             disabled={submitting}
             placeholder="0.00"
             className="w-full bg-transparent px-2 py-3 text-lg font-semibold tabular-nums text-white outline-none placeholder:text-white/25 disabled:opacity-50" />
-          <span className="text-xs text-white/40">USDC</span>
+          <span className="text-xs text-white/40">{assetName(collateralAssetId)}</span>
         </div>
         {amountHint && <p className="mt-1 text-xs text-amber-300/90">{amountHint}</p>}
-      </label>
+        {/*
+          The dollar value, when the typed figure is not already dollars. The
+          minimum, the leverage and the bar are all USD-denominated, so
+          without this the user cannot tell why a given ALGO amount is
+          refused for being under $5.
+        */}
+        {collateralAssetId !== COLLATERAL_ASSET_ID && collateralUsd > 0 && (
+          <p className="mt-1 text-xs text-white/35">≈ ${collateralUsd.toFixed(2)}</p>
+        )}
+      </div>
 
       {view.isLimit && (
         <div className="mt-4">
@@ -1913,6 +2104,9 @@ export function PerpsCard({
           </p>
         </>
       ) : (
+        <>
+        {/* Shown directly above the control it gates, not buried further up. */}
+        {correlatedNotice}
         <button onClick={submit} disabled={!canSubmit}
           className={`mt-5 w-full rounded-xl py-3.5 text-sm font-semibold transition-colors ${
             canSubmit
@@ -1925,6 +2119,7 @@ export function PerpsCard({
               ? `Place ${side} limit · ${fmtUsd(view.notional)}`
               : `Open ${side} · ${fmtUsd(view.notional)}`}
         </button>
+        </>
       )}
 
       {/* One signature, and what it commits to — shown before the prompt, not after. */}

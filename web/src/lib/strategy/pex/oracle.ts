@@ -67,6 +67,39 @@ const hexToBytes = (hex: string): Uint8Array => {
 const bytesToHex = (bytes: Uint8Array): string =>
   Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 
+/**
+ * What one whole unit of `assetId` is worth in USD, from a signed message.
+ *
+ * ── Why this is by ROLE, not by asset id ───────────────────────────────────
+ * The message names its own `longAssetId` and `shortAssetId` and carries a
+ * price band for each. Reading the band that matches the asset's role means
+ * this keeps working if PEX ever relists a market against different assets,
+ * where a hardcoded id would silently price the wrong thing.
+ *
+ * ── Why the caller usually wants this and not `indexPrice12` ───────────────
+ * On market 1 the index IS ALGO, so the two agree. On market 2 the index is
+ * BTC and ALGO is still the long asset, so valuing ALGO collateral at the
+ * index price there would be wrong by several orders of magnitude. Measured
+ * 2026-11-03: ALGO is the long asset and USDC the short asset on BOTH live
+ * markets.
+ *
+ * The mid of the band, matching `indexPrice12`. Null when the message prices
+ * no such asset — never a guess, because every caller is deciding something
+ * about money with it.
+ */
+export function assetPrice12(decoded: OracleMessage, assetId: number): bigint | null {
+  const mid = (lo: bigint, hi: bigint) => (lo + hi) / BigInt(2);
+  if (BigInt(assetId) === decoded.shortAssetId) {
+    return mid(decoded.shortMinPrice, decoded.shortMaxPrice);
+  }
+  if (BigInt(assetId) === decoded.longAssetId) {
+    return mid(decoded.longMinPrice, decoded.longMaxPrice);
+  }
+  // The index asset is deliberately not priced here: on a synthetic market it
+  // is not a transferable asset and can never be collateral.
+  return null;
+}
+
 /** Decode the signed bytes against the pinned layout. Throws on any mismatch. */
 export function decodeOracleMessage(message: Uint8Array): OracleMessage {
   if (message.length !== MSG_LEN) {

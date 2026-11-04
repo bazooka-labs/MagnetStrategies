@@ -726,7 +726,7 @@ function pinnedPoolAssets(
 }
 
 /** Price12 fixed-point scale, as PEX signs prices. */
-import { decodeOracleMessage } from "@/lib/strategy/pex/oracle";
+import { assetPrice12, decodeOracleMessage } from "@/lib/strategy/pex/oracle";
 
 const PRICE12_SCALE = BigInt(1_000_000_000_000);
 
@@ -764,24 +764,15 @@ function collateralPriceFromMessage(
   msg: Uint8Array | null, assetId: number,
 ): bigint | null {
   if (!msg) return null;
-  let decoded;
   try {
-    decoded = decodeOracleMessage(msg);
+    // One definition of which band prices which asset, shared with the card
+    // so the figure on screen and the figure checked here cannot diverge.
+    return assetPrice12(decodeOracleMessage(msg), assetId);
   } catch {
-    // Malformed or unexpected layout. The oracle_message check reports it; we
-    // simply cannot price from it.
+    // Malformed or an unexpected layout. `oracle_message` reports that; here
+    // we simply cannot price, and the caller fails rather than guesses.
     return null;
   }
-  const mid = (lo: bigint, hi: bigint) => (lo + hi) / BigInt(2);
-  if (BigInt(assetId) === decoded.shortAssetId) {
-    return mid(decoded.shortMinPrice, decoded.shortMaxPrice);
-  }
-  if (BigInt(assetId) === decoded.longAssetId) {
-    return mid(decoded.longMinPrice, decoded.longMaxPrice);
-  }
-  // The index asset is deliberately NOT accepted as collateral pricing: on a
-  // synthetic market the index is not a transferable asset at all.
-  return null;
 }
 
 const big = (v: bigint | number | undefined): bigint => BigInt(v ?? 0);
