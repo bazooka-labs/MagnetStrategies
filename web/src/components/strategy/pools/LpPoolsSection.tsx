@@ -21,7 +21,7 @@
 import { useEffect, useState } from "react";
 import { Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
-import { MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
+import { ALGO_GLOW, MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
@@ -53,7 +53,11 @@ function PoolCard({ p }: { p: PoolData }) {
       red a stale card carries, and a second set of numbers would drift from
       the rest of the site the first time either moved.
     */
-    <Panel className={`animate-enter-1 hover-depth flex flex-col p-6 ${MAGNET_GLOW}`}>
+    <Panel className={`animate-enter-1 hover-depth flex flex-col p-6 ${
+      // Gold for the ALGO-family pool, purple for the rest — the same split
+      // MagnetFi draws between its ALGO/USDC vault and the $U ones. Read off
+      // the pool, so the component knows about an ACCENT, not about an id.
+      p.accent === "gold" ? ALGO_GLOW : MAGNET_GLOW}`}>
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <PairGlyph tokens={["$U", p.partner]} />
@@ -83,6 +87,20 @@ function PoolCard({ p }: { p: PoolData }) {
               on a phone. */}
           {farmRate && <span>Farm <span className="font-mono text-green-300">{fmtApr(p.farmApr)}</span></span>}
         </div>
+        {/*
+          Inside the rate box, because it is about the rate.
+
+          A pool pinned to the front with "—" where its APR should be reads as
+          a broken card, and nothing else here can say why: the figure is
+          absent precisely because the pool has no history yet. Amber rather
+          than grey so it registers as a note about this number, not as more
+          small print.
+        */}
+        {p.note && (
+          <p className="mt-2.5 border-t border-white/5 pt-2.5 text-[11px] leading-relaxed text-amber-200/70">
+            {p.note}
+          </p>
+        )}
       </div>
 
       <div className="mt-4 flex items-center justify-between text-sm">
@@ -153,7 +171,18 @@ export function LpPoolsSection() {
         </div>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {[...pools].sort((a, b) => (b.totalApr ?? -1) - (a.totalApr ?? -1)).map((p) => <PoolCard key={p.id} p={p} />)}
+          {/*
+            Featured first, then by rate.
+
+            The sort is by APR descending, which puts a pool with no fee
+            history LAST — so a pool on the day it opens, which is exactly
+            when it is worth showing, sorts to the bottom. `featured` is the
+            editorial override; everything else keeps the old ordering.
+          */}
+          {[...pools]
+            .sort((a, b) => (Number(b.featured ?? false) - Number(a.featured ?? false))
+              || ((b.totalApr ?? -1) - (a.totalApr ?? -1)))
+            .map((p) => <PoolCard key={p.id} p={p} />)}
         </div>
       )}
 

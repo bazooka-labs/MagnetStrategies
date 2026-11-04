@@ -243,9 +243,37 @@ describe("pool token icons", () => {
     p.partner,
   ]))];
 
+  /**
+   * Tokens knowingly shipping without an icon.
+   *
+   * An EXPLICIT list, not a softened assertion. The whole point of the test
+   * below is that a forgotten logo renders as something plausible and passes
+   * unnoticed — so the fix for a deliberate omission is to name it, with the
+   * reason and the thing that removes it, rather than to let the check go
+   * quiet for every future pool as well.
+   *
+   * `uALGO` (asset 3760411000, `magnetALGO`) — added 2026-11-04 with the Myth
+   * Finance pool. The ASA carries no logo: its `url` points at a Myth Finance
+   * page rather than an image, and Pera held no record. Verification with
+   * Pera is in progress and the art is expected within the week, at which
+   * point this entry comes out rather than being left to rot.
+   */
+  const KNOWN_ICONLESS = new Set(["uALGO"]);
+
   it("covers every token shown on a pool card", () => {
-    const missing = symbols.filter((s) => tokenIcon(s) === null);
+    const missing = symbols.filter((s) => tokenIcon(s) === null && !KNOWN_ICONLESS.has(s));
     expect(missing, `no icon mapped for: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("keeps the exception list honest", () => {
+    // An entry that has since GAINED an icon must be deleted, or the list
+    // quietly becomes a place where checks go to die.
+    const stale = [...KNOWN_ICONLESS].filter((s) => tokenIcon(s) !== null);
+    expect(stale, `these now have icons and should leave KNOWN_ICONLESS: ${stale.join(", ")}`)
+      .toEqual([]);
+    // And an entry for a token no pool shows is equally dead.
+    const unused = [...KNOWN_ICONLESS].filter((s) => !symbols.includes(s));
+    expect(unused, `not shown on any pool card: ${unused.join(", ")}`).toEqual([]);
   });
 
   it("maps each one to a file that actually exists", () => {

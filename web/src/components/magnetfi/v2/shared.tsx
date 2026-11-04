@@ -102,8 +102,18 @@ export function LaunchingBadge() {
 }
 
 /** A single token chip — real icon if we have one, else a text fallback. */
-function TokenChip({ sym, variant, className = "" }: {
+function TokenChip({ sym, variant, className = "", overlapped = false }: {
   sym: string; variant: "primary" | "secondary"; className?: string;
+  /**
+   * This chip sits UNDER the one before it, so its left edge is covered.
+   *
+   * Only matters for the text fallback: an icon fills the circle and reads
+   * fine part-covered, but a word does not. "uALGO" in the pair glyph
+   * rendered as "ALGO" — the leading `u` hidden behind the $U chip, on a page
+   * that also lists a real U / ALGO pool. Caught by rasterising; the class
+   * names alone looked correct.
+   */
+  overlapped?: boolean;
 }) {
   const icon = tokenIcon(sym);
   const base = `flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 shadow-md ${className}`;
@@ -117,7 +127,19 @@ function TokenChip({ sym, variant, className = "" }: {
   const fill = variant === "primary"
     ? "bg-gradient-to-br from-magnet-500 to-magnet-700 text-white"
     : "bg-surface-lighter text-gray-200";
-  return <span className={`${base} ${fill} text-[10px] font-bold`}>{sym.replace("$", "")}</span>;
+  const text = sym.replace("$", "");
+  /**
+   * The chip is 36px and the overlap hides 12px of it, so a five- or
+   * six-character ticker has to shrink AND shift to be read at all. Sized by
+   * length rather than by a single smaller value, so the common short
+   * tickers keep the weight they were designed with.
+   */
+  const size = text.length >= 6 ? "text-[7px]" : text.length >= 5 ? "text-[8px]" : "text-[10px]";
+  // Centre within what is VISIBLE, not within the circle.
+  const shift = overlapped ? "pl-3" : "";
+  return (
+    <span className={`${base} ${fill} ${size} ${shift} font-bold tracking-tight`}>{text}</span>
+  );
 }
 
 /** Two overlapping token chips representing an LP pair. */
@@ -125,7 +147,7 @@ export function PairGlyph({ tokens }: { tokens: [string, string] }) {
   return (
     <div className="flex shrink-0 items-center">
       <TokenChip sym={tokens[0]} variant="primary" className="z-10" />
-      <TokenChip sym={tokens[1]} variant="secondary" className="-ml-3" />
+      <TokenChip sym={tokens[1]} variant="secondary" className="-ml-3" overlapped />
     </div>
   );
 }

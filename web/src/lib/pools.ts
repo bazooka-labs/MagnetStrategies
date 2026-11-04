@@ -23,6 +23,29 @@ export type Pool = {
    * products rather than one pair with two places to supply it.
    */
   venues: Venue[];
+  /**
+   * Pinned to the front of the grid, ahead of the APR ordering.
+   *
+   * An editorial choice, and it exists because the default sort is by APR
+   * descending — so a pool we want seen on the day it opens sorts LAST,
+   * having earned no fees yet. Exactly the case it was added for.
+   */
+  featured?: boolean;
+  /**
+   * Gold rather than the Magnet purple.
+   *
+   * The same split MagnetFi draws with `collateralGlow`: purple is the brand
+   * hue, gold marks the ALGO-family outsider. Carried as data so the rule
+   * stays "this pool is gold", not "the component knows about one pool id".
+   */
+  accent?: "gold";
+  /**
+   * One line under the pair, for something true that the metrics cannot say.
+   *
+   * A pinned pool with no APR looks broken rather than new, and the reason is
+   * not inferable from any number on the card.
+   */
+  note?: string;
 };
 
 /**
@@ -93,6 +116,22 @@ export const POOLS: Pool[] = ([
   {
     id: "u-usdc", pair: "U / USDC", partner: "USDC",
     venues: [{ dex: "tinyman", ref: "ONUEZGER6ZTBW7IT2FNWQVSTXJJEMG4BK2YK25FTDKEBTDE72BKV7SJUSI" }],
+  },
+  {
+    /**
+     * The Myth Finance pool, opened 2026-11-04.
+     *
+     * uALGO (asset 3760411000, unit `uALGO`, name `magnetALGO`) against $U.
+     * Verified on chain the day it opened: 49,500 uALGO and 33,560 $U, LP
+     * token `TinymanPool2.0 uALGO-U`, and Tinyman's analytics reported
+     * $9,842 of liquidity with APR `null` — a pool with no fee history, not
+     * a broken read.
+     */
+    id: "u-ualgo", pair: "U / uALGO", partner: "uALGO",
+    featured: true,
+    accent: "gold",
+    note: "Tinyman farm starts next month — the rate here is fees only until then.",
+    venues: [{ dex: "tinyman", ref: "CVS3GGY5GC3K3AB55PTLK4JCTH6HMAITMTDRBXPVEOWTA7RY5KPJUFY4LM" }],
   },
   // ── Pact ──
   { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", venues: [{ dex: "pact", ref: "3693600164" }] },
