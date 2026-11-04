@@ -501,6 +501,128 @@ export const refs = (snap: CvaSnapshot) => ({
 });
 
 /** Markets the group must mark: active AND holding shares. */
+/** `gm2:` + the market id, big-endian — the vault's allocation box key. */
+export function gm2BoxName(marketId: number): Uint8Array {
+  const out = new Uint8Array(12);
+  out.set([0x67, 0x6d, 0x32, 0x3a], 0); // "gm2:"
+  new DataView(out.buffer).setBigUint64(4, BigInt(marketId), false);
+  return out;
+}
+
+/**
+ * Declare every ACTIVE market's allocation box on a from-market withdrawal.
+ *
+ * ── Why this exists ─────────────────────────────────────────────────────────
+ * The SDK includes the allocation boxes on a from-market withdrawal only when
+ * there are NO mark calls:
+ *
+ *     ...(activeMarkCalls.length ? [] : v2CvaActiveAllocationBoxes(...))
+ *
+ * assuming the marks carry them. Each mark declares only its OWN market's box.
+ * `markMarketsFor` narrows marks to the FUNDED markets — which it must, or the
+ * contract's mark-count arithmetic fails at pc=8526 — so an active-but-unfunded
+ * market ends up referenced nowhere and `withdraw_from_market` dies at pc=7789
+ * on `box_len`.
+ *
+ * `buildV2CvaDepositCall` and the idle `buildV2CvaWithdrawCall` include the
+ * boxes unconditionally, so this is needed for the from-market path alone.
+ *
+ * ── Why the lists genuinely differ ──────────────────────────────────────────
+ * Measured against MainNet, same wallet and share amount:
+ *
+ *     marks=[1]            -> pc 7789, invalid Box reference gm2:2
+ *     marks=[1,2]          -> pc 8526, the deposit bug returns
+ *     marks=[]             -> pc 8234, the funded mark is required
+ *     marks=[1] + gm2:2    -> OK
+ *
+ * Exactly the funded markets get mark CALLS; every active market gets a box
+ * REFERENCE. No single SDK input expresses that for this builder.
+ *
+ * ── What it is allowed to touch ─────────────────────────────────────────────
+ * Only empty box slots, only on the call that already carries a `gm2:`
+ * reference, and only with `gm2:` names for markets the snapshot calls active.
+ * It throws rather than dropping a reference: a loud failure before signing
+ * costs the user nothing, and a silent one puts us back at pc=7789.
+ */
+export function declareActiveAllocationBoxes(
+  txns: algosdk.Transaction[], activeMarkets: readonly number[],
+): algosdk.Transaction[] {
+  const isGm2 = (n: Uint8Array) =>
+    n.length === 12 && n[0] === 0x67 && n[1] === 0x6d && n[2] === 0x32 && n[3] === 0x3a;
+  const vaultApp = BigInt(PEX_APPS.cvaVault);
+  /**
+   * A `gm2:` reference declared BY THE VAULT on itself.
+   *
+   * Both halves matter. `appIndex 0` means "the app being called", so a
+   * `gm2:`-shaped name sitting at a non-zero index belongs to some other app
+   * and must not be treated as ours — and we must not then write our own
+   * reference at index 0 onto a transaction that is not the vault.
+   */
+  const ours = (t: algosdk.Transaction, b: algosdk.BoxReference) =>
+    isGm2(b.name) && b.appIndex === BigInt(0)
+    && t.applicationCall?.appIndex === vaultApp;
+
+  // Located by CONTENT, never by index: the group is 11, 13 or 15 transactions
+  // depending on recall carriers, and an absolute index is precisely the bug
+  // that produced pc=8526.
+  //
+  // The call this finds is the `mark_market` call, NOT `withdraw_from_market`.
+  // An earlier version of this comment said otherwise and was wrong — review
+  // caught it. `mark_market` declares `[gm2:<id>, [marketsApp, mf2:<id>]]`
+  // (SDK transactions.js:1543), so it is the first to carry one. That is fine
+  // because **box references are pooled across the group**: the vault reads
+  // the allocation during `withdraw_from_market` using a reference any
+  // transaction in the group declared. Verified by simulation.
+  const i = txns.findIndex((t) => (t.applicationCall?.boxes ?? []).some((b) => ours(t, b)));
+  if (i < 0) throw new Error("cva: withdrawal group declares no allocation box to extend.");
+
+  const call = txns[i].applicationCall!;
+  const boxes = [...(call.boxes ?? [])];
+  /**
+   * What the WHOLE GROUP already declares, not just this call.
+   *
+   * Computing it from one call was a latent bug: the moment a second market
+   * becomes funded it gets its own mark call carrying its own `gm2:`, and a
+   * per-call view would add a duplicate here — burning a padding slot and
+   * eventually throwing "no room" for a reference the group already had.
+   */
+  const present = new Set(
+    txns.flatMap((t) => (t.applicationCall?.boxes ?? [])
+      .filter((b) => ours(t, b))
+      .map((b) => Buffer.from(b.name).toString("hex"))));
+
+  let added = 0;
+  for (const marketId of activeMarkets) {
+    const name = gm2BoxName(marketId);
+    if (present.has(Buffer.from(name).toString("hex"))) continue;
+    const slot = boxes.findIndex((b) => b.name.length === 0);
+    if (slot < 0) {
+      throw new Error(
+        `cva: no room to declare the allocation box for market ${marketId}, so nothing was sent.`);
+    }
+    // appIndex 0 is the called app itself, matching how the SDK declares gm2:
+    // for the funded market on this same call.
+    boxes[slot] = { appIndex: BigInt(0), name };
+    added++;
+  }
+  if (added === 0) return txns;
+
+  /**
+   * `boxes` is `readonly` to the type system and mutable at runtime.
+   *
+   * Written through a narrow cast rather than by reconstructing the
+   * transaction: an appl txn carries a dozen fields and rebuilding it by hand
+   * is a far better way to change something by accident than assigning the one
+   * array we mean to change. The group is re-grouped, re-asserted and
+   * re-simulated immediately after, so a mistake here cannot reach a wallet.
+   */
+  (call as unknown as { boxes: algosdk.BoxReference[] }).boxes = boxes;
+  // The bytes changed, so the group id must be recomputed. `assignGroupID`
+  // refuses a transaction that already carries one.
+  for (const t of txns) t.group = undefined;
+  return algosdk.assignGroupID(txns);
+}
+
 export function markMarketsFor(snap: CvaSnapshot): number[] {
   const funded = snap.allocations
     .filter((a) => BigInt(String(a.lp_share_amount ?? 0)) > BigInt(0))
@@ -621,7 +743,11 @@ export async function buildCvaWithdraw(input: {
         minLongAmount: minAlgo, minShortAmount: minUsdc,
         ...refs(snap),
       } as never, sp) as algosdk.Transaction[]
-    : buildV2CvaWithdrawFromMarketTransactions({
+    // The from-market builder is the ONE that drops the allocation boxes when
+    // mark calls exist. Patched inside `build` so the probe, our assertion and
+    // the final simulation all run against the same bytes the user signs.
+    : declareActiveAllocationBoxes(
+      buildV2CvaWithdrawFromMarketTransactions({
         sender, marketId: route.marketId, shareAmount: input.shareAmount,
         minLongAmount: minAlgo, minShortAmount: minUsdc,
         yieldRecallMode: 1,
@@ -629,7 +755,9 @@ export async function buildCvaWithdraw(input: {
         maxShortReceiptAmount: input.maxShortReceipt,
         marketYieldRegistry: registryRecord,
         ...refs(snap),
-      } as never, sp) as algosdk.Transaction[];
+      } as never, sp) as algosdk.Transaction[],
+      snap.state.activeMarkets,
+    );
 
   const event = route.routeType === "idle" ? "v2_cva_idle_withdrawn" : "v2_cva_market_withdrawn";
 
