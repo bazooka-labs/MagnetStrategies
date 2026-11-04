@@ -1857,7 +1857,15 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   const indexAssetId = Number(state.core.index_asset_id);
   const longAssetId = Number(state.core.long_asset_id);
   const shortAssetId = Number(state.core.short_asset_id);
-  const registry = await readYieldRegistry(algod, marketId, collateralAssetId, indexAssetId);
+  /**
+   * The pool's SHORT asset, not the position's collateral.
+   *
+   * This read `collateralAssetId` between 52d3e9d and now — my own change,
+   * made when threading collateral through the close path. It is identical
+   * for a USDC position and fatal for an ALGO one: there is no `yc2:` box for
+   * ALGO, so the close died on "box not found" before any assertion ran.
+   */
+  const registry = await readYieldRegistry(algod, marketId, shortAssetId, indexAssetId);
 
   /**
    * Recall caps, from our own close quote.

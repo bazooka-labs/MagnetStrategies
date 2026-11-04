@@ -1165,11 +1165,31 @@ async function readFolksPoolManager(algod: algosdk.Algodv2, poolAppId: number): 
 
 /** Assemble the registry for one market. See `YieldRegistry`. */
 export async function readYieldRegistry(
-  algod: algosdk.Algodv2, marketId: number, collateralAssetId: number, indexAssetId: number,
+  algod: algosdk.Algodv2, marketId: number,
+  /**
+   * The asset whose FOLKS strategy box (`yc2:`) to read — the pool's stable
+   * side, i.e. USDC.
+   *
+   * **Not the position's collateral**, though it was called
+   * `collateralAssetId` until 2026-11-04 and every caller passed
+   * `COLLATERAL_ASSET_ID`, which is USDC. The two were the same value for as
+   * long as collateral was only ever USDC, so the name went unchallenged.
+   *
+   * They are not the same thing. Measured: `yc2:` boxes exist ONLY for asset
+   * 31566704, on both markets — the ALGO side of a pool earns through the
+   * xALGO vault (`mxac:`), read separately above. Passing an ALGO collateral
+   * id here reads a box that does not exist and the close dies on a 404
+   * "box not found" before it can be asserted or simulated.
+   *
+   * Renamed so the next person cannot make that substitution by reading the
+   * signature.
+   */
+  folksAssetId: number,
+  indexAssetId: number,
 ): Promise<YieldRegistry> {
   const [xalgo, folks] = await Promise.all([
     readBox(algod, PEX_APPS.marketXAlgoYieldVault, "mxac:", marketId, XALGO_STRATEGY_FIELDS),
-    readBox(algod, PEX_APPS.marketYieldVault, "yc2:", [marketId, collateralAssetId], YIELD_STRATEGY_FIELDS),
+    readBox(algod, PEX_APPS.marketYieldVault, "yc2:", [marketId, folksAssetId], YIELD_STRATEGY_FIELDS),
   ]);
   const consensusAppId = Number(xalgo.consensus_app_id);
   const folksPoolAppId = Number(folks.folks_pool_app_id);
@@ -1213,10 +1233,12 @@ export async function readYieldRegistry(
         xalgo_provider_fee_credit_per_call_microalgos: XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO,
       },
       {
-        market_id: marketId, asset_id: collateralAssetId, strategy_kind: 1,
+        // The Folks strategy describes the asset it is FOR, which is the
+        // stable side of the pool — the same id the `yc2:` box is keyed by.
+        market_id: marketId, asset_id: folksAssetId, strategy_kind: 1,
         folks_pool_app_id: folksPoolAppId,
         folks_pool_manager_app_id: poolManager,
-        underlying_asset_id: collateralAssetId,
+        underlying_asset_id: folksAssetId,
         receipt_asset_id: Number(folks.f_asset_id),
         f_asset_id: fAssetId,
       },
