@@ -26,13 +26,45 @@ import {
 } from "@/lib/strategy/pex/config";
 
 const algod = new algosdk.Algodv2("", "https://mainnet-api.algonode.cloud", "");
-/** The wallet holding the only ALGO-collateral long on market 1. */
-const HOLDER = "QWDN25WM4CPZHDZ4IYRJVHD32CQSUTXJXJQ3UEF3WKFIP6JUC2JLRWI4NY";
 const SENTINEL = "STOP BEFORE SIGNING";
+
+/**
+ * Find ANY live ALGO-collateral position on market 1, whoever holds it.
+ *
+ * It used to name a wallet. That wallet's position is not ours to keep: it
+ * can be closed or resized at any moment, and it grew tenfold in a day while
+ * this file was being written. A regression test for the ALGO close must not
+ * depend on one stranger's trade still being open.
+ *
+ * Reads the `p2:` key space directly rather than guessing an owner — the key
+ * is `p2: ‖ marketId ‖ collateralAssetId ‖ side ‖ owner`, so every
+ * ALGO-collateral position on the market is enumerable.
+ */
+async function anyAlgoPosition(): Promise<{ owner: string; side: 1 | 2 } | null> {
+  const { boxes } = await algod.getApplicationBoxes(PEX_APPS.trading).max(1000).do();
+  for (const b of boxes) {
+    const n = Buffer.from(b.name);
+    if (n.length < 59 || n.subarray(0, 3).toString() !== "p2:") continue;
+    if (n.readBigUInt64BE(3) !== BigInt(1)) continue;            // market 1
+    if (n.readBigUInt64BE(11) !== BigInt(PEX_ASSETS.algo)) continue; // ALGO collateral
+    const side = Number(n.readBigUInt64BE(19)) as 1 | 2;
+    return { owner: algosdk.encodeAddress(n.subarray(27, 59)), side };
+  }
+  return null;
+}
 
 describe("an ALGO-collateral close", () => {
   it("builds, asserts and simulates on real bytes", async () => {
-    const pos = await readPosition(algod, HOLDER, 1, PEX_ASSETS.algo, 1);
+    const found = await anyAlgoPosition();
+    if (!found) {
+      throw new Error(
+        "No ALGO-collateral position on market 1 to exercise. Open one from "
+        + "/trade/admin; this test is vacuous without one.",
+      );
+    }
+    const { owner: HOLDER, side: sideCode } = found;
+    const side = sideCode === 1 ? "long" as const : "short" as const;
+    const pos = await readPosition(algod, HOLDER, 1, PEX_ASSETS.algo, sideCode);
     if (!pos || pos.size_usd === BigInt(0)) {
       // The one ALGO position on chain belongs to someone else and may be
       // closed at any time. Say so loudly rather than passing vacuously.
@@ -47,7 +79,7 @@ describe("an ALGO-collateral close", () => {
       getOraclePayload(PEX_APPS.trading, 1),
     ]);
     const quote = quoteClose({
-      state, funding, oracle, side: "long", owner: HOLDER,
+      state, funding, oracle, side, owner: HOLDER,
       position: pos as unknown as Record<string, bigint>,
       sizeUsdMicro: pos.size_usd,
       collateralAssetId: PEX_ASSETS.algo,
@@ -74,7 +106,7 @@ describe("an ALGO-collateral close", () => {
     await expect(closePosition({
       algod,
       signTransactions: async () => { throw new Error(SENTINEL); },
-      sender: HOLDER, marketId: 1, side: "long",
+      sender: HOLDER, marketId: 1, side,
       collateralAssetId: PEX_ASSETS.algo,
       sizeUsdMicro: pos.size_usd, position: pos, quote, slippageBps: 100,
     })).rejects.toThrow(SENTINEL);
