@@ -505,6 +505,30 @@ BTC/USD earned **$0.00** in fees over the measured week.
 annualizes to +14,813% from 6 days and +97% from 55 — short windows are
 nonsense here too.
 
+## Open item — `pools/` holds two different things (2026-11-04)
+
+Deferred deliberately; raised and parked the same day.
+
+`lib/strategy/pools/` and `components/strategy/pools/` hold BOTH the C-Vault
+and PEX's direct market pools. Since the Strategy page split into a **Vaults**
+pill and a **Liquidity Pools** pill, "pools" in the source no longer maps
+cleanly onto "Pools" in the UI.
+
+The call-site naming was fixed where it was genuinely misleading — the tab key
+is `vaults`, and `showPools` became `showDirectPools`. The DIRECTORY was left
+alone on purpose:
+
+- that layer is not only vaults, so renaming it `vaults/` would be less
+  accurate rather than more;
+- CLAUDE.md documents `strategy/{perps,pools}` as a convention mirroring the
+  docs tree, so the rename is a docs change too;
+- it touches roughly forty imports.
+
+**If revisited**, the honest shape is a split rather than a rename:
+`strategy/vaults/` for the C-Vault and `strategy/pools/` for the direct market
+pools. That is its own change with its own review, not something to fold into
+a UI tweak.
+
 ## Open items — C-Vault withdrawal (2026-11-03)
 
 Found while fixing the `gm2:` box-reference failure
