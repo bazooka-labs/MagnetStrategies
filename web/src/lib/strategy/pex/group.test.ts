@@ -37,7 +37,46 @@ const EXEC = BigInt(106_000_000_000);      // execution price, Price12
 const INDEX = BigInt(106_500_000_000);
 const COLLATERAL = BigInt(25_000_000);     // $25
 const SIZE = BigInt(100_000_000);          // $100 notional
-const ORACLE_MSG = new Uint8Array(133).fill(7);
+/**
+ * A REAL-SHAPED signed message, not 133 bytes of filler.
+ *
+ * The leverage check prices the collateral from this message, so a message
+ * that cannot be decoded makes the group unpriceable and the honest-group
+ * test fail with `leverage_unpriceable`. That is the check working: filler
+ * bytes carry no price, and refusing to guess one is the point.
+ *
+ * Layout pinned in `oracle.ts`: magic "PDX2", version 3, 32-byte genesis
+ * hash, then twelve big-endian uint64s. USDC is the short asset and ALGO the
+ * long one, matching both live markets. The short price is set to the live
+ * band's midpoint rather than exactly 1e12, because USDC is NOT par: measured
+ * 2026-11-03 it signs around 0.9998.
+ */
+const USDC_PRICE12 = BigInt(999_799_062_875);
+const ALGO_PRICE12 = BigInt(90_665_762_000);
+function oracleMessage(opts: {
+  longAssetId?: bigint; shortAssetId?: bigint;
+  longPrice?: bigint; shortPrice?: bigint;
+} = {}): Uint8Array {
+  const out = new Uint8Array(133);
+  out.set([0x50, 0x44, 0x58, 0x32], 0);   // "PDX2"
+  out[4] = 3;                              // version
+  out.fill(0x11, 5, 37);                   // genesis hash
+  const dv = new DataView(out.buffer);
+  const words = [
+    BigInt(PEX_APPS.trading),              // targetAppId
+    BigInt(1),                             // marketId
+    BigInt(0),                             // indexAssetId
+    opts.longAssetId ?? BigInt(0),         // longAssetId  (ALGO)
+    opts.shortAssetId ?? BigInt(31566704), // shortAssetId (USDC)
+    INDEX, INDEX,                          // index min/max
+    opts.longPrice ?? ALGO_PRICE12, opts.longPrice ?? ALGO_PRICE12,
+    opts.shortPrice ?? USDC_PRICE12, opts.shortPrice ?? USDC_PRICE12,
+    BigInt(1_790_000_000),                 // publishedAt
+  ];
+  words.forEach((w, i) => dv.setBigUint64(37 + i * 8, w, false));
+  return out;
+}
+const ORACLE_MSG = oracleMessage();
 const ORACLE_SIG = new Uint8Array(64).fill(9);
 
 const u64 = (v: bigint) => algosdk.encodeUint64(v);
@@ -97,6 +136,15 @@ const shownOpen = (): DisplayedOpen => ({
   storagePaymentMicro: BigInt(0),
   sender: USER, marketId: 1, side: 1, collateralAssetId: PEX_ASSETS.usdc,
   collateralAmountMicro: COLLATERAL, sizeUsdDeltaMicro: SIZE,
+  /**
+   * What a card would have shown for this group.
+   *
+   * Derived from the fixture's own size and collateral, NOT from the price the
+   * assertion prices with — so the two arrive by different routes and a unit
+   * error in the assertion makes them disagree. For USDC the signed short
+   * price sits about 2 bps off par, far inside the 150 bp budget.
+   */
+  asRenderedLeverage: Number(SIZE) / Number(COLLATERAL),
   acceptablePrice12: (EXEC * BigInt(10_030)) / BigInt(10_000),
   executionPrice12: EXEC, indexPrice12: INDEX, slippageBps: 50,
   oracleMessage: ORACLE_MSG, oracleSignature: ORACLE_SIG,

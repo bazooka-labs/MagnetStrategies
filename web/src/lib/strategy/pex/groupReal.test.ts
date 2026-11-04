@@ -88,6 +88,15 @@ const shownOpen = (c: Captured): DisplayedOpen => ({
   collateralAssetId: COLLATERAL_ASSET_ID,
   collateralAmountMicro: BigInt(c.collateralAmountMicro),
   sizeUsdDeltaMicro: BigInt(c.sizeUsdDeltaMicro),
+  /**
+   * What a card would have shown for this group.
+   *
+   * Derived from the fixture's own size and collateral, NOT from the price the
+   * assertion prices with — so the two arrive by different routes and a unit
+   * error in the assertion makes them disagree. For USDC the signed short
+   * price sits about 2 bps off par, far inside the 150 bp budget.
+   */
+  asRenderedLeverage: Number(c.sizeUsdDeltaMicro) / Number(c.collateralAmountMicro),
   acceptablePrice12: BigInt(c.acceptablePrice12),
   executionPrice12: BigInt(c.executionPrice12),
   indexPrice12: BigInt(c.indexPrice12),

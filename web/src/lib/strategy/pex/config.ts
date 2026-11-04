@@ -465,6 +465,32 @@ export const MAX_LIQUIDATION_DRIFT_BPS = 150;
  */
 export const MAX_NET_COLLATERAL_DRIFT_BPS = 50;
 
+/**
+ * How far the group's own leverage may sit from the leverage the card rendered.
+ *
+ * ── Why this needs a budget at all ──────────────────────────────────────────
+ * The group's leverage is computed from the collateral price inside the
+ * group's SIGNED ORACLE MESSAGE, and that message is fetched as late as
+ * possible — deliberately, so it has maximum validity left when the wallet
+ * prompt appears. It is therefore NEWER than the price the card rendered
+ * from. With ALGO collateral the collateral's own price moves leverage
+ * directly, so some divergence is correct behaviour, not a fault.
+ *
+ * ── Why 150 ────────────────────────────────────────────────────────────────
+ * The same budget as `MAX_ENTRY_DRIFT_BPS` and `MAX_LIQUIDATION_DRIFT_BPS`,
+ * and for the same reason: these are the figures that move with a price
+ * between render and signature. The index is held to 50 because it is the
+ * price itself; anything derived from it gets 150.
+ *
+ * It is loose enough never to fire on drift and tight enough to be worth
+ * having: the failures this exists to catch are not marginal. A micro-unit
+ * conflation (µALGO read as µUSD) is wrong by the ALGO price — on the order
+ * of 100,000 bps — and a mis-sized order is wrong by a multiple. A check that
+ * catches a 2% error and a check that catches a 10x error are the same check
+ * in practice; only the second kind actually happens.
+ */
+export const MAX_LEVERAGE_DRIFT_BPS = 150;
+
 /** Keeper fee escrowed per bracket, in USDC. Floor 0.10; read policy live. */
 export const CHILD_KEEPER_FEE_USDC = 0.1;
 

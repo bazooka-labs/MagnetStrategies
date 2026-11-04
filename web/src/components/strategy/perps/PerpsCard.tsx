@@ -1204,6 +1204,19 @@ export function PerpsCard({
           // The same `netCollateralUsd` the cost table prints as
           // "Backing the position", scaled the way the guard compares it.
           asRenderedNetCollateralMicro: BigInt(Math.round(quote.netCollateralUsd * 1e6)),
+          /**
+           * The leverage this render showed, EXACT.
+           *
+           * The card prints `quote.leverage.toFixed(2)`; the unrounded value
+           * goes here because the assertion's budget is for price drift, and
+           * two decimal places would spend most of it on rounding at low
+           * leverage.
+           *
+           * Taken from this render's closure, like every other `asRendered`
+           * field — that is what makes it the number the user acted on rather
+           * than one recomputed afterwards.
+           */
+          asRenderedLeverage: quote.leverage,
         },
         onStage: setStage,
       });

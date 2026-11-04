@@ -155,6 +155,17 @@ export type OpenPositionInput = {
     asRenderedLiquidationPrice12: bigint;
     /** "Backing the position" on the cost table, 1e6-scaled USD. */
     asRenderedNetCollateralMicro: bigint;
+    /**
+     * The leverage the card computed for this render — EXACT, not the rounded
+     * figure it prints.
+     *
+     * Carried all the way into `assertOpenGroup`, where it is the only
+     * non-circular reference the leverage check has: everything else it could
+     * compare against is pinned to the group by an earlier equality, so a
+     * ratio of those is the same number on both sides. See the note on
+     * `DisplayedOpen.asRenderedLeverage`.
+     */
+    asRenderedLeverage: number;
   };
   slippageBps?: number;
   onStage?: (s: OpenStage) => void;
@@ -810,6 +821,9 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
     acceptablePrice12: acceptablePrice,
     executionPrice12: probe.executionPrice12,
     indexPrice12: oracle.indexPrice12,
+    // What the SCREEN said, not what this function just computed. Passing
+    // `probe.leverage` here would restore the tautology by another route.
+    asRenderedLeverage: displayed.asRenderedLeverage,
     slippageBps,
     oracleMessage: oracle.message,
     oracleSignature: oracle.signature,
@@ -863,6 +877,7 @@ async function openPositionInner(input: OpenPositionInput): Promise<OpenPosition
       acceptablePrice12: acceptablePrice,
       executionPrice12: probe.executionPrice12,
       indexPrice12: oracle.indexPrice12,
+      asRenderedLeverage: displayed.asRenderedLeverage,
       slippageBps,
       oracleMessage: oracle.message,
       oracleSignature: oracle.signature,

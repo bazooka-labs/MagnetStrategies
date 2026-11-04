@@ -33,6 +33,7 @@ import {
   ALGORAND_MAINNET_GENESIS_HASH_HEX,
   BUILDER_ADDRESS,
   MAX_KEEPER_FEE_ESCROW_USDC,
+  MAX_LEVERAGE_DRIFT_BPS,
   PEX_APPS,
   PEX_ASSETS,
   POSITION_BUILDER_FEE_BPS,
@@ -610,11 +611,91 @@ export type DisplayedOpen = {
   executionPrice12: bigint;
   /** Index price the card displayed, Price12. Shown to the user, not the anchor. */
   indexPrice12: bigint;
+  /**
+   * The leverage the CARD COMPUTED for the render the user acted on.
+   *
+   * ── Why this field has to exist ────────────────────────────────────────
+   * Without it the leverage check is a tautology. `size_usd_delta` pins the
+   * group's size to `sizeUsdDeltaMicro` and `transfer_amount` pins the
+   * transfer to `collateralAmountMicro`, both by exact equality — so any
+   * ratio of those two is the same number on both sides and cannot fail.
+   * That is what shipped, and an independent review found it.
+   *
+   * The only way to make the check mean something is to compare against a
+   * figure that did NOT come from the same two numbers: what was on screen.
+   *
+   * Pass the EXACT value, not the rounded one the card prints. "3.00x" is
+   * two decimal places, and at low leverage that rounding is worth more than
+   * the price drift this is trying to tolerate.
+   *
+   * Zero means "the card showed no leverage", and the check is skipped — the
+   * same convention `asRenderedLiquidationPrice12` uses for an absent value.
+   */
+  asRenderedLeverage: number;
   slippageBps: number;
   /** The exact verified payload bytes — not a re-fetch. */
   oracleMessage: Uint8Array;
   oracleSignature: Uint8Array;
 };
+
+/** Price12 fixed-point scale, as PEX signs prices. */
+import { decodeOracleMessage } from "@/lib/strategy/pex/oracle";
+
+const PRICE12_SCALE = BigInt(1_000_000_000_000);
+
+/**
+ * What one whole unit of `assetId` is worth in USD, from the group's OWN
+ * signed oracle message. Null when the message does not price that asset.
+ *
+ * ── Why the price must come from here ──────────────────────────────────────
+ * The leverage check exists to catch a group that does not match the screen.
+ * If the price used to check it were supplied by the same caller that built
+ * the group, the check would be circular again — a wrong build would simply
+ * arrive with a matching wrong price. This message is signed by PEX, pinned
+ * to the verified payload, and is the same data the CONTRACT prices against,
+ * so it is the one price in reach that the frontend cannot choose.
+ *
+ * ── The mid, not an edge ───────────────────────────────────────────────────
+ * Each asset is signed as a min/max band. The mid is used, matching
+ * `OraclePayload.indexPrice12`. Measured live the short band spans about 4
+ * bps and the long band about 4 bps, so the choice moves the result by
+ * fractions of a basis point against a 150 bp budget. Picking an edge would
+ * bias every check in one direction for no benefit.
+ *
+ * ── Both markets, one rule ─────────────────────────────────────────────────
+ * ALGO is the long asset and USDC the short asset on BOTH live markets
+ * (market 1 ALGO/USD and market 2 BTC/USD, read from `m2:` 2026-11-03). So a
+ * collateral price is always available from the market's own message and no
+ * cross-market oracle read is needed — including for ALGO collateral on the
+ * BTC market, which would otherwise have to price ALGO from somewhere else.
+ *
+ * Note this prices by ROLE, never by a hardcoded asset id: if PEX relists a
+ * market against different assets, this follows the message rather than
+ * silently pricing the wrong thing.
+ */
+function collateralPriceFromMessage(
+  msg: Uint8Array | null, assetId: number,
+): bigint | null {
+  if (!msg) return null;
+  let decoded;
+  try {
+    decoded = decodeOracleMessage(msg);
+  } catch {
+    // Malformed or unexpected layout. The oracle_message check reports it; we
+    // simply cannot price from it.
+    return null;
+  }
+  const mid = (lo: bigint, hi: bigint) => (lo + hi) / BigInt(2);
+  if (BigInt(assetId) === decoded.shortAssetId) {
+    return mid(decoded.shortMinPrice, decoded.shortMaxPrice);
+  }
+  if (BigInt(assetId) === decoded.longAssetId) {
+    return mid(decoded.longMinPrice, decoded.longMaxPrice);
+  }
+  // The index asset is deliberately NOT accepted as collateral pricing: on a
+  // synthetic market the index is not a transferable asset at all.
+  return null;
+}
 
 const big = (v: bigint | number | undefined): bigint => BigInt(v ?? 0);
 const hex = (b: Uint8Array): string =>
@@ -1002,6 +1083,13 @@ export function assertOpenGroup(
     ? String(legTxn.assetTransfer.receiver)
     : legTxn?.payment ? String(legTxn.payment.receiver) : null;
 
+  /**
+   * The signed message, read here because the leverage check below prices the
+   * collateral from it. Its equality with the verified payload is asserted
+   * further down, where the rest of the oracle args are checked.
+   */
+  const msg = abiBytes(aMsg);
+
   if (legAsset === null || legAmount === null) {
     fail("collateral_leg", "no collateral transfer immediately before open_or_increase");
   } else {
@@ -1039,15 +1127,75 @@ export function assertOpenGroup(
   }
   did("collateral leg sits before the open call: asset, amount, receiver, no note");
 
-  // Leverage is the whole point: size is a free integer and the transfer is not.
-  if (legAmount !== null && shown.collateralAmountMicro > BigInt(0)) {
-    const argLev = Number(u64(aSize)) / Number(legAmount);
-    const shownLev = Number(shown.sizeUsdDeltaMicro) / Number(shown.collateralAmountMicro);
-    if (Math.abs(argLev - shownLev) > 1e-9) {
-      fail("leverage", `group encodes ${argLev.toFixed(6)}x, screen showed ${shownLev.toFixed(6)}x`);
+  /**
+   * ── Leverage: the group against what the USER SAW ──────────────────────────
+   *
+   * SPEC.md:117 calls this the whole point of the open assertion, because
+   * `sizeUsdDelta` is a free frontend integer and the collateral transfer is
+   * the only thing binding it.
+   *
+   * **The previous version of this check could not fail.** It compared
+   * `aSize / legAmount` against
+   * `shown.sizeUsdDeltaMicro / shown.collateralAmountMicro` — but
+   * `size_usd_delta` has already pinned `aSize` to `shown.sizeUsdDeltaMicro`
+   * by exact equality, and `transfer_amount` has pinned `legAmount` to
+   * `shown.collateralAmountMicro` the same way. Both sides reduced to the
+   * same two numbers. It passed on every group, correct or not, for USDC as
+   * much as for anything else, and it was found by review rather than by a
+   * failure. Its `did(...)` line was claiming a guarantee the code did not
+   * provide.
+   *
+   * Three things make this one real:
+   *
+   * 1. **It compares against `asRenderedLeverage`** — the figure the card
+   *    computed for the render the user acted on. That number does not come
+   *    from the group, so the comparison is not circular.
+   *
+   * 2. **The collateral is valued in USD at a price taken from the group's
+   *    own signed oracle message**, not from anything a caller passed in. A
+   *    caller-supplied price would reintroduce the circularity by another
+   *    route: whoever built the group would also be supplying the number used
+   *    to check it. The message's bytes are pinned to the verified payload
+   *    just below, and the contract itself reads prices from this same
+   *    message.
+   *
+   * 3. **It is denominated in USD**, so it is a leverage for any collateral
+   *    rather than only for one whose micro-unit happens to equal a micro
+   *    dollar. That equality is a property of USDC, and the live signed price
+   *    shows USDC is not even exactly a dollar — the short band sits around
+   *    0.9998 with a ~0.04% spread.
+   *
+   * What it will actually catch: a unit conflation (µALGO read as µUSD is
+   * wrong by the collateral price, ~100,000 bps) and a mis-sized order (wrong
+   * by a multiple). What it tolerates: the oracle message being newer than
+   * the render, which is deliberate and moves leverage legitimately whenever
+   * the collateral is not a dollar.
+   */
+  if (legAmount !== null && legAsset !== null && shown.asRenderedLeverage > 0) {
+    const priced = collateralPriceFromMessage(msg, legAsset);
+    if (priced === null) {
+      // No price for this collateral in the message that the contract itself
+      // will price against. Refused rather than guessed: an unverifiable
+      // leverage is the thing this check exists to prevent.
+      fail("leverage_unpriceable",
+        `the signed oracle message carries no price for collateral asset ${legAsset}`);
+    } else {
+      const collateralUsdMicro = (legAmount * priced) / PRICE12_SCALE;
+      if (collateralUsdMicro <= BigInt(0)) {
+        fail("leverage_zero_collateral", "collateral is worth nothing at the signed price");
+      } else {
+        const groupLev = Number(u64(aSize)) / Number(collateralUsdMicro);
+        const shownLev = shown.asRenderedLeverage;
+        const driftBps = Math.abs(groupLev - shownLev) / shownLev * 10_000;
+        if (driftBps > MAX_LEVERAGE_DRIFT_BPS) {
+          fail("leverage",
+            `group encodes ${groupLev.toFixed(4)}x at the signed price, `
+            + `screen showed ${shownLev.toFixed(4)}x (${driftBps.toFixed(0)} bps apart)`);
+        }
+      }
     }
   }
-  did("encoded leverage equals displayed leverage");
+  did("group leverage, priced from its own signed oracle message, matches the screen");
 
   // Builder tuple: 32-byte address then uint64 bps. Equality, not a bound —
   // the SDK already throws above the cap, so `<= 10` catches nothing.
@@ -1065,7 +1213,13 @@ export function assertOpenGroup(
 
   // The oracle args must be the exact bytes we verified — not a re-fetch, not a
   // re-encode. Anything else means the price checked is not the price signed.
-  const msg = abiBytes(aMsg);
+  //
+  // `msg` is extracted further up, because the leverage check prices the
+  // collateral from it. That it is checked for equality HERE rather than
+  // there is deliberate and safe: `fail` records a finding instead of
+  // throwing, so a group whose oracle bytes are not the verified payload
+  // reports both the bad leverage and the bad message, and `ok` is false
+  // either way.
   const sig = abiBytes(aSig);
   if (!msg || !sameBytes(msg, shown.oracleMessage)) {
     fail("oracle_message", "oracle message arg is not the verified payload bytes");
