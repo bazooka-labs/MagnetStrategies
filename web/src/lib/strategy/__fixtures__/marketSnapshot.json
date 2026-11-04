@@ -1,0 +1,324 @@
+{
+ "capturedAt": "2026-11-04T16:26:37.234Z",
+ "marketId": 1,
+ "state": {
+  "marketId": 1,
+  "core": {
+   "schema_version": {
+    "__big": "3"
+   },
+   "market_id": {
+    "__big": "1"
+   },
+   "index_asset_id": {
+    "__big": "0"
+   },
+   "long_asset_id": {
+    "__big": "0"
+   },
+   "short_asset_id": {
+    "__big": "31566704"
+   },
+   "market_type": {
+    "__big": "1"
+   },
+   "position_conversion_scale": {
+    "__big": "100000000000"
+   },
+   "market_share_asset_id": {
+    "__big": "0"
+   }
+  },
+  "adaptive": {
+   "schema_version": {
+    "__big": "3"
+   },
+   "mode": {
+    "__big": "1"
+   },
+   "saved_factor_milli_bps": {
+    "__big": "855"
+   },
+   "saved_factor_side": {
+    "__big": "1"
+   },
+   "increase_factor_milli_bps": {
+    "__big": "570"
+   },
+   "decrease_factor_milli_bps": {
+    "__big": "144"
+   },
+   "threshold_stable_bps": {
+    "__big": "1000"
+   },
+   "threshold_decrease_bps": {
+    "__big": "500"
+   },
+   "min_factor_milli_bps": {
+    "__big": "0"
+   },
+   "max_factor_milli_bps": {
+    "__big": "855"
+   },
+   "opposing_trader_share_bps": {
+    "__big": "2500"
+   }
+  },
+  "risk": {
+   "min_position_size_usd": {
+    "__big": "5000000"
+   },
+   "min_collateral_usd": {
+    "__big": "5000000"
+   },
+   "initial_margin_bps": {
+    "__big": "500"
+   },
+   "maintenance_margin_bps": {
+    "__big": "250"
+   },
+   "max_open_interest_long": {
+    "__big": "5200000000"
+   },
+   "max_open_interest_short": {
+    "__big": "5200000000"
+   },
+   "max_pool_amount_long": {
+    "__big": "1000000000000000000"
+   },
+   "max_pool_amount_short": {
+    "__big": "1000000000000000000"
+   },
+   "max_pool_usd_for_deposit_long": {
+    "__big": "1000000000000000000"
+   },
+   "max_pool_usd_for_deposit_short": {
+    "__big": "1000000000000000000"
+   },
+   "reserve_factor_long_bps": {
+    "__big": "3000"
+   },
+   "reserve_factor_short_bps": {
+    "__big": "3000"
+   },
+   "max_pnl_factor_for_deposits_bps": {
+    "__big": "9000"
+   },
+   "max_pnl_factor_for_withdrawals_bps": {
+    "__big": "7000"
+   },
+   "max_pnl_factor_for_traders_bps": {
+    "__big": "9000"
+   },
+   "max_pnl_factor_for_adl_bps": {
+    "__big": "8500"
+   },
+   "min_pnl_factor_after_adl_bps": {
+    "__big": "7700"
+   },
+   "position_impact_factor_bps": {
+    "__big": "55"
+   },
+   "max_position_impact_bps": {
+    "__big": "110"
+   },
+   "swap_impact_factor_bps": {
+    "__big": "13"
+   },
+   "max_swap_impact_bps": {
+    "__big": "110"
+   },
+   "open_fee_bps": {
+    "__big": "6"
+   },
+   "close_fee_bps": {
+    "__big": "6"
+   },
+   "liquidation_fee_bps": {
+    "__big": "70"
+   },
+   "max_liquidation_impact_bps": {
+    "__big": "50"
+   },
+   "funding_factor_milli_bps": {
+    "__big": "855"
+   },
+   "funding_interval_seconds": {
+    "__big": "3600"
+   },
+   "base_borrowing_factor_long_milli_bps": {
+    "__big": "2000"
+   },
+   "base_borrowing_factor_short_milli_bps": {
+    "__big": "2000"
+   },
+   "full_usage_borrowing_factor_long_milli_bps": {
+    "__big": "2000"
+   },
+   "full_usage_borrowing_factor_short_milli_bps": {
+    "__big": "2000"
+   },
+   "optimal_usage_factor_long_bps": {
+    "__big": "7000"
+   },
+   "optimal_usage_factor_short_bps": {
+    "__big": "7000"
+   }
+  },
+  "pool": {
+   "long_pool_amount": {
+    "__big": "20060498716"
+   },
+   "short_pool_amount": {
+    "__big": "3088529801"
+   },
+   "long_fee_amount": {
+    "__big": "1743323"
+   },
+   "short_fee_amount": {
+    "__big": "53873926"
+   },
+   "long_protocol_fee_amount": {
+    "__big": "249037"
+   },
+   "short_protocol_fee_amount": {
+    "__big": "110304"
+   },
+   "long_insurance_amount": {
+    "__big": "498116"
+   },
+   "short_insurance_amount": {
+    "__big": "220634"
+   },
+   "swap_impact_pool_long_amount": {
+    "__big": "2033851"
+   },
+   "swap_impact_pool_short_amount": {
+    "__big": "777346"
+   },
+   "position_impact_pool_qty": {
+    "__big": "1899957"
+   },
+   "lent_position_impact_pool_qty": {
+    "__big": "0"
+   },
+   "bad_debt_long_amount": {
+    "__big": "0"
+   },
+   "bad_debt_short_amount": {
+    "__big": "0"
+   },
+   "unpaid_cost_usd": {
+    "__big": "11"
+   },
+   "market_share_supply": {
+    "__big": "3991515111"
+   }
+  },
+  "oi": {
+   "long_oi_usd_with_long_collateral": {
+    "__big": "206204499"
+   },
+   "long_oi_usd_with_short_collateral": {
+    "__big": "2117590000"
+   },
+   "short_oi_usd_with_long_collateral": {
+    "__big": "0"
+   },
+   "short_oi_usd_with_short_collateral": {
+    "__big": "8000000"
+   },
+   "long_oi_tokens_with_long_collateral": {
+    "__big": "209716668"
+   },
+   "long_oi_tokens_with_short_collateral": {
+    "__big": "1877470808"
+   },
+   "short_oi_tokens_with_long_collateral": {
+    "__big": "0"
+   },
+   "short_oi_tokens_with_short_collateral": {
+    "__big": "6637744"
+   },
+   "collateral_sum_long_token_for_longs": {
+    "__big": "2108445782"
+   },
+   "collateral_sum_short_token_for_longs": {
+    "__big": "601365624"
+   },
+   "collateral_sum_long_token_for_shorts": {
+    "__big": "0"
+   },
+   "collateral_sum_short_token_for_shorts": {
+    "__big": "7995199"
+   }
+  },
+  "doi": {
+   "dynamic_oi_margin_version": {
+    "__big": "1"
+   },
+   "dynamic_oi_margin_flags": {
+    "__big": "1"
+   },
+   "dynamic_oi_margin_long_factor_scaled": {
+    "__big": "1000000"
+   },
+   "dynamic_oi_margin_short_factor_scaled": {
+    "__big": "1000000"
+   }
+  },
+  "readAt": 1793809597182
+ },
+ "oracle": {
+  "message": {
+   "__bytes": "UERYMgPAYcTY/B293tLXYEvkVo4/bQQZh6w3veS2ILWrOSSK3wAAAADb9aYoAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAHhq3AAAAAXF5azAAAAABcdjJQAAAAAFxeWswAAAAAXHYyUAAAAAOjD9JoAAAAA6NRYxMAAAAAAautctw=="
+  },
+  "signature": {
+   "__bytes": "eA5fd44K4dnbj9DAQq69NpO1qWr4t30xzSHte8Yzj/I2+/P8a0zbaYF/FJMyHv+e3fDKDeQIHgNVIm/o/4p7Cw=="
+  },
+  "decoded": {
+   "genesisHashHex": "c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adf",
+   "targetAppId": {
+    "__big": "3690309160"
+   },
+   "marketId": {
+    "__big": "1"
+   },
+   "indexAssetId": {
+    "__big": "0"
+   },
+   "longAssetId": {
+    "__big": "0"
+   },
+   "shortAssetId": {
+    "__big": "31566704"
+   },
+   "indexMinPrice": {
+    "__big": "99180000000"
+   },
+   "indexMaxPrice": {
+    "__big": "99280000000"
+   },
+   "longMinPrice": {
+    "__big": "99180000000"
+   },
+   "longMaxPrice": {
+    "__big": "99280000000"
+   },
+   "shortMinPrice": {
+    "__big": "999720000000"
+   },
+   "shortMaxPrice": {
+    "__big": "999995000000"
+   },
+   "publishedAt": {
+    "__big": "1793809591"
+   }
+  },
+  "indexPrice12": {
+   "__big": "99230000000"
+  },
+  "ageSeconds": 6,
+  "signatureVerified": true
+ }
+}

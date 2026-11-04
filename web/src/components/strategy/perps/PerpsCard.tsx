@@ -502,13 +502,16 @@ export function PerpsCard({
         state: data.state, oracle: data.oracle, side, collateralAmountMicro,
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
         collateralAssetId,
+        // Same reason as the quote: unpriceable collateral throws, the catch
+        // returns null, and a null ceiling reads as "no size clears".
+        algoPrice12,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       // Must match the bar's. Widening the bar without widening this leaves
       // every candidate rejected by `quoteOpen` and the ceiling pinned at the
       // floor — the same wrong answer by a longer route.
       }, { marketCapacityApplies: !isLimit });
     } catch { return null; }
-  }, [data, bar, side, collateralUsd, collateralAssetId, collateralAmountMicro]);
+  }, [data, bar, side, collateralUsd, collateralAssetId, collateralAmountMicro, algoPrice12]);
 
   /**
    * Would this size open RIGHT NOW, ignoring that it is a limit order?
@@ -720,6 +723,12 @@ export function PerpsCard({
         collateralAmountMicro, notionalUsd: notional,
         builderAddress: BUILDER_ADDRESS || "A".repeat(58),
         collateralAssetId,
+        // Required whenever the collateral is not USD-denominated: without
+        // it `quoteOpen` cannot value ALGO and throws, the catch below
+        // swallows it, and the card reports "no size clears" for every
+        // amount. The admin page passed it and the card did not, which is
+        // why one worked and the other did not.
+        algoPrice12,
         slippageBps: DEFAULT_SLIPPAGE_BPS,
       });
     } catch { return null; }
