@@ -158,6 +158,26 @@ and the remaining work are in
 one $20 ALGO position on the whole exchange, against two fund-safety
 assertions that would have to be loosened.
 
+**The close refund is larger than its parts, and one constant may be stale.**
+The first ALGO round trip (2026-11-04) returned two inner payments: the trade
+payout, and **201,989 µALGO** of storage/box refund. That does not decompose
+as `V2_POSITION_BOX_MBR_MICRO_ALGO` (70,900) + storage escrow (100,200) =
+171,100 — it is 30,889 more. `201,989 − 100,200 = 101,789` would be consistent
+with a position-box MBR of 101,789 rather than 70,900, and SPEC.md:472 warns
+that **both order- and position-box MBR are layout-derived and move at
+cutover**, having already caught the order-box constant stale once.
+
+Not currently reachable: every storage payment ever made to the Trading app is
+**100,200** (43 occurrences on chain, no other value), so the assertion's
+`amt === POSITION_BOX_MBR_MICRO_ALGO` branch — the "top-up" case in
+`storage_payment_unpinned` — has never fired. If the real MBR is 101,789 and a
+group ever pays it, our assertion would REFUSE a correct group.
+
+**Unresolved:** derive the position-box MBR from the live box rather than the
+SDK constant, or pin it from a real top-up when one appears. The refund being
+bigger than expected costs the user nothing; the stale pin could cost them a
+trade.
+
 **The leverage assertion in `group.ts` is a tautology, for USDC too.**
 `argLev = sizeUsdDelta / legAmount` versus
 `shownLev = shown.sizeUsdDeltaMicro / shown.collateralAmountMicro` is implied
