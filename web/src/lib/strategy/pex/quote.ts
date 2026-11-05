@@ -97,13 +97,30 @@ export type CloseQuote = {
    */
   payoutUsd: number | null;
   pnlUsd: number;
-  closeFeeUsd: number;
-  builderFeeUsd: number;
+  /*
+    The cost breakdown, in USD — or **null when the collateral cannot be
+    priced**, which is every non-USD collateral with no ALGO price to hand.
+
+    They were plain `number` and the fallback divided base units by 1e6, so an
+    ALGO fee arrived as a figure ~10.7x too large wearing a dollar sign. Null
+    is the honest answer and the compiler now makes every consumer face it.
+  */
+  closeFeeUsd: number | null;
+  builderFeeUsd: number | null;
   /** Gross accrued funding cost, unsigned. Not what settled — see `fundingNetUsd`. */
-  fundingFeeUsd: number;
-  borrowingFeeUsd: number;
+  fundingFeeUsd: number | null;
+  borrowingFeeUsd: number | null;
   /** Funding and borrowing as settled into collateral. Positive = paid to you. */
-  fundingNetUsd: number;
+  fundingNetUsd: number | null;
+  /**
+   * Funding CLAIMED as a separate output leg, in USD. Positive = paid to you.
+   *
+   * Distinct from `fundingNetUsd`, which is only what settled into collateral.
+   * Both are real and the two together are what reconciles a close; omitting
+   * this one is what made the panel's cost itemisation disagree with its own
+   * headline. Null when a leg is in an asset we cannot price.
+   */
+  claimedFundingUsd: number | null;
   impactUsd: number;
   liquidatable: boolean;
   raw: Record<string, unknown>;
@@ -678,6 +695,38 @@ export function quoteClose(input: {
   ) as unknown as Record<string, unknown>;
 
   const outputs = aggregateCloseOutputs(raw, input.state.core);
+  /**
+   * The claimable funding legs, valued in USD.
+   *
+   * These are paid in the market's long/short asset — NOT necessarily the
+   * collateral — so they are valued through `valueCloseOutputs` exactly as the
+   * payout is, never through `closeColUsd`.
+   *
+   * They exist here because the panel's "Exit costs, net" line did not add up.
+   * The headline is `net − priceMove`, which is exact by construction, but the
+   * items printed beside it summed to −$0.277 against a headline of +$0.55 on
+   * a real close. The missing $0.83 was this: `claimable_short_token_output`,
+   * inside `payoutUsd` and absent from `fundingNetUsd`, which only covers
+   * `collateral_funding_net_amount`. Every listed term was negative under a
+   * heading that said "costs", so the line read as nonsense rather than as
+   * incomplete.
+   */
+  const claimedFundingUsd = valueCloseOutputs(
+    aggregateCloseOutputs(
+      {
+        claimable_long_token_output: raw.claimable_long_token_output,
+        claimable_short_token_output: raw.claimable_short_token_output,
+      },
+      input.state.core,
+    ),
+    {
+      collateralAssetId: input.collateralAssetId,
+      indexAssetId: Number(input.state.core.index_asset_id),
+      indexPrice12: input.oracle.indexPrice12,
+      algoPrice12: input.algoPrice12,
+    },
+  );
+
   const payoutUsd = valueCloseOutputs(outputs, {
     collateralAssetId: input.collateralAssetId,
     indexAssetId: Number(input.state.core.index_asset_id),
@@ -691,14 +740,27 @@ export function quoteClose(input: {
   /**
    * Collateral-token fields, valued in dollars.
    *
-   * Falls back to the raw number when the collateral cannot be priced, which
-   * is exact for USDC and the previous behaviour everywhere else. It does not
-   * return null: these are cost breakdown lines, and dropping them silently
-   * would be worse than the pre-existing approximation.
+   * ── The fallback used to LIE for ALGO ────────────────────────────────────
+   * It returned `toUsd(v)` whenever the collateral could not be priced, on the
+   * reasoning that this "is exact for USDC and the previous behaviour
+   * everywhere else", and that dropping a cost line was worse than "the
+   * pre-existing approximation".
+   *
+   * For ALGO it is not an approximation. `toUsd` divides base units by 1e6, so
+   * a 2,070,238 µALGO builder fee came back as "$2.07" against a true $0.19 —
+   * out by 10.7x at ALGO ≈ $0.093. An audit measured exactly that on market 2:
+   * $1.054 shown against $0.098 true.
+   *
+   * Exact for a USD-denominated collateral and null for anything else, now.
+   * The panel already hides these lines when `algoPrice12` is missing, so this
+   * costs nothing there — but `CloseQuote` is a shared type, and any other
+   * consumer was being handed ALGO counts labelled USD.
    */
-  const closeColUsd = (v: unknown) => {
+  const closeColUsd = (v: unknown): number | null => {
     try { return collateralUsdOf(input.collateralAssetId, big(v), input.algoPrice12); }
-    catch { return toUsd(v); }
+    catch {
+      return isUsdDenominated(input.collateralAssetId) ? toUsd(v) : null;
+    }
   };
 
   return {
@@ -748,6 +810,7 @@ export function quoteClose(input: {
      * 2026-09-29: this equals `collateral_delta - collateral_amount` exactly.
      */
     fundingNetUsd: closeColUsd(raw.collateral_funding_net_amount),
+    claimedFundingUsd,
     impactUsd: toUsd(raw.impact_positive_usd) - toUsd(raw.impact_negative_usd),
     liquidatable: Boolean(raw.liquidatable),
     raw,

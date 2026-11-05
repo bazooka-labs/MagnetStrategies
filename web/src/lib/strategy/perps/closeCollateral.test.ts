@@ -52,9 +52,28 @@ const box = (collateralAssetId: number, positionId: bigint) => ({
   entry_price: BigInt(95_000_000_000),
 });
 
+/**
+ * An account that can RECEIVE the payout, and afford the fees.
+ *
+ * `{}` was enough until the close gained a receive-capability preflight: it
+ * reads the sender's holdings so a wallet that is not opted in to a payout
+ * asset is told so, instead of hitting an atomic group failure with a raw
+ * `logic eval error`. These tests are about which BOX the close reads, so the
+ * account is set up to pass and get out of the way — `optInTo` is the knob for
+ * the tests that care.
+ */
+const algodWithAccount = (optInTo: number[] = [31566704], microAlgo = 5_000_000) => ({
+  accountInformation: () => ({
+    do: async () => ({
+      amount: microAlgo,
+      assets: optInTo.map((assetId) => ({ assetId, amount: 0 })),
+    }),
+  }),
+}) as never;
+
 const call = (collateralAssetId: number, position: ReturnType<typeof box>) =>
   closePosition({
-    algod: {} as never,
+    algod: algodWithAccount(),
     signTransactions: async () => [],
     sender: SENDER,
     marketId: 1,

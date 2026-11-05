@@ -38,6 +38,7 @@ import {
   CROSS_MARGIN_BPS,
   DEFAULT_SLIPPAGE_BPS,
   EXIT_RESERVE_MICRO_ALGO,
+  assetName,
   MAX_DISPLAY_DRIFT_BPS,
   MAX_ENTRY_DRIFT_BPS,
   MAX_LIQUIDATION_DRIFT_BPS,
@@ -1828,6 +1829,49 @@ async function closePositionInner(input: ClosePositionInput): Promise<OpenPositi
   if (exitBlocked(pre.kind)) {
     if (pre.detail) console.warn(`perps: preflight refused the close — ${pre.detail}`);
     throw new Error(pre.reason ?? "Trading is unavailable right now.");
+  }
+
+  /*
+    ── What the wallet must be able to RECEIVE, checked before building ──────
+    The close path read no account state at all. Two consequences, both found
+    by audit after an ALGO close shipped:
+
+    1. A close pays out in the market's assets, not only the collateral. A
+       profitable ALGO-collateral SHORT on ALGO/USD is paid its profit in
+       USDC — the real close measured here moved 12.259258 USDC to the owner.
+       An ASA transfer to a wallet that is not opted in FAILS, and the group is
+       atomic, so a holder who never touched USDC had no exit and a raw
+       `logic eval error` to go on. Nobody is in that state today (all seven
+       open positions are opted in, checked 2026-11-05) — this stops the next
+       one.
+
+    2. No ALGO balance check. An empty wallet produced an algod struct dump
+       ("tried to spend 38mA") rather than a sentence.
+
+    Both are REFUSALS, not fixes: nothing is signed either way. The value is
+    that the user is told which of the two it is, in time to do something.
+  */
+  const acct = await algod.accountInformation(sender).do();
+  const assetsHeld = new Set((acct.assets ?? [])
+    .map((a: { assetId?: bigint | number }) => Number(a.assetId)));
+  for (const assetId of [
+    Number(state.core.long_asset_id), Number(state.core.short_asset_id),
+  ]) {
+    // ALGO is not an ASA, so it needs no opt-in. The synthetic index id is
+    // never paid out and never appears here.
+    if (assetId === PEX_ASSETS.algo || assetsHeld.has(assetId)) continue;
+    throw new Error(
+      `Closing this position can pay out ${assetName(assetId)}, and this wallet `
+      + `is not opted in to it. Opt in to ${assetName(assetId)} and try again — `
+      + "your collateral stays safe in the contract until you do.");
+  }
+  const heldMicroAlgo = Number(acct.amount ?? 0);
+  const needMicroAlgo = Number(EXIT_RESERVE_MICRO_ALGO);
+  if (heldMicroAlgo < needMicroAlgo) {
+    throw new Error(
+      `Closing needs about ${(needMicroAlgo / 1e6).toFixed(2)} ALGO in this wallet for `
+      + `network fees; it holds ${(heldMicroAlgo / 1e6).toFixed(6)}. `
+      + "Top it up and try again — nothing was sent.");
   }
 
   // Re-read rather than trusting the panel's copy: a position that moved, was

@@ -424,10 +424,30 @@ export function PositionsPanel({ onLinesChange }: {
            * label and the note beneath it now do, rather than to imply a
            * round-trip figure we cannot compute.
            */
-          const netUsd = p.close?.payoutUsd != null && collateralUsd !== null
-            ? p.close.payoutUsd - collateralUsd : null;
+          /*
+            ── Only a quote PEX would ACCEPT may produce figures ──────────────
+            `quoteClose` returns `ok: false` with `failure_reasons` when the
+            close would be refused — too small to close, already liquidatable,
+            and so on. The numbers it carries alongside that refusal are not a
+            forecast of anything; they are what the SDK computed before giving
+            up.
+
+            They were rendered anyway. An audit drove a refused quote
+            (`close_size_insufficient`) through the real SDK and got a card
+            reading "If closed now $0.83", "Net −$17.54" in red and a price
+            move of −$167.38 — nine times the collateral — above an amber line
+            explaining that PEX would not accept it. The explanation was true
+            and the numbers above it were fiction.
+
+            Gating here rather than at each figure: `netUsd` and `priceMove`
+            feed the headline, the exit-cost itemisation and the payout line,
+            and one missed site is a wrong number on a money screen.
+          */
+          const quote = p.close?.ok ? p.close : null;
+          const netUsd = quote?.payoutUsd != null && collateralUsd !== null
+            ? quote.payoutUsd - collateralUsd : null;
           /** Price movement alone. Not wrong, and not the same thing. */
-          const priceMove = p.close?.pnlUsd ?? null;
+          const priceMove = quote?.pnlUsd ?? null;
           const leverage = collateralUsd !== null && collateralUsd > 0 ? sizeUsd / collateralUsd : null;
           /**
            * Where this position liquidates, and how far that is.
@@ -511,8 +531,11 @@ export function PositionsPanel({ onLinesChange }: {
                       + ` ${assetName(p.collateralAssetId)}`
                       + (collateralUsd !== null ? ` · ${fmtUsd(collateralUsd)}` : "")],
                   ["Entry", fmtPrice(entry)],
-                  ["If closed now", p.close
-                    ? (p.close.payoutUsd !== null ? fmtUsd(p.close.payoutUsd) : "see below")
+                  // `quote`, not `p.close`: a refused quote still carries a
+                  // payout figure, and printing it states a number PEX has
+                  // already declined to honour.
+                  ["If closed now", quote
+                    ? (quote.payoutUsd !== null ? fmtUsd(quote.payoutUsd) : "see below")
                     : "—"],
                   ["Price move", priceMove !== null ? fmtSigned(priceMove) : "—"],
                   ["Liquidation", p.liquidatableNow ? "liquidatable now"
@@ -557,18 +580,54 @@ export function PositionsPanel({ onLinesChange }: {
                   it matches `collateral_delta - collateral_amount` on 9 of 9
                   live positions. Hence `fundingNetUsd`, and hence the sign
                   rendered explicitly rather than assumed negative. */}
-              {p.close && netUsd !== null && priceMove !== null && (
-                <p className="mt-2 text-[11px] text-white/35">
-                  Exit costs, net:{" "}
-                  <span className="tabular-nums text-white/55">{fmtSigned(netUsd - priceMove)}</span>
-                  {" "}— close fee {fmtUsd(p.close.closeFeeUsd)}, Magnet fee{" "}
-                  {fmtUsd(p.close.builderFeeUsd)}, price impact{" "}
-                  {p.close.impactUsd >= 0 ? "+" : "−"}{fmtUsd(Math.abs(p.close.impactUsd))},
-                  {" "}funding {p.close.fundingNetUsd >= 0 ? "+" : "−"}
-                  {fmtUsd(Math.abs(p.close.fundingNetUsd))}
-                  {p.close.fundingNetUsd > 0 && " (paid to you)"}.
-                </p>
-              )}
+              {(() => {
+                /*
+                  ── The itemisation now has to RECONCILE or it is not shown ──
+                  Two defects, both found by audit against a real executed
+                  close:
+
+                  (1) It omitted the claimed-funding leg. The headline is
+                      `net − priceMove`, exact by construction; the items beside
+                      it summed to −$0.277 against a headline of +$0.55. The
+                      missing $0.83 was `claimable_short_token_output`, inside
+                      the payout and absent from `fundingNetUsd`. Every printed
+                      term was negative under a heading reading "costs", so the
+                      line contradicted itself. `claimedFundingUsd` closes it.
+
+                  (2) Each term could be null — an ALGO fee with no ALGO price
+                      used to arrive as a number ~10.7x too large wearing a
+                      dollar sign. Null now, and a missing term means the whole
+                      line is withheld rather than printed short.
+
+                  The residual check is the point: if the parts do not add up to
+                  the headline, something is missing again and the right answer
+                  is to say nothing rather than to publish an itemisation that
+                  does not hold.
+                */
+                if (!quote || netUsd === null || priceMove === null) return null;
+                const { closeFeeUsd, builderFeeUsd, impactUsd, fundingNetUsd, claimedFundingUsd } = quote;
+                if (closeFeeUsd === null || builderFeeUsd === null
+                  || fundingNetUsd === null || claimedFundingUsd === null) return null;
+
+                const headline = netUsd - priceMove;
+                const itemised = -closeFeeUsd - builderFeeUsd + impactUsd
+                  + fundingNetUsd + claimedFundingUsd;
+                // A cent of slack for rounding across five independently
+                // rounded terms; anything larger is a real omission.
+                if (Math.abs(headline - itemised) > 0.01) return null;
+
+                const funding = fundingNetUsd + claimedFundingUsd;
+                return (
+                  <p className="mt-2 text-[11px] text-white/35">
+                    Exit costs, net:{" "}
+                    <span className="tabular-nums text-white/55">{fmtSigned(headline)}</span>
+                    {" "}— close fee −{fmtUsd(closeFeeUsd)}, Magnet fee −{fmtUsd(builderFeeUsd)},
+                    {" "}price impact {impactUsd >= 0 ? "+" : "−"}{fmtUsd(Math.abs(impactUsd))},
+                    {" "}funding {funding >= 0 ? "+" : "−"}{fmtUsd(Math.abs(funding))}
+                    {funding > 0 && " (paid to you)"}.
+                  </p>
+                );
+              })()}
 
               {/* A close is not a single-asset payout: on ALGO/USD a long gets
                   its collateral back in USDC and its profit in ALGO. One dollar
