@@ -5,21 +5,27 @@ import { createPortal } from "react-dom";
 import { X, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
-import { castVote } from "@/lib/uvoteClient";
+import { castVote } from "@/lib/governanceClient";
 import {
-  DECIMAL_FACTOR, VOTE_BOX_MBR, choiceLetter, formatDate,
-  type UVoteProposal,
-} from "@/lib/uvote";
+  VOTE_BOX_MBR, choiceLetter, formatDate,
+  type Proposal,
+} from "@/lib/governance";
 
 interface Props {
-  proposal: UVoteProposal;
+  proposal: Proposal;
   choiceIndex: number;
-  uBalance: number; // base units
+  /** The voter's balance of this proposal's voting asset, in base units. */
+  balance: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess }: Props) {
+export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }: Props) {
+  // Decimals come from the proposal's own era. The live contract asserts
+  // `amount % 10^6 == 0`; flooring with the wrong factor would build a group
+  // the chain rejects, or lock 10x what the voter typed.
+  const era = proposal.era;
+  const factor = 10 ** era.decimals;
   const { activeAddress, signTransactions, algodClient } = useWallet();
   const [status, setStatus] = useState<"idle" | "signing" | "confirming" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -28,10 +34,10 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const maxWhole = Math.floor(uBalance / DECIMAL_FACTOR); // whole $U available
+  const maxWhole = Math.floor(balance / factor); // whole tokens available
   const [amount, setAmount] = useState<string>(maxWhole > 0 ? String(maxWhole) : "");
   const voteCount = Math.min(Math.max(Math.floor(Number(amount) || 0), 0), maxWhole);
-  const lockBaseUnits = voteCount * DECIMAL_FACTOR;
+  const lockBaseUnits = voteCount * factor;
   const busy = status === "signing" || status === "confirming";
 
   async function handleVote() {
@@ -39,9 +45,9 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
     setStatus("signing");
     setErrorMsg("");
     try {
-      await castVote(algodClient, signTransactions, activeAddress, proposal.id, choiceIndex, lockBaseUnits);
+      await castVote(algodClient, signTransactions, activeAddress, proposal.id, choiceIndex, lockBaseUnits, era);
       setStatus("idle");
-      toast.success("Vote cast — $U locked until the vote closes");
+      toast.success(`Vote cast — ${era.unit} locked until the vote closes`);
       onSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Vote failed.";
@@ -66,7 +72,7 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
           </div>
 
           {maxWhole === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-500">You need at least 1 $U to vote.</p>
+            <p className="py-4 text-center text-sm text-gray-500">You need at least 1 {era.unit} to vote.</p>
           ) : (
             <div className="space-y-4">
               <div className="rounded-xl border border-magnet-500/20 bg-magnet-950/30 p-4">
@@ -99,14 +105,14 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
                     className="w-full bg-transparent py-2 text-sm text-white placeholder-gray-600 focus:outline-none"
                     placeholder="0"
                   />
-                  <span className="text-sm font-medium text-gray-500">$U</span>
+                  <span className="text-sm font-medium text-gray-500">{era.unit}</span>
                 </div>
               </div>
 
               <div className="rounded-xl border border-gray-800 bg-black/20 p-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Locked until vote ends</span>
-                  <span className="text-yellow-400 font-medium">{voteCount.toLocaleString()} $U</span>
+                  <span className="text-yellow-400 font-medium">{voteCount.toLocaleString()} {era.unit}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Box deposit (refunded)</span>
@@ -114,12 +120,12 @@ export function VoteModal({ proposal, choiceIndex, uBalance, onClose, onSuccess 
                 </div>
                 <div className="flex items-start gap-2 pt-1 border-t border-gray-800 text-xs text-gray-500">
                   <Lock className="h-3 w-3 text-yellow-500 mt-0.5 flex-shrink-0" />
-                  <span>Reclaim after <span className="text-yellow-400">{formatDate(proposal.endTime)}</span> — you get your $U and the deposit back.</span>
+                  <span>Reclaim after <span className="text-yellow-400">{formatDate(proposal.endTime)}</span> — you get your {era.unit} and the deposit back.</span>
                 </div>
               </div>
 
               <p className="text-xs text-gray-600 leading-relaxed">
-                Only whole $U is locked. Fractional amounts stay in your wallet.
+                Only whole {era.unit} is locked. Fractional amounts stay in your wallet.
                 A small ALGO box deposit is fully refunded when you reclaim.
               </p>
             </div>

@@ -12,9 +12,11 @@
  * nothing — so this is a real cross-page link, and `/tokens#governance` is
  * read by TokensView to open the Governance pill on arrival.
  *
- * Voting is still weighted by $U, which is why the pill belongs in the Magnet
- * Token hero rather than beside the mUSD balance: the holder it concerns is a
- * $U holder. That changes when the governance contract does.
+ * Voting is weighted by mUSD since 2026-11-05, so the holder this pill concerns
+ * is an mUSD holder — not the $U holder reading the hero it sits in. It stays
+ * here anyway, because discovery is the job: a visitor on the Magnet Token page
+ * is a protocol participant, and this is the only standing pointer to an open
+ * vote anywhere in the nav.
  *
  * It shares its count with the section itself through `useUVoteProposals`, so a
  * pill claiming an open vote above a list showing none is not a state the app
@@ -35,13 +37,13 @@
 import Link from "next/link";
 import { Vote as VoteIcon } from "lucide-react";
 import { RAISED_MAGNET } from "../raisedButton";
-import { UVOTE_LIVE } from "@/lib/uvote";
-import { liveCount, useUVoteProposals } from "@/hooks/useUVoteProposals";
+import { GOVERNANCE_LIVE } from "@/lib/governance";
+import { liveCount, useGovernanceProposals } from "@/hooks/useGovernanceProposals";
 
 export function LiveProposalsPill() {
-  const { proposals, loading } = useUVoteProposals();
+  const { proposals, loading } = useGovernanceProposals();
   // Nothing to point at before the contract is live.
-  if (!UVOTE_LIVE) return null;
+  if (!GOVERNANCE_LIVE) return null;
 
   const n = liveCount(proposals);
   const open = n > 0;

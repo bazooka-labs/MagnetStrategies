@@ -27,8 +27,8 @@ import { useCallback, useEffect, useState } from "react";
 import algosdk from "algosdk";
 import { ExternalLink } from "lucide-react";
 import { ALGOD_URLS } from "@/lib/constants";
-import { TREASURY_ADDRESS, formatUsdc } from "@/lib/uvote";
-import { getTreasuryUsdc } from "@/lib/uvoteReads";
+import { TREASURY_ADDRESS, formatUsdc } from "@/lib/governance";
+import { getTreasuryUsdc } from "@/lib/governanceReads";
 import { STAT_TONES } from "@/components/tokens/StatCell";
 
 export function TreasuryStat() {

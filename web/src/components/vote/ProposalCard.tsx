@@ -6,22 +6,33 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel } from "@/components/magnetfi/v2/shared";
 import { VoteModal } from "@/components/vote/VoteModal";
-import { getVoteRecord } from "@/lib/uvoteReads";
-import { claimTokens } from "@/lib/uvoteClient";
+import { getVoteRecord } from "@/lib/governanceReads";
+import { claimTokens } from "@/lib/governanceClient";
 import {
-  choiceLetter, formatDate, formatU, isActive, leadingChoice, totalVotes,
-  type UVoteProposal, type UVoteRecord,
-} from "@/lib/uvote";
+  choiceLetter, formatDate, formatWeight, isActive, leadingChoice, totalVotes,
+  type Proposal, type VoteRecord,
+} from "@/lib/governance";
 
+/**
+ * One proposal, from whichever contract generation it belongs to.
+ *
+ * Every weight on this card is formatted through `proposal.era`, never through
+ * a module constant. The retired $U contract and the live mUSD one write the
+ * same bytes at the same box offsets with different decimals and different
+ * meanings, so a card that took its unit from config would print the legacy
+ * proposal's 35 $U as "35 mUSD" on a page about mUSD.
+ */
 export function ProposalCard({
-  proposal, uBalance, onChanged,
+  proposal, balance, onChanged,
 }: {
-  proposal: UVoteProposal;
-  uBalance: number;
+  proposal: Proposal;
+  /** The voter's balance of THIS proposal's voting asset, in base units. */
+  balance: number;
   onChanged: () => void;
 }) {
   const { activeAddress, signTransactions, algodClient } = useWallet();
-  const [record, setRecord] = useState<UVoteRecord | null>(null);
+  const [record, setRecord] = useState<VoteRecord | null>(null);
+  const era = proposal.era;
   const [voteChoice, setVoteChoice] = useState<number | null>(null);
   const [claiming, setClaiming] = useState(false);
 
@@ -31,8 +42,8 @@ export function ProposalCard({
 
   const refreshRecord = useCallback(async () => {
     if (!activeAddress || !algodClient) { setRecord(null); return; }
-    setRecord(await getVoteRecord(algodClient, proposal.id, activeAddress));
-  }, [activeAddress, algodClient, proposal.id]);
+    setRecord(await getVoteRecord(algodClient, era, proposal.id, activeAddress));
+  }, [activeAddress, algodClient, era, proposal.id]);
 
   useEffect(() => { refreshRecord(); }, [refreshRecord]);
 
@@ -40,8 +51,8 @@ export function ProposalCard({
     if (!activeAddress || !algodClient) return;
     setClaiming(true);
     try {
-      await claimTokens(algodClient, signTransactions, activeAddress, proposal.id);
-      toast.success("Reclaimed your locked $U");
+      await claimTokens(algodClient, signTransactions, activeAddress, proposal.id, era);
+      toast.success(`Reclaimed your locked ${era.unit}`);
       await refreshRecord();
       onChanged();
     } catch (err) {
@@ -67,11 +78,22 @@ export function ProposalCard({
         )}
       </div>
 
+      {/* Which contract this was voted on. Shown only for the retired one:
+          labelling every current proposal "mVote" is noise, but a $U-weighted
+          tally sitting in a list on the mUSD page needs to say why. */}
+      <div>
+        {!era.accepting && (
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-200">
+            {era.name} · weighted by {era.unit}
+          </span>
+        )}
+      </div>
+
       <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
         <Clock className="h-3 w-3" />
         {active ? `Closes ${formatDate(proposal.endTime)}` : `Ended ${formatDate(proposal.endTime)}`}
         <span className="text-gray-700">·</span>
-        {formatU(total)} $U voted
+        {formatWeight(era, total)} {era.unit} voted
       </p>
 
       {/* Choices */}
@@ -81,7 +103,8 @@ export function ProposalCard({
           const share = total > 0 ? (weight / total) * 100 : 0;
           const isMine = record?.choice === i;
           const isWinner = !active && i === winner && total > 0;
-          const canVote = active && !record && !!activeAddress;
+          // A retired era is readable and claimable, never votable.
+          const canVote = active && era.accepting && !record && !!activeAddress;
           return (
             <button
               key={i}
@@ -104,7 +127,7 @@ export function ProposalCard({
                   {isWinner && <Trophy className="h-3.5 w-3.5 text-green-400" />}
                 </span>
                 <span className="shrink-0 font-mono text-xs text-gray-400">
-                  {share.toFixed(0)}% · {formatU(weight)}
+                  {share.toFixed(0)}% · {formatWeight(era, weight)}
                 </span>
               </div>
             </button>
@@ -117,7 +140,7 @@ export function ProposalCard({
         <div className="mt-4 flex items-center justify-between rounded-xl border border-magnet-500/20 bg-magnet-950/30 px-3 py-2.5">
           <span className="flex items-center gap-2 text-xs text-gray-300">
             <CheckCircle2 className="h-4 w-4 text-magnet-400" />
-            You locked {formatU(record.lockedAmount)} $U on {choiceLetter(record.choice)}
+            You locked {formatWeight(era, record.lockedAmount)} {era.unit} on {choiceLetter(record.choice)}
           </span>
           {!active && (
             <button
@@ -125,13 +148,13 @@ export function ProposalCard({
               disabled={claiming}
               className="rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-3 py-1.5 text-xs font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 disabled:opacity-40"
             >
-              {claiming ? "Reclaiming…" : "Reclaim $U"}
+              {claiming ? "Reclaiming…" : `Reclaim ${era.unit}`}
             </button>
           )}
         </div>
       )}
 
-      {active && !record && !activeAddress && (
+      {active && era.accepting && !record && !activeAddress && (
         <p className="mt-4 text-center text-xs text-gray-500">Connect a wallet to vote.</p>
       )}
 
@@ -139,7 +162,7 @@ export function ProposalCard({
         <VoteModal
           proposal={proposal}
           choiceIndex={voteChoice}
-          uBalance={uBalance}
+          balance={balance}
           onClose={() => setVoteChoice(null)}
           onSuccess={() => { setVoteChoice(null); refreshRecord(); onChanged(); }}
         />

@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, PrimaryButton } from "@/components/magnetfi/v2/shared";
 import { CreateProposalModal } from "@/components/vote/CreateProposalModal";
-import { deployUVote, type DeployStep } from "@/lib/uvoteAdmin";
-import { UVOTE_LIVE, UVOTE_APP_ID, UVOTE_NETWORK } from "@/lib/uvote";
+import { deployMVote, type DeployStep } from "@/lib/governanceAdmin";
+import { GOVERNANCE_LIVE, GOVERNANCE_NETWORK, MVOTE } from "@/lib/governance";
 
 export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => void }) {
   const { activeAddress, signTransactions, algodClient } = useWallet();
@@ -21,9 +21,9 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
   async function handleDeploy() {
     if (!activeAddress || !algodClient) return;
     try {
-      const { appId } = await deployUVote(algodClient, signTransactions, activeAddress, setStep);
+      const { appId } = await deployMVote(algodClient, signTransactions, activeAddress, setStep);
       setDeployedId(appId);
-      toast.success(`UVote deployed — App ID ${appId}`);
+      toast.success(`mVote deployed — App ID ${appId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Deploy failed.");
     } finally {
@@ -43,13 +43,13 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
         <ShieldCheck className="h-4 w-4" /> Admin
       </div>
 
-      {UVOTE_LIVE ? (
+      {GOVERNANCE_LIVE ? (
         <Panel className="p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-white">Create a proposal</p>
               <p className="mt-0.5 text-xs text-gray-500">
-                Post a direction question. Voting opens for 7 days · App {UVOTE_APP_ID}
+                Post a direction question. Voting opens for 7 days · App {MVOTE.appId}
               </p>
             </div>
             <button
@@ -64,13 +64,15 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
         <Panel className="p-5">
           <div className="flex items-center gap-2">
             <Rocket className="h-4 w-4 text-magnet-400" />
-            <p className="text-sm font-semibold text-white">Deploy UVote ({UVOTE_NETWORK})</p>
+            <p className="text-sm font-semibold text-white">Deploy mVote ({GOVERNANCE_NETWORK})</p>
           </div>
           <p className="mt-2 text-xs text-gray-500 leading-relaxed">
             A two-step handshake you sign in your wallet: <span className="text-gray-300">(1)</span> create the
             contract (you become <span className="text-gray-300">founder</span>), then{" "}
-            <span className="text-gray-300">(2)</span> fund it + opt into $U. The app is funded with a standing
-            buffer so the first vote always lands.
+            <span className="text-gray-300">(2)</span> fund it + opt into mUSD. The app is funded with a
+            standing buffer so the first vote always lands — the vote box is created at group index 0 but the
+            voter&apos;s MBR payment settles at index 2, so without it the FIRST vote fails its own
+            min-balance check.
           </p>
 
           {deployedId ? (
@@ -83,8 +85,8 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
                 </button>
               </div>
               <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-                Set <code className="text-magnet-300">UVOTE_APP_IDS.{UVOTE_NETWORK} = {deployedId}</code> in{" "}
-                <code className="text-magnet-300">web/src/lib/uvote.ts</code> and redeploy the site to go live.
+                Set <code className="text-magnet-300">MVOTE_APP_IDS.{GOVERNANCE_NETWORK} = {deployedId}</code> in{" "}
+                <code className="text-magnet-300">web/src/lib/governance.ts</code> and redeploy the site to go live.
               </p>
             </div>
           ) : (
@@ -92,7 +94,7 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
               <PrimaryButton onClick={handleDeploy} disabled={!activeAddress || step !== null}>
                 {step === "create" && "Sign 1/2 — creating app…"}
                 {step === "setup" && "Sign 2/2 — funding + opt-in…"}
-                {step === null && "Deploy UVote"}
+                {step === null && "Deploy mVote"}
               </PrimaryButton>
             </div>
           )}

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
-import { createProposal } from "@/lib/uvoteAdmin";
-import { QUESTION_MAX, CHOICE_MAX, choiceLetter } from "@/lib/uvote";
+import { createProposal } from "@/lib/governanceAdmin";
+import { QUESTION_MAX, CHOICE_MAX, choiceLetter } from "@/lib/governance";
 
 export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { activeAddress, signTransactions, algodClient } = useWallet();

@@ -21,13 +21,22 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type algosdk from "algosdk";
 import { useWallet } from "@/hooks/useWallet";
-import { listProposals } from "@/lib/uvoteReads";
-import { UVOTE_LIVE, isActive, type UVoteProposal } from "@/lib/uvote";
+import { listProposals } from "@/lib/governanceReads";
+import { GOVERNANCE_ERAS, isActive, type Proposal } from "@/lib/governance";
 
-type Snapshot = { proposals: UVoteProposal[]; loading: boolean };
+type Snapshot = { proposals: Proposal[]; loading: boolean };
+
+/**
+ * Loading is gated on there being an era to READ, not on mVote being live.
+ *
+ * Those differ for exactly as long as mVote is undeployed: the retired $U app
+ * still holds the protocol's only voting history, and gating on the live
+ * contract would blank that history until the new one ships.
+ */
+const HAVE_ERAS = GOVERNANCE_ERAS.length > 0;
 
 /** Replaced wholesale, never mutated: the identity IS the change signal. */
-let snapshot: Snapshot = { proposals: [], loading: UVOTE_LIVE };
+let snapshot: Snapshot = { proposals: [], loading: HAVE_ERAS };
 const listeners = new Set<() => void>();
 let inflight: Promise<void> | null = null;
 let everLoaded = false;
@@ -58,12 +67,12 @@ function load(algod: algosdk.Algodv2): Promise<void> {
   return inflight;
 }
 
-export function useUVoteProposals() {
+export function useGovernanceProposals() {
   const { algodClient } = useWallet();
   const state = useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 
   useEffect(() => {
-    if (!UVOTE_LIVE || !algodClient || everLoaded || inflight) return;
+    if (!HAVE_ERAS || !algodClient || everLoaded || inflight) return;
     void load(algodClient);
   }, [algodClient]);
 
@@ -75,5 +84,7 @@ export function useUVoteProposals() {
 }
 
 /** The count the pill advertises, defined once so it cannot drift from the list. */
-export const liveCount = (proposals: UVoteProposal[]): number =>
-  proposals.filter((p) => isActive(p)).length;
+export const liveCount = (proposals: Proposal[]): number =>
+  // A retired era cannot have a live proposal, but say so rather than rely
+  // on its last window having closed.
+  proposals.filter((p) => p.era.accepting && isActive(p)).length;

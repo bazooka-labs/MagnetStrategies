@@ -42,36 +42,39 @@ import { Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
-import { getUBalance } from "@/lib/uvoteReads";
-import { useUVoteProposals } from "@/hooks/useUVoteProposals";
-import { UVOTE_LIVE, UVOTE_ADMIN_ADDRESS, formatU, isActive } from "@/lib/uvote";
+import { getVotingBalance } from "@/lib/governanceReads";
+import { useGovernanceProposals } from "@/hooks/useGovernanceProposals";
+import {
+  GOVERNANCE_LIVE, GOVERNANCE_ADMIN_ADDRESS, MVOTE, formatWeight, isActive,
+} from "@/lib/governance";
 
 export function GovernanceSection() {
   const { address, isConnected, algodClient } = useWallet();
-  const isAdmin = isConnected && address === UVOTE_ADMIN_ADDRESS;
+  const isAdmin = isConnected && address === GOVERNANCE_ADMIN_ADDRESS;
 
   /**
    * The proposals come from the shared store, not a fetch of our own: the hero
    * pill counts the same list, and two reads would be two numbers that can
    * disagree about whether a vote is open.
    */
-  const { proposals, loading, refresh } = useUVoteProposals();
+  const { proposals, loading, refresh } = useGovernanceProposals();
   /** The balance is per-wallet, so it stays local — nothing else on the page shows it. */
-  const [uBalance, setUBalance] = useState(0);
+  const [balance, setBalance] = useState(0);
   /** Admin tooling is opt-in even for the admin — it is not what they come here to read. */
   const [adminOpen, setAdminOpen] = useState(false);
 
   useEffect(() => {
-    if (!algodClient || !address) { setUBalance(0); return; }
+    if (!algodClient || !address) { setBalance(0); return; }
     let alive = true;
-    void getUBalance(algodClient, address).then((b) => { if (alive) setUBalance(b); });
+    void getVotingBalance(algodClient, address, MVOTE)
+      .then((b) => { if (alive) setBalance(b); });
     return () => { alive = false; };
   }, [algodClient, address]);
 
   /** After a vote or a claim: re-read the proposals AND this wallet's balance. */
   const load = useCallback(() => {
     refresh();
-    if (algodClient && address) void getUBalance(algodClient, address).then(setUBalance);
+    if (algodClient && address) void getVotingBalance(algodClient, address, MVOTE).then(setBalance);
   }, [refresh, algodClient, address]);
 
   /*
@@ -116,30 +119,35 @@ export function GovernanceSection() {
       )}
 
       {/*
-        ── Where governance is going, stated before the rules it changes ─────
-        A reader arrives here from a pill on the mUSD page and reasonably
-        expects to vote with mUSD. They cannot yet, and the panel below will
-        tell them to lock $U. Saying so FIRST is the difference between a page
-        that reads as mid-migration and one that reads as wrong.
+        ── The $U -> mUSD pivot, as a state rather than a promise ───────────
+        This slot used to say "governance is moving to mUSD" while the contract
+        still locked $U. It has moved: mVote is a separate contract with
+        `musd_asa_id` fixed at creation, and UVote is retired.
 
-        Deliberately not amber: amber is this app's informative voice and the
-        panel below already owns it. A second amber block would read as two
-        warnings of equal weight, when this one is context for that one.
+        The notice now appears ONLY in the gap between the contract being
+        written and its App ID being pasted into governance.ts — a real state
+        the site can be in, during which nobody can vote and saying so is the
+        whole job. Once live there is nothing to announce: the rules below say
+        mUSD, and each historical card carries its own "UVote · weighted by $U"
+        badge, which is a better place for that fact than a page-level banner
+        a reader has to remember while scrolling.
       */}
-      <div className="mb-5 rounded-2xl border border-magnet-400/25 bg-magnet-500/[0.06] p-5 sm:p-6">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-magnet-300" />
-          <h3 className="font-display text-base font-semibold text-magnet-200">
-            Governance is moving to mUSD
-          </h3>
+      {!GOVERNANCE_LIVE && (
+        <div className="mb-5 rounded-2xl border border-magnet-400/25 bg-magnet-500/[0.06] p-5 sm:p-6">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 shrink-0 text-magnet-300" />
+            <h3 className="font-display text-base font-semibold text-magnet-200">
+              mUSD governance is landing
+            </h3>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-gray-400">
+            Voting moves from $U to <strong className="font-semibold text-gray-300">mUSD</strong>. The
+            contract is written and tested; it is not deployed yet, so no vote can be cast right now and
+            the rules below describe what happens when it is. $U-weighted voting has ended — the closed
+            proposal under it stays on this page as history.
+          </p>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-gray-400">
-          Votes today are weighted by <strong className="font-semibold text-gray-300">$U</strong> and
-          cast through the UVote contract — that is what the rules below describe, and what your
-          wallet will be asked to lock. The mUSD governance contract is being specified; nothing
-          about an open vote changes until it ships, and this page will say so when it does.
-        </p>
-      </div>
+      )}
 
       {/* ── How voting works ──────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-amber-400/25 bg-amber-500/[0.06] p-5 sm:p-6">
@@ -150,16 +158,18 @@ export function GovernanceSection() {
         <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-400">
           <p>
             The Founder posts an open question that impacts a particular outcome of Magnet
-            Strategies. Holders can then exercise their voice by utilizing held $U tokens,
+            Strategies. Holders can then exercise their voice by utilizing held mUSD,
             signaling their preference on the open proposal.
           </p>
           <p>
-            Only whole $U tokens can be used, where one token is equal to one vote in weight.
-            Tokens are accepted as voting power by being locked within the voting contract, and
-            remain locked for the remainder of the voting window.
+            Only whole mUSD can be used, where one mUSD is equal to one vote in weight.
+            It is accepted as voting power by being locked within the voting contract, and
+            remains locked for the remainder of the voting window.
           </p>
           <p>
-            Your $U — and a small refundable box deposit — come back in full when the vote closes.
+            Your mUSD — and a small refundable box deposit — come back in full when the vote closes.
+            Nothing can take them in between: the contract has no sweep path, and mUSD has no freeze
+            or clawback address, so a reclaim cannot be blocked by anyone, including us.
           </p>
         </div>
 
@@ -176,11 +186,11 @@ export function GovernanceSection() {
             Current vote power
           </p>
           <p className="mt-1.5 font-mono text-2xl font-bold text-magnet-400">
-            {isConnected ? `${formatU(uBalance)} $U` : "—"}
+            {isConnected ? `${formatWeight(MVOTE, balance)} ${MVOTE.unit}` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
             {isConnected
-              ? "Whole $U only — fractions do not count toward a vote"
+              ? `Whole ${MVOTE.unit} only — fractions do not count toward a vote`
               : "Connect a wallet to see your voting power"}
           </p>
         </div>
@@ -190,10 +200,10 @@ export function GovernanceSection() {
       <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-widest text-gray-500">
         Live proposals
       </h3>
-      {!UVOTE_LIVE ? (
+      {!GOVERNANCE_LIVE ? (
         <div className="rounded-2xl border border-white/10 bg-black/30 px-6 py-12 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-magnet-400" />
-          <p className="mt-3 text-sm font-medium text-white">UVote is launching soon</p>
+          <p className="mt-3 text-sm font-medium text-white">mUSD governance is launching soon</p>
           <p className="mt-1 text-xs text-gray-500">
             {isAdmin ? "Deploy the contract to open governance." : "Governance opens once the contract is live."}
           </p>
@@ -207,7 +217,7 @@ export function GovernanceSection() {
           <VoteIcon className="mx-auto h-8 w-8 text-gray-600" />
           <p className="mt-3 text-sm font-medium text-white">Nothing to vote on right now</p>
           <p className="mt-1 text-xs text-gray-500">
-            There are no live proposals. Holding $U is what gives you a vote when the next one opens.
+            There are no live proposals. Holding mUSD is what gives you a vote when the next one opens.
           </p>
         </div>
       ) : (
@@ -215,7 +225,9 @@ export function GovernanceSection() {
            question with choices and a tally, and halving its width wrapped the
            question before the reader got to the options. */
         <div className="space-y-4">
-          {live.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
+          {live.map((p) => (
+            <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p} balance={balance} onChanged={load} />
+          ))}
         </div>
       )}
 
@@ -226,7 +238,11 @@ export function GovernanceSection() {
             Voting history
           </h3>
           <div className="space-y-4">
-            {history.map((p) => <ProposalCard key={p.id} proposal={p} uBalance={uBalance} onChanged={load} />)}
+            {/* Keyed by era too: proposal ids restart at 1 in the new contract,
+                so `id` alone collides across the two. */}
+            {history.map((p) => (
+              <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p} balance={balance} onChanged={load} />
+            ))}
           </div>
         </>
       )}

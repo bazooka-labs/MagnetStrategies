@@ -1,11 +1,11 @@
-// ── UVote — voter writes (cast_vote, claim_tokens) ───────────────────────────
-// Signing goes through use-wallet's signTransactions (same as the DAO v1 flow).
+// ── Governance — voter writes (cast_vote, claim_tokens) ─────────────────────
+// Signing goes through use-wallet's signTransactions.
 
 import algosdk from "algosdk";
 import {
-  UVOTE_APP_ID, MAGNET_ASA_ID, VOTE_BOX_MBR,
-  propBoxName, voteBoxName,
-} from "./uvote";
+  MVOTE, VOTE_BOX_MBR, propBoxName, voteBoxName,
+  type GovernanceEra,
+} from "./governance";
 
 type SignFn = (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>;
 
@@ -26,9 +26,13 @@ async function sendGroup(
 /**
  * Cast a vote: atomic group of 3 —
  *  [0] AppCall cast_vote(proposalId, choiceIndex)
- *  [1] AssetTransfer  whole $U -> contract (locked voting weight)
+ *  [1] AssetTransfer  whole mUSD -> contract (locked voting weight)
  *  [2] Payment        VOTE_BOX_MBR -> contract (voter funds their own vote box)
- * `lockBaseUnits` must be a whole-$U multiple (caller floors it).
+ *
+ * `lockBaseUnits` must be a whole-token multiple; the contract asserts it and
+ * the caller floors it. Only an `accepting` era can be voted in — the retired
+ * $U app is readable and claimable, never votable, and that is enforced here
+ * rather than left to whoever builds a button.
  */
 export async function castVote(
   algod: algosdk.Algodv2,
@@ -37,27 +41,43 @@ export async function castVote(
   proposalId: number,
   choiceIndex: number,
   lockBaseUnits: number,
-  appId = UVOTE_APP_ID,
+  era: GovernanceEra = MVOTE,
 ): Promise<string> {
+  // Two different refusals, because they are two different facts about the
+  // world and a voter deserves the right one.
+  if (era.retired) {
+    throw new Error(`${era.name} is retired and no longer accepts votes.`);
+  }
+  if (!era.appId) {
+    throw new Error(`${era.name} is not deployed yet.`);
+  }
+  if (lockBaseUnits <= 0 || lockBaseUnits % 10 ** era.decimals !== 0) {
+    throw new Error(`Lock a whole number of ${era.unit}.`);
+  }
+
   const sp = await algod.getTransactionParams().do();
-  const appAddr = algosdk.getApplicationAddress(appId).toString();
+  const appAddr = algosdk.getApplicationAddress(era.appId).toString();
 
   const appCall = algosdk.makeApplicationNoOpTxnFromObject({
     sender,
-    appIndex: appId,
-    appArgs: [enc.encode("cast_vote"), algosdk.encodeUint64(proposalId), algosdk.encodeUint64(choiceIndex)],
-    boxes: [
-      { appIndex: appId, name: propBoxName(proposalId) },
-      { appIndex: appId, name: voteBoxName(proposalId, sender) },
+    appIndex: era.appId,
+    appArgs: [
+      enc.encode("cast_vote"),
+      algosdk.encodeUint64(proposalId),
+      algosdk.encodeUint64(choiceIndex),
     ],
-    foreignAssets: [MAGNET_ASA_ID],
+    boxes: [
+      { appIndex: era.appId, name: propBoxName(proposalId) },
+      { appIndex: era.appId, name: voteBoxName(proposalId, sender) },
+    ],
+    foreignAssets: [era.asaId],
     suggestedParams: sp,
   });
 
   const lockXfer = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
     sender,
     receiver: appAddr,
-    assetIndex: MAGNET_ASA_ID,
+    assetIndex: era.asaId,
     amount: lockBaseUnits,
     suggestedParams: sp,
   });
@@ -73,7 +93,13 @@ export async function castVote(
 }
 
 /**
- * Reclaim locked $U (and the pre-funded MBR) after the window closes.
+ * Reclaim locked tokens (and the pre-funded MBR) after the window closes.
+ *
+ * Works on ANY era, including the retired $U app. That is the point: measured
+ * 2026-11-05 nobody has an outstanding $U lock, but a measurement is about one
+ * moment and a stranded voter is forever, so the path stays.
+ *
+ * Sent alone, never grouped — mVote asserts `group_size == 1` on this call.
  * The contract issues two inner txns, so the outer AppCall covers fee=3000.
  */
 export async function claimTokens(
@@ -81,7 +107,7 @@ export async function claimTokens(
   signTransactions: SignFn,
   sender: string,
   proposalId: number,
-  appId = UVOTE_APP_ID,
+  era: GovernanceEra = MVOTE,
 ): Promise<string> {
   const sp = await algod.getTransactionParams().do();
   sp.flatFee = true;
@@ -89,13 +115,13 @@ export async function claimTokens(
 
   const appCall = algosdk.makeApplicationNoOpTxnFromObject({
     sender,
-    appIndex: appId,
+    appIndex: era.appId,
     appArgs: [enc.encode("claim_tokens"), algosdk.encodeUint64(proposalId)],
     boxes: [
-      { appIndex: appId, name: propBoxName(proposalId) },
-      { appIndex: appId, name: voteBoxName(proposalId, sender) },
+      { appIndex: era.appId, name: propBoxName(proposalId) },
+      { appIndex: era.appId, name: voteBoxName(proposalId, sender) },
     ],
-    foreignAssets: [MAGNET_ASA_ID],
+    foreignAssets: [era.asaId],
     suggestedParams: sp,
   });
 

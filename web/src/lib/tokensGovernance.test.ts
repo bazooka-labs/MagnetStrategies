@@ -1,4 +1,4 @@
-// UVote's home, and the treasury promoted to a metric box.
+// Governance's home, and the treasury promoted to a metric box.
 //
 // ── What moved on 2026-11-04, and why this file was rewritten ─────────────
 // Governance was a SECTION at the foot of the $U tab of /tokens. $U is now the
@@ -111,22 +111,28 @@ describe("governance is the mUSD page's Governance pill", () => {
     expect(magnet).not.toContain("<LpPoolsSection />");
   });
 
-  it("says plainly that voting is still weighted by $U", () => {
+  it("describes mUSD voting, not $U voting", () => {
     /**
-     * The honesty check, and the reason this pill is allowed to exist before
-     * its contract does.
+     * The honesty check, inverted on 2026-11-05 when mVote shipped.
      *
-     * A reader reaches it from a pill on the mUSD page and reasonably expects
-     * to vote with mUSD. They cannot: UVote locks $U and will until a new
-     * contract ships. The mechanism copy below the notice therefore still says
-     * $U — it describes what the wallet will be asked to sign — and the notice
-     * is what stops that reading as a mistake.
-     *
-     * If the notice is ever deleted while the copy below it still says $U,
-     * this page starts lying by juxtaposition. That is what this guards.
+     * While the contract locked $U, this asserted the page SAID so and carried
+     * a "moving to mUSD" notice — because describing mUSD voting over a $U
+     * contract would have put a false statement in front of someone about to
+     * sign a lock. The contract now locks mUSD, so the same rule points the
+     * other way: the mechanism copy must say mUSD, and the notice announcing a
+     * future move must be gone.
      */
-    expect(gov).toContain("Governance is moving to mUSD");
-    expect(gov).toMatch(/weighted by <strong[^>]*>\$U<\/strong>/);
+    // Anchored on the JSX heading, not on the words "How voting works" — the
+    // first occurrence of those is in this component's own docstring, which
+    // explains the $U era and legitimately still names it. Slicing from there
+    // made this fail on the prose rather than on the page.
+    const RULES_START = '<h3 className="font-display text-base font-semibold text-amber-200">How voting works</h3>';
+    const rules = gov.slice(gov.indexOf(RULES_START), gov.indexOf("{/* ── Live proposals"));
+    expect(rules.length).toBeGreaterThan(200);   // the anchors still match something
+    expect(rules).toContain("utilizing held mUSD");
+    expect(rules).toContain("one mUSD is equal to one vote");
+    expect(rules).not.toContain("$U");
+    expect(gov).not.toContain("Governance is moving to mUSD");
   });
 
   it("explains itself in a PERMANENT box, not a modal", () => {
@@ -147,7 +153,7 @@ describe("governance is the mUSD page's Governance pill", () => {
     // pill in the header it was a figure without a unit.
     const box = gov.slice(gov.indexOf("How voting works"), gov.indexOf("Live proposals"));
     expect(box).toContain("Current vote power");
-    expect(box).toContain("${formatU(uBalance)} $U");
+    expect(box).toContain("${formatWeight(MVOTE, balance)} ${MVOTE.unit}");
   });
 
   it("says something useful when no wallet is connected", () => {
@@ -155,7 +161,7 @@ describe("governance is the mUSD page's Governance pill", () => {
   });
 
   it("keeps admin behind a pill, opt in", () => {
-    expect(gov).toContain("UVOTE_ADMIN_ADDRESS");
+    expect(gov).toContain("GOVERNANCE_ADMIN_ADDRESS");
     expect(gov).toContain("const [adminOpen, setAdminOpen] = useState(false);");
     expect(gov).toContain("{isAdmin && adminOpen && (");
   });
@@ -220,7 +226,7 @@ describe("the old route is retired, not orphaned", () => {
 
 describe("the hero points across at governance", () => {
   const pill = readFileSync("src/components/tokens/LiveProposalsPill.tsx", "utf8");
-  const store = readFileSync("src/hooks/useUVoteProposals.ts", "utf8");
+  const store = readFileSync("src/hooks/useGovernanceProposals.ts", "utf8");
 
   it("links to the other page rather than anchoring within this one", () => {
     /**
@@ -238,8 +244,8 @@ describe("the hero points across at governance", () => {
   it("counts from the SAME list the section renders", () => {
     // Two independent fetches would be two numbers that can disagree — a pill
     // advertising a vote the list below has already closed.
-    expect(pill).toContain("useUVoteProposals");
-    expect(gov).toContain("useUVoteProposals");
+    expect(pill).toContain("useGovernanceProposals");
+    expect(gov).toContain("useGovernanceProposals");
     expect(gov).not.toContain("listProposals");
     expect(store).toContain("listProposals");
   });
