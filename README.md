@@ -13,7 +13,7 @@ and partner money markets — and reinvests returns into the token's underlying 
 | Route | Nav label | What |
 |---|---|---|
 | [`/`](https://magnetstrategies.io) | — | Landing |
-| [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — PSM swap, peg/backing stats, UVote governance |
+| [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — PSM swap, peg/backing stats, mVote governance |
 | [`/magnetfi`](https://magnetstrategies.io/magnetfi) | Finance | MagnetFi — LP vaults, mUSD, PSM |
 | [`/trade`](https://magnetstrategies.io/trade) | Trade | Trading Terminal (perps on PEX) |
 | [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Liquidity Pools, C-Vault, Magnet Token ($U + ASA TVL Rank) |
@@ -40,11 +40,15 @@ lend/borrow via partner **CompX** markets is also surfaced. mUSD ASA: `361560039
 
 → [`magnetfi/v2/OVERVIEW.md`](./magnetfi/v2/OVERVIEW.md)
 
-### UVote
-The governance arm — **advisory, founder-led voting over $U**. The founder posts an
-open question (liquidity, parameters, investments, or any direction); $U holders lock
-tokens to signal a preference; the founder acts on the mandate. **Live on mainnet**
-(App `3679681107`). Replaces the retired "MagnetDAO" quarterly-liquidity model.
+### Governance (mVote)
+The governance arm — **advisory, founder-led voting weighted by mUSD**. The founder
+posts an open question (liquidity, parameters, investments, or any direction); mUSD
+holders lock whole tokens to signal a preference, one mUSD to one vote; the founder
+acts on the mandate. **Written, proven and audited; not yet deployed.**
+
+Replaces **UVote** (App `3679681107`), which voted with $U and is retired — readable
+so its one closed proposal survives as history, never written to again. $U no longer
+carries a vote. UVote itself replaced the "MagnetDAO" quarterly-liquidity model.
 
 → [`vote/OVERVIEW.md`](./vote/OVERVIEW.md)
 
@@ -76,7 +80,7 @@ identity and must not be imported into products that do not offer them.
 
 ### mUSD
 `/tokens`, nav label **mUSD**. Two pills: **Exchange** (peg, backing, holders, chart,
-and the PSM swap) and **Governance** (UVote — the rules, live proposals and voting
+and the PSM swap) and **Governance** (mVote — the rules, live proposals and voting
 history). Absorbed the former `/musd`, `/about`, `/dao` and `/vote` pages.
 
 ### Magnet Token
@@ -126,7 +130,7 @@ MagnetStrategies/
 ├── archive/            ← Finished work: closed audits and remediations
 ├── ASA_TVL_SPEC.md     ← ASA TVL tracker: sources, conventions, eligibility rules
 ├── org/                ← Org overview, $U tokenomics, treasury, roadmap
-├── vote/               ← UVote governance — OVERVIEW.md + SPEC.md
+├── vote/               ← Governance — OVERVIEW.md + SPEC.md (mVote + retired UVote)
 ├── magnetfi/           ← MagnetFi protocol docs — the "Bank"
 │   └── v2/             ← LP vault + mUSD + PSMv3 — docs, contracts, oracle bot, tests (LIVE)
 ├── strategy/           ← The "Strategy" arm
@@ -136,7 +140,8 @@ MagnetStrategies/
 │   └── pools/          ← Strategy Pools + C-Vault on PEX (nav: Strategy)
 ├── predict/            ← VPL volatility ladder — docs, contracts, keeper
 ├── contracts/
-│   ├── uvote/          ← UVote governance contract — LIVE (App 3679681107)
+│   ├── mvote/          ← mVote governance contract (mUSD) — CURRENT, not yet deployed
+│   ├── uvote/          ← UVote governance contract ($U) — RETIRED (App 3679681107)
 │   └── legacy/         ← retired MagnetDAO-era contracts; none is live
 └── web/                ← Next.js frontend (magnetstrategies.io)
 ```
@@ -149,7 +154,7 @@ doctrine to hold.
 
 | Nav | Docs | Note |
 |---|---|---|
-| Tokens | `org/` (\$U) + `magnetfi/v2/mUSD.md` + `vote/` | A page, not a tree — it composes $U, mUSD and UVote governance |
+| Tokens | `org/` (\$U) + `magnetfi/v2/mUSD.md` + `vote/` | A page, not a tree — it composes $U, mUSD and mVote governance |
 | Finance | `magnetfi/` | One product; "Finance" is the label, MagnetFi is the name |
 | Trade | `strategy/perps/` | The Trading Terminal. Same arm as Strategy, different errand |
 | Strategy | `strategy/pools/` | Strategy Pools. Shares `strategy/` doctrine with Trade |
@@ -158,10 +163,16 @@ doctrine to hold.
 > `/predict` is live and reachable but has no nav slot — VPL is deprioritised.
 > Hidden, not removed; see `Navbar.tsx`, which tests that it stays unlinked.
 
-> Note: **MagnetDAO** was the first governance vision, later rebuilt as **UVote**. The
-> docs tree is split into `org/` and `vote/` accordingly.
+> Note: **MagnetDAO** was the first governance vision, rebuilt as **UVote** ($U) and
+> then as **mVote** (mUSD) on 2026-11-05. The docs tree is split into `org/` and
+> `vote/` accordingly; `vote/SPEC.md` carries both contract generations, because
+> mVote is a port of UVote and UVote's audit findings are what shaped it.
 >
-> The contracts were split on 2026-10-27: `contracts/uvote/` holds the one live
+> Each generation is its own app on purpose: the voting asset id is set at creation
+> and has no setter, so changing the asset means a new contract, never a
+> reconfiguration.
+>
+> The contracts were split on 2026-10-27: `contracts/uvote/` held the one live
 > governance contract, `contracts/legacy/` the three retired ones. They had all sat
 > together under `contracts/magnetdao/`, where nothing distinguished the contract
 > running on mainnet from the ones that never shipped.

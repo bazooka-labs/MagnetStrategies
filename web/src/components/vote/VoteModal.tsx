@@ -14,8 +14,8 @@ import {
 interface Props {
   proposal: Proposal;
   choiceIndex: number;
-  /** The voter's balance of this proposal's voting asset, in base units. */
-  balance: number;
+  /** Base units of this proposal's voting asset; `null` when unknown. */
+  balance: number | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -34,7 +34,8 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const maxWhole = Math.floor(balance / factor); // whole tokens available
+  const known = balance !== null;
+  const maxWhole = known ? Math.floor(balance / factor) : 0; // whole tokens available
   const [amount, setAmount] = useState<string>(maxWhole > 0 ? String(maxWhole) : "");
   const voteCount = Math.min(Math.max(Math.floor(Number(amount) || 0), 0), maxWhole);
   const lockBaseUnits = voteCount * factor;
@@ -50,10 +51,19 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
       toast.success(`Vote cast — ${era.unit} locked until the vote closes`);
       onSuccess();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Vote failed.";
-      setErrorMsg(msg);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/confirm|timeout|timed out|pending/i.test(msg)) {
+        // Submitted; the node just did not confirm within the wait. The vote
+        // may well have landed, and a retry would be rejected by the
+        // one-vote-per-wallet check — so do not invite one.
+        setStatus("idle");
+        toast("Submitted, but we couldn't confirm it in time. Check your wallet before voting again.");
+        onSuccess();
+        return;
+      }
+      setErrorMsg(msg || "Vote failed.");
       setStatus("error");
-      toast.error(msg);
+      toast.error(msg || "Vote failed.");
     }
   }
 
@@ -71,7 +81,13 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
             </button>
           </div>
 
-          {maxWhole === 0 ? (
+          {!known ? (
+            // Not "you need at least 1 mUSD" — that is a claim about their
+            // wallet, and we failed to read their wallet.
+            <p className="py-4 text-center text-sm text-gray-500">
+              Couldn&apos;t read your {era.unit} balance. Close this and try again in a moment.
+            </p>
+          ) : maxWhole === 0 ? (
             <p className="py-4 text-center text-sm text-gray-500">You need at least 1 {era.unit} to vote.</p>
           ) : (
             <div className="space-y-4">
@@ -102,6 +118,10 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
                     step={1}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    // Snap the field to what will actually be locked. Typing
+                    // 9999 against a 50 balance left the input saying 9999
+                    // while the row below said 50.
+                    onBlur={() => setAmount(String(voteCount))}
                     className="w-full bg-transparent py-2 text-sm text-white placeholder-gray-600 focus:outline-none"
                     placeholder="0"
                   />
@@ -117,6 +137,13 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">Box deposit (refunded)</span>
                   <span className="text-gray-400">{(VOTE_BOX_MBR / 1_000_000).toFixed(4)} ALGO</span>
+                </div>
+                {/* Named because "refunded" above could otherwise read as
+                    "this costs nothing". Three txns now, one more on the
+                    claim at triple fee; network fees are never refunded. */}
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Network fees (not refunded)</span>
+                  <span className="text-gray-400">~0.006 ALGO</span>
                 </div>
                 <div className="flex items-start gap-2 pt-1 border-t border-gray-800 text-xs text-gray-500">
                   <Lock className="h-3 w-3 text-yellow-500 mt-0.5 flex-shrink-0" />

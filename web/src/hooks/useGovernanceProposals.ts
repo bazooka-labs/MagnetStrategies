@@ -24,7 +24,18 @@ import { useWallet } from "@/hooks/useWallet";
 import { listProposals } from "@/lib/governanceReads";
 import { GOVERNANCE_ERAS, isActive, type Proposal } from "@/lib/governance";
 
-type Snapshot = { proposals: Proposal[]; loading: boolean };
+type Snapshot = {
+  proposals: Proposal[];
+  loading: boolean;
+  /**
+   * A read failed, so this list may be incomplete.
+   *
+   * Separate from `proposals.length === 0`, which means "there are none". The
+   * two used to be the same value and a rate-limited node could therefore say
+   * "Nothing to vote on right now" while a vote was open.
+   */
+  incomplete: boolean;
+};
 
 /**
  * Loading is gated on there being an era to READ, not on mVote being live.
@@ -36,7 +47,7 @@ type Snapshot = { proposals: Proposal[]; loading: boolean };
 const HAVE_ERAS = GOVERNANCE_ERAS.length > 0;
 
 /** Replaced wholesale, never mutated: the identity IS the change signal. */
-let snapshot: Snapshot = { proposals: [], loading: HAVE_ERAS };
+let snapshot: Snapshot = { proposals: [], loading: HAVE_ERAS, incomplete: false };
 const listeners = new Set<() => void>();
 let inflight: Promise<void> | null = null;
 let everLoaded = false;
@@ -57,11 +68,17 @@ function load(algod: algosdk.Algodv2): Promise<void> {
   if (inflight) return inflight;
   set({ ...snapshot, loading: true });
   inflight = listProposals(algod)
-    .then((proposals) => { everLoaded = true; set({ proposals, loading: false }); })
+    .then(({ proposals, failed }) => {
+      // `everLoaded` only latches on a COMPLETE read. A partial load used to
+      // set it, which meant the automatic retry never fired and a transient
+      // failure became permanent for the life of the page.
+      if (failed.length === 0) everLoaded = true;
+      set({ proposals, loading: false, incomplete: failed.length > 0 });
+    })
     .catch(() => {
       // Keep whatever was already shown. A failed read is not evidence that the
       // proposals went away, and blanking the list would say it is.
-      set({ ...snapshot, loading: false });
+      set({ ...snapshot, loading: false, incomplete: true });
     })
     .finally(() => { inflight = null; });
   return inflight;

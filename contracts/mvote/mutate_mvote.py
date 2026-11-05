@@ -45,7 +45,7 @@ MUTATIONS = [
      "Assert(choice.load() < num_choices.load()),",
      "choice index beyond num_choices is refused"),
     ("exact MBR",
-     "Assert(Gtxn[2].amount() == VOTE_BOX_MBR),",
+     "Assert(Gtxn[0].amount() == VOTE_BOX_MBR),",
      "a short MBR payment is refused"),
     ("voter funds their own lock",
      "Assert(Gtxn[1].sender() == Txn.sender()),",

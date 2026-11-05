@@ -1,23 +1,26 @@
 "use client";
 
 /**
- * UVote — the mUSD page's "Governance" pill.
+ * mVote — the mUSD page's "Governance" pill.
  *
  * ── Where it has lived ─────────────────────────────────────────────────────
  * It was /vote, a nav entry of its own. One proposal had ever been opened, and
  * a standing nav entry that usually leads to "check back when the founder opens
  * the first vote" costs more than it buys, so it became a section at the foot
  * of the $U page. On 2026-11-04 it became a pill on the mUSD page instead: $U
- * moved under /strategy, and governance is pivoting to mUSD.
+ * moved under /strategy.
  *
- * ── The pivot is NOT done, and this file must not pretend otherwise ────────
- * The plan is for voting to be weighted by mUSD; the contract still locks $U
- * and will until a new one is specced, written and deployed. So the mechanism
- * copy below says $U, because $U is what the wallet will be asked to lock, and
- * the notice above it says plainly that governance is moving. Rewriting the
- * explanation to mUSD ahead of the contract would put a false statement in
- * front of someone about to sign a lock — the one place this codebase cannot
- * afford to be aspirational.
+ * ── The pivot IS done ──────────────────────────────────────────────────────
+ * Voting is weighted by mUSD, through mVote — a separate contract, because
+ * `musd_asa_id` is fixed at creation and the $U app could never be repointed.
+ * UVote is retired: readable for its one closed proposal, writable never.
+ *
+ * The mechanism copy below therefore says mUSD, and that is load-bearing in
+ * the same way the old $U copy was — it describes what the wallet will be
+ * asked to lock. `tokensGovernance.test.ts` fails if it drifts.
+ *
+ * Until the App ID is pasted into governance.ts the page says voting is
+ * landing and every write path refuses. That is a real state, not a stub.
  *
  * It is a PILL rather than a section for the first time here. As a section it
  * carried its empty state onto a page about something else, which is why it
@@ -38,33 +41,57 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
+import { AlertTriangle, Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
 import { getVotingBalance } from "@/lib/governanceReads";
 import { useGovernanceProposals } from "@/hooks/useGovernanceProposals";
+import { getFounder } from "@/lib/governanceReads";
 import {
   GOVERNANCE_LIVE, GOVERNANCE_ADMIN_ADDRESS, MVOTE, formatWeight, isActive,
 } from "@/lib/governance";
 
 export function GovernanceSection() {
   const { address, isConnected, algodClient } = useWallet();
-  const isAdmin = isConnected && address === GOVERNANCE_ADMIN_ADDRESS;
+  /**
+   * Who the CONTRACT says is founder, not who this file hard-codes.
+   *
+   * Gating on the constant meant a founder transfer left the new founder with
+   * no admin panel and the old one still looking at controls whose calls the
+   * contract would reject. Authority lives on chain; ask it.
+   *
+   * Falls back to the constant when there is nothing to ask — before deploy
+   * there is no founder, and that is exactly when the Deploy button has to be
+   * reachable.
+   */
+  const [founder, setFounder] = useState<string | null>(null);
+  useEffect(() => {
+    if (!algodClient || !MVOTE.appId) { setFounder(null); return; }
+    let alive = true;
+    void getFounder(algodClient, MVOTE).then((f) => { if (alive) setFounder(f); });
+    return () => { alive = false; };
+  }, [algodClient]);
+
+  const isAdmin = isConnected
+    && address === (founder ?? GOVERNANCE_ADMIN_ADDRESS);
 
   /**
    * The proposals come from the shared store, not a fetch of our own: the hero
    * pill counts the same list, and two reads would be two numbers that can
    * disagree about whether a vote is open.
    */
-  const { proposals, loading, refresh } = useGovernanceProposals();
-  /** The balance is per-wallet, so it stays local — nothing else on the page shows it. */
-  const [balance, setBalance] = useState(0);
+  const { proposals, loading, incomplete, refresh } = useGovernanceProposals();
+  /**
+   * The balance is per-wallet, so it stays local — nothing else shows it.
+   * `null` means we could not read it, which is NOT zero.
+   */
+  const [balance, setBalance] = useState<number | null>(null);
   /** Admin tooling is opt-in even for the admin — it is not what they come here to read. */
   const [adminOpen, setAdminOpen] = useState(false);
 
   useEffect(() => {
-    if (!algodClient || !address) { setBalance(0); return; }
+    if (!algodClient || !address) { setBalance(null); return; }
     let alive = true;
     void getVotingBalance(algodClient, address, MVOTE)
       .then((b) => { if (alive) setBalance(b); });
@@ -82,8 +109,35 @@ export function GovernanceSection() {
    * needs a decision. History: most recently ended first, so the newest result
    * is at the top and the list grows downward into the past.
    */
-  const live = proposals.filter((p) => isActive(p)).sort((a, b) => a.endTime - b.endTime);
-  const history = proposals.filter((p) => !isActive(p)).sort((a, b) => b.endTime - a.endTime);
+  // `era.accepting` as well as the window, matching `liveCount` exactly. Without
+  // it the pill and this list could disagree about what is open — the pill
+  // filtered on both and this did not.
+  const live = proposals
+    .filter((p) => p.era.accepting && isActive(p))
+    .sort((a, b) => a.endTime - b.endTime);
+  const history = proposals
+    .filter((p) => !(p.era.accepting && isActive(p)))
+    .sort((a, b) => b.endTime - a.endTime);
+
+  /**
+   * Re-render on a timer so a window closing is noticed.
+   *
+   * Open-vs-closed is computed from the browser clock at render time, and
+   * nothing re-rendered this tree when that crossed `endTime`. A card left open
+   * across the deadline kept its vote buttons live and sent the voter into a
+   * prompt the chain was always going to reject.
+   *
+   * 15s rather than 1s: the boundary is approximate anyway — the contract reads
+   * `Global.latest_timestamp()`, the previous block's time, not the voter's
+   * clock — so the goal is to stop the page being minutes stale, not to be
+   * exact. The remaining skew is unavoidable and is why a near-deadline action
+   * can still be refused.
+   */
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((t) => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     /* No top margin: as a section this needed one to clear the pools above it;
@@ -186,12 +240,17 @@ export function GovernanceSection() {
             Current vote power
           </p>
           <p className="mt-1.5 font-mono text-2xl font-bold text-magnet-400">
-            {isConnected ? `${formatWeight(MVOTE, balance)} ${MVOTE.unit}` : "—"}
+            {!isConnected ? "—"
+              : balance === null ? "—"
+              : `${formatWeight(MVOTE, balance)} ${MVOTE.unit}`}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
-            {isConnected
-              ? `Whole ${MVOTE.unit} only — fractions do not count toward a vote`
-              : "Connect a wallet to see your voting power"}
+            {!isConnected
+              ? "Connect a wallet to see your voting power"
+              : balance === null
+                // Not "0 mUSD". A failed read is not a balance.
+                ? "Couldn't read your balance just now — figures are withheld rather than guessed"
+                : `Whole ${MVOTE.unit} only — fractions do not count toward a vote`}
           </p>
         </div>
       </div>
@@ -200,6 +259,20 @@ export function GovernanceSection() {
       <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-widest text-gray-500">
         Live proposals
       </h3>
+      {/* A read failed, so the list below may be missing something. Said out
+          loud, because an incomplete list and an empty one look identical. */}
+      {incomplete && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            Couldn&apos;t read every proposal just now, so this list may be incomplete.{" "}
+            <button onClick={refresh} className="underline underline-offset-2 hover:text-amber-100">
+              Try again
+            </button>
+          </span>
+        </div>
+      )}
+
       {!GOVERNANCE_LIVE ? (
         <div className="rounded-2xl border border-white/10 bg-black/30 px-6 py-12 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-magnet-400" />
@@ -226,7 +299,8 @@ export function GovernanceSection() {
            question before the reader got to the options. */
         <div className="space-y-4">
           {live.map((p) => (
-            <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p} balance={balance} onChanged={load} />
+            <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p}
+              balance={p.era.key === MVOTE.key ? balance : null} onChanged={load} />
           ))}
         </div>
       )}
@@ -241,7 +315,11 @@ export function GovernanceSection() {
             {/* Keyed by era too: proposal ids restart at 1 in the new contract,
                 so `id` alone collides across the two. */}
             {history.map((p) => (
-              <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p} balance={balance} onChanged={load} />
+              // Only the mUSD era gets the mUSD balance. Passing it to a
+              // $U-weighted card would be the wrong token's figure the moment
+              // anything there could open a vote modal.
+              <ProposalCard key={`${p.era.key}-${p.id}`} proposal={p}
+                balance={p.era.key === MVOTE.key ? balance : null} onChanged={load} />
             ))}
           </div>
         </>

@@ -44,6 +44,31 @@ token. Retiring UVote strands nobody: measured 2026-11-05, App 3679681107 holds
               I-1 costs nothing here: the UI has always had one claim button per
               proposal card, so batched claims were never offered.
 
+  [I-4, new]  `cast_vote` takes the group as [0] MBR payment, [1] mUSD transfer,
+              [2] this app call — UVote had the app call FIRST and the payment
+              last. This removes a standing-funding requirement that both of
+              UVote's audits raised and neither could close, because the live
+              app is immutable.
+
+              The node checks the app account's minimum balance at the end of
+              each transaction, not at the end of the group. With the app call
+              at index 0 it creates the vote box — raising the app's minimum by
+              26,900 — while the payment that covers it is still two
+              transactions away. So the app had to hold a permanent 26,900
+              buffer or the FIRST vote of every deployment would revert.
+              UVote's audit filed that as deploy requirement L1: "required, not
+              optional".
+
+              Moving the payment ahead of the app call means the ALGO has
+              already landed when the box is created. Measured on localnet
+              rather than reasoned: funded to EXACTLY its minimum balance, zero
+              spare, the first vote now succeeds. Under the old order the same
+              app rejected it with "balance 486100 below min 513000".
+
+              Every assert is unchanged, only its index moved. The transaction
+              each one pins is still pinned by type, sender, receiver, amount
+              and asset, so position was never what made the group safe.
+
   [I-3, new]  `claim_tokens` now asserts `BoxDelete(...) == Int(1)` instead of
               popping it. Not from the UVote audit — found writing this. The
               delete is unreachable-as-a-failure today, because `hasValue()` is
@@ -55,9 +80,9 @@ token. Retiring UVote strands nobody: measured 2026-11-05, App 3679681107 holds
               happened, so it is now checked rather than assumed.
 
   Everything else is unchanged, and that is verified rather than asserted:
-  compiling both contracts and diffing the TEAL yields 22 changed lines, which
-  are exactly the four items above — the asset key in 4 places, the decimal
-  factor, and the three added asserts. Re-run that diff after any edit here.
+  compile both contracts and diff the TEAL. The changes are exactly the five
+  items above — the asset key in 4 places, the decimal factor, the three added
+  asserts, and the group reorder. Re-run that diff after any edit here.
 
 ── Why mUSD is safe to lock, checked on chain rather than assumed ──────────
 mUSD (ASA 3615600399) has **no clawback address and no freeze address**, and on
@@ -256,15 +281,24 @@ def approval_program():
     ])
 
     # --- cast_vote ---
-    # Atomic group (size 3):
-    #   [0] this AppCall (cast_vote)
+    # Atomic group (size 3), in this order for the reason in [I-4] above:
+    #   [0] Payment        voter -> contract, exactly VOTE_BOX_MBR (funds the vote box)
     #   [1] AssetTransfer  voter -> contract, whole mUSD (the vote weight, locked)
-    #   [2] Payment        voter -> contract, exactly VOTE_BOX_MBR (funds the vote box)
+    #   [2] this AppCall (cast_vote)
+    # The payment comes FIRST so the ALGO has landed before this call creates
+    # the box and raises the app's minimum balance.
     # args: [1] proposal_id as 8-byte uint64 (Itob)
     #       [2] choice_index as 8-byte uint64 (0=A,1=B,2=C,3=D)
     cast_vote = Seq([
         Assert(Global.group_size() == Int(3)),
-        Assert(Txn.group_index() == Int(0)),        # this AppCall is pinned to slot 0
+        Assert(Txn.group_index() == Int(2)),        # this AppCall is pinned to slot 2
+
+        # [0] MBR payment — voter funds their own vote box, before it is created
+        Assert(Gtxn[0].type_enum() == TxnType.Payment),
+        Assert(Gtxn[0].sender() == Txn.sender()),
+        Assert(Gtxn[0].receiver() == Global.current_application_address()),
+        Assert(Gtxn[0].close_remainder_to() == Global.zero_address()),
+        Assert(Gtxn[0].amount() == VOTE_BOX_MBR),
 
         # [1] mUSD transfer — must come FROM the voter (AppCall sender), TO the contract
         Assert(Gtxn[1].type_enum() == TxnType.AssetTransfer),
@@ -275,13 +309,6 @@ def approval_program():
         Assert(Gtxn[1].xfer_asset() == App.globalGet(MUSD_ASA_KEY)),
         Assert(Gtxn[1].asset_amount() > Int(0)),
         Assert(Gtxn[1].asset_amount() % DECIMAL_FACTOR == Int(0)),                  # whole mUSD only
-
-        # [2] MBR payment — voter funds their own vote box so the app never depletes
-        Assert(Gtxn[2].type_enum() == TxnType.Payment),
-        Assert(Gtxn[2].sender() == Txn.sender()),
-        Assert(Gtxn[2].receiver() == Global.current_application_address()),
-        Assert(Gtxn[2].close_remainder_to() == Global.zero_address()),
-        Assert(Gtxn[2].amount() == VOTE_BOX_MBR),
 
         (box_key := ScratchVar()).store(Concat(PROPOSAL_PREFIX, Txn.application_args[1])),
         (prop_box := BoxGet(box_key.load())),

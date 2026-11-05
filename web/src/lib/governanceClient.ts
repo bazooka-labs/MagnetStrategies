@@ -24,10 +24,17 @@ async function sendGroup(
 }
 
 /**
- * Cast a vote: atomic group of 3 —
- *  [0] AppCall cast_vote(proposalId, choiceIndex)
+ * Cast a vote: atomic group of 3, in this order —
+ *  [0] Payment        VOTE_BOX_MBR -> contract (voter funds their own vote box)
  *  [1] AssetTransfer  whole mUSD -> contract (locked voting weight)
- *  [2] Payment        VOTE_BOX_MBR -> contract (voter funds their own vote box)
+ *  [2] AppCall cast_vote(proposalId, choiceIndex)
+ *
+ * The payment comes FIRST and the contract asserts it. Algorand checks an
+ * account's minimum balance at the end of each transaction rather than at the
+ * end of the group, so an app call that creates the vote box before the ALGO
+ * covering it has landed forces the app to carry a standing 26,900 µALGO
+ * buffer — which is the deploy requirement UVote's audit could never close,
+ * because that app is immutable. Reordering closes it. Do not resequence this.
  *
  * `lockBaseUnits` must be a whole-token multiple; the contract asserts it and
  * the caller floors it. Only an `accepting` era can be voted in — the retired
@@ -89,7 +96,7 @@ export async function castVote(
     suggestedParams: sp,
   });
 
-  return sendGroup(algod, signTransactions, [appCall, lockXfer, mbrPay]);
+  return sendGroup(algod, signTransactions, [mbrPay, lockXfer, appCall]);
 }
 
 /**

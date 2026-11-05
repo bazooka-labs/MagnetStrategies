@@ -18,7 +18,8 @@
 
 $U is the asset at the center of every Magnet Strategies product:
 
-1. **Governance token (UVote)** — holders lock $U to vote on protocol direction.
+1. ~~**Governance token**~~ — **retired 2026-11-05.** Governance moved to mUSD
+   (mVote); $U no longer carries a vote. See [vote/OVERVIEW.md](../vote/OVERVIEW.md).
    Weight is **1 $U = 1 vote** (proportional to the amount locked). See [vote/OVERVIEW.md](../vote/OVERVIEW.md).
 2. **Vault collateral (MagnetFi)** — $U-based LP tokens (e.g. U/tALGO, U/USDC) are the
    collateral borrowers deposit to mint mUSD. See [magnetfi/v2/VAULT.md](../magnetfi/v2/VAULT.md).

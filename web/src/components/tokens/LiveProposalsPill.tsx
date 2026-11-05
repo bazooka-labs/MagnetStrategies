@@ -18,9 +18,10 @@
  * is a protocol participant, and this is the only standing pointer to an open
  * vote anywhere in the nav.
  *
- * It shares its count with the section itself through `useUVoteProposals`, so a
- * pill claiming an open vote above a list showing none is not a state the app
- * can reach.
+ * It shares its count with the section itself through `useGovernanceProposals`,
+ * so a pill claiming an open vote above a list showing none is not a state the
+ * app can reach. Both apply the same `era.accepting && isActive(p)` predicate;
+ * they disagreed once, when only one of them checked the era.
  *
  * It stays visible at zero. The number is the point either way: "0" says
  * governance exists and nothing needs you right now, which is a different and

@@ -260,9 +260,14 @@ describe("the hero points across at governance", () => {
     expect(store).toContain("if (inflight) return inflight;");
   });
 
-  it("keeps the last good list when a read fails", () => {
-    // A failed read is not evidence the proposals went away.
-    expect(store).toContain("set({ ...snapshot, loading: false });");
+  it("keeps the last good list when a read fails, and says it is incomplete", () => {
+    // A failed read is not evidence the proposals went away — so the list is
+    // kept. But keeping it silently is its own lie, because an incomplete list
+    // and a genuinely empty one render identically. Both halves are asserted.
+    expect(store).toContain("set({ ...snapshot, loading: false, incomplete: true });");
+    // The retry must still be possible: latching `everLoaded` on a PARTIAL
+    // read made a transient failure permanent for the life of the page.
+    expect(store).toContain("if (failed.length === 0) everLoaded = true;");
   });
 
   it("stays visible at zero", () => {

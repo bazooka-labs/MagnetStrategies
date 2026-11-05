@@ -170,7 +170,11 @@ export function voteBoxName(proposalId: number, voter: string): Uint8Array {
 // ── Decoders ─────────────────────────────────────────────────────────────────
 function u64(buf: Uint8Array, off: number): number {
   // Safe as a Number: the largest representable tally is mUSD's total supply,
-  // 5e14 base units, two orders of magnitude below 2^53.
+  // 5e14 base units, against 2^53 ≈ 9.007e15 — a factor of 18, so a little
+  // over one order of magnitude. (This said "two orders of magnitude" and was
+  // simply wrong; an audit caught it. The conclusion holds, the arithmetic
+  // did not, and a wrong number in a comment justifying a safety claim is
+  // exactly the kind that gets trusted later.)
   const dv = new DataView(buf.buffer, buf.byteOffset + off, 8);
   return Number(dv.getBigUint64(0));
 }

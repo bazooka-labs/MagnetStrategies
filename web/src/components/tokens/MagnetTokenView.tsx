@@ -109,10 +109,12 @@ export function MagnetTokenView({
         components/strategy/pools/LpPoolsSection.tsx.
 
         Governance moved the other way, to /tokens behind the mUSD page's
-        "Governance" pill — the first step of the UVote → mUSD pivot. The
-        CONTRACT has not moved and still locks $U, which is why the hero keeps
-        `LiveProposalsPill`: the holder a vote concerns is still a $U holder,
-        and the pill now links across to where the vote is cast.
+        "Governance" pill, and the contract moved with it: mVote locks mUSD and
+        UVote is retired. A vote no longer concerns a $U holder as such.
+
+        The hero keeps `LiveProposalsPill` anyway, for discovery rather than
+        relevance — a visitor here is a protocol participant, and it is the
+        only standing pointer to an open vote outside the mUSD page itself.
 
         Nothing replaces either one here. A stub reading "governance moved" is a
         navigational dead end dressed as content; the pill in the hero is the

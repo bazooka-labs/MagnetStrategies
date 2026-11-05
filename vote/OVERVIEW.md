@@ -1,19 +1,29 @@
-# UVote — Governance
+# Governance — mVote
 
-UVote is Magnet Strategies' on-chain governance surface: **advisory, founder-led
-voting over the $U token**. The founder posts an open question about the protocol's
-direction; $U holders signal their preference by locking $U for the voting window.
-The tally guides the founder, who executes under the protocol's existing safeguards.
+Magnet Strategies' on-chain governance surface: **advisory, founder-led voting
+weighted by mUSD**. The founder posts an open question about the protocol's
+direction; mUSD holders signal their preference by locking whole mUSD for the
+voting window. The tally guides the founder, who executes under the protocol's
+existing safeguards.
 
-> **Live on mainnet** — App ID `3679681107` (`web/src/lib/uvote.ts`) · surfaced as the
-> **Governance** pill of [`/tokens`](https://magnetstrategies.io/tokens#governance),
-> the mUSD page. `/vote` and `/dao` 308-redirect there; neither is a page any more.
-> Token: $U (ASA `3081853135`). Technical + audit detail: [SPEC.md](./SPEC.md).
+> **Contract:** `contracts/mvote/mvote/mvote.py` · config in
+> `web/src/lib/governance.ts` · surfaced as the **Governance** pill of
+> [`/tokens`](https://magnetstrategies.io/tokens#governance), the mUSD page.
+> `/vote` and `/dao` 308-redirect there; neither is a page any more.
+> Voting asset: mUSD (ASA `3615600399`, 6 decimals).
+> Technical + audit detail: [SPEC.md](./SPEC.md).
 
-> **Open: the mUSD pivot.** As of 2026-11-04 the UI moved under mUSD and the page
-> says so, but the CONTRACT is unchanged and still locks $U. Voting with mUSD needs
-> a new contract, not a redeploy — see "The mUSD pivot" below before changing any
-> copy on that page.
+> **Status: written, proven, NOT YET DEPLOYED.** `MVOTE_APP_IDS` is `0`, so the
+> page shows history and says voting is landing, and every write path refuses.
+> Deploy is the wallet-signed handshake in the admin panel; paste the printed
+> App ID into `governance.ts` and redeploy the site.
+
+> **UVote is retired.** The previous generation (App `3679681107`) voted with
+> **$U** and is no longer written to. It stays readable so its one closed
+> proposal survives as history, tagged with the asset its tally is denominated
+> in. Retiring it stranded nobody: measured against mainnet 2026-11-05 it holds
+> 0 $U with 0 outstanding vote boxes, and its proposal closed 2026-08-27. The
+> reclaim path still points at it regardless — see "Why the claim path stays".
 
 ---
 
@@ -50,12 +60,12 @@ the protocol inside the trust model its contracts were audited against.
 |---|---|
 | **Who proposes** | Founder only. One open question with 2–4 choices. |
 | **Window** | Fixed **7 days** per proposal; one active proposal at a time. |
-| **How you vote** | Lock **whole $U** at the moment you vote — **1 $U = 1 vote** (your weight is the amount you lock). |
-| **One vote per wallet** per proposal. Fractional $U isn't accepted (whole tokens only). |
-| **Reclaim** | After the window closes, you reclaim your locked $U **in full**, plus a small refundable ALGO box deposit you funded when voting. |
+| **How you vote** | Lock **whole mUSD** at the moment you vote — **1 mUSD = 1 vote** (your weight is the amount you lock). The minimum vote is therefore $1. |
+| **One vote per wallet** per proposal. Fractional mUSD isn't accepted (whole tokens only). |
+| **Reclaim** | After the window closes, you reclaim your locked mUSD **in full**, plus the refundable 0.0269 ALGO box deposit you funded when voting. Network fees (~0.006 ALGO) are not refunded. |
 | **Binding?** | No — advisory. Nothing executes on-chain from the result; the founder acts on the mandate. |
 
-**Locking, not perpetual staking.** You lock $U *as the act of voting*, and it stays
+**Locking, not perpetual staking.** You lock mUSD *as the act of voting*, and it stays
 locked only for the remainder of that proposal's window. It is not staked, delegated,
 or at risk — it simply signals conviction and prevents double-counting.
 
@@ -66,12 +76,17 @@ or at risk — it simply signals conviction and prevents double-counting.
 These are properties of the deployed contract (see [SPEC.md](./SPEC.md)
 for the audited detail), stated plainly:
 
-- **Your $U always comes back.** The only way $U leaves the contract is *you*
+- **Your mUSD always comes back.** The only way mUSD leaves the contract is *you*
   reclaiming your own recorded amount after the window closes. There is no founder
   sweep or admin path that can move locked voter funds.
-- **No expiration on reclaim.** There is no deadline to claim; locked $U sits safely
+- **No expiration on reclaim.** There is no deadline to claim; locked mUSD sits safely
   and is reclaimable at any time after the vote closes — waiting longer never risks
-  it. (Practical caveats: keep your wallet, and stay opted into $U to receive it.)
+  it. (Practical caveats: keep your wallet, and stay opted into mUSD to receive it —
+  a closed-out holding makes the inner transfer fail until you opt back in.)
+- **Nobody can block a reclaim, including us.** mUSD has no freeze address and
+  no clawback address, and on Algorand an address left unset at asset creation
+  can never be set afterwards. `contracts/mvote/check_musd_asset.py` re-measures
+  this against mainnet; it is the single assumption the guarantee rests on.
 - **Immutable & non-deletable.** The app cannot be upgraded or deleted, so the rules
   you voted under can't be changed out from under you.
 - **Two independent audits passed** (build + a post-deploy adversarial pass) with no
@@ -80,11 +95,13 @@ for the audited detail), stated plainly:
 
 ---
 
-## Relationship to $U and the treasury
+## Relationship to the tokens and the treasury
 
-- **$U is the governance token.** Holding $U is what lets you participate; weight is
-  proportional to how much you lock. This is a core utility of the token alongside its
-  role as collateral and LP anchor across MagnetFi.
+- **mUSD is the governance token.** Holding mUSD is what lets you participate;
+  weight is proportional to how much you lock, one whole mUSD to one vote.
+- **$U is no longer a governance token.** Its utility is collateral and LP
+  anchor across MagnetFi, plus the strategy itself. That is a narrowing, and a
+  deliberate one — see "Why mUSD rather than $U".
 - **Treasury.** Proposals often direct how the Magnet Strategies treasury deploys
   liquidity. The treasury's live USDC balance is shown as a metric box on both token
   views so voters
@@ -93,59 +110,56 @@ for the audited detail), stated plainly:
 
 ---
 
-## The mUSD pivot
+## The mUSD pivot — done
 
-**Status: UI shipped 2026-11-04. Contract not specced, not written, not deployed.**
-
-Governance is moving from $U-weighted voting to **mUSD-weighted voting**, and the
-first half of that has already shipped: UVote is now the **Governance** pill of the
-mUSD page rather than a section of the $U page, and $U itself moved under
-`/strategy`. Nothing on chain changed. `3679681107` still locks $U, the UI still
-tells a voter it will lock $U, and it will keep saying so until a replacement
-exists.
+**Shipped 2026-11-05.** Voting moved from $U to mUSD.
 
 ### Why mUSD rather than $U
 
-- **It gives mUSD a use beyond the peg.** A reason to hold the stablecoin that is
-  not yield is a reason to mint it.
-- **$U keeps its scarcer jobs.** Collateral and LP anchor across MagnetFi, where
-  locking supply for a voting window has a cost that mUSD does not carry.
-- **Vote-buying is not free, and the PSM is the reason.** mUSD is minted through
-  our own UI at **0% fee** and redeemed at **100 bps** (`redeem_fee_bps`), so
-  acquiring voting weight and leaving again costs 1% — small, but not nothing, and
-  it is revenue to the protocol rather than to a market maker. The market is the
-  secondary route; the PSM is the primary one.
-- **The real defence is structural.** UVote is **advisory and founder-led**: the
-  founder writes the question, writes the choices, and is not obliged to act on a
-  result they disagree with. A bought vote buys a signal, not an outcome.
+- **It gives mUSD a use beyond the peg.** A reason to hold the stablecoin that
+  is not yield is a reason to mint it.
+- **$U keeps its scarcer jobs.** Collateral and LP anchor across MagnetFi,
+  where locking supply for a voting window has a cost mUSD does not carry.
+- **Vote-buying is not free, and the PSM is why.** mUSD is minted through our
+  own UI at **0% fee** and redeemed at **100 bps**, so acquiring voting weight
+  and leaving again costs 1% — small, but not nothing, and it is revenue to the
+  protocol rather than to a market maker.
+- **The real defence is structural.** Voting is **advisory and founder-led**:
+  the founder writes the question, writes the choices, and is not obliged to
+  act on a result they disagree with. A bought vote buys a signal, not an
+  outcome.
 
-### What a contract change actually requires
+### Why a new contract rather than a reconfigured one
 
-A new app, not an upgrade. Notes for whoever specs it:
+`magnet_asa_id` was set at creation and has **no setter**, deliberately: an app
+that can be repointed at another asset is an app whose locked balance and
+recorded debts can be made to disagree. So mVote is a separate deployment, and
+`musd_asa_id` is fixed the same way.
 
-- `magnet_asa_id` is set **at creation and has no setter**, so the live app cannot
-  be repointed at mUSD.
-- mUSD has **6 decimals** like $U, but "one whole token, one vote" means something
-  different for a dollar-pegged asset than for a 750,000-supply one — weight,
-  minimums and the display of vote power all need restating, not porting.
-- Existing proposals and their history live in the current app's boxes. Decide
-  explicitly whether history is migrated, read from both apps, or frozen and
-  shown as the old app's record.
-- The UI copy that says $U is **load-bearing**: it describes what the wallet is
-  asked to sign. Change it in the same change set as the contract, never before.
-  `web/src/components/tokens/GovernanceSection.tsx` carries a notice saying the
-  pivot is pending, and `web/src/lib/tokensGovernance.test.ts` fails if that
-  notice is deleted while the $U copy remains.
+### Why the claim path stays pointed at the retired app
+
+Nobody has an outstanding $U lock — that was measured, and the measurement is
+about one moment. A stranded voter is forever. `claimTokens` takes an era and
+works against either generation, so a $U lock that somehow existed could still
+be reclaimed through the live UI. It costs a few lines and removes the whole
+question.
+
+### What a future asset change would require
+
+The same thing this one did: a new app, a new era in `governance.ts`, and the
+old one marked `retired`. The era model exists so that is additive rather than
+a migration — proposals carry their own asset and decimals, so two generations
+can be displayed side by side without either lying about the other's numbers.
 
 ---
 
 ## Lifecycle at a glance
 
 1. **Founder creates a proposal** (question + 2–4 choices) — opens a 7-day window.
-2. **Holders vote** — lock whole $U on a choice; the tally updates on-chain.
+2. **Holders vote** — lock whole mUSD on a choice; the tally updates on-chain.
 3. **Window closes** (7 days) — voting ends; results are final and visible.
 4. **Founder acts** on the advisory mandate.
-5. **Voters reclaim** their $U (and box deposit) at any time after close.
+5. **Voters reclaim** their mUSD (and box deposit) at any time after close.
 
 ---
 
@@ -153,7 +167,7 @@ A new app, not an upgrade. Notes for whoever specs it:
 
 - [SPEC.md](./SPEC.md) — contract internals, box layout, transaction
   shapes, the two audit passes, and the deploy record (App `3679681107`).
-- [TOKENOMICS.md](../org/TOKENOMICS.md) — $U roles across the protocol.
+- [TOKENOMICS.md](../org/TOKENOMICS.md) — $U roles across the protocol (governance is no longer one).
 - [Treasury](../org/TREASURY.md) — funding and deployment of protocol capital.
 - Frontend: `web/src/components/tokens/GovernanceSection.tsx`, with the proposal
   and voting UI in `web/src/components/vote/` — see [web/README.md](../web/README.md).

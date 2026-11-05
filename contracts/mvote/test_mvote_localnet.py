@@ -108,6 +108,81 @@ def sp(fee=None):
     return p
 
 
+def zero_buffer_vote(founder, founder_sk, musd, approval, clear) -> None:
+    """
+    A whole second deployment, funded to EXACTLY its minimum balance.
+
+    This is the case audit finding I-4 is about, and the only way to prove the
+    group reorder did what it was for. The main scenario above funds the app
+    with 0.4 ALGO and therefore carries a 200,000 µALGO spare, which hides the
+    bug completely — under the OLD order (app call at index 0, MBR payment at
+    index 2) the first vote here was rejected with
+    "balance 486100 below min 513000", because the box was created before the
+    ALGO covering it had arrived.
+
+    Zero spare, first vote, no second chance. If anyone moves the app call back
+    to index 0, this is the test that goes red.
+    """
+    def send_(txns, keys):
+        return send(txns, keys)
+
+    conf = send_([transaction.ApplicationCreateTxn(
+        sender=founder, sp=sp(), on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=approval, clear_program=clear,
+        global_schema=transaction.StateSchema(3, 2),
+        local_schema=transaction.StateSchema(0, 0),
+        app_args=[musd.to_bytes(8, "big")],
+    )], [founder_sk])
+    app_id = conf["application-index"]
+    addr = get_application_address(app_id)
+
+    # Base 100,000 + ASA opt-in 100,000, and not one µALGO more.
+    send_([transaction.PaymentTxn(founder, sp(), addr, 200_000)], [founder_sk])
+    send_([transaction.ApplicationNoOpTxn(
+        founder, sp(fee=2000), app_id, app_args=[b"optin_asa"], foreign_assets=[musd],
+    )], [founder_sk])
+    # The proposal box MBR, exactly — nothing left over as a buffer.
+    send_([
+        transaction.PaymentTxn(founder, sp(), addr, PROPOSAL_BOX_MBR),
+        transaction.ApplicationNoOpTxn(
+            founder, sp(), app_id,
+            app_args=[b"create_proposal", b"zero buffer", b"A", b"B", b"", b""],
+            boxes=[(app_id, b"prop_" + (1).to_bytes(8, "big"))],
+        ),
+    ], [founder_sk, founder_sk])
+
+    info = ALGOD.account_info(addr)
+    spare = info["amount"] - info["min-balance"]
+    check("the app under test has zero spare over its minimum balance",
+          spare == 0, f"spare {spare}")
+
+    sk, voter = account.generate_account()
+    send_([transaction.PaymentTxn(founder, sp(), voter, 5_000_000)], [founder_sk])
+    send_([transaction.AssetTransferTxn(voter, sp(), voter, 0, musd)], [sk])
+    send_([transaction.AssetTransferTxn(founder, sp(), voter, 50 * ONE_MUSD, musd)], [founder_sk])
+
+    try:
+        send_([
+            transaction.PaymentTxn(voter, sp(), addr, VOTE_BOX_MBR),
+            transaction.AssetTransferTxn(voter, sp(), addr, 10 * ONE_MUSD, musd),
+            transaction.ApplicationNoOpTxn(
+                voter, sp(), app_id,
+                app_args=[b"cast_vote", (1).to_bytes(8, "big"), (0).to_bytes(8, "big")],
+                boxes=[(app_id, b"prop_" + (1).to_bytes(8, "big")),
+                       (app_id, b"vote_" + (1).to_bytes(8, "big") + encoding.decode_address(voter))],
+                foreign_assets=[musd],
+            ),
+        ], [sk] * 3)
+        check("the FIRST vote lands with no standing buffer at all", True)
+    except Exception as e:
+        check("the FIRST vote lands with no standing buffer at all", False, str(e)[:160])
+
+    after = ALGOD.account_info(addr)
+    check("the voter's MBR left the app exactly where it started",
+          after["amount"] - after["min-balance"] == 0,
+          f"spare {after['amount'] - after['min-balance']}")
+
+
 def main() -> int:
     founder, founder_sk = funded_account()
     print(f"founder: {founder}\n")
@@ -175,16 +250,18 @@ def main() -> int:
         ]
 
     def vote_txns(addr, pid, choice, whole, mbr=VOTE_BOX_MBR, xfer_from=None, xfer_sk=None):
+        # [0] MBR payment, [1] mUSD transfer, [2] app call — the payment lands
+        # before the app call creates the box and raises the app's min balance.
         return [
+            transaction.PaymentTxn(addr, sp(), app_addr, mbr),
+            transaction.AssetTransferTxn(
+                xfer_from or addr, sp(), app_addr, whole, musd),
             transaction.ApplicationNoOpTxn(
                 addr, sp(), app_id,
                 app_args=[b"cast_vote", pid.to_bytes(8, "big"), choice.to_bytes(8, "big")],
                 boxes=[prop_box(pid), vote_box(pid, addr)],
                 foreign_assets=[musd],
             ),
-            transaction.AssetTransferTxn(
-                xfer_from or addr, sp(), app_addr, whole, musd),
-            transaction.PaymentTxn(addr, sp(), app_addr, mbr),
         ]
 
     def claim_txn(addr, pid):
@@ -221,7 +298,7 @@ def main() -> int:
     check("a short MBR payment is refused", ok, why)
 
     ok, why = rejects(vote_txns(v1, 1, 0, 10 * ONE_MUSD, xfer_from=v2),
-                      [v1sk, v2sk, v1sk])
+                      [v1sk, v2sk, v1sk])   # index 1 is the transfer, signed by v2
     check("mUSD funded by a different wallet than the voter is refused", ok, why)
 
     print("\n── votes land ──")
@@ -292,6 +369,9 @@ def main() -> int:
     held = next(a["amount"] for a in ALGOD.account_info(app_addr)["assets"]
                 if a["asset-id"] == musd)
     check("app holds 0 mUSD once everyone has claimed", held == 0, str(held))
+
+    print("\n── no standing ALGO buffer is required (audit I-4) ──")
+    zero_buffer_vote(founder, founder_sk, musd, approval, clear)
 
     print("\n── the window guard releases ──")
     send(create_proposal_txns(founder, "a second question", ["Yes", "No"], 2),

@@ -26,12 +26,25 @@ export function ProposalCard({
   proposal, balance, onChanged,
 }: {
   proposal: Proposal;
-  /** The voter's balance of THIS proposal's voting asset, in base units. */
-  balance: number;
+  /**
+   * The voter's balance of THIS proposal's voting asset, in base units.
+   * `null` means unknown — either not read yet, or the read failed. It does
+   * not mean zero.
+   */
+  balance: number | null;
   onChanged: () => void;
 }) {
   const { activeAddress, signTransactions, algodClient } = useWallet();
   const [record, setRecord] = useState<VoteRecord | null>(null);
+  /**
+   * Whether we actually know the answer about this wallet's vote.
+   *
+   * `record === null` used to carry two meanings at once — "they have not
+   * voted" and "the read threw" — and the second one is dangerous after the
+   * window closes, because the Reclaim button is gated on having a record. A
+   * voter with locked mUSD was shown no way to get it back.
+   */
+  const [recordState, setRecordState] = useState<"loading" | "loaded" | "error">("loading");
   const era = proposal.era;
   const [voteChoice, setVoteChoice] = useState<number | null>(null);
   const [claiming, setClaiming] = useState(false);
@@ -41,11 +54,31 @@ export function ProposalCard({
   const winner = leadingChoice(proposal);
 
   const refreshRecord = useCallback(async () => {
-    if (!activeAddress || !algodClient) { setRecord(null); return; }
-    setRecord(await getVoteRecord(algodClient, era, proposal.id, activeAddress));
+    if (!activeAddress || !algodClient) {
+      setRecord(null);
+      setRecordState("loaded");   // nothing to know without a wallet
+      return;
+    }
+    setRecordState("loading");
+    try {
+      setRecord(await getVoteRecord(algodClient, era, proposal.id, activeAddress));
+      setRecordState("loaded");
+    } catch {
+      setRecord(null);
+      setRecordState("error");
+    }
   }, [activeAddress, algodClient, era, proposal.id]);
 
-  useEffect(() => { refreshRecord(); }, [refreshRecord]);
+  useEffect(() => {
+    // Clear FIRST, synchronously, on a wallet change. `setRecord` only ran
+    // after the await, so switching accounts left the previous wallet's
+    // "You locked N" line and its Reclaim button sitting under the new one —
+    // and racing responses could land out of order. Same fix, and the same
+    // reason, as the owner-change clear in usePerpsPositions.
+    setRecord(null);
+    setRecordState("loading");
+    void refreshRecord();
+  }, [refreshRecord]);
 
   async function handleClaim() {
     if (!activeAddress || !algodClient) return;
@@ -56,7 +89,17 @@ export function ProposalCard({
       await refreshRecord();
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Claim failed.");
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/confirm|timeout|timed out|pending/i.test(msg)) {
+        // The group was submitted and may yet land. Saying "Claim failed" here
+        // would be a confident false statement about money — CLAUDE.md's
+        // "report outcomes faithfully" is exactly this case.
+        toast(`Submitted, but we couldn't confirm it in time. Check your wallet before retrying.`);
+        await refreshRecord();
+        onChanged();
+      } else {
+        toast.error(msg || "Claim failed.");
+      }
     } finally {
       setClaiming(false);
     }
@@ -104,7 +147,11 @@ export function ProposalCard({
           const isMine = record?.choice === i;
           const isWinner = !active && i === winner && total > 0;
           // A retired era is readable and claimable, never votable.
-          const canVote = active && era.accepting && !record && !!activeAddress;
+          // `recordState === "loaded"` is required: offering a vote while the
+          // record is unknown sends someone who already voted into a wallet
+          // prompt the contract rejects on its one-vote-per-wallet check.
+          const canVote = active && era.accepting && recordState === "loaded"
+            && !record && !!activeAddress;
           return (
             <button
               key={i}
@@ -136,6 +183,37 @@ export function ProposalCard({
       </div>
 
       {/* Footer state */}
+      {/*
+        Unknown, said out loud — and the Reclaim button offered anyway once the
+        window has closed.
+
+        The alternative is hiding it, which is what the code did before: a
+        voter with locked mUSD and a flaky connection saw a closed proposal
+        with no way to reclaim and no explanation. Offering it costs a rejected
+        transaction at worst, and the contract refuses a claim with no vote on
+        record. Showing nothing costs someone their funds in appearance, which
+        is the error that matters.
+      */}
+      {recordState === "error" && activeAddress && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5">
+          <span className="text-xs text-amber-200">
+            Couldn&apos;t check whether you voted on this one.{" "}
+            <button onClick={() => void refreshRecord()} className="underline underline-offset-2 hover:text-amber-100">
+              Retry
+            </button>
+          </span>
+          {!active && (
+            <button
+              onClick={handleClaim}
+              disabled={claiming}
+              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/15 disabled:opacity-40"
+            >
+              {claiming ? "Reclaiming…" : `Try reclaim ${era.unit}`}
+            </button>
+          )}
+        </div>
+      )}
+
       {record && (
         <div className="mt-4 flex items-center justify-between rounded-xl border border-magnet-500/20 bg-magnet-950/30 px-3 py-2.5">
           <span className="flex items-center gap-2 text-xs text-gray-300">
@@ -156,6 +234,10 @@ export function ProposalCard({
 
       {active && era.accepting && !record && !activeAddress && (
         <p className="mt-4 text-center text-xs text-gray-500">Connect a wallet to vote.</p>
+      )}
+
+      {active && era.accepting && activeAddress && recordState === "loading" && (
+        <p className="mt-4 text-center text-xs text-gray-500">Checking whether you have voted…</p>
       )}
 
       {voteChoice !== null && (

@@ -1,8 +1,128 @@
-# UVote — Build Spec (v2 voting relaunch)
+# Governance — Build Spec
 
-_Status: spec + contract written; **internal audit PASSED** (no Critical/High; all
-three invariants hold). Defense-in-depth hardening applied. Pending testnet
-verification + frontend port before mainnet deploy._
+Two generations. **mVote** (mUSD) is current; **UVote** ($U, App `3679681107`)
+is retired and kept below because its audit history is the reason mVote looks
+the way it does.
+
+---
+
+# mVote — mUSD-weighted voting
+
+_Status: written, proven on a local AVM, audited by three independent passes.
+**Not yet deployed.** `MVOTE_APP_IDS` is 0._
+_Last updated: 2026-11-05_
+
+## What it is
+
+UVote with the voting asset changed from $U to mUSD, and nothing else changed
+that did not have to be. That is the design: UVote's logic has two independent
+adversarial audits behind it, the second one after deploy and against the
+deployed bytes. Replicating preserves that confidence; rewriting spends it.
+
+Contract: `contracts/mvote/mvote/mvote.py` (PyTeal v8).
+Frontend: `web/src/lib/governance*.ts`.
+
+## The diff from UVote, in full
+
+Compile both and diff the TEAL — it is the only description of this contract
+that cannot drift. The changes are:
+
+| # | Change | Why |
+|---|---|---|
+| — | `magnet_asa_id` → `musd_asa_id` (4 sites) | Set at creation, no setter, as before. An app that can be repointed is an app whose locked balance and recorded debts can disagree. |
+| — | `DECIMAL_FACTOR` 10^5 → 10^6 | $U has 5 decimals, mUSD has 6. Read off the chain, not inferred. Minimum vote goes from ~$0.15 to $1.00. |
+| I-1 | `claim_tokens` asserts `Global.group_size() == 1` | UVote's post-deploy re-audit filed this as "future redeploy only". Costs nothing: the UI has one claim button per card, so batching was never offered. |
+| I-2 | `create_proposal` uses checked `BoxCreate(...) == 1` | Was safe only via monotonic `proposal_count`. Now self-evident. |
+| I-3 | `claim_tokens` asserts `BoxDelete(...) == 1` | Found while writing. A 0 would have run both inner transfers while the vote box survived to be claimed again. The re-entrancy argument rests on that delete having happened. |
+| I-4 | `cast_vote` group reordered to `[0]` payment, `[1]` transfer, `[2]` app call | **Removes a standing-funding requirement neither UVote audit could close.** See below. |
+
+## I-4: why the group order matters
+
+Algorand checks an account's minimum balance **at the end of each transaction**,
+not at the end of the group. With the app call first it created the vote box —
+raising the app's minimum by 26,900 µALGO — while the payment covering that was
+still two transactions away. So the app had to carry a permanent 26,900 buffer
+or the *first vote of every deployment* reverted. UVote's audit filed it as
+deploy requirement L1: "required, not optional", and the live app is immutable
+so it could never be fixed there.
+
+Moving the payment ahead of the app call means the ALGO has landed before the
+box exists. Measured, not reasoned: an app funded to **exactly** its minimum
+balance, zero spare, now accepts its first vote. Under the old order the same
+app rejected it with `balance 486100 below min 513000`.
+`test_mvote_localnet.py::zero_buffer_vote` is that case, and it goes red if
+anyone resequences the group.
+
+Every assert is unchanged — only its index moved. Each transaction is still
+pinned by type, sender, receiver, amount and asset, so position was never what
+made the group safe.
+
+## Transaction shapes
+
+- **create_proposal** (founder): group of 2 — `[0]` Payment `286,100 µALGO`
+  (proposal-box MBR), `[1]` AppCall `[create_proposal, question, a, b, c, d]`.
+  Limits are **bytes**, not characters: 256 for the question, 96 per choice.
+- **cast_vote** (voter): group of 3 — `[0]` Payment `26,900 µALGO`,
+  `[1]` AXFER whole mUSD → app, `[2]` AppCall `[cast_vote, id8, choice8]`.
+- **claim_tokens** (voter, after close): AppCall `[claim_tokens, id8]`, **alone**
+  (`group_size == 1`), outer `flat_fee=true, fee=3000` for two inner txns.
+
+Box layout, global state and MBR arithmetic are unchanged from UVote — see the
+UVote spec below, which remains accurate for all of it.
+
+## How it was proven
+
+- `test_mvote_localnet.py` — 28 assertions, real signatures on a real AVM.
+  Localnet rather than testnet because dev mode can shift block timestamps, so
+  the 7-day window is actually crossed; everything about post-close behaviour is
+  otherwise untestable without waiting a week.
+- `mutate_mvote.py` — deletes each guard and requires the matching test to flip.
+  10 caught, 1 documented-redundant, 0 survivors. It found one vacuous test,
+  where "claim before the window closes" passed with the window check deleted
+  because the voter had not voted yet.
+- `check_musd_asset.py` — re-measures the asset assumption fund safety rests on:
+  mUSD has no clawback and no freeze, and on Algorand neither can ever be added.
+- `verify_embedded.py` — the bytes the deploy button ships are this contract
+  compiled. The toolchain was itself validated by compiling UVote with it and
+  matching the deployed app byte-for-byte.
+
+## Audit, 2026-11-05 (three independent agents, cold context)
+
+No Critical, no High. No fund-loss path, no tally-manipulation path, no figure
+rendered with the wrong token's decimals.
+
+- **Contract** — all seven attack categories clean except the funding liveness
+  issue, which became I-4 above rather than a documented workaround.
+- **Frontend** — found a class of defect where a failed read rendered as a
+  confident fact: a rate-limited node turned a live proposal into "Nothing to
+  vote on", a failed box read **hid the Reclaim button from a voter with locked
+  funds**, and a failed account read told a 5,000 mUSD wallet it needed 1 mUSD
+  to vote. All fixed; `governanceUnknowns.test.ts` guards them.
+- **Migration/ops** — found that a half-finished deploy lost the App ID and that
+  the two-step founder transfer had no UI. Both fixed.
+
+## Known and accepted
+
+- **No founder sweep path.** The contract holds exactly the sum of locked mUSD
+  and the only exit is a voter reclaiming their own recorded amount. The cost:
+  mUSD sent to the app by mistake is stuck forever, and mUSD is worth a dollar.
+  There is no path that distinguishes a donation from a lock without also being
+  a path that moves tokens the contract does not owe.
+- **No proposal cancel.** A typo'd proposal blocks the next one for 7 days.
+  Voters still reclaim; a new proposal follows.
+- **Each proposal permanently costs 0.2861 ALGO** of app minimum balance, since
+  proposal boxes are never deleted. ~15 ALGO/year at one proposal a week.
+- **Founder key loss halts governance.** Voters can still reclaim. A successor
+  needs a new app and a new era entry in `governance.ts`.
+- **Sybil and last-second voting** are inherent to advisory token locking.
+  Weight is locked mUSD, and the founder writes the question.
+
+---
+
+# UVote — Build Spec (v2 voting relaunch) — RETIRED
+
+_This generation is no longer written to. Kept because mVote is a port of it and
+its audit findings are mVote's inheritance. App `3679681107`, voting asset $U._
 _Last updated: 2026-08-19_
 
 ## Audit result (2026-08-19, fresh internal agent)

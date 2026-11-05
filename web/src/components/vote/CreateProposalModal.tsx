@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { createProposal } from "@/lib/governanceAdmin";
 import { QUESTION_MAX, CHOICE_MAX, choiceLetter } from "@/lib/governance";
+import { byteLen } from "@/lib/governanceAdmin";
 
 export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { activeAddress, signTransactions, algodClient } = useWallet();
@@ -18,11 +19,22 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
   const addChoice = () => choices.length < 4 && setChoices((c) => [...c, ""]);
   const removeChoice = (i: number) => choices.length > 2 && setChoices((c) => c.filter((_, idx) => idx !== i));
 
+  /**
+   * Byte lengths, because that is what the contract measures.
+   *
+   * `maxLength` on the inputs and `String.length` here both count UTF-16 code
+   * units. The contract asserts `Len(arg) <= 256`, and Len counts BYTES — one
+   * emoji is 2 units and 4 bytes, "é" is 1 and 2. So a question that looked
+   * well inside the limit could be rejected on chain after the founder had
+   * already signed and paid for the group.
+   */
+  const qBytes = byteLen(question.trim());
+  const choiceBytes = choices.map((c) => byteLen(c.trim()));
   const ready =
     !!activeAddress &&
-    question.trim().length > 0 && question.trim().length <= QUESTION_MAX &&
+    question.trim().length > 0 && qBytes <= QUESTION_MAX &&
     choices[0].trim().length > 0 && choices[1].trim().length > 0 &&
-    choices.every((c) => c.trim().length <= CHOICE_MAX);
+    choiceBytes.every((n) => n <= CHOICE_MAX);
 
   async function handleSubmit() {
     if (!ready || !activeAddress || !algodClient) return;
@@ -65,12 +77,16 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
               <textarea
                 rows={3}
                 placeholder="What direction should the protocol take? (liquidity, parameters, investments…)"
-                maxLength={QUESTION_MAX}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 className={inputClass}
               />
-              <p className="mt-1 text-right text-xs text-gray-700">{question.length}/{QUESTION_MAX}</p>
+              {/* No `maxLength`: it counts the wrong unit, so it would cut off
+                  plain text early or let multi-byte text through. The counter
+                  below shows bytes, which is what will be checked. */}
+              <p className={`mt-1 text-right text-xs ${qBytes > QUESTION_MAX ? "text-red-400" : "text-gray-700"}`}>
+                {qBytes}/{QUESTION_MAX} bytes
+              </p>
             </div>
 
             <div>
@@ -82,11 +98,14 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
                     <input
                       type="text"
                       placeholder={`Choice ${choiceLetter(i)}`}
-                      maxLength={CHOICE_MAX}
                       value={choice}
                       onChange={(e) => setChoice(i, e.target.value)}
                       className={inputClass}
+                      aria-invalid={choiceBytes[i] > CHOICE_MAX}
                     />
+                    {choiceBytes[i] > CHOICE_MAX && (
+                      <span className="shrink-0 text-xs text-red-400">{choiceBytes[i]}/{CHOICE_MAX}b</span>
+                    )}
                     {i >= 2 && (
                       <button onClick={() => removeChoice(i)} className="flex-shrink-0 text-gray-700 hover:text-red-400 transition-colors">
                         <Trash2 className="h-4 w-4" />

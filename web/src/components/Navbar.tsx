@@ -80,7 +80,7 @@ const navLinks = [
    * bringing it back is this line rather than a rebuild. Same treatment Vote
    * got below, for the same reason.
    */
-  // No "Vote" entry: UVote is a section of the $U page now. One proposal had
+  // No "Vote" entry: governance is the mUSD page's Governance pill. One proposal had
   // ever been opened, and a standing nav slot leading to "check back when the
   // founder opens the first vote" spends attention this bar does not have.
   // /vote redirects into it — see next.config.js.
