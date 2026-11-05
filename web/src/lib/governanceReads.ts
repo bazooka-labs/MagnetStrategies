@@ -20,9 +20,13 @@ import {
  */
 function isNotFound(e: unknown): boolean {
   const status = (e as { status?: number })?.status;
-  if (status === 404) return true;
+  // A status is authoritative BOTH ways. Falling through to the message when a
+  // status says 500 let a body that merely contained "404" — a digit run in an
+  // id, say — be read as "absent", which is the exact confusion this function
+  // exists to prevent.
+  if (typeof status === "number") return status === 404;
   const msg = String((e as Error)?.message ?? e);
-  return /404|not found|no such box/i.test(msg);
+  return /\b404\b|not found|no such box/i.test(msg);
 }
 
 function globalUint(app: algosdk.modelsv2.Application, key: string): number | undefined {
@@ -64,13 +68,40 @@ export async function getFounder(
   }
 }
 
+/**
+ * `last_end` — when the most recent proposal's window closes. null if unknown.
+ *
+ * The contract refuses a new proposal until `latest_timestamp >= last_end`.
+ * Reading it lets the UI say so before the founder signs, instead of after.
+ */
+export async function getLastEnd(
+  algod: algosdk.Algodv2, era: GovernanceEra = MVOTE,
+): Promise<number | null> {
+  if (!era.appId) return null;
+  try {
+    const app = await algod.getApplicationByID(era.appId).do();
+    return globalUint(app, "last_end") ?? null;
+  } catch {
+    return null;   // unknown: let the contract be the judge rather than block
+  }
+}
+
 /** Proposals ever created in an era (ids run 1..count). 0 if not deployed. */
 export async function getProposalCount(
   algod: algosdk.Algodv2, era: GovernanceEra,
 ): Promise<number> {
   if (!era.appId) return 0;
   const app = await algod.getApplicationByID(era.appId).do();
-  return globalUint(app, "proposal_count") ?? 0;
+  const count = globalUint(app, "proposal_count");
+  // A deployed app always has this key — it is written at creation. Absent
+  // means we are pointed at something that is not this contract, and
+  // defaulting to 0 would make `createProposal` reuse id 1 and reference the
+  // wrong box. Refuse rather than guess.
+  if (count === undefined) {
+    throw new Error(`App ${era.appId} has no proposal_count — is ${era.name} `
+      + "pointed at the right application?");
+  }
+  return count;
 }
 
 /** The proposal, or null if that box does not exist. THROWS if the read failed. */

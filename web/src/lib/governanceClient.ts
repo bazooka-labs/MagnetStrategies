@@ -3,7 +3,7 @@
 
 import algosdk from "algosdk";
 import {
-  MVOTE, VOTE_BOX_MBR, propBoxName, voteBoxName,
+  MVOTE, SubmittedUnconfirmed, VOTE_BOX_MBR, propBoxName, voteBoxName,
   type GovernanceEra,
 } from "./governance";
 
@@ -19,7 +19,13 @@ async function sendGroup(
   const blobs = signed.filter((s): s is Uint8Array => !!s);
   if (blobs.length !== txns.length) throw new Error("Transaction signing cancelled.");
   const res = await algod.sendRawTransaction(blobs).do();
-  await algosdk.waitForConfirmation(algod, res.txid, 4);
+  // Only the WAIT is reclassified. Everything above this line failing means
+  // nothing was sent, and must keep reporting as an ordinary failure.
+  try {
+    await algosdk.waitForConfirmation(algod, res.txid, 4);
+  } catch {
+    throw new SubmittedUnconfirmed(res.txid);
+  }
   return res.txid;
 }
 

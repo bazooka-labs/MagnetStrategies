@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, CheckCircle2, Lock, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
@@ -9,7 +9,8 @@ import { VoteModal } from "@/components/vote/VoteModal";
 import { getVoteRecord } from "@/lib/governanceReads";
 import { claimTokens } from "@/lib/governanceClient";
 import {
-  choiceLetter, formatDate, formatWeight, isActive, leadingChoice, totalVotes,
+  choiceLetter, formatDate, formatWeight, isActive, isUnconfirmed,
+  leadingChoice, totalVotes,
   type Proposal, type VoteRecord,
 } from "@/lib/governance";
 
@@ -53,7 +54,20 @@ export function ProposalCard({
   const total = totalVotes(proposal);
   const winner = leadingChoice(proposal);
 
+  /**
+   * Counts every read, so only the newest may write state.
+   *
+   * Clearing on a wallet change is not enough on its own: switching from A to
+   * B leaves A's request in flight, and if it resolves AFTER B's it wins. B
+   * then sees "You locked 500 mUSD" and a Reclaim button belonging to A. The
+   * same race happens between a Retry click and the read it is retrying.
+   */
+  const readSeq = useRef(0);
+
   const refreshRecord = useCallback(async () => {
+    const seq = ++readSeq.current;
+    const current = () => seq === readSeq.current;
+
     if (!activeAddress || !algodClient) {
       setRecord(null);
       setRecordState("loaded");   // nothing to know without a wallet
@@ -61,9 +75,12 @@ export function ProposalCard({
     }
     setRecordState("loading");
     try {
-      setRecord(await getVoteRecord(algodClient, era, proposal.id, activeAddress));
+      const r = await getVoteRecord(algodClient, era, proposal.id, activeAddress);
+      if (!current()) return;
+      setRecord(r);
       setRecordState("loaded");
     } catch {
+      if (!current()) return;
       setRecord(null);
       setRecordState("error");
     }
@@ -89,16 +106,16 @@ export function ProposalCard({
       await refreshRecord();
       onChanged();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/confirm|timeout|timed out|pending/i.test(msg)) {
-        // The group was submitted and may yet land. Saying "Claim failed" here
-        // would be a confident false statement about money — CLAUDE.md's
-        // "report outcomes faithfully" is exactly this case.
-        toast(`Submitted, but we couldn't confirm it in time. Check your wallet before retrying.`);
+      // A TYPE, not a message pattern. The regex this replaces also matched
+      // failures from before submission — a params fetch that timed out, a
+      // wallet reporting a request already pending — and told the user their
+      // claim was submitted when nothing had been sent.
+      if (isUnconfirmed(err)) {
+        toast(err.message);
         await refreshRecord();
         onChanged();
       } else {
-        toast.error(msg || "Claim failed.");
+        toast.error(err instanceof Error ? err.message : "Claim failed.");
       }
     } finally {
       setClaiming(false);

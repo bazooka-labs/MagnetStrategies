@@ -184,6 +184,15 @@ def zero_buffer_vote(founder, founder_sk, musd, approval, clear) -> None:
 
 
 def main() -> int:
+    # Clear any dev-mode time offset left behind by a previous run.
+    #
+    # The offset PERSISTS on the node and applies to every block produced while
+    # it is set, so a leftover value makes the clock leap days between
+    # `create_proposal` and the first `cast_vote`, closing the window before
+    # anyone can vote. The symptom is an assert at `btoi; <; assert`, which
+    # reads like a contract bug and is not one.
+    set_time_offset(0)
+
     founder, founder_sk = funded_account()
     print(f"founder: {founder}\n")
 
@@ -328,6 +337,35 @@ def main() -> int:
     held = next(a["amount"] for a in ALGOD.account_info(app_addr)["assets"]
                 if a["asset-id"] == musd)
     check("app holds exactly the sum of locked mUSD", held == 150 * ONE_MUSD, str(held))
+
+    print("\n── rekey riders are refused (audit I-5) ──")
+    # The threat: a hostile front end bundling an account takeover into a group
+    # a wallet displays as "vote". The voter signs their own rekey either way;
+    # the guard is the difference between being able to sign it THROUGH this
+    # contract and not.
+    #
+    # Two things here look odd and are load-bearing.
+    #
+    # A THIRD wallet, after the tally checks: if the guard is ever removed
+    # these votes LAND, and a probe sharing v1 would poison every later
+    # assertion and crash the run — which the mutation runner reads as "no test
+    # flipped" rather than "caught".
+    #
+    # The rekey target is the voter's OWN address. Rekeying to an attacker
+    # changes the sender's auth address mid-group, so the node rejects the
+    # other two transactions for a bad signature before the contract runs at
+    # all; those tests passed with the guard deleted, and mutation testing
+    # caught it. A self-rekey leaves every signature valid, so a non-zero
+    # `rekey_to` is the only thing left to refuse.
+    v3sk, v3 = account.generate_account()
+    send([transaction.PaymentTxn(founder, sp(), v3, 5_000_000)], [founder_sk])
+    send([transaction.AssetTransferTxn(v3, sp(), v3, 0, musd)], [v3sk])
+    send([transaction.AssetTransferTxn(founder, sp(), v3, 20 * ONE_MUSD, musd)], [founder_sk])
+    for idx, label in ((0, "the MBR payment"), (1, "the mUSD transfer"), (2, "the app call")):
+        txns = vote_txns(v3, 1, 0, ONE_MUSD)
+        txns[idx].rekey_to = v3
+        ok, why = rejects(txns, [v3sk] * 3)
+        check(f"a rekey on {label} is refused", ok, why)
 
     print("\n── cross the 7-day window ──")
     set_time_offset(WEEK + 120)

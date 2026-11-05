@@ -4,16 +4,16 @@
 
 import algosdk from "algosdk";
 import {
-  MVOTE, CONTRACT_FUND_AMOUNT,
+  MVOTE, CONTRACT_FUND_AMOUNT, SubmittedUnconfirmed, isUnconfirmed,
   QUESTION_MAX, CHOICE_MAX, PROPOSAL_BOX_SIZE, propBoxName,
   type GovernanceEra,
 } from "./governance";
-import { getProposalCount } from "./governanceReads";
+import { getLastEnd, getProposalCount } from "./governanceReads";
 
 /**
  * mVote, compiled from `contracts/mvote/mvote/mvote.py` (PyTeal v8).
  *
- * Approval hash: WSIBLQX6LOIRT4KHAXFOZEV4JPMNN6ZFLNW5UMTZMR44YN4EZG2N4WEM3Q
+ * Approval hash: Y75UDPAF34BUYCVMAXDXYFN5GVC5WNFMB47UKAX3Q5WKJ3PYG5ZEM4SAEQ
  * Clear hash:    OHV4S2PM4R3XXXQOIKERQ6OV2OYRZZG6A66XSUVR5ADF4NXVPEZRXMYYQE
  *
  * Verify rather than trust these bytes — the toolchain is reproducible, which
@@ -30,7 +30,7 @@ import { getProposalCount } from "./governanceReads";
  * UI against it.
  */
 const MVOTE_APPROVAL_B64 =
-  "CCAMAAFgIAQCEJTSAQMIKBgmCA9wZW5kaW5nX2ZvdW5kZXILbXVzZF9hc2FfaWQOcHJvcG9zYWxfY291bnQHZm91bmRlcgVwcm9wXwhsYXN0X2VuZAAFdm90ZV8xGCISQANuMRkjEkADZTEZIhJAAAcjQAABACJDNhoAgAlvcHRpbl9hc2ESQAMsNhoAgA9jcmVhdGVfcHJvcG9zYWwSQAIqNhoAgAljYXN0X3ZvdGUSQADVNhoAgAxjbGFpbV90b2tlbnMSQABQNhoAgA51cGRhdGVfZm91bmRlchJAACg2GgCADmFjY2VwdF9mb3VuZGVyEkAAAQAxAChkEkQrKGRnKCcGZyNDiALdNhoBFSUSRCg2GgFnI0MyBCMSRCcENhoBUDURNBG+NRM1EjQTRDIHNBJXCAgXD0QnBzYaATEAUFA1FDQUvjUWNRU0FkQ0FVcICBc1FzQXIg1ENBS8IxJEsSEEshAxALIUKWSyETQXshIisgGzsSOyEDEAsgchB7IIIrIBsyNDMgQhCBJEMRYhBRJEMwAQIxJEMwAAMQASRDMABzIKEkQzAAkyAxJEMwAIIQcSRDMBECEEEkQzAQAxABJEMwETMgMSRDMBFDIKEkQzARUyAxJEMwERKWQSRDMBEiINRDMBEoHAhD0YIhJEJwQ2GgFQNQU0Bb41BzUGNAdEMgc0BlcACBcPRDIHNAZXCAgXDEQ2GgIXNQg0BlcwCBc1CTQINAkMRCcHNhoBMQBQUDUKNAohBrk1CzQLIxJEMwESNQw0CiI0CBa7NAohCTQMFrs0BlcQCBc1DTQGVxgIFzUONAZXIAgXNQ80BlcoCBc1EDQIIhJAAEA0CCMSQAArNAghBRJAABY0CCEIEkAAAQA0BSEKNBA0DAgWuyNDNAUlNA80DAgWu0L/8TQFIQs0DjQMCBa7Qv/jNAUhBjQNNAwIFrtC/9WIARkyBycFZA9ENhoBFYGAAg5ENhoCFSINRDYaAhUkDkQ2GgMVIg1ENhoDFSQORDYaBBUkDkQ2GgUVJA5ENhoFFSISNhoEFSINEUQqKmQjCGcqZDUAJwQ0ABZQNQEyBzUCNAKBgPUkCDUDIQU2GgQVIg0INhoFFSINCDUENAGBuAW5IxJENAEiNAIWuzQBIQk0Axa7NAEhBiIWuzQBIQsiFrs0ASUiFrs0ASEKIha7NAGBMDQEFrs0AYE4NhoBuzQBgbgCNhoCuzQBgZgDNhoDuzQBgfgDNhoEuzQBgdgENhoFuycFNANnI0OIAC+xIQSyEDIKshQpZLIRIrISIrIBsyNDIkMrMQBnKTYaABdnKiJnKCcGZycFImcjQ4oAADEAK2QSRIk=";
+  "CCAMAAFgIAQCEJTSAQMIKBgmCA9wZW5kaW5nX2ZvdW5kZXILbXVzZF9hc2FfaWQOcHJvcG9zYWxfY291bnQHZm91bmRlcgVwcm9wXwhsYXN0X2VuZAAFdm90ZV8xGCISQAOIMRkjEkADfzEZIhJAAAcjQAABACJDNhoAgAlvcHRpbl9hc2ESQANGNhoAgA9jcmVhdGVfcHJvcG9zYWwSQAJENhoAgAljYXN0X3ZvdGUSQADbNhoAgAxjbGFpbV90b2tlbnMSQABQNhoAgA51cGRhdGVfZm91bmRlchJAACg2GgCADmFjY2VwdF9mb3VuZGVyEkAAAQAxAChkEkQrKGRnKCcGZyNDiAL3NhoBFSUSRCg2GgFnI0MyBCMSRDEgMgMSRCcENhoBUDURNBG+NRM1EjQTRDIHNBJXCAgXD0QnBzYaATEAUFA1FDQUvjUWNRU0FkQ0FVcICBc1FzQXIg1ENBS8IxJEsSEEshAxALIUKWSyETQXshIisgGzsSOyEDEAsgchB7IIIrIBsyNDMgQhCBJEMRYhBRJEMSAyAxJEMwAQIxJEMwAAMQASRDMABzIKEkQzAAkyAxJEMwAgMgMSRDMACCEHEkQzARAhBBJEMwEAMQASRDMBEzIDEkQzARQyChJEMwEVMgMSRDMBIDIDEkQzAREpZBJEMwESIg1EMwESgcCEPRgiEkQnBDYaAVA1BTQFvjUHNQY0B0QyBzQGVwAIFw9EMgc0BlcICBcMRDYaAhc1CDQGVzAIFzUJNAg0CQxEJwc2GgExAFBQNQo0CiEGuTULNAsjEkQzARI1DDQKIjQIFrs0CiEJNAwWuzQGVxAIFzUNNAZXGAgXNQ40BlcgCBc1DzQGVygIFzUQNAgiEkAAQDQIIxJAACs0CCEFEkAAFjQIIQgSQAABADQFIQo0EDQMCBa7I0M0BSU0DzQMCBa7Qv/xNAUhCzQONAwIFrtC/+M0BSEGNA00DAgWu0L/1YgBGTIHJwVkD0Q2GgEVgYACDkQ2GgIVIg1ENhoCFSQORDYaAxUiDUQ2GgMVJA5ENhoEFSQORDYaBRUkDkQ2GgUVIhI2GgQVIg0RRCoqZCMIZypkNQAnBDQAFlA1ATIHNQI0AoGA9SQINQMhBTYaBBUiDQg2GgUVIg0INQQ0AYG4BbkjEkQ0ASI0Aha7NAEhCTQDFrs0ASEGIha7NAEhCyIWuzQBJSIWuzQBIQoiFrs0AYEwNAQWuzQBgTg2GgG7NAGBuAI2GgK7NAGBmAM2GgO7NAGB+AM2GgS7NAGB2AQ2GgW7JwU0A2cjQ4gAL7EhBLIQMgqyFClkshEishIisgGzI0MiQysxAGcpNhoAF2cqImcoJwZnJwUiZyNDigAAMQArZBJEiQ==";
 const MVOTE_CLEAR_B64 = "CIEBQw==";
 
 // Proposal box MBR: 2500 + 400*(key 13 + value 696) = 286,100 µALGO. Bundled
@@ -54,7 +54,13 @@ async function signSend(
   const blobs = signed.filter((s): s is Uint8Array => !!s);
   if (blobs.length !== txns.length) throw new Error("Transaction signing cancelled.");
   const res = await algod.sendRawTransaction(blobs).do();
-  const confirmed = await algosdk.waitForConfirmation(algod, res.txid, 4);
+  // Only the WAIT is reclassified; a failure above means nothing was sent.
+  let confirmed: algosdk.modelsv2.PendingTransactionResponse;
+  try {
+    confirmed = await algosdk.waitForConfirmation(algod, res.txid, 4);
+  } catch {
+    throw new SubmittedUnconfirmed(res.txid);
+  }
   return { txid: res.txid, confirmed };
 }
 
@@ -125,6 +131,9 @@ export async function deployMVote(
 ): Promise<{ appId: number; appAddress: string }> {
   onStep?.("create");
   const sp = await algod.getTransactionParams().do();
+  // Captured before the send, so a confirmation timeout can still name the
+  // transaction. Losing this on a mainnet create means the app exists and
+  // nobody knows its id.
   const createTxn = algosdk.makeApplicationCreateTxnFromObject({
     sender,
     suggestedParams: sp,
@@ -137,7 +146,21 @@ export async function deployMVote(
     numLocalByteSlices: 0,
     appArgs: [algosdk.encodeUint64(MVOTE.asaId)],
   });
-  const { confirmed: created } = await signSend(algod, sign, [createTxn]);
+  let created: algosdk.modelsv2.PendingTransactionResponse;
+  try {
+    ({ confirmed: created } = await signSend(algod, sign, [createTxn]));
+  } catch (e) {
+    if (isUnconfirmed(e)) {
+      // The create was SUBMITTED. It very likely landed, and clicking Deploy
+      // again would create a second, permanently inert app — so refuse to
+      // treat this as "nothing happened" and hand over the txid to look up.
+      throw new Error(
+        `The create transaction was submitted but not confirmed in time. `
+        + `DO NOT deploy again — look up ${e.txid} and, if it confirmed, use `
+        + `Finish setup with the App ID it created.`);
+    }
+    throw e;
+  }
   const appId = Number(created.applicationIndex);
   if (!appId) throw new Error("App creation did not return an application id.");
   const appAddress = algosdk.getApplicationAddress(appId).toString();
@@ -190,6 +213,15 @@ export async function createProposal(
   // The contract enforces contiguity (D requires C) and would reject this, but
   // a wallet prompt that fails on submit is a worse way to learn it.
   if (!cleaned[2] && cleaned[3]) throw new Error("Choice C is required before choice D.");
+
+  // The contract allows one open window at a time and rejects this otherwise.
+  // Checked here so the founder learns it before a wallet prompt rather than
+  // from a raw logic-eval error after signing.
+  const openUntil = await getLastEnd(algod, era);
+  if (openUntil !== null && Date.now() / 1000 < openUntil) {
+    throw new Error("A proposal is still open. The next one can start after "
+      + new Date(openUntil * 1000).toLocaleString() + ".");
+  }
 
   const nextId = (await getProposalCount(algod, era)) + 1;
   const [a, b, c = "", d = ""] = cleaned;

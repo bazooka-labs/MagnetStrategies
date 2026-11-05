@@ -69,6 +69,28 @@ token. Retiring UVote strands nobody: measured 2026-11-05, App 3679681107 holds
               each one pins is still pinned by type, sender, receiver, amount
               and asset, so position was never what made the group safe.
 
+  [I-5, new]  Every transaction in both groups asserts `rekey_to == zero`.
+
+              An audit called this harmless and reasoned, correctly, that the
+              only account a rekey in these groups can affect is the voter's
+              own — which the voter signs for. Added anyway, for two reasons.
+
+              First, consistency: the contract already pins
+              `asset_close_to` and `close_remainder_to`, and "the voter signs
+              it" would excuse those exactly as well. `rekey_to` was the one
+              missing member of that family, and a reader finding two of three
+              checked has to guess which omission was deliberate.
+
+              Second, it is the difference between a hostile front end being
+              able to bundle an account takeover into something a wallet
+              displays as "vote", and that group being rejected outright. The
+              user is still signing a rekey either way; this means they cannot
+              sign it *through this contract*.
+
+              Costs nothing — our client never sets `rekey_to` — and this is
+              the last moment it can be added, because the app is immutable
+              once deployed.
+
   [I-3, new]  `claim_tokens` now asserts `BoxDelete(...) == Int(1)` instead of
               popping it. Not from the UVote audit — found writing this. The
               delete is unreachable-as-a-failure today, because `hasValue()` is
@@ -292,12 +314,14 @@ def approval_program():
     cast_vote = Seq([
         Assert(Global.group_size() == Int(3)),
         Assert(Txn.group_index() == Int(2)),        # this AppCall is pinned to slot 2
+        Assert(Txn.rekey_to() == Global.zero_address()),
 
         # [0] MBR payment — voter funds their own vote box, before it is created
         Assert(Gtxn[0].type_enum() == TxnType.Payment),
         Assert(Gtxn[0].sender() == Txn.sender()),
         Assert(Gtxn[0].receiver() == Global.current_application_address()),
         Assert(Gtxn[0].close_remainder_to() == Global.zero_address()),
+        Assert(Gtxn[0].rekey_to() == Global.zero_address()),
         Assert(Gtxn[0].amount() == VOTE_BOX_MBR),
 
         # [1] mUSD transfer — must come FROM the voter (AppCall sender), TO the contract
@@ -306,6 +330,7 @@ def approval_program():
         Assert(Gtxn[1].asset_sender() == Global.zero_address()),                    # not a clawback move
         Assert(Gtxn[1].asset_receiver() == Global.current_application_address()),
         Assert(Gtxn[1].asset_close_to() == Global.zero_address()),
+        Assert(Gtxn[1].rekey_to() == Global.zero_address()),
         Assert(Gtxn[1].xfer_asset() == App.globalGet(MUSD_ASA_KEY)),
         Assert(Gtxn[1].asset_amount() > Int(0)),
         Assert(Gtxn[1].asset_amount() % DECIMAL_FACTOR == Int(0)),                  # whole mUSD only
@@ -367,6 +392,7 @@ def approval_program():
         # BoxGet — but "already safe" is an argument, and this is a fact. The UI
         # has one claim button per proposal card, so nothing batched was lost.
         Assert(Global.group_size() == Int(1)),
+        Assert(Txn.rekey_to() == Global.zero_address()),
 
         (prop_key := ScratchVar()).store(Concat(PROPOSAL_PREFIX, Txn.application_args[1])),
         (prop_box := BoxGet(prop_key.load())),

@@ -40,7 +40,7 @@
  * invite the reader to wonder which one is current.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
@@ -66,15 +66,35 @@ export function GovernanceSection() {
    * reachable.
    */
   const [founder, setFounder] = useState<string | null>(null);
+  const [founderKnown, setFounderKnown] = useState(false);
   useEffect(() => {
-    if (!algodClient || !MVOTE.appId) { setFounder(null); return; }
+    if (!algodClient || !MVOTE.appId) { setFounder(null); setFounderKnown(false); return; }
     let alive = true;
-    void getFounder(algodClient, MVOTE).then((f) => { if (alive) setFounder(f); });
+    void getFounder(algodClient, MVOTE).then((f) => {
+      if (!alive) return;
+      setFounder(f);
+      setFounderKnown(f !== null);
+    });
     return () => { alive = false; };
   }, [algodClient]);
 
+  /*
+    Once the chain has ANSWERED, it decides. Before that it cannot.
+
+    `founder ?? CONSTANT` collapsed three states into two: not deployed (where
+    the constant is right, and is what makes the Deploy button reachable), read
+    in flight, and read failed. In the last two it handed the panel to the
+    hard-coded address — so after a founder transfer the OLD admin kept seeing
+    controls whose calls the contract rejects, on any blip.
+
+    Falling back while unknown is still the lesser evil: this panel is
+    cosmetic, real authority is enforced on chain, and locking the legitimate
+    founder out of it during a slow read helps nobody. But the fallback now
+    says so on screen rather than passing itself off as verified.
+  */
   const isAdmin = isConnected
-    && address === (founder ?? GOVERNANCE_ADMIN_ADDRESS);
+    && address === (founderKnown ? founder : GOVERNANCE_ADMIN_ADDRESS);
+  const founderUnverified = isAdmin && MVOTE.appId > 0 && !founderKnown;
 
   /**
    * The proposals come from the shared store, not a fetch of our own: the hero
@@ -83,25 +103,40 @@ export function GovernanceSection() {
    */
   const { proposals, loading, incomplete, refresh } = useGovernanceProposals();
   /**
-   * The balance is per-wallet, so it stays local — nothing else shows it.
-   * `null` means we could not read it, which is NOT zero.
+   * The voter's mUSD, as three distinct states.
+   *
+   * `null` alone conflated "still loading" with "the read failed", so every
+   * wallet connect briefly announced "Couldn't read your balance". Zero is a
+   * fourth, separate answer and means they hold none.
    */
   const [balance, setBalance] = useState<number | null>(null);
+  const [balanceState, setBalanceState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  /** Only the newest balance read may write, for the reason ProposalCard documents. */
+  const balanceSeq = useRef(0);
+
+  const loadBalance = useCallback(async () => {
+    const seq = ++balanceSeq.current;
+    if (!algodClient || !address) {
+      setBalance(null);
+      setBalanceState("idle");
+      return;
+    }
+    setBalance(null);          // clear FIRST: A's figure must not sit under B
+    setBalanceState("loading");
+    const b = await getVotingBalance(algodClient, address, MVOTE);
+    if (seq !== balanceSeq.current) return;
+    setBalance(b);
+    setBalanceState(b === null ? "error" : "loaded");
+  }, [algodClient, address]);
   /** Admin tooling is opt-in even for the admin — it is not what they come here to read. */
   const [adminOpen, setAdminOpen] = useState(false);
 
-  useEffect(() => {
-    if (!algodClient || !address) { setBalance(null); return; }
-    let alive = true;
-    void getVotingBalance(algodClient, address, MVOTE)
-      .then((b) => { if (alive) setBalance(b); });
-    return () => { alive = false; };
-  }, [algodClient, address]);
+  useEffect(() => { void loadBalance(); }, [loadBalance]);
 
   /** After a vote or a claim: re-read the proposals AND this wallet's balance. */
   const load = useCallback(() => {
     refresh();
-    if (algodClient && address) void getVotingBalance(algodClient, address, MVOTE).then(setBalance);
+    void loadBalance();
   }, [refresh, algodClient, address]);
 
   /*
@@ -167,8 +202,15 @@ export function GovernanceSection() {
       </div>
 
       {isAdmin && adminOpen && (
-        <div className="mb-6">
-          <AdminPanel onProposalCreated={load} />
+        <div className="mb-6 space-y-3">
+          {founderUnverified && (
+            <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+              Couldn&apos;t read the contract&apos;s founder, so these controls are shown on the
+              configured admin address rather than a verified one. If founder was transferred,
+              these calls will be rejected on chain.
+            </p>
+          )}
+          <AdminPanel onProposalCreated={load} founder={founder} />
         </div>
       )}
 
@@ -240,17 +282,19 @@ export function GovernanceSection() {
             Current vote power
           </p>
           <p className="mt-1.5 font-mono text-2xl font-bold text-magnet-400">
-            {!isConnected ? "—"
-              : balance === null ? "—"
+            {!isConnected || balance === null
+              ? "—"
               : `${formatWeight(MVOTE, balance)} ${MVOTE.unit}`}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
             {!isConnected
               ? "Connect a wallet to see your voting power"
-              : balance === null
-                // Not "0 mUSD". A failed read is not a balance.
-                ? "Couldn't read your balance just now — figures are withheld rather than guessed"
-                : `Whole ${MVOTE.unit} only — fractions do not count toward a vote`}
+              : balanceState === "loading"
+                ? "Reading your balance…"
+                : balanceState === "error"
+                  // Not "0 mUSD", and not silence. A failed read is not a balance.
+                  ? "Couldn't read your balance just now — withheld rather than guessed"
+                  : `Whole ${MVOTE.unit} only — fractions do not count toward a vote`}
           </p>
         </div>
       </div>
@@ -288,9 +332,13 @@ export function GovernanceSection() {
            "nothing to vote on" and "this is broken" assumes the latter. */
         <div className="rounded-2xl border border-white/10 bg-black/30 px-6 py-12 text-center">
           <VoteIcon className="mx-auto h-8 w-8 text-gray-600" />
-          <p className="mt-3 text-sm font-medium text-white">Nothing to vote on right now</p>
+          <p className="mt-3 text-sm font-medium text-white">
+            {incomplete ? "Couldn't load the proposals" : "Nothing to vote on right now"}
+          </p>
           <p className="mt-1 text-xs text-gray-500">
-            There are no live proposals. Holding mUSD is what gives you a vote when the next one opens.
+            {incomplete
+              ? "We couldn't read every proposal just now, so there may be one open that is not shown."
+              : "There are no live proposals. Holding mUSD is what gives you a vote when the next one opens."}
           </p>
         </div>
       ) : (

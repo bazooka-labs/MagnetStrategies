@@ -36,13 +36,29 @@
  */
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Vote as VoteIcon } from "lucide-react";
 import { RAISED_MAGNET } from "../raisedButton";
 import { GOVERNANCE_LIVE } from "@/lib/governance";
 import { liveCount, useGovernanceProposals } from "@/hooks/useGovernanceProposals";
 
 export function LiveProposalsPill() {
-  const { proposals, loading } = useGovernanceProposals();
+  const { proposals, loading, incomplete, refresh } = useGovernanceProposals();
+
+  /**
+   * Re-render on a timer, so a window closing is noticed here too.
+   *
+   * The count comes from the browser clock, and nothing re-rendered this pill
+   * when that crossed a proposal's `endTime` — so it could keep advertising a
+   * vote that had closed. GovernanceSection ticks for the same reason; this
+   * one was missed because it lives in a different tree.
+   */
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((t) => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Nothing to point at before the contract is live.
   if (!GOVERNANCE_LIVE) return null;
 
@@ -56,7 +72,17 @@ export function LiveProposalsPill() {
     >
       <VoteIcon className="h-3.5 w-3.5" />
       Live proposals:{" "}
-      <span className="font-mono font-semibold">{loading ? "…" : n}</span>
+      {/*
+        A dash, not a zero, when a read failed.
+
+        `incomplete` means an era could not be read, so `n` is a count of what
+        we happened to receive — not of what exists. Printing it as "0" states
+        a fact nobody established, and this pill's whole job is to be the one
+        place that says whether a vote is open.
+      */}
+      <span className="font-mono font-semibold">
+        {loading ? "…" : incomplete ? "—" : n}
+      </span>
       {/* A quiet pulse only when something is actually open — a dot that always
           blinks stops meaning anything. */}
       {open && <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse" />}

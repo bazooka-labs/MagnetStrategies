@@ -11,6 +11,12 @@ So each guard below is deleted from mvote.py, the suite is re-run against a
 freshly deployed app, and the named test MUST flip to FAIL. A guard whose
 removal changes nothing is a guard the suite is not actually testing.
 
+A SURVIVOR IS NOT A VERDICT UNTIL IT REPRODUCES. The localnet keeps state
+between runs — a crashed mutation can leave boxes, balances, or a dev-mode
+clock offset behind — and that has already produced one survivor that vanished
+on a clean re-run. Re-run before believing one, and read INCONCLUSIVE as "the
+harness broke", never as "safe".
+
 Run:  algokit localnet start && python3 mutate_mvote.py
 """
 
@@ -59,6 +65,15 @@ MUTATIONS = [
     ("window must be closed to claim",
      "Assert(Global.latest_timestamp() >= Btoi(Extract(prop_box.value(), PROP_END_TIME, Int(8)))),",
      "claim before the window closes is refused"),
+    ("rekey guard on the MBR payment (audit I-5)",
+     "Assert(Gtxn[0].rekey_to() == Global.zero_address()),",
+     "a rekey on the MBR payment is refused"),
+    ("rekey guard on the mUSD transfer (audit I-5)",
+     "Assert(Gtxn[1].rekey_to() == Global.zero_address()),",
+     "a rekey on the mUSD transfer is refused"),
+    ("rekey guard on the app call (audit I-5)",
+     "Assert(Txn.rekey_to() == Global.zero_address()),",
+     "a rekey on the app call is refused"),
     ("claim stands alone (audit I-1)",
      "Assert(Global.group_size() == Int(1)),",
      "claim grouped with anything else is refused (audit I-1)"),
@@ -106,7 +121,16 @@ def main() -> int:
                            if snippet.startswith("only_founder") else "")
             SRC.write_text(original.replace(snippet, replacement, 1))
             res = run_suite()
-            caught = res.get(test_name) is False
+            # `res.get(...) is False` alone cannot tell "the test ran and
+            # passed" from "the test never ran because the suite crashed".
+            # Both look like a survivor, and a crash is usually evidence the
+            # mutation DID something — so they are reported apart.
+            if test_name not in res:
+                print(f"  INCONCLUSIVE  {label}  ->  \"{test_name}\" never ran "
+                      f"(the suite aborted; fix the harness, do not read this as safe)")
+                survivors.append(label)
+                continue
+            caught = res[test_name] is False
             if not caught and label in EXPECTED_SURVIVORS:
                 print(f"  redundant  {label}  ->  \"{test_name}\"")
                 print(f"             {EXPECTED_SURVIVORS[label]}")

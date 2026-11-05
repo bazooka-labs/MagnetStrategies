@@ -6,10 +6,14 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, PrimaryButton } from "@/components/magnetfi/v2/shared";
 import { CreateProposalModal } from "@/components/vote/CreateProposalModal";
-import { deployMVote, setupMVote, type DeployStep } from "@/lib/governanceAdmin";
+import { acceptFounder, deployMVote, setupMVote, updateFounder, type DeployStep } from "@/lib/governanceAdmin";
 import { GOVERNANCE_LIVE, GOVERNANCE_NETWORK, MVOTE } from "@/lib/governance";
 
-export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => void }) {
+export function AdminPanel({ onProposalCreated, founder }: {
+  onProposalCreated: () => void;
+  /** The on-chain founder, or null if not deployed / unreadable. */
+  founder?: string | null;
+}) {
   const { activeAddress, signTransactions, algodClient } = useWallet();
   const [showCreate, setShowCreate] = useState(false);
 
@@ -37,6 +41,36 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
       toast.error(err instanceof Error ? err.message : "Deploy failed.");
     } finally {
       setStep(null);
+    }
+  }
+
+  const [pendingFounder, setPendingFounder] = useState("");
+  const [busyFounder, setBusyFounder] = useState(false);
+
+  async function handleNominate() {
+    if (!activeAddress || !algodClient) return;
+    setBusyFounder(true);
+    try {
+      await updateFounder(algodClient, signTransactions, activeAddress, pendingFounder);
+      toast.success("Nominated. The incoming wallet must now accept.");
+      setPendingFounder("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Nomination failed.");
+    } finally {
+      setBusyFounder(false);
+    }
+  }
+
+  async function handleAccept() {
+    if (!activeAddress || !algodClient) return;
+    setBusyFounder(true);
+    try {
+      await acceptFounder(algodClient, signTransactions, activeAddress);
+      toast.success("Founder accepted. Reload to pick up the new authority.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Accept failed.");
+    } finally {
+      setBusyFounder(false);
     }
   }
 
@@ -93,10 +127,10 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
           <p className="mt-2 text-xs text-gray-500 leading-relaxed">
             A two-step handshake you sign in your wallet: <span className="text-gray-300">(1)</span> create the
             contract (you become <span className="text-gray-300">founder</span>), then{" "}
-            <span className="text-gray-300">(2)</span> fund it + opt into mUSD. The app is funded with a
-            standing buffer so the first vote always lands — the vote box is created at group index 0 but the
-            voter&apos;s MBR payment settles at index 2, so without it the FIRST vote fails its own
-            min-balance check.
+            <span className="text-gray-300">(2)</span> fund it + opt into mUSD. The 0.4 ALGO covers the
+            base minimum plus the asset opt-in. It no longer has to cover a standing vote-box buffer: the
+            voter&apos;s MBR payment is the first transaction in the vote group, so it lands before the box
+            that needs it.
           </p>
 
           {deployedId ? (
@@ -142,6 +176,49 @@ export function AdminPanel({ onProposalCreated }: { onProposalCreated: () => voi
               </PrimaryButton>
             </div>
           )}
+        </Panel>
+      )}
+
+      {/*
+        Founder transfer, both halves.
+
+        The contract has always supported this and the panel never exposed it,
+        so rotating the protocol's governance key meant writing a script. Two
+        steps on purpose: nothing changes until the incoming wallet accepts, so
+        a typo'd address cannot strand the app — it just never gets accepted,
+        and the current founder can overwrite the nomination.
+      */}
+      {GOVERNANCE_LIVE && (
+        <Panel className="p-5">
+          <p className="text-sm font-semibold text-white">Transfer founder</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            On chain now: <span className="font-mono">{founder ? `${founder.slice(0, 8)}…${founder.slice(-6)}` : "unknown"}</span>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <input
+              value={pendingFounder}
+              onChange={(e) => setPendingFounder(e.target.value.trim())}
+              placeholder="New founder address"
+              className="min-w-0 flex-1 rounded-lg border border-gray-700 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder-gray-600 focus:border-magnet-500 focus:outline-none"
+            />
+            <button
+              onClick={handleNominate}
+              disabled={pendingFounder.length !== 58 || busyFounder}
+              className="rounded-lg border border-amber-400/40 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/15 disabled:opacity-40"
+            >
+              Nominate
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-600">
+            Step 2 is signed by the <em>incoming</em> wallet. Connect it and press Accept.
+          </p>
+          <button
+            onClick={handleAccept}
+            disabled={busyFounder}
+            className="mt-2 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:text-white disabled:opacity-40"
+          >
+            Accept founder (as the incoming wallet)
+          </button>
         </Panel>
       )}
 

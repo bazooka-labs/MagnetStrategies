@@ -22,7 +22,9 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type algosdk from "algosdk";
 import { useWallet } from "@/hooks/useWallet";
 import { listProposals } from "@/lib/governanceReads";
-import { GOVERNANCE_ERAS, isActive, type Proposal } from "@/lib/governance";
+import {
+  GOVERNANCE_ERAS, isActive, type GovernanceEra, type Proposal,
+} from "@/lib/governance";
 
 type Snapshot = {
   proposals: Proposal[];
@@ -45,6 +47,34 @@ type Snapshot = {
  * contract would blank that history until the new one ships.
  */
 const HAVE_ERAS = GOVERNANCE_ERAS.length > 0;
+
+/**
+ * Keep what an era returned LAST time when it could not be read THIS time.
+ *
+ * `listProposals` resolves even when an era fails — it reports the failure in
+ * `failed` rather than rejecting — so the `.catch` below does not run for the
+ * common case. Replacing the list wholesale therefore discarded everything the
+ * failed era had previously returned: a 503 on mVote dropped a LIVE proposal
+ * off the page and showed "Nothing to vote on right now", underneath a banner
+ * saying the read was incomplete. That is the exact bug the banner exists to
+ * prevent, reintroduced one layer up.
+ *
+ * Carried-over proposals are stale. Stale and labelled beats absent and
+ * silent, which is the same call `usePerpsPositions` makes about a position it
+ * cannot price.
+ *
+ * Exported because the subtlety is worth a name and a test of its own.
+ */
+export function mergeAcrossEras(
+  previous: Proposal[], fresh: Proposal[], failed: GovernanceEra[],
+): Proposal[] {
+  if (failed.length === 0) return fresh;
+  const failedKeys = new Set(failed.map((e) => e.key));
+  // Only eras that failed are carried; an era that read cleanly is authoritative,
+  // including when it legitimately returned nothing.
+  const carried = previous.filter((p) => failedKeys.has(p.era.key));
+  return [...fresh, ...carried].sort((a, b) => b.endTime - a.endTime);
+}
 
 /** Replaced wholesale, never mutated: the identity IS the change signal. */
 let snapshot: Snapshot = { proposals: [], loading: HAVE_ERAS, incomplete: false };
@@ -73,7 +103,12 @@ function load(algod: algosdk.Algodv2): Promise<void> {
       // set it, which meant the automatic retry never fired and a transient
       // failure became permanent for the life of the page.
       if (failed.length === 0) everLoaded = true;
-      set({ proposals, loading: false, incomplete: failed.length > 0 });
+
+      set({
+        proposals: mergeAcrossEras(snapshot.proposals, proposals, failed),
+        loading: false,
+        incomplete: failed.length > 0,
+      });
     })
     .catch(() => {
       // Keep whatever was already shown. A failed read is not evidence that the

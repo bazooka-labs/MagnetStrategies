@@ -133,6 +133,33 @@ export const CHOICE_MAX = 96;
 // Vote box layout (16 bytes): [0:8] choice, [8:16] locked_amount
 const VOTE_OFF = { choice: 0, amount: 8 } as const;
 
+/**
+ * The group reached the network but we never saw it confirm.
+ *
+ * NOT a failure. The transactions may be in a later block, and telling someone
+ * their vote failed when it may have landed invites a retry the contract will
+ * reject on its one-vote-per-wallet check — or, on the claim path, a second
+ * signature for money that may already be back.
+ *
+ * A TYPE rather than a message pattern. Classification used to be a regex over
+ * the error text (`/confirm|timeout|pending/`), which also swallowed failures
+ * from BEFORE submission — a params fetch that timed out, or a wallet
+ * reporting a request already pending — and reported "submitted" for groups
+ * that were never sent.
+ */
+export class SubmittedUnconfirmed extends Error {
+  readonly txid: string;
+  constructor(txid: string) {
+    super("Submitted, but we couldn't confirm it in time. "
+      + "Check your wallet before trying again.");
+    this.name = "SubmittedUnconfirmed";
+    this.txid = txid;
+  }
+}
+
+export const isUnconfirmed = (e: unknown): e is SubmittedUnconfirmed =>
+  e instanceof SubmittedUnconfirmed;
+
 // ── Types ───────────────────────────────────────────────────────────────────
 export interface Proposal {
   id: number;

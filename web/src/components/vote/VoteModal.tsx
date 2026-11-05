@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { castVote } from "@/lib/governanceClient";
 import {
-  VOTE_BOX_MBR, choiceLetter, formatDate,
+  VOTE_BOX_MBR, choiceLetter, formatDate, isUnconfirmed,
   type Proposal,
 } from "@/lib/governance";
 
@@ -46,24 +46,30 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
     setStatus("signing");
     setErrorMsg("");
     try {
+      // "Confirming on-chain…" was in the UI and unreachable, because nothing
+      // ever moved past "signing". `castVote` prompts the wallet and then
+      // waits for confirmation, and most of the wall-clock time is the wait.
+      setStatus("confirming");
       await castVote(algodClient, signTransactions, activeAddress, proposal.id, choiceIndex, lockBaseUnits, era);
       setStatus("idle");
       toast.success(`Vote cast — ${era.unit} locked until the vote closes`);
       onSuccess();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/confirm|timeout|timed out|pending/i.test(msg)) {
-        // Submitted; the node just did not confirm within the wait. The vote
-        // may well have landed, and a retry would be rejected by the
-        // one-vote-per-wallet check — so do not invite one.
+      // Submitted-but-unconfirmed is NOT a failure: the vote may have landed,
+      // and a retry would be rejected by the one-vote-per-wallet check. Typed
+      // rather than pattern-matched on the message, so an error from BEFORE
+      // submission — a params fetch that timed out, a wallet reporting a
+      // request already pending — still reports as the failure it is.
+      if (isUnconfirmed(err)) {
         setStatus("idle");
-        toast("Submitted, but we couldn't confirm it in time. Check your wallet before voting again.");
+        toast(err.message);
         onSuccess();
         return;
       }
-      setErrorMsg(msg || "Vote failed.");
+      const msg = err instanceof Error ? err.message : "Vote failed.";
+      setErrorMsg(msg);
       setStatus("error");
-      toast.error(msg || "Vote failed.");
+      toast.error(msg);
     }
   }
 
