@@ -619,14 +619,33 @@ describe("the two pills separate vaults from liquidity pools", () => {
     expect(screen.queryByRole("button", { name: /^Pools$/ })).toBeNull();
   });
 
-  it("lands on Liquidity Pools, not on the vault", async () => {
-    // Deliberately NOT via `mount`, which selects the vault tab for the rest
-    // of this file. This is the one test about what loads first.
+  it("lands on Magnet Token, matching the leftmost pill", async () => {
+    /**
+     * Deliberately NOT via `mount`, which selects the vault tab for the rest
+     * of this file. This is the one test about what loads first.
+     *
+     * The default was Liquidity Pools until 2026-11-05, when the pills were
+     * reordered to put Magnet Token first. The landing view and the leftmost
+     * pill have to agree — otherwise the page opens on something the control
+     * row shows as unselected — so this test tracks the pill order rather than
+     * naming a particular tab for its own sake.
+     */
     wallet = { address: VISITOR, isConnected: true };
     const { LiquidityView } = await import("./LiquidityView");
     render(<LiquidityView magnetView={MAGNET_STUB} />);
-    expect(await screen.findByText(/\$U Liquidity Pools/)).toBeTruthy();
+    expect(await screen.findByText("magnet-tab-content")).toBeTruthy();
+    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
     expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
+  });
+
+  it("puts the pills in the order Magnet Token, Liquidity Pools, Vaults", async () => {
+    // Asserted against the rendered buttons, so a reorder in the source that
+    // does not reach the DOM — or one that forgets the default above — fails.
+    await mount("visitor");
+    const labels = screen.getAllByRole("button")
+      .map((b) => b.textContent?.trim())
+      .filter((t): t is string => !!t && ["Magnet Token", "Liquidity Pools", "Vaults"].includes(t));
+    expect(labels).toEqual(["Magnet Token", "Liquidity Pools", "Vaults"]);
   });
 
   it("keeps the vault reachable, and shows it only when chosen", async () => {
@@ -722,7 +741,8 @@ describe("the Magnet Token pill", () => {
     wallet = { address: VISITOR, isConnected: true };
     const { LiquidityView } = await import("./LiquidityView");
     render(<LiquidityView magnetView={MAGNET_STUB} />);
-    expect(await screen.findByText(/\$U Liquidity Pools/)).toBeTruthy();
-    expect(screen.queryByText("magnet-tab-content")).toBeNull();
+    // The default, which is Magnet Token — not a blank column.
+    expect(await screen.findByText("magnet-tab-content")).toBeTruthy();
+    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
   });
 });

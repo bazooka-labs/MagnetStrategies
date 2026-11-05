@@ -30,7 +30,6 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import { AlertTriangle, Coins, Droplets, Layers, Shield, Sparkles, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PEX_APPS } from "@/lib/strategy/pex/config";
@@ -105,17 +104,8 @@ type Tab = "vaults" | "liquidity" | "magnet";
  * heading that has to become a track later is a rewrite. The active pill still
  * reads as selected, so it looks like a chosen view rather than a dead control.
  */
-function TabButton({ active, onClick, icon: Icon, imageSrc, label }: {
+function TabButton({ active, onClick, icon: Icon, label }: {
   active: boolean; onClick: () => void; icon: typeof Droplets;
-  /**
-   * An asset's own artwork, in place of the glyph.
-   *
-   * Only the token tab uses it: "Magnet Token" is a thing with a mark, and the
-   * mark is what a holder recognises, where the other two name activities that
-   * have no artwork. `icon` stays required and is the fallback — a missing
-   * image must not leave a pill with a hole in it.
-   */
-  imageSrc?: string;
   label: string;
 }) {
   return (
@@ -127,13 +117,17 @@ function TabButton({ active, onClick, icon: Icon, imageSrc, label }: {
           : "text-white/60 hover:text-white"
       }`}
     >
-      {imageSrc ? (
-        <span className="h-4 w-4 shrink-0 overflow-hidden rounded-full">
-          <Image src={imageSrc} alt="" width={16} height={16} className="h-full w-full object-cover" />
-        </span>
-      ) : (
-        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      )}
+      {/*
+        A lucide glyph, like every other pill in this row.
+
+        The Magnet Token pill briefly carried the $U ASA artwork, on the
+        reasoning that the mark is what a holder recognises. In a row it looked
+        wrong: full-colour artwork beside two flat monochrome glyphs reads as a
+        different KIND of control rather than a sibling of them. The token has
+        its own mark all over the view behind this pill; the pill just needs to
+        match its neighbours.
+      */}
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {label}
     </button>
   );
@@ -514,10 +508,10 @@ export function LiquidityView({ magnetView }: {
   useEffect(() => { void load(); }, [load]);
 
   const m = (id: "algo-usd" | "btc-usd") => data?.markets.find((x) => x.id === id) ?? null;
-  // Liquidity pools first: they are the lower-commitment product and the one
-  // a visitor is most likely to have come for. The vault is a managed
-  // strategy, which is a second question, not the opening one.
-  const [tab, setTab] = useState<Tab>("liquidity");
+  // Magnet Token first, matching the pill order above — the landing view and
+  // the leftmost pill have to agree, or the page opens on something the
+  // control row says is not selected.
+  const [tab, setTab] = useState<Tab>("magnet");
 
   /**
    * `?tab=` opens a pill directly, so a link can point at one.
@@ -568,6 +562,21 @@ export function LiquidityView({ magnetView }: {
 
       <div className="animate-enter mb-7 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
+          {/*
+            Magnet Token leads, since 2026-11-05.
+
+            It was last, on the reasoning that the other two ask less of a
+            reader — "put capital in this pool" against "hold the asset the
+            organisation is built on". Reordered deliberately: $U is the
+            original strategy and the one the rest of this page is denominated
+            against, so it is the right thing to meet first.
+          */}
+          <TabButton
+            active={tab === "magnet"}
+            onClick={() => setTab("magnet")}
+            icon={Coins}
+            label="Magnet Token"
+          />
           <TabButton
             active={tab === "liquidity"}
             onClick={() => setTab("liquidity")}
@@ -579,18 +588,6 @@ export function LiquidityView({ magnetView }: {
             onClick={() => setTab("vaults")}
             icon={Layers}
             label="Vaults"
-          />
-          {/* Last of the three, and deliberately so. $U is the oldest strategy
-              here but the one that asks the most of a reader: the two before it
-              are "put capital in this pool" and "put capital in this vault",
-              while this one is "hold the asset the organisation is built on".
-              Liquidity Pools stays the opening view. */}
-          <TabButton
-            active={tab === "magnet"}
-            onClick={() => setTab("magnet")}
-            icon={Coins}
-            imageSrc="/tokens/u.png"
-            label="Magnet Token"
           />
         </div>
         {/* Amber, like every other "this is not ordinary browsing" control in

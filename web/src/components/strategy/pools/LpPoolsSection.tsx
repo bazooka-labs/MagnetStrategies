@@ -62,7 +62,20 @@ function PoolCard({ p }: { p: PoolData }) {
       the pool, so this knows about an ACCENT, not about a pool id.
     */
     <Panel
-      className="animate-enter-1 hover-depth flex flex-col p-6"
+      /*
+        No `hover-depth` here, deliberately.
+
+        That utility sets `box-shadow` on hover, and a box-shadow REPLACES
+        rather than adds — so hovering swapped the neon glow below for a dim
+        purple-and-black shadow. It read as the card darkening under the
+        pointer, which is the opposite of what a hover usually signals, and it
+        undid the one thing these cards are styled for.
+
+        The glow is constant now. These cards are not buttons — the actual
+        control is the "Add liquidity" link inside each one, which has its own
+        hover state — so the card never needed a pointer affordance of its own.
+      */
+      className="animate-enter-1 flex flex-col p-6"
       glowClass={p.accent === "gold" ? ALGO_GLOW : MAGNET_GLOW}
     >
       <div className="mb-5 flex items-start justify-between gap-3">

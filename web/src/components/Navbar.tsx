@@ -11,33 +11,12 @@ import { XIcon, DiscordIcon, SOCIALS } from "@/components/SocialIcons";
 
 const navLinks = [
   /**
-   * "mUSD", not "Tokens" — relabelled 2026-11-04.
+   * "Strategy" leads, since 2026-11-05.
    *
-   * The page held $U and mUSD behind two pills; $U moved to /strategy, so the
-   * only asset left here is mUSD and "Tokens" promised a set with one member.
-   * The PATH stays /tokens, deliberately: renaming it would mean a cached 301
-   * off the live route, and `app/strategy/page.tsx` records what the last one
-   * of those still costs. Same rule as "Finance" below — the label is the
-   * product's name to a visitor, the path is its name to the codebase.
-   */
-  { href: "/tokens", label: "mUSD", external: false },
-  // "Finance", not "Bank": the route is a lending protocol with collateral
-  // vaults and a PSM, and "Bank" promised something more custodial than what is
-  // actually there. The path stays /magnetfi — the label is the product's name
-  // to a visitor, the path is its name to the codebase, and they need not match.
-  { href: "/magnetfi", label: "Finance", external: false },
-  /**
-   * "Trade" is the perps terminal, NOT the Strategy arm.
-   *
-   * The Strategy arm groups /strategy with the CLMM pools and vaults to come —
-   * but an arm is an organising principle and the nav is a shopping surface,
-   * and they do not have to match. Nobody scans a nav for "Strategy" wanting a
-   * leveraged perps screen, which is why this slot is not called that even
-   * though /trade belongs to the same arm as the entry below.
-   */
-  { href: "/trade", label: "Trade", external: false },
-  /**
-   * "Strategy" — BACK IN THE NAV, 2026-10-23.
+   * It is the widest door into the protocol: three pills — the Magnet Token,
+   * the $U liquidity pools, and the C-Vault — so a visitor who does not yet
+   * know what they want finds the most here. The entries after it are
+   * narrower and better reached once you do.
    *
    * ── The history, because it came and went twice ──
    * In from 2026-10-20, out on 2026-10-21: the page could only READ, and its
@@ -70,6 +49,37 @@ const navLinks = [
    * strategy/pools/OVERVIEW.md before shipping it.
    */
   { href: "/strategy", label: "Strategy", external: false },
+  // "Finance", not "Bank": the route is a lending protocol with collateral
+  // vaults and a PSM, and "Bank" promised something more custodial than what is
+  // actually there. The path stays /magnetfi — the label is the product's name
+  // to a visitor, the path is its name to the codebase, and they need not match.
+  { href: "/magnetfi", label: "Finance", external: false },
+  /**
+   * "mUSD", not "Tokens" — relabelled 2026-11-04.
+   *
+   * The page held $U and mUSD behind two pills; $U moved to /strategy, so the
+   * only asset left here is mUSD and "Tokens" promised a set with one member.
+   * The PATH stays /tokens, deliberately: renaming it would mean a cached 301
+   * off the live route, and `app/strategy/page.tsx` records what the last one
+   * of those still costs. Same rule as "Finance" above — the label is the
+   * product's name to a visitor, the path is its name to the codebase.
+   */
+  { href: "/tokens", label: "mUSD", external: false },
+  /**
+   * "Trade" is the perps terminal, NOT the Strategy arm.
+   *
+   * The Strategy arm groups /strategy with the CLMM pools and vaults to come —
+   * but an arm is an organising principle and the nav is a shopping surface,
+   * and they do not have to match. Nobody scans a nav for "Strategy" wanting a
+   * leveraged perps screen, which is why this slot is not called that even
+   * though /trade belongs to the same arm as the Strategy entry above.
+   *
+   * The two used to sit side by side for that shared arm. They no longer do,
+   * and that is the point: the nav is ordered by how a visitor shops, not by
+   * how the repo is organised, and the leveraged screen is not the second
+   * thing to offer someone.
+   */
+  { href: "/trade", label: "Trade", external: false },
   /**
    * No "Predict" entry: VPL is deprioritised, and a nav slot is the scarcest
    * surface on the site — every item there costs attention the ones beside it
@@ -86,6 +96,7 @@ const navLinks = [
   // /vote redirects into it — see next.config.js.
   { href: "/contact", label: "Contact", external: false },
 ];
+
 
 const navLinkClass = "text-sm font-medium text-white/60 hover:text-white transition-colors";
 

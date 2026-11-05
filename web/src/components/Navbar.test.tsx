@@ -63,9 +63,23 @@ describe("the nav shows the live products", () => {
     expect(links[0].getAttribute("href")).toBe("/strategy");
   });
 
-  it("puts Strategy beside Trade, which shares its arm", () => {
-    const desktop = hrefs();
-    expect(desktop.indexOf("/strategy")).toBe(desktop.indexOf("/trade") + 1);
+  it("leads with Strategy, and keeps Admin last", () => {
+    /**
+     * Reordered 2026-11-05 to Strategy, Finance, mUSD, Trade, Contact.
+     *
+     * This used to assert Strategy sat immediately after Trade, because the
+     * two share an arm in the repo. They are deliberately apart now: the nav
+     * is ordered by how a visitor shops, not by how the docs tree is
+     * organised, and the leveraged perps screen is not the second thing to
+     * put in front of someone.
+     */
+    const PRODUCTS = ["/strategy", "/magnetfi", "/tokens", "/trade", "/contact"];
+    // Filtered and de-duplicated: `hrefs()` carries the logo and the socials
+    // too, and the desktop row and the mobile sheet each render the same list,
+    // so every product link appears twice. The assertion is about the ORDER of
+    // the product entries among themselves.
+    const order = [...new Set(hrefs().filter((h) => PRODUCTS.includes(h)))];
+    expect(order).toEqual(PRODUCTS);
   });
 
   it("calls the /tokens entry 'mUSD', and keeps the path", () => {
