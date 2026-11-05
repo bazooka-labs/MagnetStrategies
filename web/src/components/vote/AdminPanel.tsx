@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Rocket, PlusCircle, Copy, Check, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, PrimaryButton } from "@/components/magnetfi/v2/shared";
 import { CreateProposalModal } from "@/components/vote/CreateProposalModal";
-import { acceptFounder, deployMVote, setupMVote, updateFounder, type DeployStep } from "@/lib/governanceAdmin";
+import {
+  deployMVote, findDeployedMVote, setupMVote, updateFounder, type DeployStep,
+} from "@/lib/governanceAdmin";
 import { GOVERNANCE_LIVE, GOVERNANCE_NETWORK, MVOTE } from "@/lib/governance";
 
 export function AdminPanel({ onProposalCreated, founder }: {
@@ -19,28 +21,48 @@ export function AdminPanel({ onProposalCreated, founder }: {
 
   // deploy handshake state
   const [step, setStep] = useState<DeployStep | null>(null);
-  const [deployedId, setDeployedId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  /**
+   * mVote apps this wallet has already created, read from the chain.
+   *
+   * Not React state carried across the handshake: the panel unmounts whenever
+   * the Admin pill is collapsed, and a create whose confirmation timed out
+   * never produced an id to carry. Both left the operator with an enabled
+   * Deploy button and a real app they could not name.
+   */
+  const [found, setFound] = useState<{ appId: number; optedIn: boolean; funded: boolean }[] | null>(null);
+  /** Latches once a create has been SUBMITTED, confirmed or not. */
+  const [createSubmitted, setCreateSubmitted] = useState(false);
+
+  const scan = useCallback(async () => {
+    if (!activeAddress || !algodClient) { setFound(null); return; }
+    try {
+      setFound(await findDeployedMVote(algodClient, activeAddress));
+    } catch {
+      setFound(null);   // unknown, which is not "none" — see the render below
+    }
+  }, [activeAddress, algodClient]);
+
+  useEffect(() => { void scan(); }, [scan]);
 
   /** Set the moment step 1 confirms, so a failed step 2 cannot lose the App ID. */
   const [needsSetup, setNeedsSetup] = useState(false);
 
   async function handleDeploy() {
     if (!activeAddress || !algodClient) return;
+    setCreateSubmitted(true);   // before the prompt: a submitted create counts
     try {
       const { appId } = await deployMVote(
         algodClient, signTransactions, activeAddress, setStep,
-        // Captured BEFORE step 2 is attempted. Step 1 creates a real app on
-        // mainnet; if the second prompt is rejected, this id is the only way
-        // back to it short of trawling the indexer.
-        (id) => { setDeployedId(id); setNeedsSetup(true); },
       );
-      setNeedsSetup(false);
       toast.success(`mVote deployed — App ID ${appId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Deploy failed.");
     } finally {
       setStep(null);
+      // Always re-scan. This is what turns a timed-out create from "lost" into
+      // "listed below with a Finish setup button".
+      await scan();
     }
   }
 
@@ -61,31 +83,18 @@ export function AdminPanel({ onProposalCreated, founder }: {
     }
   }
 
-  async function handleAccept() {
-    if (!activeAddress || !algodClient) return;
-    setBusyFounder(true);
-    try {
-      await acceptFounder(algodClient, signTransactions, activeAddress);
-      toast.success("Founder accepted. Reload to pick up the new authority.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Accept failed.");
-    } finally {
-      setBusyFounder(false);
-    }
-  }
-
   /** Finish a deploy whose second step did not land. Never creates a new app. */
-  async function handleFinishSetup() {
-    if (!activeAddress || !algodClient || !deployedId) return;
+  async function handleFinishSetup(appId: number) {
+    if (!activeAddress || !algodClient) return;
     setStep("setup");
     try {
-      await setupMVote(algodClient, signTransactions, activeAddress, deployedId);
-      setNeedsSetup(false);
+      await setupMVote(algodClient, signTransactions, activeAddress, appId);
       toast.success("Setup complete — the app is funded and opted in.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Setup failed.");
     } finally {
       setStep(null);
+      await scan();
     }
   }
 
@@ -133,47 +142,85 @@ export function AdminPanel({ onProposalCreated, founder }: {
             that needs it.
           </p>
 
-          {deployedId ? (
-            <div className={`mt-4 rounded-xl border p-4 ${needsSetup
-              ? "border-amber-400/40 bg-amber-500/5" : "border-green-500/30 bg-green-500/5"}`}>
-              <p className={`text-xs font-semibold uppercase tracking-widest ${needsSetup
-                ? "text-amber-300" : "text-green-400"}`}>
-                {needsSetup ? "Created — setup unfinished" : "Deployed"}
-              </p>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="font-mono text-lg font-bold text-white">App {deployedId}</span>
-                <button onClick={() => copyId(deployedId)} className="text-gray-500 hover:text-white">
-                  {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                </button>
-              </div>
-              {needsSetup ? (
-                <>
-                  <p className="mt-2 text-xs text-amber-200/90 leading-relaxed">
-                    The app exists but is not funded or opted into mUSD, so it cannot take votes yet.
-                    Finish setup — this signs against <em>this</em> App ID and never creates another.
-                  </p>
-                  <button
-                    onClick={handleFinishSetup}
-                    disabled={step !== null}
-                    className="mt-3 rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/15 disabled:opacity-40"
-                  >
-                    {step === "setup" ? "Signing…" : "Finish setup"}
-                  </button>
-                </>
-              ) : (
-                <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-                  Set <code className="text-magnet-300">MVOTE_APP_IDS.{GOVERNANCE_NETWORK} = {deployedId}</code> in{" "}
-                  <code className="text-magnet-300">web/src/lib/governance.ts</code> and redeploy the site to go live.
+          {/*
+            Driven by what the CHAIN says this wallet has created, not by what
+            this component managed to hold on to. `found === null` means the
+            scan failed or has not run — which is not "none", and must not put
+            a Deploy button in front of someone who may already have an app.
+          */}
+          {found === null ? (
+            <p className="mt-4 text-xs text-gray-500">Checking for an existing deployment…</p>
+          ) : found.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {found.map(({ appId, optedIn, funded }) => {
+                const ready = optedIn && funded;
+                return (
+                  <div key={appId} className={`rounded-xl border p-4 ${ready
+                    ? "border-green-500/30 bg-green-500/5" : "border-amber-400/40 bg-amber-500/5"}`}>
+                    <p className={`text-xs font-semibold uppercase tracking-widest ${ready
+                      ? "text-green-400" : "text-amber-300"}`}>
+                      {ready ? "Deployed" : "Created — setup unfinished"}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="font-mono text-lg font-bold text-white">App {appId}</span>
+                      <button onClick={() => copyId(appId)} className="text-gray-500 hover:text-white">
+                        {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {ready ? (
+                      <p className="mt-2 text-xs text-gray-400 leading-relaxed">
+                        Set <code className="text-magnet-300">MVOTE_APP_IDS.{GOVERNANCE_NETWORK} = {appId}</code> in{" "}
+                        <code className="text-magnet-300">web/src/lib/governance.ts</code> and redeploy the site to go live.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="mt-2 text-xs text-amber-200/90 leading-relaxed">
+                          This app exists but is not {funded ? "" : "funded"}{!funded && !optedIn ? " or " : ""}
+                          {optedIn ? "" : "opted into mUSD"}, so it cannot take votes yet. Finish setup signs
+                          against <em>this</em> App ID and never creates another.
+                        </p>
+                        <button
+                          onClick={() => void handleFinishSetup(appId)}
+                          disabled={step !== null}
+                          className="mt-3 rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/15 disabled:opacity-40"
+                        >
+                          {step === "setup" ? "Signing…" : "Finish setup"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              {found.length > 1 && (
+                <p className="text-xs text-amber-200/80">
+                  More than one mVote app was created by this wallet. Point the site at whichever
+                  one you intend to use; the others are inert and hold no funds.
                 </p>
               )}
             </div>
           ) : (
             <div className="mt-4">
-              <PrimaryButton onClick={handleDeploy} disabled={!activeAddress || step !== null}>
+              <PrimaryButton
+                onClick={handleDeploy}
+                /*
+                  `createSubmitted` latches the moment the first prompt goes
+                  out, and is never cleared. A create that was submitted but
+                  not confirmed leaves a real app on mainnet; re-enabling this
+                  would make a second one a single click away, which is
+                  exactly what happened before the scan existed.
+                */
+                disabled={!activeAddress || step !== null || createSubmitted}
+              >
                 {step === "create" && "Sign 1/2 — creating app…"}
                 {step === "setup" && "Sign 2/2 — funding + opt-in…"}
-                {step === null && "Deploy mVote"}
+                {step === null && (createSubmitted ? "Create submitted — rescanning…" : "Deploy mVote")}
               </PrimaryButton>
+              {createSubmitted && (
+                <p className="mt-2 text-xs text-amber-200/90">
+                  A create was already submitted from this wallet. If it confirmed, it will appear
+                  above on the next scan — reload rather than deploying again.
+                </p>
+              )}
             </div>
           )}
         </Panel>
@@ -210,15 +257,11 @@ export function AdminPanel({ onProposalCreated, founder }: {
             </button>
           </div>
           <p className="mt-2 text-xs text-gray-600">
-            Step 2 is signed by the <em>incoming</em> wallet. Connect it and press Accept.
+            Step 2 is signed by the <em>incoming</em> wallet. When it connects, an Accept
+            banner appears for it above this panel — it cannot be done from here, because
+            the nominee is not the founder until it accepts and this panel only renders
+            for the founder. That gap made rotation impossible until it was found.
           </p>
-          <button
-            onClick={handleAccept}
-            disabled={busyFounder}
-            className="mt-2 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:text-white disabled:opacity-40"
-          >
-            Accept founder (as the incoming wallet)
-          </button>
         </Panel>
       )}
 

@@ -81,6 +81,17 @@ let snapshot: Snapshot = { proposals: [], loading: HAVE_ERAS, incomplete: false 
 const listeners = new Set<() => void>();
 let inflight: Promise<void> | null = null;
 let everLoaded = false;
+/**
+ * When the last complete read landed.
+ *
+ * `everLoaded` latched for the lifetime of the page and nothing ever refetched,
+ * so a visitor who loaded /strategy, waited while a vote opened, then navigated
+ * client-side to /tokens was shown "Nothing to vote on right now" from a read
+ * made an hour earlier. The 15s clock ticks re-evaluate windows; they do not
+ * fetch.
+ */
+let lastLoadedAt = 0;
+const STALE_MS = 60_000;
 
 function set(next: Snapshot) {
   snapshot = next;
@@ -102,7 +113,7 @@ function load(algod: algosdk.Algodv2): Promise<void> {
       // `everLoaded` only latches on a COMPLETE read. A partial load used to
       // set it, which meant the automatic retry never fired and a transient
       // failure became permanent for the life of the page.
-      if (failed.length === 0) everLoaded = true;
+      if (failed.length === 0) { everLoaded = true; lastLoadedAt = Date.now(); }
 
       set({
         proposals: mergeAcrossEras(snapshot.proposals, proposals, failed),
@@ -124,7 +135,9 @@ export function useGovernanceProposals() {
   const state = useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
 
   useEffect(() => {
-    if (!HAVE_ERAS || !algodClient || everLoaded || inflight) return;
+    if (!HAVE_ERAS || !algodClient || inflight) return;
+    // Refetch when the cached answer has aged out, not just when there is none.
+    if (everLoaded && Date.now() - lastLoadedAt < STALE_MS) return;
     void load(algodClient);
   }, [algodClient]);
 

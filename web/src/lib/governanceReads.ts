@@ -86,6 +86,47 @@ export async function getLastEnd(
   }
 }
 
+/**
+ * The nominated-but-not-yet-accepted founder, or null if there is none.
+ *
+ * Needed because the Accept half of the transfer is signed by a wallet that is
+ * NOT yet the founder — so the UI cannot gate it on being the founder, which
+ * is exactly the bug that made rotation through the panel impossible.
+ */
+export async function getPendingFounder(
+  algod: algosdk.Algodv2, era: GovernanceEra = MVOTE,
+): Promise<string | null> {
+  if (!era.appId) return null;
+  try {
+    const app = await algod.getApplicationByID(era.appId).do();
+    const target = Buffer.from("pending_founder").toString("base64");
+    for (const kv of app.params.globalState ?? []) {
+      const k = typeof kv.key === "string" ? kv.key : Buffer.from(kv.key).toString("base64");
+      if (k !== target || kv.value.type !== 1) continue;
+      const raw = typeof kv.value.bytes === "string"
+        ? new Uint8Array(Buffer.from(kv.value.bytes, "base64"))
+        : new Uint8Array(kv.value.bytes ?? []);
+      // The contract writes an empty byte string when there is no nomination.
+      return raw.length === 32 ? algosdk.encodeAddress(raw) : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Does this address hold (or at least hold an opt-in for) an era's asset? */
+export async function isOptedIn(
+  algod: algosdk.Algodv2, address: string, era: GovernanceEra = MVOTE,
+): Promise<boolean | null> {
+  try {
+    const acct = await algod.accountInformation(address).do();
+    return (acct.assets ?? []).some((a) => Number(a.assetId) === era.asaId);
+  } catch {
+    return null;   // unknown; the caller must not treat this as "no"
+  }
+}
+
 /** Proposals ever created in an era (ids run 1..count). 0 if not deployed. */
 export async function getProposalCount(
   algod: algosdk.Algodv2, era: GovernanceEra,

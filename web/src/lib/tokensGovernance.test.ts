@@ -260,15 +260,18 @@ describe("the hero points across at governance", () => {
     expect(store).toContain("if (inflight) return inflight;");
   });
 
-  it("keeps the last good list when a read fails, and says it is incomplete", () => {
-    // A failed read is not evidence the proposals went away — so the list is
-    // kept. But keeping it silently is its own lie, because an incomplete list
-    // and a genuinely empty one render identically. Both halves are asserted.
-    expect(store).toContain("set({ ...snapshot, loading: false, incomplete: true });");
-    // The retry must still be possible: latching `everLoaded` on a PARTIAL
-    // read made a transient failure permanent for the life of the page.
-    expect(store).toContain("if (failed.length === 0) everLoaded = true;");
-  });
+  /*
+    What happens to the list when a read fails is NOT asserted here any more.
+
+    It was, as `toContain("set({ ...snapshot, loading: false, incomplete: true })")`,
+    and an audit was right that it proved nothing: the string says what the
+    rarely-reached `.catch` branch looks like, not what the component does.
+    It passed throughout the period when a partial read was silently wiping
+    the list, and it broke on an unrelated edit to a neighbouring line.
+
+    The behaviour lives in `governanceUnknowns.test.ts`, which calls
+    `mergeAcrossEras` directly and fails when the carry-over is removed.
+  */
 
   it("stays visible at zero", () => {
     // "0" says governance exists and nothing needs you — different from, and

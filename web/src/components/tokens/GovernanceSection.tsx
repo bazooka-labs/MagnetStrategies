@@ -41,19 +41,21 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { AlertTriangle, Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
 import { getVotingBalance } from "@/lib/governanceReads";
 import { useGovernanceProposals } from "@/hooks/useGovernanceProposals";
-import { getFounder } from "@/lib/governanceReads";
+import { getFounder, getPendingFounder } from "@/lib/governanceReads";
+import { acceptFounder } from "@/lib/governanceAdmin";
 import {
   GOVERNANCE_LIVE, GOVERNANCE_ADMIN_ADDRESS, MVOTE, formatWeight, isActive,
 } from "@/lib/governance";
 
 export function GovernanceSection() {
-  const { address, isConnected, algodClient } = useWallet();
+  const { address, isConnected, algodClient, signTransactions } = useWallet();
   /**
    * Who the CONTRACT says is founder, not who this file hard-codes.
    *
@@ -67,13 +69,18 @@ export function GovernanceSection() {
    */
   const [founder, setFounder] = useState<string | null>(null);
   const [founderKnown, setFounderKnown] = useState(false);
+  const [founderRead, setFounderRead] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   useEffect(() => {
-    if (!algodClient || !MVOTE.appId) { setFounder(null); setFounderKnown(false); return; }
+    if (!algodClient || !MVOTE.appId) {
+      setFounder(null); setFounderKnown(false); setFounderRead("idle"); return;
+    }
     let alive = true;
+    setFounderRead("loading");
     void getFounder(algodClient, MVOTE).then((f) => {
       if (!alive) return;
       setFounder(f);
       setFounderKnown(f !== null);
+      setFounderRead(f !== null ? "loaded" : "error");
     });
     return () => { alive = false; };
   }, [algodClient]);
@@ -94,7 +101,51 @@ export function GovernanceSection() {
   */
   const isAdmin = isConnected
     && address === (founderKnown ? founder : GOVERNANCE_ADMIN_ADDRESS);
-  const founderUnverified = isAdmin && MVOTE.appId > 0 && !founderKnown;
+  /**
+   * Only after the read has FAILED, not while it is still running.
+   *
+   * This fired during the in-flight window too, so the founder was told
+   * "couldn't read the contract's founder" on every page load before anything
+   * had gone wrong.
+   */
+  const founderUnverified = isAdmin && MVOTE.appId > 0 && founderRead === "error";
+
+  /*
+    ── The Accept half of a founder transfer ──
+    Deliberately OUTSIDE the admin gate, and that is the whole point.
+
+    `isAdmin` means "you are the founder". The nominee is not the founder until
+    they accept — so gating Accept on isAdmin made it unreachable by the only
+    wallet that can use it, and rotation through the UI was dead on arrival. It
+    was written without ever being exercised; an audit found it.
+
+    Shown to whoever the contract currently names as `pending_founder`, which
+    is also the only wallet the contract will accept it from.
+  */
+  const [pending, setPending] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
+  useEffect(() => {
+    if (!algodClient || !MVOTE.appId) { setPending(null); return; }
+    let alive = true;
+    void getPendingFounder(algodClient, MVOTE).then((a) => { if (alive) setPending(a); });
+    return () => { alive = false; };
+  }, [algodClient]);
+
+  const isNominee = isConnected && !!pending && address === pending;
+
+  async function handleAccept() {
+    if (!address || !algodClient) return;
+    setAccepting(true);
+    try {
+      await acceptFounder(algodClient, signTransactions, address);
+      toast.success("You are now the founder. Reload to pick up the new authority.");
+      setPending(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Accept failed.");
+    } finally {
+      setAccepting(false);
+    }
+  }
 
   /**
    * The proposals come from the shared store, not a fetch of our own: the hero
@@ -200,6 +251,25 @@ export function GovernanceSection() {
           </button>
         )}
       </div>
+
+      {isNominee && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-magnet-400/30 bg-magnet-500/[0.08] px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-white">You have been nominated as founder</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Nothing changes until you accept. After that this wallet creates proposals and the
+              previous one cannot.
+            </p>
+          </div>
+          <button
+            onClick={handleAccept}
+            disabled={accepting}
+            className="shrink-0 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 px-4 py-2 text-sm font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 disabled:opacity-40"
+          >
+            {accepting ? "Signing…" : "Accept founder"}
+          </button>
+        </div>
+      )}
 
       {isAdmin && adminOpen && (
         <div className="mb-6 space-y-3">

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel } from "@/components/magnetfi/v2/shared";
 import { VoteModal } from "@/components/vote/VoteModal";
-import { getVoteRecord } from "@/lib/governanceReads";
+import { getVoteRecord, isOptedIn } from "@/lib/governanceReads";
 import { claimTokens } from "@/lib/governanceClient";
 import {
   choiceLetter, formatDate, formatWeight, isActive, isUnconfirmed,
@@ -45,7 +45,8 @@ export function ProposalCard({
    * window closes, because the Reclaim button is gated on having a record. A
    * voter with locked mUSD was shown no way to get it back.
    */
-  const [recordState, setRecordState] = useState<"loading" | "loaded" | "error">("loading");
+  const [recordState, setRecordState] =
+    useState<"loading" | "loaded" | "error" | "pending">("loading");
   const era = proposal.era;
   const [voteChoice, setVoteChoice] = useState<number | null>(null);
   const [claiming, setClaiming] = useState(false);
@@ -100,6 +101,22 @@ export function ProposalCard({
   async function handleClaim() {
     if (!activeAddress || !algodClient) return;
     setClaiming(true);
+    /*
+      Locking an entire balance leaves a zero holding, and wallets offer to
+      remove those. The claim's inner transfer then fails and the voter sees a
+      raw `logic eval error pc=...`, with their mUSD apparently gone. It is
+      not — opting back in restores the claim — but nothing said so.
+
+      `null` means the check itself failed, which is not "not opted in": in
+      that case we attempt the claim rather than block it on a guess.
+    */
+    const opted = await isOptedIn(algodClient, activeAddress, era);
+    if (opted === false) {
+      toast.error(`Your wallet is no longer opted in to ${era.unit}. `
+        + `Opt back in and the reclaim will go through — your ${era.unit} is safe in the contract.`);
+      setClaiming(false);
+      return;
+    }
     try {
       await claimTokens(algodClient, signTransactions, activeAddress, proposal.id, era);
       toast.success(`Reclaimed your locked ${era.unit}`);
@@ -111,9 +128,11 @@ export function ProposalCard({
       // wallet reporting a request already pending — and told the user their
       // claim was submitted when nothing had been sent.
       if (isUnconfirmed(err)) {
+        // Same reasoning as the vote path: re-reading now would show the box
+        // still present and re-offer the reclaim, or show it gone and imply
+        // success we have not observed.
         toast(err.message);
-        await refreshRecord();
-        onChanged();
+        setRecordState("pending");
       } else {
         toast.error(err instanceof Error ? err.message : "Claim failed.");
       }
@@ -167,6 +186,10 @@ export function ProposalCard({
           // `recordState === "loaded"` is required: offering a vote while the
           // record is unknown sends someone who already voted into a wallet
           // prompt the contract rejects on its one-vote-per-wallet check.
+          // "pending" excluded as well as "loading"/"error": a vote that was
+          // submitted but not seen to confirm reads back as "no box", and
+          // treating that as "has not voted" re-offers a vote the contract is
+          // about to refuse.
           const canVote = active && era.accepting && recordState === "loaded"
             && !record && !!activeAddress;
           return (
@@ -257,6 +280,13 @@ export function ProposalCard({
         <p className="mt-4 text-center text-xs text-gray-500">Checking whether you have voted…</p>
       )}
 
+      {recordState === "pending" && (
+        <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-center text-xs text-amber-200">
+          Your transaction was submitted but we didn&apos;t see it confirm. Reload in a moment to
+          check — don&apos;t send it again, the contract allows one vote per wallet.
+        </p>
+      )}
+
       {voteChoice !== null && (
         <VoteModal
           proposal={proposal}
@@ -264,6 +294,7 @@ export function ProposalCard({
           balance={balance}
           onClose={() => setVoteChoice(null)}
           onSuccess={() => { setVoteChoice(null); refreshRecord(); onChanged(); }}
+          onUnconfirmed={() => { setVoteChoice(null); setRecordState("pending"); }}
         />
       )}
     </Panel>

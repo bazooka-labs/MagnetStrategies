@@ -64,6 +64,48 @@ async function signSend(
   return { txid: res.txid, confirmed };
 }
 
+/**
+ * Every app this wallet created whose approval program IS mVote.
+ *
+ * Deploy is a two-step mainnet operation and the App ID only exists after
+ * step 1. Remembering it in React state was not good enough: the panel
+ * unmounts when the Admin pill is collapsed, and a create whose confirmation
+ * timed out never reported an id at all — leaving an instruction to "finish
+ * setup with the App ID it created" that nothing in the UI could act on, and
+ * an enabled Deploy button one click from a second, permanently inert app.
+ *
+ * So the id is DISCOVERED instead of remembered. The chain already knows, and
+ * an answer derived from it survives a remount, a reload, a timeout and a
+ * different browser.
+ *
+ * Matching is on the approval program bytes, not the name or the creation
+ * round, so this cannot pick up some other app the founder happens to own.
+ */
+export async function findDeployedMVote(
+  algod: algosdk.Algodv2, creator: string,
+): Promise<{ appId: number; optedIn: boolean; funded: boolean }[]> {
+  const acct = await algod.accountInformation(creator).do();
+  const mine = (acct.createdApps ?? []).filter((app) => {
+    const prog = app.params?.approvalProgram;
+    if (!prog) return false;
+    return Buffer.from(prog).toString("base64") === MVOTE_APPROVAL_B64;
+  });
+
+  return Promise.all(mine.map(async (app) => {
+    const appId = Number(app.id);
+    // Setup is step 2: funded, and opted in to mUSD. Both are visible on the
+    // app account, so "is this one finished?" is also a chain question.
+    try {
+      const info = await algod.accountInformation(
+        algosdk.getApplicationAddress(appId).toString()).do();
+      const optedIn = (info.assets ?? []).some((a) => Number(a.assetId) === MVOTE.asaId);
+      return { appId, optedIn, funded: Number(info.amount) >= CONTRACT_FUND_AMOUNT / 2 };
+    } catch {
+      return { appId, optedIn: false, funded: false };
+    }
+  }));
+}
+
 export type DeployStep = "create" | "setup";
 
 /**

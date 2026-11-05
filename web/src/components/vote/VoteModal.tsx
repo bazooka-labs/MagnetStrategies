@@ -18,9 +18,18 @@ interface Props {
   balance: number | null;
   onClose: () => void;
   onSuccess: () => void;
+  /**
+   * The group was submitted but we never saw it confirm.
+   *
+   * Distinct from `onSuccess`, which re-reads the vote record — and that read
+   * returns no box while the transaction is still in flight, so the card
+   * concluded "not voted" and re-enabled the vote buttons on a vote that was
+   * very likely about to land.
+   */
+  onUnconfirmed: () => void;
 }
 
-export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }: Props) {
+export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess, onUnconfirmed }: Props) {
   // Decimals come from the proposal's own era. The live contract asserts
   // `amount % 10^6 == 0`; flooring with the wrong factor would build a group
   // the chain rejects, or lock 10x what the voter typed.
@@ -63,7 +72,7 @@ export function VoteModal({ proposal, choiceIndex, balance, onClose, onSuccess }
       if (isUnconfirmed(err)) {
         setStatus("idle");
         toast(err.message);
-        onSuccess();
+        onUnconfirmed();
         return;
       }
       const msg = err instanceof Error ? err.message : "Vote failed.";

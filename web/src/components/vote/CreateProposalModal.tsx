@@ -5,7 +5,7 @@ import { X, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
 import { createProposal } from "@/lib/governanceAdmin";
-import { QUESTION_MAX, CHOICE_MAX, choiceLetter } from "@/lib/governance";
+import { QUESTION_MAX, CHOICE_MAX, choiceLetter, isUnconfirmed } from "@/lib/governance";
 import { byteLen } from "@/lib/governanceAdmin";
 
 export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -45,6 +45,15 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
       toast.success("Proposal created — voting is open for 7 days");
       onSuccess();
     } catch (err) {
+      // Submitted-but-unconfirmed is not a failure. Resubmitting is caught by
+      // the one-window-at-a-time guard, but telling the founder it failed
+      // invites the attempt and hides a proposal that may be open.
+      if (isUnconfirmed(err)) {
+        setStatus("idle");
+        toast(err.message);
+        onSuccess();
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Submission failed.";
       setErrorMsg(msg);
       setStatus("error");
