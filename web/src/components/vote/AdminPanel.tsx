@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Rocket, PlusCircle, Copy, Check, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
@@ -10,6 +10,33 @@ import {
   deployMVote, findDeployedMVote, setupMVote, updateFounder, type DeployStep,
 } from "@/lib/governanceAdmin";
 import { GOVERNANCE_LIVE, GOVERNANCE_NETWORK, MVOTE } from "@/lib/governance";
+
+/**
+ * "This wallet has already submitted a create" — outside React, and persisted.
+ *
+ * It lived in component state, which meant it reset whenever the Admin pill
+ * was collapsed and reopened, and was not shared with a second tab. An audit
+ * walked the remaining path: click Deploy, collapse the pill while the wallet
+ * prompt is open, reopen, approve. The remounted panel's scan had already run
+ * and found nothing, nothing rescans it, and the enabled Deploy button is one
+ * click from a second app on mainnet.
+ *
+ * Keyed by address because the latch is a fact about a wallet, not a browser.
+ * localStorage can throw or be cleared, so every access is guarded and the
+ * scan below is the real defence — this only closes the window before the
+ * chain can answer.
+ */
+const latchKey = (addr: string) => `mvote:create-submitted:${addr}`;
+
+function readLatch(addr: string): boolean {
+  try { return localStorage.getItem(latchKey(addr)) === "1"; } catch { return false; }
+}
+function writeLatch(addr: string, on: boolean): void {
+  try {
+    if (on) localStorage.setItem(latchKey(addr), "1");
+    else localStorage.removeItem(latchKey(addr));
+  } catch { /* private window, blocked storage — the scan still covers us */ }
+}
 
 export function AdminPanel({ onProposalCreated, founder }: {
   onProposalCreated: () => void;
@@ -31,33 +58,91 @@ export function AdminPanel({ onProposalCreated, founder }: {
    * Deploy button and a real app they could not name.
    */
   const [found, setFound] = useState<{ appId: number; optedIn: boolean; funded: boolean }[] | null>(null);
-  /** Latches once a create has been SUBMITTED, confirmed or not. */
+  /** Latches once a create has been SUBMITTED, confirmed or not. Persisted. */
   const [createSubmitted, setCreateSubmitted] = useState(false);
+  const [scanFailed, setScanFailed] = useState(false);
+  /** Only the newest scan may write, so a wallet switch cannot be overwritten. */
+  const scanSeq = useRef(0);
 
   const scan = useCallback(async () => {
-    if (!activeAddress || !algodClient) { setFound(null); return; }
+    const seq = ++scanSeq.current;
+    if (!activeAddress || !algodClient) { setFound(null); setScanFailed(false); return; }
     try {
-      setFound(await findDeployedMVote(algodClient, activeAddress));
+      const apps = await findDeployedMVote(algodClient, activeAddress);
+      if (seq !== scanSeq.current) return;
+      setFound(apps);
+      setScanFailed(false);
+      // The chain has answered. If it found an app the latch has done its job;
+      // if it found none, a previously submitted create never landed and
+      // holding the button hostage forever helps nobody.
+      if (apps.length > 0) writeLatch(activeAddress, false);
     } catch {
-      setFound(null);   // unknown, which is not "none" — see the render below
+      if (seq !== scanSeq.current) return;
+      setFound(null);          // unknown, which is NOT "none"
+      setScanFailed(true);
     }
   }, [activeAddress, algodClient]);
 
-  useEffect(() => { void scan(); }, [scan]);
+  useEffect(() => {
+    setCreateSubmitted(activeAddress ? readLatch(activeAddress) : false);
+    void scan();
+  }, [scan, activeAddress]);
+
+  /*
+    Keep looking while there is still a Deploy button to press.
+
+    The mount scan is a single snapshot, and the dangerous moment is precisely
+    when a create is in flight and the node has not seen it yet. Re-running on
+    a timer and whenever the tab regains focus means the app appears on its own
+    rather than only after a reload.
+  */
+  useEffect(() => {
+    if (found && found.length > 0) return;      // nothing left to watch for
+    const id = setInterval(() => void scan(), 10_000);
+    const onVisible = () => { if (!document.hidden) void scan(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVisible); };
+  }, [scan, found]);
 
   /** Set the moment step 1 confirms, so a failed step 2 cannot lose the App ID. */
   const [needsSetup, setNeedsSetup] = useState(false);
 
   async function handleDeploy() {
     if (!activeAddress || !algodClient) return;
-    setCreateSubmitted(true);   // before the prompt: a submitted create counts
+
+    // Ask the chain one more time, immediately. Everything above this is a
+    // snapshot that may be seconds old, and the cost of acting on a stale one
+    // is a second app nobody wanted.
+    try {
+      const existing = await findDeployedMVote(algodClient, activeAddress);
+      if (existing.length > 0) {
+        setFound(existing);
+        toast.error(`This wallet already created mVote app ${existing[0].appId}. `
+          + "Finish its setup rather than deploying again.");
+        return;
+      }
+    } catch {
+      toast.error("Couldn't check for an existing deployment. Not deploying — try again.");
+      return;
+    }
+
+    setCreateSubmitted(true);
+    writeLatch(activeAddress, true);
     try {
       const { appId } = await deployMVote(
         algodClient, signTransactions, activeAddress, setStep,
       );
       toast.success(`mVote deployed — App ID ${appId}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Deploy failed.");
+      const msg = err instanceof Error ? err.message : "Deploy failed.";
+      // A wallet rejection sends NOTHING, so the latch must come back off —
+      // otherwise the button sits disabled under "a create was already
+      // submitted", which is simply false and needs a reload to clear.
+      if (/cancell?ed|rejected|denied/i.test(msg)) {
+        setCreateSubmitted(false);
+        writeLatch(activeAddress, false);
+      }
+      toast.error(msg);
     } finally {
       setStep(null);
       // Always re-scan. This is what turns a timed-out create from "lost" into
@@ -149,7 +234,22 @@ export function AdminPanel({ onProposalCreated, founder }: {
             a Deploy button in front of someone who may already have an app.
           */}
           {found === null ? (
-            <p className="mt-4 text-xs text-gray-500">Checking for an existing deployment…</p>
+            // Fail closed — no Deploy button — but SAY so and offer a retry.
+            // This state used to be indistinguishable from a slow load and had
+            // no way out but a reload.
+            <div className="mt-4 text-xs">
+              {scanFailed ? (
+                <p className="text-amber-200">
+                  Couldn&apos;t check whether this wallet already deployed mVote, so the deploy
+                  button is withheld rather than risk a duplicate.{" "}
+                  <button onClick={() => void scan()} className="underline underline-offset-2 hover:text-amber-100">
+                    Retry
+                  </button>
+                </p>
+              ) : (
+                <p className="text-gray-500">Checking for an existing deployment…</p>
+              )}
+            </div>
           ) : found.length > 0 ? (
             <div className="mt-4 space-y-3">
               {found.map(({ appId, optedIn, funded }) => {

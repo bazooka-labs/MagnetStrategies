@@ -127,8 +127,19 @@ export function GovernanceSection() {
   useEffect(() => {
     if (!algodClient || !MVOTE.appId) { setPending(null); return; }
     let alive = true;
-    void getPendingFounder(algodClient, MVOTE).then((a) => { if (alive) setPending(a); });
-    return () => { alive = false; };
+    const read = () => getPendingFounder(algodClient, MVOTE)
+      .then((a) => { if (alive) setPending(a); });
+    void read();
+    /*
+      Re-read, rather than once on mount.
+      A nomination is made by one wallet and accepted by another, so the
+      nominee is very often already sitting on this page when it happens —
+      and a banner that only appears after a reload is a banner nobody is
+      told to look for. The same poll clears it when a nomination is
+      overwritten, which would otherwise offer an Accept the chain refuses.
+    */
+    const id = setInterval(read, 30_000);
+    return () => { alive = false; clearInterval(id); };
   }, [algodClient]);
 
   const isNominee = isConnected && !!pending && address === pending;
@@ -138,8 +149,14 @@ export function GovernanceSection() {
     setAccepting(true);
     try {
       await acceptFounder(algodClient, signTransactions, address);
-      toast.success("You are now the founder. Reload to pick up the new authority.");
+      toast.success("You are now the founder.");
       setPending(null);
+      // Re-read rather than telling them to reload: this wallet just became
+      // the founder, so the admin controls should appear on their own.
+      const f = await getFounder(algodClient, MVOTE);
+      setFounder(f);
+      setFounderKnown(f !== null);
+      setFounderRead(f !== null ? "loaded" : "error");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Accept failed.");
     } finally {

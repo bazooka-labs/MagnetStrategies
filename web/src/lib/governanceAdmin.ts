@@ -128,6 +128,7 @@ export async function setupMVote(
   sender: string,
   appId: number,
 ): Promise<void> {
+  if (!appId) throw new Error("No app id to set up.");
   const appAddress = algosdk.getApplicationAddress(appId).toString();
   const sp = await algod.getTransactionParams().do();
   const fund = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
@@ -300,6 +301,7 @@ export async function createProposal(
 export async function acceptFounder(
   algod: algosdk.Algodv2, sign: SignFn, sender: string, era: GovernanceEra = MVOTE,
 ): Promise<void> {
+  if (!era.appId) throw new Error(`${era.name} is not deployed yet.`);
   const sp = await algod.getTransactionParams().do();
   await signSend(algod, sign, [algosdk.makeApplicationNoOpTxnFromObject({
     sender, appIndex: era.appId, appArgs: [enc.encode("accept_founder")], suggestedParams: sp,
@@ -311,6 +313,9 @@ export async function updateFounder(
   algod: algosdk.Algodv2, sign: SignFn, sender: string, newFounder: string,
   era: GovernanceEra = MVOTE,
 ): Promise<void> {
+  // Defence in depth: the UI gates both of these behind a deployed app, but a
+  // call against appId 0 would build a nonsense transaction rather than say so.
+  if (!era.appId) throw new Error(`${era.name} is not deployed yet.`);
   const sp = await algod.getTransactionParams().do();
   const call = algosdk.makeApplicationNoOpTxnFromObject({
     sender,

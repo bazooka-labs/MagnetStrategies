@@ -36,6 +36,9 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
     choices[0].trim().length > 0 && choices[1].trim().length > 0 &&
     choiceBytes.every((n) => n <= CHOICE_MAX);
 
+  /** Second click confirms; the first only shows what will be posted. */
+  const [reviewing, setReviewing] = useState(false);
+
   async function handleSubmit() {
     if (!ready || !activeAddress || !algodClient) return;
     setStatus("signing");
@@ -133,16 +136,50 @@ export function CreateProposalModal({ onClose, onSuccess }: { onClose: () => voi
 
           {status === "error" && <p className="mt-4 text-xs text-red-400">{errorMsg}</p>}
 
+          {/*
+            A review step, because posting is irreversible in a way that is easy
+            to underestimate: the window cannot be cancelled, a typo in the
+            question stands for seven days, and the one-at-a-time guard means
+            it also blocks the next proposal for those seven days. One click was
+            not a proportionate amount of friction for that.
+
+            It shows the text EXACTLY as the contract will store it, trimmed,
+            so a stray trailing space or a lost line break is visible before
+            signing rather than after.
+          */}
+          {reviewing && (
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-500/[0.07] p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-200">
+                Posting this, exactly as written
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-white">{question.trim()}</p>
+              <ul className="mt-2 space-y-1">
+                {choices.map((c, i) => c.trim() && (
+                  <li key={i} className="text-xs text-gray-300">
+                    <span className="font-bold text-gray-500">{choiceLetter(i)}</span>  {c.trim()}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-amber-200/90 leading-relaxed">
+                Voting opens immediately for 7 days. It cannot be cancelled or edited, and no
+                other proposal can be opened until it closes.
+              </p>
+            </div>
+          )}
+
           <div className="mt-6 flex gap-3">
             <button
-              onClick={handleSubmit}
+              onClick={() => (reviewing ? void handleSubmit() : setReviewing(true))}
               disabled={!ready || status === "signing"}
               className="flex-1 rounded-lg bg-gradient-to-r from-magnet-600 to-magnet-500 py-2.5 text-sm font-semibold text-white hover:from-magnet-500 hover:to-magnet-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {status === "signing" ? "Confirming…" : "Create Proposal"}
+              {status === "signing" ? "Confirming…" : reviewing ? "Post proposal" : "Review"}
             </button>
-            <button onClick={onClose} className="rounded-lg border border-gray-700 px-4 py-2.5 text-sm text-gray-400 hover:text-white transition-colors">
-              Cancel
+            <button
+              onClick={() => (reviewing ? setReviewing(false) : onClose())}
+              className="rounded-lg border border-gray-700 px-4 py-2.5 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              {reviewing ? "Back" : "Cancel"}
             </button>
           </div>
         </div>
