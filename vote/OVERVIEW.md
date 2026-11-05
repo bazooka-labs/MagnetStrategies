@@ -13,10 +13,16 @@ existing safeguards.
 > Voting asset: mUSD (ASA `3615600399`, 6 decimals).
 > Technical + audit detail: [SPEC.md](./SPEC.md).
 
-> **Status: written, proven, NOT YET DEPLOYED.** `MVOTE_APP_IDS` is `0`, so the
-> page shows history and says voting is landing, and every write path refuses.
-> Deploy is the wallet-signed handshake in the admin panel; paste the printed
-> App ID into `governance.ts` and redeploy the site.
+> **Live on mainnet — App ID `3763268387`**, deployed 2026-11-05 through the
+> wallet-signed handshake in the admin panel, so no seed phrase touched a
+> script or a terminal. App address
+> `MLBEG4JXINAGGUSZN5WFXY4WBXQYLV6PLMKRQYNQBYJQX63NKSDILBQKLI`.
+>
+> Verified against the chain BEFORE the site was pointed at it: approval hash
+> `Y75UDPAF34BUYCVMAXDXYFN5GVC5WNFMB47UKAX3Q5WKJ3PYG5ZEM4SAEQ`, byte-identical to the audited contract; `musd_asa_id` = 3615600399,
+> fixed at creation with no setter; founder = the MagnetFi admin wallet;
+> schema 3 uints / 2 byte-slices; opted in to mUSD holding none; 200,000 µALGO
+> spare over its minimum balance, exactly as the audits predicted.
 
 > **UVote is retired.** The previous generation (App `3679681107`) voted with
 > **$U** and is no longer written to. It stays readable so its one closed

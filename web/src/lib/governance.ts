@@ -66,11 +66,24 @@ export interface GovernanceEra {
   accepting: boolean;
 }
 
-// 0 until the wallet-signed deploy handshake has run. The admin pastes the
-// printed App ID here and redeploys the site — same pattern UVote used, which
-// keeps the deployer's seed phrase out of every script and terminal.
+/**
+ * Deployed to mainnet 2026-11-05 via the wallet-signed handshake in the admin
+ * panel — no seed phrase in any script or terminal.
+ *
+ * Verified against the chain before this line was written, not after:
+ *   - approval program hash Y75UDPAF34BUYCVMAXDXYFN5GVC5WNFMB47UKAX3Q5WKJ3PYG5ZEM4SAEQ,
+ *     byte-identical to the audited `contracts/mvote/mvote/mvote.py`
+ *   - `musd_asa_id` = 3615600399, fixed at creation with no setter
+ *   - founder = the MagnetFi admin wallet
+ *   - schema 3 uints / 2 byte-slices, opted in to mUSD, holding none
+ *   - 200,000 µALGO spare over its minimum balance
+ *
+ * Re-check the hash with `contracts/mvote/verify_embedded.py` before trusting
+ * any future change here: this constant is the only thing pointing the UI at
+ * one application rather than another.
+ */
 const MVOTE_APP_IDS: Record<"mainnet" | "testnet", number> = {
-  mainnet: 0,
+  mainnet: 3763268387,
   testnet: 0,
 };
 

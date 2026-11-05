@@ -37,8 +37,27 @@ vi.mock("@/hooks/useWallet", () => ({
   }),
 }));
 
-// GOVERNANCE_LIVE is false (mVote is undeployed), which is the state the panel
-// is actually in before a deploy — exactly when Deploy must be correct.
+/**
+ * Force the PRE-DEPLOY config, rather than inheriting whatever the repo is
+ * currently pointed at.
+ *
+ * These tests are about the Deploy button, which exists only while mVote is
+ * undeployed. They silently started failing the moment the real App ID was
+ * pasted into `governance.ts` — not because the panel broke, but because the
+ * suite was reading live configuration as if it were a fixture. A test whose
+ * meaning depends on today's deployment state is a test that will mislead
+ * someone later.
+ */
+vi.mock("@/lib/governance", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/governance")>()),
+  GOVERNANCE_LIVE: false,
+  MVOTE: {
+    ...(await importOriginal<typeof import("@/lib/governance")>()).MVOTE,
+    appId: 0,
+    accepting: false,
+  },
+}));
+
 import { AdminPanel } from "./AdminPanel";
 
 const deployButton = () => screen.queryByRole("button", { name: /Deploy mVote/i });

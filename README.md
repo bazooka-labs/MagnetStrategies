@@ -44,7 +44,7 @@ lend/borrow via partner **CompX** markets is also surfaced. mUSD ASA: `361560039
 The governance arm — **advisory, founder-led voting weighted by mUSD**. The founder
 posts an open question (liquidity, parameters, investments, or any direction); mUSD
 holders lock whole tokens to signal a preference, one mUSD to one vote; the founder
-acts on the mandate. **Written, proven and audited; not yet deployed.**
+acts on the mandate. **Live on mainnet** (App `3763268387`).
 
 Replaces **UVote** (App `3679681107`), which voted with $U and is retired — readable
 so its one closed proposal survives as history, never written to again. $U no longer

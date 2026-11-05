@@ -30,7 +30,7 @@ and anyone evaluating the protocol.
 | `strategy/pools/` | Strategy Pools + C-Vault on PEX (nav: **Strategy**) | `strategy/pools/OVERVIEW.md` |
 | `predict/` | VPL volatility ladder. Its own tree, deliberately | `predict/OVERVIEW.md` |
 | `vote/` | Governance — mVote (mUSD) and retired UVote ($U) | `vote/OVERVIEW.md` |
-| `contracts/mvote/` | **mVote** — mUSD-weighted governance. Current generation, not yet deployed | `vote/SPEC.md` |
+| `contracts/mvote/` | **mVote** — mUSD-weighted governance. **Live**, App 3763268387 | `vote/SPEC.md` |
 | `contracts/uvote/` | UVote — $U-weighted governance, App 3679681107. **Retired**: readable for history, never written to | `vote/SPEC.md` |
 | `contracts/legacy/` | Retired MagnetDAO-era contracts; none is live | `contracts/legacy/README.md` |
 | `web/` | The Next.js frontend | `web/README.md` |

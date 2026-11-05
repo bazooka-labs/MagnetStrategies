@@ -8,8 +8,9 @@ the way it does.
 
 # mVote — mUSD-weighted voting
 
-_Status: written, proven on a local AVM, audited by three independent passes.
-**Not yet deployed.** `MVOTE_APP_IDS` is 0._
+_Status: **live on mainnet, App `3763268387`**, deployed 2026-11-05. Proven on a
+local AVM and audited over four rounds by nine independent agents. The deployed
+approval program hashes to `Y75UDPAF34BUYCVMAXDXYFN5GVC5WNFMB47UKAX3Q5WKJ3PYG5ZEM4SAEQ`, byte-identical to this contract._
 _Last updated: 2026-11-05_
 
 ## What it is
