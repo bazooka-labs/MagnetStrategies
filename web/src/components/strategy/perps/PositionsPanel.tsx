@@ -12,7 +12,9 @@
 // were on screen when the position was opened.
 
 import { AlertCircle, TrendingDown, TrendingUp } from "lucide-react";
-import { PEX_ASSETS, PEX_MARKETS, assetName } from "@/lib/strategy/pex/config";
+import {
+  PEX_ASSETS, PEX_MARKETS, POSITION_COLLATERAL_ASSETS, assetName,
+} from "@/lib/strategy/pex/config";
 import { collateralUsd as collateralUsdOf } from "@/lib/strategy/pex/collateral";
 import { ORDER_KIND, type OrderState } from "@/lib/strategy/pex/reads";
 import { usePerpsPositions } from "@/hooks/usePerpsPositions";
@@ -58,23 +60,35 @@ const amountIn = (micro: bigint, assetId: bigint | number) => {
 /**
  * Why a position cannot be closed from here, or null when it can.
  *
- * ALGO-collateral closes are refused in the UI rather than attempted. The
- * group assertion's `foreign_asset` check admits only the collateral asset and
- * the yield-recall set, and a close on market 1 references USDC as the pool's
- * short asset — so an ALGO close fails the safety check every time, after the
- * preflights, with "txn 0 references asset 31566704".
+ * ── ALGO closes are supported. This gate used to say otherwise. ───────────
+ * It was added 2026-11-03 20:48 because the group assertion's `foreign_asset`
+ * check admitted only the collateral asset and the yield-recall set, while a
+ * close on market 1 references USDC as the pool's short asset — so every ALGO
+ * close died on the safety check with "txn 0 references asset 31566704". The
+ * comment here said the assertion "needs widening to the market's own
+ * long/short/index assets before this can be lifted".
  *
- * That is safe: nothing is signed, nothing moves. But an enabled button that
- * always ends in a cryptic safety error is worse than a disabled one that says
- * why. Found in review; the assertion needs widening to the market's own
- * long/short/index assets before this can be lifted, and widening a
- * fund-safety check is not something to do in passing.
+ * It was widened 90 minutes later, in 35b988d, via `pinnedPoolAssets`. Nobody
+ * came back for this gate, so a working close stayed disabled for two days
+ * behind a message telling the holder to use PEX — which geoblocks them.
+ *
+ * Verified before lifting, not assumed: `algoclose.live.test.ts` builds,
+ * asserts and SIMULATES the real close against MainNet on real bytes, against
+ * the live ALGO-collateral position. It passes.
+ *
+ * ── Why this function still exists ────────────────────────────────────────
+ * It now asks whether the terminal knows the collateral at all, rather than
+ * naming one asset. `usePerpsPositions` reads every asset in
+ * POSITION_COLLATERAL_ASSETS, so anything outside that set cannot appear here
+ * today — but a third collateral added to the read path without a matching
+ * close path would otherwise get an enabled button and a cryptic failure,
+ * which is the exact shape of the bug this gate was created for.
  */
-const closeUnavailable = (collateralAssetId: number) =>
-  collateralAssetId === PEX_ASSETS.usdc
+export const closeUnavailable = (collateralAssetId: number) =>
+  (POSITION_COLLATERAL_ASSETS as readonly number[]).includes(collateralAssetId)
     ? null
     : `Closing ${assetName(collateralAssetId)}-collateral positions from this terminal is `
-      + "not supported yet. You can close it on PEX directly.";
+      + "not supported yet.";
 
 const closeKey = (p: { marketId: number; collateralAssetId: number; side: string }) =>
   `${p.marketId}-${p.collateralAssetId}-${p.side}`;
