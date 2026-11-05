@@ -9,24 +9,35 @@ const nextConfig = {
     // nothing can be done about that from here, and the population is whoever
     // visited /strategy before 2026-10-20.
 
-    // /earn was renamed to /pools, since folded into /tokens — keep old links/bookmarks working.
-    // /dao (v1 MagnetDAO) was retired in favor of /vote (UVote), which has since
-    // folded into the $U side of /tokens as a Governance section.
-    // /token and /musd were consolidated into /tokens (toggle between $U and mUSD).
-    // /pools was folded into the $U side of /tokens.
+    // ── 2026-11-04: the $U destinations moved to /strategy ──
+    // /tokens held $U and mUSD behind two pills; $U became a "Magnet Token"
+    // pill on /strategy and the $U liquidity pools went with it, so the four
+    // legacy paths that meant "$U, or its pools" now point there rather than
+    // at a page about mUSD. Retargeting a cached 301 does not reach a browser
+    // that already has one, but every path here is a route that has not
+    // existed for months — the population still holding one is close to empty,
+    // and both destinations are working pages either way.
+    //
+    // /earn was renamed to /pools, which was folded into the $U page, whose
+    // pools are now the Liquidity Pools pill on /strategy.
+    // /dao (v1 MagnetDAO) was retired in favor of /vote (UVote), which is now
+    // the Governance pill on /tokens — see the id it anchors.
+    // /token was the $U page; /musd was the mUSD page, which /tokens now is.
     return [
-      { source: "/earn", destination: "/tokens", permanent: true },
+      { source: "/earn", destination: "/strategy", permanent: true },
       { source: "/api/earn/pools", destination: "/api/pools", permanent: true },
-      // /dao and /vote both land on the $U page: UVote is a section of it now,
-      // so these point straight there rather than hopping through a route that
-      // itself redirects.
+      // /dao and /vote both land on /tokens: UVote is the Governance pill of
+      // the mUSD page now, so these point straight there rather than hopping
+      // through a route that itself redirects. The fragment is load-bearing —
+      // TokensView reads it to open that pill, because behind a pill there is
+      // no element for the browser's own anchor handling to find.
       { source: "/dao", destination: "/tokens#governance", permanent: true },
       { source: "/dao/:path*", destination: "/tokens#governance", permanent: true },
       { source: "/vote", destination: "/tokens#governance", permanent: true },
       { source: "/vote/:path*", destination: "/tokens#governance", permanent: true },
-      { source: "/token", destination: "/tokens", permanent: true },
-      { source: "/musd", destination: "/tokens?tab=musd", permanent: true },
-      { source: "/pools", destination: "/tokens", permanent: true },
+      { source: "/token", destination: "/strategy?tab=magnet", permanent: true },
+      { source: "/musd", destination: "/tokens", permanent: true },
+      { source: "/pools", destination: "/strategy", permanent: true },
     ];
   },
   /**

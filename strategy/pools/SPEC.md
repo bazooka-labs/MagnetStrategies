@@ -84,13 +84,28 @@ with no navigation at all and no way off it but the back button.
 
 - **Splash**: `StrategySplash`, the fourth `ArrivalSplash`, using the house
   banner (`/magnet-wordmark-tight.png`) rather than a product mark. /tokens
-  leads with the $U mark and /magnetfi with its wordmark because each stands for
-  one asset or protocol; Strategy is a shelf, so it carries the organisation's
-  own mark. Mounted as a SIBLING of the content — an ancestor running an opacity
-  animation becomes a backdrop root and the blur silently does nothing.
-- **Tabs**: a pill segmented control matching Finance and Tokens, one tab
-  ("Pools") today. A real track rather than a heading, because a track gains its
-  second tab in one line and a heading becomes a rewrite.
+  leads with the mUSD mark and /magnetfi with its wordmark because each stands
+  for one asset or protocol; Strategy is a shelf, so it carries the
+  organisation's own mark. Mounted as a SIBLING of the content — an ancestor
+  running an opacity animation becomes a backdrop root and the blur silently
+  does nothing.
+- **Tabs**: a pill segmented control matching Finance and the mUSD page. Three
+  today, in this order:
+  1. **Liquidity Pools** — the $U pools on Tinyman and Pact, plus the Myth
+     Finance U/uALGO pool. The default: it is the lower-commitment product and
+     the one a visitor most likely came for.
+  2. **Vaults** — the C-Vault, and the two direct market pools behind the admin
+     control. Called "Pools" until the $U pools arrived on 2026-11-04; two
+     different things on one page could not both be "Pools".
+  3. **Magnet Token** — `MagnetTokenView`, moved here from `/tokens` on
+     2026-11-04. $U is a strategy in its own right, the original one. Its
+     content is SERVER-rendered by `app/strategy/page.tsx` and passed in as the
+     `magnetView` node, because `LiquidityView` is `ssr: false` and the price,
+     holder count and TVL on it are awaited. `?tab=magnet` opens it directly,
+     which is where `/token` redirects.
+
+  A real track rather than a heading, because a track gains its next tab in one
+  line and a heading becomes a rewrite — which is exactly how it gained two.
 
 ## 3. What PEX actually offers
 

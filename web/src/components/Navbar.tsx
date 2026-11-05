@@ -10,7 +10,17 @@ import { MAGNETFI_ADMIN_ADDRESS } from "@/lib/magnetfi";
 import { XIcon, DiscordIcon, SOCIALS } from "@/components/SocialIcons";
 
 const navLinks = [
-  { href: "/tokens", label: "Tokens", external: false },
+  /**
+   * "mUSD", not "Tokens" — relabelled 2026-11-04.
+   *
+   * The page held $U and mUSD behind two pills; $U moved to /strategy, so the
+   * only asset left here is mUSD and "Tokens" promised a set with one member.
+   * The PATH stays /tokens, deliberately: renaming it would mean a cached 301
+   * off the live route, and `app/strategy/page.tsx` records what the last one
+   * of those still costs. Same rule as "Finance" below — the label is the
+   * product's name to a visitor, the path is its name to the codebase.
+   */
+  { href: "/tokens", label: "mUSD", external: false },
   // "Finance", not "Bank": the route is a lending protocol with collateral
   // vaults and a PSM, and "Bank" promised something more custodial than what is
   // actually there. The path stays /magnetfi — the label is the product's name

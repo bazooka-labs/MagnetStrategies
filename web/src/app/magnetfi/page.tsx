@@ -58,7 +58,7 @@ const VaultsTab = dynamic(
   () => import("@/components/magnetfi/v2/VaultsTab").then((m) => m.VaultsTab),
   { ssr: false, loading: pulse }
 );
-// The mUSD swap lives on the combined /tokens page; the mUSD link below deep-links there.
+// The mUSD swap lives on /tokens, which is the mUSD page now — no tab to deep-link to.
 
 // Admin panel pulls in algokit-utils — lazy-load so it only ships when an admin opens it.
 const AdminTab = dynamic(

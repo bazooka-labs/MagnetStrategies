@@ -586,7 +586,7 @@ export function VaultsTab() {
         description="Borrow mUSD against your Tinyman LP tokens — your liquidity keeps earning trading fees the whole time it backs the loan."
       >
         <LpVaultLearnMore />
-        <Link href="/tokens?tab=musd" className={RAISED_MAGNET}>
+        <Link href="/tokens" className={RAISED_MAGNET}>
           <Coins className="h-3.5 w-3.5" /> mUSD
         </Link>
       </SectionHero>

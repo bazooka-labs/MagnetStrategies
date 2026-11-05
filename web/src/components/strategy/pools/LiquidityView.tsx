@@ -29,7 +29,8 @@
  * percentage slider would make the $5 floor a surprise exactly where it bites.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { AlertTriangle, Coins, Droplets, Layers, Shield, Sparkles, TrendingUp } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { PEX_APPS } from "@/lib/strategy/pex/config";
@@ -87,8 +88,14 @@ const num = (v: number | null, dp = 0) =>
  * liquidity pools arrived from the Tokens page, because two different things
  * on one page could not both be "Pools". What this tab holds is managed
  * vaults; what the other holds is DEX liquidity.
+ *
+ * `magnet` arrived on 2026-11-04. $U is a strategy in its own right — the
+ * original one, built to beat holding ALGO — so it belongs beside the others
+ * rather than on a page of its own. Its content is rendered by the ROUTE and
+ * handed in as a node (see the `magnetView` prop), because the figures in it
+ * are server-fetched and this component is `ssr: false`.
  */
-type Tab = "vaults" | "liquidity";
+type Tab = "vaults" | "liquidity" | "magnet";
 
 /**
  * One pill, identical to the Finance and Tokens tracks.
@@ -98,8 +105,18 @@ type Tab = "vaults" | "liquidity";
  * heading that has to become a track later is a rewrite. The active pill still
  * reads as selected, so it looks like a chosen view rather than a dead control.
  */
-function TabButton({ active, onClick, icon: Icon, label }: {
-  active: boolean; onClick: () => void; icon: typeof Droplets; label: string;
+function TabButton({ active, onClick, icon: Icon, imageSrc, label }: {
+  active: boolean; onClick: () => void; icon: typeof Droplets;
+  /**
+   * An asset's own artwork, in place of the glyph.
+   *
+   * Only the token tab uses it: "Magnet Token" is a thing with a mark, and the
+   * mark is what a holder recognises, where the other two name activities that
+   * have no artwork. `icon` stays required and is the fallback — a missing
+   * image must not leave a pill with a hole in it.
+   */
+  imageSrc?: string;
+  label: string;
 }) {
   return (
     <button
@@ -110,7 +127,13 @@ function TabButton({ active, onClick, icon: Icon, label }: {
           : "text-white/60 hover:text-white"
       }`}
     >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {imageSrc ? (
+        <span className="h-4 w-4 shrink-0 overflow-hidden rounded-full">
+          <Image src={imageSrc} alt="" width={16} height={16} className="h-full w-full object-cover" />
+        </span>
+      ) : (
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      )}
       {label}
     </button>
   );
@@ -380,7 +403,23 @@ function CardShell({ children }: { children: React.ReactNode }) {
   return <Panel glowClass={MAGNET_GLOW} className="p-5">{children}</Panel>;
 }
 
-export function LiquidityView() {
+export function LiquidityView({ magnetView }: {
+  /**
+   * The Magnet Token tab's content, rendered by the route and passed in.
+   *
+   * It is a NODE rather than a component this file imports, for one hard
+   * reason: price, holder count and $U TVL are fetched on the server in
+   * `app/strategy/page.tsx`, and this component is loaded `ssr: false`. A
+   * client component cannot await those, and prop-drilling three strings
+   * through here would make this file know about $U's stats for no benefit.
+   * `TokensView` takes its tabs the same way and for the same reason.
+   *
+   * Required, not optional. A pill that quietly disappears when a route
+   * forgets to pass its content is a navigation entry that vanishes with no
+   * error anywhere; as a required prop that same mistake is a type error.
+   */
+  magnetView: ReactNode;
+}) {
   const { algodClient, address, signTransactions, isConnected } = useWallet();
   /**
    * ── Only the C-Vault is public ──
@@ -480,6 +519,23 @@ export function LiquidityView() {
   // strategy, which is a second question, not the opening one.
   const [tab, setTab] = useState<Tab>("liquidity");
 
+  /**
+   * `?tab=` opens a pill directly, so a link can point at one.
+   *
+   * `/token` — the $U page's old route — redirects to `/strategy?tab=magnet`,
+   * and that redirect is the only reason this exists. Read from
+   * `window.location` rather than `useSearchParams` for the reason TokensView
+   * documents: the hook needs a Suspense boundary, and the boundary makes the
+   * build emit an EMPTY fallback into the static HTML.
+   *
+   * An unrecognised value is IGNORED rather than treated as a miss, so a
+   * stale link lands on the default tab instead of a blank one.
+   */
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get("tab");
+    if (want === "magnet" || want === "vaults" || want === "liquidity") setTab(want);
+  }, []);
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       {/* A SIBLING of the content, never a parent of it: the splash blurs the
@@ -523,6 +579,18 @@ export function LiquidityView() {
             onClick={() => setTab("vaults")}
             icon={Layers}
             label="Vaults"
+          />
+          {/* Last of the three, and deliberately so. $U is the oldest strategy
+              here but the one that asks the most of a reader: the two before it
+              are "put capital in this pool" and "put capital in this vault",
+              while this one is "hold the asset the organisation is built on".
+              Liquidity Pools stays the opening view. */}
+          <TabButton
+            active={tab === "magnet"}
+            onClick={() => setTab("magnet")}
+            icon={Coins}
+            imageSrc="/tokens/u.png"
+            label="Magnet Token"
           />
         </div>
         {/* Amber, like every other "this is not ordinary browsing" control in
@@ -875,6 +943,18 @@ export function LiquidityView() {
           <LpPoolsSection />
         </div>
       )}
+
+      {/*
+        NOT wrapped in `max-w-5xl`, unlike the two above.
+        ──────────────────────────────────────────────────────────────────────
+        The other tabs cap their width because a card beside a full-bleed amber
+        panel made the warning the largest object on the page. This content was
+        laid out for the full `max-w-6xl` column it had on /tokens — a five-cell
+        metric row and a 3/2 chart-and-swap split — and squeezing it to 64rem
+        drops the metric row to two columns for no reason. The container above
+        is the same width /tokens gave it, so it renders identically.
+      */}
+      {tab === "magnet" && magnetView}
     </div>
   );
 }

@@ -1,17 +1,18 @@
 import { TokensView } from "@/components/tokens/TokensView";
 import { TokensSplash } from "@/components/tokens/TokensSplash";
-import { MagnetTokenView } from "@/components/tokens/MagnetTokenView";
 import { MusdTokenView } from "@/components/tokens/MusdTokenView";
-import {
-  MAGNET_ASA_ID, MUSD_ASA_ID,
-  fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL, fetchMusdMarketPriceUsd,
-} from "@/lib/tokenStats";
+import { GovernanceSection } from "@/components/tokens/GovernanceSection";
+import { MUSD_ASA_ID, fetchHolderCount, fetchMusdMarketPriceUsd } from "@/lib/tokenStats";
 
+/**
+ * /tokens — the mUSD page.
+ *
+ * It held two assets until 2026-11-04 and fetched five figures for them. The
+ * Magnet Token view and its three reads moved to `app/strategy/page.tsx`; what
+ * is left is mUSD, with Exchange and Governance as its two pills.
+ */
 export default async function TokensPage() {
-  const [holders, price, tvl, musdHolders, musdPrice] = await Promise.all([
-    fetchHolderCount(MAGNET_ASA_ID),
-    fetchMagnetPriceUSDC(),
-    fetchTVL(),
+  const [musdHolders, musdPrice] = await Promise.all([
     fetchHolderCount(MUSD_ASA_ID),
     fetchMusdMarketPriceUsd(),
   ]);
@@ -25,8 +26,8 @@ export default async function TokensPage() {
       */}
       <TokensSplash />
       <TokensView
-        magnetView={<MagnetTokenView holders={holders} price={price} tvl={tvl} />}
-        musdView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} />}
+        exchangeView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} />}
+        governanceView={<GovernanceSection />}
       />
     </>
   );

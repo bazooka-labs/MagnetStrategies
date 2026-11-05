@@ -68,6 +68,25 @@ describe("the nav shows the live products", () => {
     expect(desktop.indexOf("/strategy")).toBe(desktop.indexOf("/trade") + 1);
   });
 
+  it("calls the /tokens entry 'mUSD', and keeps the path", () => {
+    /**
+     * Relabelled 2026-11-04, when $U moved to /strategy and mUSD became the
+     * only asset on that page. The PATH deliberately did not move with the
+     * label: a cached 301 off a live route is what `app/strategy/page.tsx`
+     * records the cost of, and CLAUDE.md states the rule — the label is the
+     * product's name to a visitor, the path is its name to the codebase.
+     *
+     * Both halves are asserted, because either one alone is satisfied by the
+     * mistake. "Tokens is gone" passes if the entry was deleted; "/tokens
+     * exists" passes if the label never changed.
+     */
+    render(<Navbar />);
+    const links = screen.getAllByRole("link", { name: "mUSD" });
+    expect(links.length).toBeGreaterThan(0);
+    expect(links[0].getAttribute("href")).toBe("/tokens");
+    expect(screen.queryByRole("link", { name: "Tokens" })).toBeNull();
+  });
+
   it("links to the other live products", () => {
     const h = hrefs();
     for (const route of ["/tokens", "/magnetfi", "/trade", "/contact"]) {

@@ -33,9 +33,10 @@ governance token for UVote. See [TOKENOMICS.md](./TOKENOMICS.md).
 |---|---|---|---|
 | **MagnetFi** (the Bank) | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
 | **Single-Token Markets** | Lend/borrow individual assets via partner **CompX**'s money markets (surfaced read-only + deep-link). | `/magnetfi` → Markets | — |
-| **UVote** | Advisory, founder-led governance over $U. Holders lock $U to signal on protocol direction. **Live on mainnet** (App `3679681107`). | `/tokens#governance` | [vote/OVERVIEW.md](../vote/OVERVIEW.md) |
-| **Tokens** | **$U** and **mUSD** on one page: price, holders, TVL, **ASA TVL Rank**, chart, swap, and the $U liquidity pools across Tinyman & Pact. The mUSD swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed the former `/token`, `/musd`, `/pools` and `/about`. | `/tokens` | [TOKENOMICS.md](./TOKENOMICS.md) · [mUSD.md](../magnetfi/v2/mUSD.md) |
-| **ASA TVL Tracker** | Cross-DEX liquidity analytics: the top 100 Algorand ASAs by TVL. Surfaced as the **TVL Rank** box on `/tokens` (with a Top 100 modal) and a public read API. Reads Pact's managed-weighted pools that Vestige and other indexers miss. **Live.** | `/tokens`, `/api/leaderboard` | [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md) |
+| **UVote** | Advisory, founder-led governance. Holders lock **$U** to signal on protocol direction. **Live on mainnet** (App `3679681107`). Surfaced as the Governance pill of the mUSD page; the pivot to mUSD-weighted voting needs a new contract and is not built. | `/tokens#governance` | [vote/OVERVIEW.md](../vote/OVERVIEW.md) |
+| **mUSD page** | Nav label **mUSD**. Two pills: Exchange (peg, backing, holders, chart, PSM swap) and Governance (UVote). The swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed `/musd` and `/about`. | `/tokens` | [mUSD.md](../magnetfi/v2/mUSD.md) |
+| **Magnet Token** | $U as a strategy in its own right — the original one: price, holders, TVL, **ASA TVL Rank**, chart and swap, under the **Magnet Token** pill on the Strategy page, beside the $U liquidity pools. Absorbed `/token`, `/pools` and `/earn`. | `/strategy` | [TOKENOMICS.md](./TOKENOMICS.md) |
+| **ASA TVL Tracker** | Cross-DEX liquidity analytics: the top 100 Algorand ASAs by TVL. Surfaced as the **TVL Rank** box on the Magnet Token pill of `/strategy` (with a Top 100 modal) and a public read API. Reads Pact's managed-weighted pools that Vestige and other indexers miss. **Live.** | `/strategy`, `/api/leaderboard` | [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md) |
 | **Contact** | On-chain support inbox + broadcast channel (no backend — wallet-signed note-field messages). | `/contact` | — |
 
 ---
@@ -45,7 +46,8 @@ governance token for UVote. See [TOKENOMICS.md](./TOKENOMICS.md).
 The treasury is funded by revenue from Bazooka Labs' applications and deployed into
 Algorand DeFi — primarily $U-paired liquidity. It is not a $U accumulator; it acts as
 a deployment engine that pairs treasury capital with $U to build market depth. Its
-live USDC balance is shown in the Governance section of `/tokens`. UVote
+live USDC balance is shown as the Treasury box on both token views — the Magnet
+Token pill of `/strategy` and the Exchange pill of `/tokens`. UVote
 proposals often direct where
 that capital is pointed. See [TREASURY.md](./TREASURY.md).
 

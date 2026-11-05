@@ -12,26 +12,60 @@ const trade = readFileSync("src/components/strategy/perps/TradeSplash.tsx", "utf
 const magnetfi = readFileSync("src/components/magnetfi/MagnetFiSplash.tsx", "utf8");
 const strategy = readFileSync("src/components/strategy/pools/StrategySplash.tsx", "utf8");
 
+/**
+ * The className of the mark, not the whole file.
+ *
+ * These assertions are about what the <Image> actually carries, and a
+ * whole-file grep cannot tell that from prose ABOUT it — the first version
+ * of the glow test below failed because StrategySplash's own comment explains
+ * why MagnetFi's inline `drop-shadow-[...]` is the outlier, and the grep
+ * matched the explanation. Same defect this repo has hit four times now.
+ *
+ * Module scope since 2026-11-04: /tokens' mark needs it too, now that it is an
+ * opaque square whose radius and glow are the decisions worth pinning.
+ */
+const markClass = (src: string): string => {
+  const m = /className="([^"]*)"\s*\/>/.exec(src);
+  if (!m) throw new Error("no mark className found — did the splash stop rendering an Image?");
+  return m[1];
+};
+
 describe("each arrival is its own image", () => {
-  it("gives the $U mark to /tokens and the wordmark to MagnetFi", () => {
-    // /tokens leads with the token's own artwork, not the organisation's "m".
-    expect(tokens).toContain('src="/tokens/u-mark.png"');
+  it("gives the mUSD mark to /tokens and the wordmark to MagnetFi", () => {
+    /**
+     * /tokens leads with the only asset still on it.
+     *
+     * It carried the $U magnet until 2026-11-04, when the Magnet Token view
+     * moved to /strategy. The two arguments recorded in TokensSplash — the
+     * organisation's "m" versus one of two assets, then $U because it was the
+     * default tab — both rested on the page holding two tokens, and it holds
+     * one.
+     */
+    expect(tokens).toContain('src="/musd-icon.png"');
+    expect(tokens).not.toContain('src="/tokens/u-mark.png"');
     expect(magnetfi).toContain('src="/magnetfi-logo.png"');
   });
 
-  it("uses a TIGHT crop on the splash and leaves the padded files alone", () => {
-    // Both candidates for this slot ship with transparent padding —
-    // /magnet-icon.png is 56% transparent by height, and the ASA png is
-    // 307x365 of content on a 521x479 canvas. At splash scale that padding
-    // becomes a visible gap between the mark and the rule, so the splash gets
-    // a cropped asset while the navbar keeps the padded square.
+  it("declares the file's real dimensions, so the intrinsic aspect is right", () => {
+    // Wrong numbers here feed next/image a false aspect and it lays out a box
+    // the picture does not fill. The earlier mark was a 307x365 CROP of a
+    // padded 521x479 canvas for that reason; this one is the whole square
+    // file, so the padding problem the crop existed to solve is absent.
+    expect(tokens).toContain("width={1024}");
+    expect(tokens).toContain("height={1024}");
     // The comments NAME the files not used, so this checks src, not the path.
     expect(tokens).not.toContain('src="/magnet-icon.png"');
     expect(tokens).not.toContain('src="/tokens/u.png"');
-    // The crop's own dimensions — wrong numbers here mean a padded canvas crept
-    // back in and the intrinsic aspect no longer matches the file.
-    expect(tokens).toContain("width={307}");
-    expect(tokens).toContain("height={365}");
+  });
+
+  it("rounds the opaque square, which the transparent marks never needed", () => {
+    // Full-bleed purple to its edges. Unrounded it reads as a block of colour
+    // beside the rule rather than as an icon — and the radius has to be on the
+    // IMAGE, because ArrivalSplash promotes the mark through `[&_img]` and a
+    // wrapper would move the filter off the element that selector reaches.
+    const cls = markClass(tokens);
+    expect(cls).toMatch(/rounded-/);
+    expect(cls).toContain("magnet-glow-soft");
   });
 
   it("leaves the Trading Terminal as type alone", () => {
@@ -92,21 +126,6 @@ describe("the Strategy arrival", () => {
     expect(strategy).toContain("width={815}");
     expect(strategy).toContain("height={226}");
   });
-
-  /**
-   * The className of the mark, not the whole file.
-   *
-   * These assertions are about what the <Image> actually carries, and a
-   * whole-file grep cannot tell that from prose ABOUT it — the first version
-   * of the glow test below failed because this file's own comment explains why
-   * MagnetFi's inline `drop-shadow-[...]` is the outlier, and the grep matched
-   * the explanation. Same defect this repo has hit four times now.
-   */
-  const markClass = (src: string): string => {
-    const m = /className="([^"]*)"\s*\/>/.exec(src);
-    if (!m) throw new Error("no mark className found — did the splash stop rendering an Image?");
-    return m[1];
-  };
 
   it("sizes to MagnetFi's arrival exactly", () => {
     // The two wordmark arrivals. Equal width reads as equal prominence; this

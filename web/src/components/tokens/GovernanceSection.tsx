@@ -1,18 +1,27 @@
 "use client";
 
 /**
- * UVote, as a section of the $U page rather than a page of its own.
+ * UVote — the mUSD page's "Governance" pill.
  *
- * ── Why it moved ───────────────────────────────────────────────────────────
- * One proposal had ever been opened. A standing nav entry that usually leads to
- * "check back when the founder opens the first vote" costs more than it buys,
- * and everything $U — swap, pools, governance — now reads in one place.
+ * ── Where it has lived ─────────────────────────────────────────────────────
+ * It was /vote, a nav entry of its own. One proposal had ever been opened, and
+ * a standing nav entry that usually leads to "check back when the founder opens
+ * the first vote" costs more than it buys, so it became a section at the foot
+ * of the $U page. On 2026-11-04 it became a pill on the mUSD page instead: $U
+ * moved under /strategy, and governance is pivoting to mUSD.
  *
- * ── Why it is a section and not a third tab ────────────────────────────────
- * The tabs above are ASSETS: Magnet ($U) and mUSD. Voting is an activity, and
- * sitting it beside two tokens as though it were a third one misdescribes it.
- * The cost of being a section instead is that its empty state lands on the
- * page; that is paid for by keeping it at the bottom, under the pools.
+ * ── The pivot is NOT done, and this file must not pretend otherwise ────────
+ * The plan is for voting to be weighted by mUSD; the contract still locks $U
+ * and will until a new one is specced, written and deployed. So the mechanism
+ * copy below says $U, because $U is what the wallet will be asked to lock, and
+ * the notice above it says plainly that governance is moving. Rewriting the
+ * explanation to mUSD ahead of the contract would put a false statement in
+ * front of someone about to sign a lock — the one place this codebase cannot
+ * afford to be aspirational.
+ *
+ * It is a PILL rather than a section for the first time here. As a section it
+ * carried its empty state onto a page about something else, which is why it
+ * was kept at the very bottom; a pill shows it only to a reader who asked.
  *
  * ── Why "How voting works" is permanent and not a modal ────────────────────
  * It was briefly an `AboutModal`, matching how the token blurbs explain
@@ -74,7 +83,11 @@ export function GovernanceSection() {
   const history = proposals.filter((p) => !isActive(p)).sort((a, b) => b.endTime - a.endTime);
 
   return (
-    <section id="governance" className="mt-8 scroll-mt-24">
+    /* No top margin: as a section this needed one to clear the pools above it;
+       as a pill it is the first thing in the column and TokensView already
+       spaces the toggle off it. `scroll-mt-24` stays — `/vote` and `/dao`
+       still redirect to `/tokens#governance`. */
+    <section id="governance" className="scroll-mt-24">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <VoteIcon className="h-5 w-5 text-magnet-400" />
@@ -101,6 +114,32 @@ export function GovernanceSection() {
           <AdminPanel onProposalCreated={load} />
         </div>
       )}
+
+      {/*
+        ── Where governance is going, stated before the rules it changes ─────
+        A reader arrives here from a pill on the mUSD page and reasonably
+        expects to vote with mUSD. They cannot yet, and the panel below will
+        tell them to lock $U. Saying so FIRST is the difference between a page
+        that reads as mid-migration and one that reads as wrong.
+
+        Deliberately not amber: amber is this app's informative voice and the
+        panel below already owns it. A second amber block would read as two
+        warnings of equal weight, when this one is context for that one.
+      */}
+      <div className="mb-5 rounded-2xl border border-magnet-400/25 bg-magnet-500/[0.06] p-5 sm:p-6">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0 text-magnet-300" />
+          <h3 className="font-display text-base font-semibold text-magnet-200">
+            Governance is moving to mUSD
+          </h3>
+        </div>
+        <p className="mt-3 text-sm leading-relaxed text-gray-400">
+          Votes today are weighted by <strong className="font-semibold text-gray-300">$U</strong> and
+          cast through the UVote contract — that is what the rules below describe, and what your
+          wallet will be asked to lock. The mUSD governance contract is being specified; nothing
+          about an open vote changes until it ships, and this page will say so when it does.
+        </p>
+      </div>
 
       {/* ── How voting works ──────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-amber-400/25 bg-amber-500/[0.06] p-5 sm:p-6">

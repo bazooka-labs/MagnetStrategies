@@ -1,15 +1,23 @@
 "use client";
 
 /**
- * "Live proposals: N" in the $U hero, linking down to Governance.
+ * "Live proposals: N" in the Magnet Token hero, linking ACROSS to Governance.
  *
- * Governance moved to the foot of this page, which is the right place to read
- * it and the wrong place to DISCOVER it — a visitor who never scrolls past the
- * pools never learns there is a vote open. This pill carries that fact to the
- * top without moving the section.
+ * ── Why the link leaves the page ───────────────────────────────────────────
+ * It used to be `#governance`, an anchor down to a section of the same page.
+ * On 2026-11-04 the two parted company: the Magnet Token view moved under
+ * /strategy and governance moved under /tokens, behind the mUSD page's
+ * "Governance" pill. A bare `#governance` from /strategy now points at an
+ * element that is not in the document, which scrolls nowhere and reports
+ * nothing — so this is a real cross-page link, and `/tokens#governance` is
+ * read by TokensView to open the Governance pill on arrival.
+ *
+ * Voting is still weighted by $U, which is why the pill belongs in the Magnet
+ * Token hero rather than beside the mUSD balance: the holder it concerns is a
+ * $U holder. That changes when the governance contract does.
  *
  * It shares its count with the section itself through `useUVoteProposals`, so a
- * pill claiming an open vote above a list showing none is not a state this page
+ * pill claiming an open vote above a list showing none is not a state the app
  * can reach.
  *
  * It stays visible at zero. The number is the point either way: "0" says
@@ -24,6 +32,7 @@
  * stops meaning anything, and a pill that changes colour reads as two controls.
  */
 
+import Link from "next/link";
 import { Vote as VoteIcon } from "lucide-react";
 import { RAISED_MAGNET } from "../raisedButton";
 import { UVOTE_LIVE } from "@/lib/uvote";
@@ -38,8 +47,8 @@ export function LiveProposalsPill() {
   const open = n > 0;
 
   return (
-    <a
-      href="#governance"
+    <Link
+      href="/tokens#governance"
       className={RAISED_MAGNET}
     >
       <VoteIcon className="h-3.5 w-3.5" />
@@ -48,6 +57,6 @@ export function LiveProposalsPill() {
       {/* A quiet pulse only when something is actually open — a dot that always
           blinks stops meaning anything. */}
       {open && <span className="h-1.5 w-1.5 rounded-full bg-magnet-400 animate-pulse" />}
-    </a>
+    </Link>
   );
 }

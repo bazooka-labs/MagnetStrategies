@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
+import { MagnetTokenView } from "@/components/tokens/MagnetTokenView";
+import {
+  MAGNET_ASA_ID, fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL,
+} from "@/lib/tokenStats";
 
 /**
  * Strategy — liquidity provision into PEX's pools.
@@ -48,6 +52,27 @@ const LiquidityView = dynamic(
   },
 );
 
-export default function LiquidityPage() {
-  return <LiquidityView />;
+/**
+ * Server-rendered, because the Magnet Token tab's figures are.
+ *
+ * `LiquidityView` is `ssr: false` and cannot await anything, so price, holder
+ * count and $U TVL are fetched HERE and the finished view is handed down as a
+ * node. These three reads used to live in `app/tokens/page.tsx`, which is where
+ * the Magnet Token view lived until 2026-11-04.
+ *
+ * The cost is honest and worth naming: all three run on every request to
+ * /strategy, including from someone who only ever looks at the vaults. They are
+ * the same three reads /tokens made unconditionally before the move, so this is
+ * the cost moving with the content rather than a new one — and `fetchTVL` and
+ * `fetchHolderCount` each swallow their own failures and return a dash, so a
+ * dead indexer degrades this page's third tab instead of 500-ing the route.
+ */
+export default async function LiquidityPage() {
+  const [holders, price, tvl] = await Promise.all([
+    fetchHolderCount(MAGNET_ASA_ID),
+    fetchMagnetPriceUSDC(),
+    fetchTVL(),
+  ]);
+
+  return <LiquidityView magnetView={<MagnetTokenView holders={holders} price={price} tvl={tvl} />} />;
 }

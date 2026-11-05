@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Navbar } from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Tokens — Magnet Strategies",
-  description: "$U and mUSD — price, holders, TVL, live charting, swapping, and the Peg Stability Module, all in one place.",
+  title: "mUSD — Magnet Strategies",
+  description: "mUSD — the peg, backing, holders, live charting, the Peg Stability Module, and protocol governance.",
 };
 
 export default function TokensLayout({ children }: { children: React.ReactNode }) {

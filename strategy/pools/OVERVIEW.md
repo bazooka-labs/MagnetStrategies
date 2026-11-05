@@ -585,6 +585,29 @@ also the point: it would move the remaining holders' share of the pool
 sharply. **Unresolved:** decide whether the card discloses largest-holder
 share.
 
+## What is on the page (2026-11-04)
+
+Three pills, in this order — see SPEC.md §2.2 for why.
+
+| Pill | Holds | Signs anything? |
+|---|---|---|
+| **Liquidity Pools** | $U pools on Tinyman and Pact, plus the Myth Finance U/uALGO pool. Moved here from the Tokens page | No — read-only cards that deep-link to the DEX |
+| **Vaults** | The C-Vault, and the two direct market pools behind the admin control | Yes — deposits and withdrawals are signed here |
+| **Magnet Token** | `MagnetTokenView`, moved here from `/tokens`: $U stats, ASA TVL Rank, the $U/ALGO chart and the Haystack swap | Only the swap, which is TxnLab's widget |
+
+The route is a **server component** since the Magnet Token pill arrived: price,
+holder count and $U TVL are awaited in `app/strategy/page.tsx` and handed to
+`LiquidityView` as the `magnetView` node, because `LiquidityView` itself is
+`ssr: false`. Those three reads run on every request to /strategy, including
+from someone who only looks at the vaults — the same reads /tokens made
+unconditionally before the move, so it is a cost that moved rather than a new
+one.
+
+Governance went the other way, to the mUSD page's Governance pill. See
+[vote/OVERVIEW.md](../../vote/OVERVIEW.md).
+
+---
+
 ## Status (2026-10-22)
 
 | Pool | Venue | Deposit | Withdraw | Notes |

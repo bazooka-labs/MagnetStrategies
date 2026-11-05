@@ -6,7 +6,6 @@ import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
-import { GovernanceSection } from "@/components/tokens/GovernanceSection";
 import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
@@ -103,15 +102,22 @@ export function MagnetTokenView({
       </Panel>
 
       {/*
-        The $U liquidity pools MOVED to the Strategy page on 2026-11-04,
-        under the "Liquidity Pools" pill beside the vaults. Providing
-        liquidity is a strategy; this page is about the token itself.
-        See components/strategy/pools/LpPoolsSection.tsx.
-      */}
+        ── Two things left this view on 2026-11-04 ─────────────────────────────
+        The $U liquidity pools moved to the Strategy page's "Liquidity Pools"
+        pill, beside the vaults: providing liquidity is a strategy, and this
+        view is about the token itself. See
+        components/strategy/pools/LpPoolsSection.tsx.
 
-      {/* Governance — last, because it is the part a reader comes to after
-          deciding they hold $U, not before. */}
-      <GovernanceSection />
+        Governance moved the other way, to /tokens behind the mUSD page's
+        "Governance" pill — the first step of the UVote → mUSD pivot. The
+        CONTRACT has not moved and still locks $U, which is why the hero keeps
+        `LiveProposalsPill`: the holder a vote concerns is still a $U holder,
+        and the pill now links across to where the vote is cast.
+
+        Nothing replaces either one here. A stub reading "governance moved" is a
+        navigational dead end dressed as content; the pill in the hero is the
+        signpost, and it carries a live count rather than a sentence.
+      */}
     </>
   );
 }

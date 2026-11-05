@@ -139,12 +139,23 @@ afterEach(() => {
   bundle = null;
 });
 
+/**
+ * Stands in for the Magnet Token tab's content.
+ *
+ * The real view is server-rendered by `app/strategy/page.tsx` and handed in as
+ * a node, so this file has nothing to import for it — and a stub is the right
+ * double anyway: the assertion worth making here is that the PILL shows and
+ * hides whatever it was given, not that MagnetTokenView renders, which
+ * `tokensGovernance.test.ts` and the tokens tests already cover.
+ */
+const MAGNET_STUB = <div>magnet-tab-content</div>;
+
 async function mount(as: "visitor" | "admin" | "disconnected") {
   wallet = as === "disconnected"
     ? { address: null, isConnected: false }
     : { address: as === "admin" ? ADMIN : VISITOR, isConnected: true };
   const { LiquidityView } = await import("./LiquidityView");
-  render(<LiquidityView />);
+  render(<LiquidityView magnetView={MAGNET_STUB} />);
   /**
    * The page lands on Liquidity Pools, so the vault column has to be chosen.
    *
@@ -613,7 +624,7 @@ describe("the two pills separate vaults from liquidity pools", () => {
     // of this file. This is the one test about what loads first.
     wallet = { address: VISITOR, isConnected: true };
     const { LiquidityView } = await import("./LiquidityView");
-    render(<LiquidityView />);
+    render(<LiquidityView magnetView={MAGNET_STUB} />);
     expect(await screen.findByText(/\$U Liquidity Pools/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
   });
@@ -646,5 +657,72 @@ describe("the two pills separate vaults from liquidity pools", () => {
     expect(screen.getByRole("button", { name: /Direct pools/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Liquidity Pools$/ }));
     expect(screen.queryByRole("button", { name: /Direct pools/ })).toBeNull();
+  });
+});
+
+describe("the Magnet Token pill", () => {
+  /**
+   * $U moved under Strategy on 2026-11-04: it is a strategy in its own right,
+   * the original one, so it sits beside the pools and the vault rather than on
+   * a nav entry of its own.
+   *
+   * Every test here asserts through the RENDERED pill and the content behind
+   * it, never the `Tab` union or the prop name — the thing that would break a
+   * visitor is a pill that is absent, or present and showing nothing.
+   */
+  afterEach(() => { window.history.replaceState({}, "", "/strategy"); });
+
+  it("offers a pill labelled 'Magnet Token'", async () => {
+    await mount("visitor");
+    expect(screen.getByRole("button", { name: /^Magnet Token$/ })).toBeTruthy();
+    // Not "$U", and not "Tokens" — the label is the strategy's name.
+    expect(screen.queryByRole("button", { name: /^Tokens$/ })).toBeNull();
+  });
+
+  it("shows the content it was handed, and only when chosen", async () => {
+    await mount("visitor");
+    expect(screen.queryByText("magnet-tab-content")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Magnet Token$/ }));
+    expect(screen.getByText("magnet-tab-content")).toBeTruthy();
+  });
+
+  it("replaces the other two columns rather than stacking under them", async () => {
+    await mount("visitor");
+    fireEvent.click(screen.getByRole("button", { name: /^Magnet Token$/ }));
+    expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
+    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
+  });
+
+  it("goes back, rather than being a one-way door", async () => {
+    await mount("visitor");
+    fireEvent.click(screen.getByRole("button", { name: /^Magnet Token$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Vaults$/ }));
+    expect(screen.getByRole("heading", { name: "C-Vault Strategy" })).toBeTruthy();
+    expect(screen.queryByText("magnet-tab-content")).toBeNull();
+  });
+
+  it("hides the admin direct-pools control here too", async () => {
+    await mount("admin");
+    fireEvent.click(screen.getByRole("button", { name: /^Magnet Token$/ }));
+    expect(screen.queryByRole("button", { name: /Direct pools/ })).toBeNull();
+  });
+
+  it("opens directly from ?tab=magnet, which is where /token redirects", async () => {
+    // NOT via `mount`, which clicks Vaults after rendering and would mask
+    // whatever the deep link chose.
+    window.history.replaceState({}, "", "/strategy?tab=magnet");
+    wallet = { address: VISITOR, isConnected: true };
+    const { LiquidityView } = await import("./LiquidityView");
+    render(<LiquidityView magnetView={MAGNET_STUB} />);
+    expect(await screen.findByText("magnet-tab-content")).toBeTruthy();
+  });
+
+  it("ignores an unrecognised ?tab, landing on the default rather than nothing", async () => {
+    window.history.replaceState({}, "", "/strategy?tab=sausages");
+    wallet = { address: VISITOR, isConnected: true };
+    const { LiquidityView } = await import("./LiquidityView");
+    render(<LiquidityView magnetView={MAGNET_STUB} />);
+    expect(await screen.findByText(/\$U Liquidity Pools/)).toBeTruthy();
+    expect(screen.queryByText("magnet-tab-content")).toBeNull();
   });
 });

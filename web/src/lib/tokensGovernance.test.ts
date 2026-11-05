@@ -1,19 +1,35 @@
-// UVote folded into the $U page, and the treasury promoted to a metric box.
+// UVote's home, and the treasury promoted to a metric box.
+//
+// ── What moved on 2026-11-04, and why this file was rewritten ─────────────
+// Governance was a SECTION at the foot of the $U tab of /tokens. $U is now the
+// "Magnet Token" pill on /strategy, and governance is the "Governance" pill on
+// /tokens, which is the mUSD page.
+//
+// Two assertions here survived that move and would have gone green for ever
+// while describing the opposite of the truth — `toContain("<GovernanceSection
+// />")` against a file that no longer renders it fails loudly, but
+// `not.toContain("GovernanceSection")` against the mUSD view passed BEFORE the
+// move and passes after it for a different reason. Both directions are now
+// pinned against the file that actually composes each page.
 
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const magnet = readFileSync("src/components/tokens/MagnetTokenView.tsx", "utf8");
 const musd = readFileSync("src/components/tokens/MusdTokenView.tsx", "utf8");
+/** The two ROUTES, which is where each view is now composed. */
+const tokensRoute = readFileSync("src/app/tokens/page.tsx", "utf8");
+const strategyRoute = readFileSync("src/app/strategy/page.tsx", "utf8");
 const gov = readFileSync("src/components/tokens/GovernanceSection.tsx", "utf8");
 const treasury = readFileSync("src/components/tokens/TreasuryStat.tsx", "utf8");
 const navbar = readFileSync("src/components/Navbar.tsx", "utf8");
 const config = readFileSync("next.config.js", "utf8");
 
-describe("the treasury is the fifth box on both tabs", () => {
+describe("the treasury is the fifth box on both token views", () => {
   it("appears on each", () => {
     // One balance stands behind both tokens, so it is not a property of
-    // whichever tab is selected.
+    // whichever view is on screen — and since 2026-11-04 the two are not even
+    // on the same page.
     for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
       expect(src, name).toContain("<TreasuryStat />");
       expect(src, name).toContain("lg:grid-cols-5");
@@ -57,9 +73,28 @@ describe("the treasury is the fifth box on both tabs", () => {
   });
 });
 
-describe("governance is a section of the $U tab", () => {
-  it("sits on the Magnet tab", () => {
-    expect(magnet).toContain("<GovernanceSection />");
+describe("governance is the mUSD page's Governance pill", () => {
+  it("is composed by the /tokens route, not by either token view", () => {
+    // It is a PILL now, so the route hands it to TokensView beside the
+    // exchange view — it is not nested inside a token's own markup.
+    expect(tokensRoute).toContain("governanceView={<GovernanceSection />}");
+    expect(magnet).not.toContain("GovernanceSection");
+    expect(musd).not.toContain("GovernanceSection");
+  });
+
+  it("left the Magnet Token view behind on /strategy", () => {
+    /**
+     * The direction that matters.
+     *
+     * `magnet.not.toContain("GovernanceSection")` above is true of a file that
+     * never had it, so on its own it would not notice the section quietly
+     * coming back to a page that no longer has an anchor for it. This pins the
+     * other half: the Magnet Token view is composed by the STRATEGY route now,
+     * and that route composes no governance.
+     */
+    expect(strategyRoute).toContain("<MagnetTokenView");
+    expect(strategyRoute).not.toContain("Governance");
+    expect(tokensRoute).not.toContain("MagnetTokenView");
   });
 
   it("no longer shares that tab with the liquidity pools", () => {
@@ -76,9 +111,22 @@ describe("governance is a section of the $U tab", () => {
     expect(magnet).not.toContain("<LpPoolsSection />");
   });
 
-  it("is not on the mUSD tab", () => {
-    // Voting is denominated in $U.
-    expect(musd).not.toContain("GovernanceSection");
+  it("says plainly that voting is still weighted by $U", () => {
+    /**
+     * The honesty check, and the reason this pill is allowed to exist before
+     * its contract does.
+     *
+     * A reader reaches it from a pill on the mUSD page and reasonably expects
+     * to vote with mUSD. They cannot: UVote locks $U and will until a new
+     * contract ships. The mechanism copy below the notice therefore still says
+     * $U — it describes what the wallet will be asked to sign — and the notice
+     * is what stops that reading as a mistake.
+     *
+     * If the notice is ever deleted while the copy below it still says $U,
+     * this page starts lying by juxtaposition. That is what this guards.
+     */
+    expect(gov).toContain("Governance is moving to mUSD");
+    expect(gov).toMatch(/weighted by <strong[^>]*>\$U<\/strong>/);
   });
 
   it("explains itself in a PERMANENT box, not a modal", () => {
@@ -170,12 +218,20 @@ describe("the old route is retired, not orphaned", () => {
   });
 });
 
-describe("the hero points down at governance", () => {
+describe("the hero points across at governance", () => {
   const pill = readFileSync("src/components/tokens/LiveProposalsPill.tsx", "utf8");
   const store = readFileSync("src/hooks/useUVoteProposals.ts", "utf8");
 
-  it("links to the section rather than duplicating it", () => {
-    expect(pill).toContain('href="#governance"');
+  it("links to the other page rather than anchoring within this one", () => {
+    /**
+     * It was `#governance`, which worked while the pill and the section shared
+     * a page. They no longer do: the pill rides in the Magnet Token hero on
+     * /strategy and the section is a pill on /tokens, so a bare fragment points
+     * at an element that is not in the document — which scrolls nowhere and
+     * reports nothing, the quietest possible breakage.
+     */
+    expect(pill).toContain('href="/tokens#governance"');
+    expect(pill).not.toMatch(/href="#governance"/);
     expect(magnet).toContain("<LiveProposalsPill />");
   });
 

@@ -13,16 +13,19 @@ and partner money markets — and reinvests returns into the token's underlying 
 | Route | Nav label | What |
 |---|---|---|
 | [`/`](https://magnetstrategies.io) | — | Landing |
-| [`/tokens`](https://magnetstrategies.io/tokens) | Tokens | $U + mUSD, ASA TVL Rank, UVote governance |
+| [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — PSM swap, peg/backing stats, UVote governance |
 | [`/magnetfi`](https://magnetstrategies.io/magnetfi) | Finance | MagnetFi — LP vaults, mUSD, PSM |
 | [`/trade`](https://magnetstrategies.io/trade) | Trade | Trading Terminal (perps on PEX) |
-| [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Strategy Pools + C-Vault |
+| [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Liquidity Pools, C-Vault, Magnet Token ($U + ASA TVL Rank) |
 | [`/predict`](https://magnetstrategies.io/predict) | — | VPL volatility ladder |
 | [`/contact`](https://magnetstrategies.io/contact) | Contact | On-chain support inbox |
 | [`/api/leaderboard`](https://magnetstrategies.io/api/leaderboard) | — | Top 100 ASA TVL, public read API |
 
-> Retired and redirected: `/token`, `/musd`, `/pools` and `/about` folded into
-> `/tokens`; `/dao` and `/vote` into `/tokens#governance`. The authority for all
+> Retired and redirected: `/musd` and `/about` into `/tokens`; `/token`, `/pools`
+> and `/earn` into `/strategy`; `/dao` and `/vote` into `/tokens#governance`.
+> The nav label on `/tokens` is **mUSD** and the path is unchanged on purpose —
+> a cached 301 off a live route is what `web/src/app/strategy/page.tsx` records
+> the cost of. The authority for all
 > of this is [`web/next.config.js`](./web/next.config.js) and
 > [`web/src/components/Navbar.tsx`](./web/src/components/Navbar.tsx) — if this
 > table and those files disagree, the files are right.
@@ -71,10 +74,16 @@ identity and must not be imported into products that do not offer them.
 
 → [`predict/OVERVIEW.md`](./predict/OVERVIEW.md)
 
-### Tokens
-The **$U token** and **mUSD** on one page (`/tokens`), with live stats, charts, swap, and
-the $U liquidity pools across Tinyman & Pact (fee/farm APRs, deep-links to add liquidity).
-Absorbed the former `/token`, `/musd`, `/pools` and `/about` pages.
+### mUSD
+`/tokens`, nav label **mUSD**. Two pills: **Exchange** (peg, backing, holders, chart,
+and the PSM swap) and **Governance** (UVote — the rules, live proposals and voting
+history). Absorbed the former `/musd`, `/about`, `/dao` and `/vote` pages.
+
+### Magnet Token
+`/strategy`, under the **Magnet Token** pill beside Liquidity Pools and Vaults — $U is a
+strategy in its own right, the original one. Live stats, the ASA TVL Rank box, the
+$U/ALGO chart and the swap. The $U liquidity pools across Tinyman & Pact sit on the
+same page under **Liquidity Pools**. Absorbed the former `/token`, `/pools` and `/earn`.
 
 → [`org/TOKENOMICS.md`](./org/TOKENOMICS.md) ($U) · [`magnetfi/v2/mUSD.md`](./magnetfi/v2/mUSD.md) (mUSD)
 
