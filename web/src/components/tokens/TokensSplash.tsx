@@ -12,13 +12,13 @@
 // left, so the mark is simply its own, and the question the earlier notes were
 // arguing about no longer exists.
 //
-// ── Why it is rounded, unlike the marks it replaces ───────────────────────
-// The "m" and the $U magnet are transparent artwork that composites onto the
-// scrim. This file is a full-bleed opaque purple square — the app-icon crop,
-// the same asset the mUSD hero tiles at 56px — so square and unrounded it
-// reads as a block of colour rather than a mark. The radius is what makes it
-// read as the icon it is, and it is on the image itself; the note on the
-// className says why there is no wrapper.
+// ── Which mUSD file, and why not the one the hero uses ────────────────────
+// `/musd-icon.png` is the app-icon crop: a full-bleed opaque purple square. It
+// is right for the 56px hero tile and wrong here, because every other arrival
+// is transparent artwork composited onto the scrim, and a square of flat
+// colour beside the rule reads as a block rather than a mark. This is the
+// brand file instead — a white glyph on transparency, the same shape of asset
+// as the "m" and the $U magnet.
 //
 // ── Why the Magnet Strategies banner is NOT used ───────────────────────────
 // It is reserved for the Strategy page. Spending the organisation's full
@@ -41,33 +41,24 @@ export function TokensSplash() {
       subtext="Attract Yield, Attract Liquidity"
       mark={
         <Image
-          src="/musd-icon.png"
+          // Cropped to its opaque pixels (383x392 out of a 500x500 canvas with
+          // asymmetric padding) for the same reason the "m" and the $U magnet
+          // were: scaling a padded canvas scales the padding, and the gap to
+          // the rule below would come from the asset rather than the layout.
+          src="/tokens/musd-mark.png"
           alt=""
-          width={1024}
-          height={1024}
+          width={383}
+          height={392}
           priority
-          // ── Sized by AREA, the rule the two previous marks were sized by ──
+          // Sized by AREA, not by width or height.
+          //
           // The "m" is landscape (316x222), the $U magnet portrait (307x365)
-          // and this one square, so matching a width or a height across the
-          // three gives wildly different visual mass. The magnet occupied
+          // and this one near-square, so matching a width or a height across
+          // them gives wildly different visual mass. The magnet occupied
           // 5.2 x 6.18rem (32.2rem^2), and 5.88 x 6.99 (41.1rem^2) at the
-          // larger breakpoint; the equal-area square sides are 5.67rem and
-          // 6.41rem, which is what these are.
-          //
-          // ── Rounded, unlike the marks it replaces ──
-          // Those are transparent artwork that composites onto the scrim. This
-          // is the app-icon crop: a full-bleed opaque purple square, the same
-          // asset the mUSD hero tiles at 56px. Square and unrounded it reads as
-          // a block of colour rather than a mark.
-          //
-          // The radius is on the IMAGE and there is no wrapper, deliberately.
-          // ArrivalSplash promotes the mark with `[&_img]:transform-gpu`
-          // because the filter that forces a compositing layer lives on the
-          // <img> — see the long note there about the cold-load rectangle. A
-          // wrapper carrying `magnet-glow-soft` would move the filter off the
-          // element that selector reaches, and `overflow-hidden` on it would
-          // clip the glow anyway.
-          className="magnet-glow-soft h-[5.67rem] w-[5.67rem] rounded-[1.25rem] object-cover sm:h-[6.41rem] sm:w-[6.41rem]"
+          // larger breakpoint. At this aspect the equal-area widths are
+          // 5.61rem and 6.34rem, which is what these are.
+          className="magnet-glow-soft h-auto w-[5.61rem] sm:w-[6.34rem]"
         />
       }
     />

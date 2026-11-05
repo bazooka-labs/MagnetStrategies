@@ -41,31 +41,40 @@ describe("each arrival is its own image", () => {
      * default tab — both rested on the page holding two tokens, and it holds
      * one.
      */
-    expect(tokens).toContain('src="/musd-icon.png"');
+    expect(tokens).toContain('src="/tokens/musd-mark.png"');
     expect(tokens).not.toContain('src="/tokens/u-mark.png"');
+    // NOT the app-icon crop the 56px hero tile uses: that one is a full-bleed
+    // opaque square, and at splash scale a block of flat colour beside the rule
+    // does not read as a mark. The comments NAME it, so this checks src.
+    expect(tokens).not.toContain('src="/musd-icon.png"');
     expect(magnetfi).toContain('src="/magnetfi-logo.png"');
   });
 
-  it("declares the file's real dimensions, so the intrinsic aspect is right", () => {
-    // Wrong numbers here feed next/image a false aspect and it lays out a box
-    // the picture does not fill. The earlier mark was a 307x365 CROP of a
-    // padded 521x479 canvas for that reason; this one is the whole square
-    // file, so the padding problem the crop existed to solve is absent.
-    expect(tokens).toContain("width={1024}");
-    expect(tokens).toContain("height={1024}");
+  it("uses a TIGHT crop on the splash and leaves the padded files alone", () => {
+    // Every candidate for this slot ships with transparent padding —
+    // /magnet-icon.png is 56% transparent by height, the $U ASA png is 307x365
+    // of content on a 521x479 canvas, and the mUSD brand file is 383x392 on a
+    // 500x500 one. At splash scale that padding becomes a visible gap between
+    // the mark and the rule, so the splash gets a cropped asset while the
+    // navbar and the hero keep theirs.
+    //
+    // The crop's own dimensions — wrong numbers here feed next/image a false
+    // intrinsic aspect, and it lays out a box the picture does not fill.
+    expect(tokens).toContain("width={383}");
+    expect(tokens).toContain("height={392}");
     // The comments NAME the files not used, so this checks src, not the path.
     expect(tokens).not.toContain('src="/magnet-icon.png"');
     expect(tokens).not.toContain('src="/tokens/u.png"');
   });
 
-  it("rounds the opaque square, which the transparent marks never needed", () => {
-    // Full-bleed purple to its edges. Unrounded it reads as a block of colour
-    // beside the rule rather than as an icon — and the radius has to be on the
-    // IMAGE, because ArrivalSplash promotes the mark through `[&_img]` and a
-    // wrapper would move the filter off the element that selector reaches.
+  it("carries the shared glow and no tile styling", () => {
+    // It is transparent artwork like the other three, so it composites onto
+    // the scrim directly — a rounded, clipped wrapper belongs to the opaque
+    // app-icon crop this does not use, and `overflow-hidden` on one would clip
+    // the glow the mark is supposed to cast.
     const cls = markClass(tokens);
-    expect(cls).toMatch(/rounded-/);
     expect(cls).toContain("magnet-glow-soft");
+    expect(cls).not.toMatch(/rounded-|overflow-hidden/);
   });
 
   it("leaves the Trading Terminal as type alone", () => {
