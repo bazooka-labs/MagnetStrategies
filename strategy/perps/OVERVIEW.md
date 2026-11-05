@@ -150,13 +150,57 @@ MagnetFi state at all.
 Carried over from the former `NEXT.md` on 2026-10-27 and each re-checked
 against the code at that date.
 
-**ALGO collateral is PARKED, not abandoned — 2026-11-03.** The read, display
-and close/cancel paths are collateral-correct and shipped; the toggle is not
-built and ALGO opens and closes are both refused before signing. The decision
-and the remaining work are in
-[ALGO_COLLATERAL_SPEC.md §5c](./ALGO_COLLATERAL_SPEC.md). Measured demand was
-one $20 ALGO position on the whole exchange, against two fund-safety
-assertions that would have to be loosened.
+**ALGO collateral is LIVE — 2026-11-05.** Supersedes the "PARKED" note that
+stood here: ALGO opens and closes both work and are no longer refused before
+signing. The assertions were widened in `35b988d` (`pinnedPoolAssets`, which
+admits ALGO and USDC only and fails `pool_asset_unpinned` on anything else),
+and the UI gate that outlived that fix was lifted in `b5a3472`. A real close
+settled on 2026-11-05: 196.888673 ALGO collateral in, 194.386612 ALGO +
+12.259258 USDC out, builder fee exactly 10 bps, reconciled to the microALGO by
+two independent audits.
+
+### Open, pinned for a decision — ALGO close (2026-11-05)
+
+Neither of these loses money. Both are judgement calls deliberately left to
+the founder rather than settled in passing.
+
+1. **"Net vs collateral" values ALGO collateral at the CLOSING price**, so it
+   hides the collateral's own dollar move. On the close above the card showed
+   **+$12.03**; against what that ALGO was worth when it was deposited the
+   result was about **+$10.85** — the card flatters a falling-ALGO trade by
+   ~11%. The label does say the basis, but a green figure reads as profit. The
+   original stake is not recoverable from `p2:` (it carries post-fee collateral
+   only), so changing this means choosing a different definition of "net", not
+   just fixing a number.
+2. **No minimum-receive is shown**, because the signed close has no output
+   floor — `minPrimaryOutputAmount` and `minSecondaryOutputAmount` are both 0.
+   The only protection is `acceptablePrice`, anchored to a quote up to 30s old,
+   at `DEFAULT_SLIPPAGE_BPS = 50` applied one-sided: **0.5% of notional
+   adverse, ~5% of collateral at 10x**. Never a theft vector — the fill is the
+   signed oracle price — but the panel does not state the bound.
+
+### Known liveness limits on the close path — NOT fund safety
+
+Every failure below refuses with nothing signed. The risk is being unable to
+exit *through this terminal*, not losing anything.
+
+- **Market 2 (BTC) ALGO closes are asserted-OK but never chain-simulated.**
+  No market-2 position exists anywhere to simulate against, so a mocked one
+  fails at `pc=1759` regardless of collateral — including a USDC control. This
+  is unproven, not proven-good. Open one small market-2 position and run
+  `algoclose.live.test.ts` against it before relying on it.
+- **The close fee cap is a real ceiling and its headroom is unmeasured.**
+  `MAX_CLOSE_GROUP_FEE_MICRO_ALGO` is 200,000, set at ~1.7x a measured 120,000.
+  The close above came to 122,000, of which **114,000 was the Trading call
+  alone** — that call pools the fees of its inner transactions, so the total
+  scales with the number of yield-recall legs, NOT with group size
+  (`SHAPE_CLOSE` already caps the group at 16 app calls and no transfers). A
+  position with substantially more recall legs could exceed 200,000 and be
+  refused `fee_cap`.
+
+  Do **not** raise the cap to make a failure go away. That is widening a
+  fund-safety bound, which is the exact mistake pattern that produced the gate
+  in `b5a3472`. Measure the real ceiling against a large position first.
 
 **The close refund is larger than its parts, and one constant may be stale.**
 The first ALGO round trip (2026-11-04) returned two inner payments: the trade
