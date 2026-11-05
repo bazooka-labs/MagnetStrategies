@@ -35,6 +35,7 @@ that cannot drift. The changes are:
 | I-2 | `create_proposal` uses checked `BoxCreate(...) == 1` | Was safe only via monotonic `proposal_count`. Now self-evident. |
 | I-3 | `claim_tokens` asserts `BoxDelete(...) == 1` | Found while writing. A 0 would have run both inner transfers while the vote box survived to be claimed again. The re-entrancy argument rests on that delete having happened. |
 | I-4 | `cast_vote` group reordered to `[0]` payment, `[1]` transfer, `[2]` app call | **Removes a standing-funding requirement neither UVote audit could close.** See below. |
+| I-5 | every transaction in both groups asserts `rekey_to == zero` | An audit called this harmless — the only account a rekey here can touch is the voter's own, which they sign for. Added anyway: the contract already pins `asset_close_to` and `close_remainder_to`, and "the voter signs it" excuses those equally well, so leaving one of the three unchecked makes a reader guess which omission was deliberate. It also stops a hostile front end bundling an account takeover into a group a wallet displays as "vote". |
 
 ## I-4: why the group order matters
 
@@ -57,6 +58,31 @@ Every assert is unchanged — only its index moved. Each transaction is still
 pinned by type, sender, receiver, amount and asset, so position was never what
 made the group safe.
 
+## Round-two audit, 2026-11-05 (two fresh agents, after the first fixes)
+
+Re-run because the group reorder invalidated round one's transaction-shape
+verdict. The contract came back **sound, nothing Medium or above**: 18
+malformed group shapes submitted to localnet and every one rejected, and the
+zero-buffer result independently reproduced across 16 voters.
+
+The frontend pass found several of the round-one fixes were incomplete, which
+is the whole argument for auditing twice:
+
+- The partial-read fix **reintroduced the bug it was written for**.
+  `listProposals` resolves rather than rejecting when an era fails, so
+  replacing the list wholesale discarded what that era returned last time. A
+  503 on mVote dropped a live proposal off the page, underneath a banner
+  admitting the read was incomplete. Now `mergeAcrossEras`.
+- The pill printed "0" and the section "Nothing to vote on right now" when the
+  count was merely unknown.
+- Clearing the vote record on a wallet switch did not stop the OLD wallet's
+  in-flight read landing last and winning.
+- "Submitted but unconfirmed" was classified by regex over the error message,
+  which also matched failures from *before* submission.
+- A confirmation timeout on the deploy's create step still lost the App ID.
+- **No test built the `cast_vote` group**, so reverting the reorder passed all
+  1074 tests while breaking every vote on mainnet.
+
 ## Transaction shapes
 
 - **create_proposal** (founder): group of 2 — `[0]` Payment `286,100 µALGO`
@@ -64,6 +90,7 @@ made the group safe.
   Limits are **bytes**, not characters: 256 for the question, 96 per choice.
 - **cast_vote** (voter): group of 3 — `[0]` Payment `26,900 µALGO`,
   `[1]` AXFER whole mUSD → app, `[2]` AppCall `[cast_vote, id8, choice8]`.
+  No transaction in either group may set `rekey_to`.
 - **claim_tokens** (voter, after close): AppCall `[claim_tokens, id8]`, **alone**
   (`group_size == 1`), outer `flat_fee=true, fee=3000` for two inner txns.
 
@@ -76,10 +103,24 @@ UVote spec below, which remains accurate for all of it.
   Localnet rather than testnet because dev mode can shift block timestamps, so
   the 7-day window is actually crossed; everything about post-close behaviour is
   otherwise untestable without waiting a week.
-- `mutate_mvote.py` — deletes each guard and requires the matching test to flip.
-  10 caught, 1 documented-redundant, 0 survivors. It found one vacuous test,
-  where "claim before the window closes" passed with the window check deleted
-  because the voter had not voted yet.
+- `mutate_mvote.py` — deletes each guard and requires the matching test to
+  flip. 13 caught, 1 documented-redundant, 0 survivors. It has caught four
+  worthless tests so far: "claim before the window closes" passed with the
+  window check deleted, because the voter had not voted yet; and all three
+  rekey probes passed with their guards deleted, because rekeying to an
+  attacker is refused by the NODE — it changes the sender's auth address
+  mid-group and invalidates the other signatures, so the contract never runs.
+  A self-rekey isolates the guard.
+
+  The runner itself was wrong too: it could not tell "the test passed" from
+  "the test never ran because the suite crashed", and reported both as
+  survivors. It now reports INCONCLUSIVE separately, and its docstring records
+  that a survivor is not a verdict until it reproduces — localnet keeps state
+  between runs and one survivor turned out to be leftover state.
+
+- `governanceGroups.test.ts` (web) — builds the real `cast_vote` and
+  `claim_tokens` groups through the real client and asserts them against the
+  contract's asserts, one for one. Three mutations tried, three caught.
 - `check_musd_asset.py` — re-measures the asset assumption fund safety rests on:
   mUSD has no clawback and no freeze, and on Algorand neither can ever be added.
 - `verify_embedded.py` — the bytes the deploy button ships are this contract
