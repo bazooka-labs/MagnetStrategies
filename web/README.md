@@ -1,8 +1,10 @@
 # Magnet Strategies — Web App
 
 The Next.js frontend for Magnet Strategies: the landing site, the **$U** token page, the
-**MagnetFi "Bank"** (LP-collateral vaults + single-token markets), the **mUSD** page, and the
-gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md).
+**MagnetFi "Bank"** (LP-collateral vaults + single-token markets), the **mUSD** page, the
+**Strategy** and **Trade** arms, and the gated admin console. MagnetFi protocol/contract design
+docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's live in
+[`strategy/`](../strategy/OVERVIEW.md).
 
 ## Run & deploy
 - From `web/`: `npm install`, then `npm run dev`.
@@ -19,6 +21,8 @@ gated admin console. Protocol/contract design docs live in [`magnetfi/v2/`](../m
 | `/magnetfi` | **The Bank** — tabbed app (below) |
 | `/musd` | mUSD hub — live PSM metrics + the mint/redeem **Exchange** |
 | `/pools` | $U liquidity pools (Tinyman & Pact) — live fee/farm APRs + add-liquidity deep-links |
+| `/strategy` | **Strategy** — Magnet Token, Liquidity Pools, and Vaults (C-Vault + magnetALGO dualSTAKE). Docs: [`strategy/OVERVIEW.md`](../strategy/OVERVIEW.md) |
+| `/trade` | **Trading Terminal** — leveraged positions on PEX. Docs: [`strategy/perps/OVERVIEW.md`](../strategy/perps/OVERVIEW.md) |
 | `/tokens` → Governance | **mVote** — advisory founder-led governance weighted by mUSD; proposals, vote/reclaim, treasury tracker, gated admin. `/vote` and `/dao` redirect here |
 | `/contact` | Contact |
 | `/api/leaderboard` | Read API: top 100 ASAs by TVL (cached 300s) — powers the TVL Rank box |

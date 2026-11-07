@@ -26,9 +26,19 @@ $U is the asset at the center of every Magnet Strategies product:
 3. **Liquidity anchor** — $U is the base asset in Magnet-paired DEX pools (Tinyman &
    Pact), surfaced under the **Liquidity Pools** pill of `/strategy`. (`/pools` folded into it and now
    redirects there.)
+4. **Staking reward asset — third-party** — Myth Finance's **dualSTAKE** pays its
+   Algorand consensus rewards in **$U** rather than ALGO, and a mint also *requires*
+   $U at the current rate. So every magnetALGO holder is a structural buyer, on a
+   contract that is not ours. Surfaced under the **Vaults** pill of `/strategy`; see
+   [strategy/dualstake/OVERVIEW.md](../strategy/dualstake/OVERVIEW.md).
 
 The token's utility grows in proportion to the depth and activity of the ecosystem it
 anchors — more collateral, more liquidity, more governance participation.
+
+**Note the asymmetry in (4).** It is the only demand source on this list that Magnet
+neither operates nor can change: the reward asset, the fee rate and the contract are
+Myth's, behind their admin keys and a one-week upgrade timelock. Good alignment, real
+counterparty exposure, and the card says so in those words.
 
 ---
 
@@ -47,5 +57,7 @@ and aligns availability with the expansion of the protocol's market presence.
   active pools and volume grow, the ecosystem's aggregate fee capacity expands.
 - **Protocol usage** — vault borrowing (interest), PSM/mUSD activity, and treasury
   deployment all reinforce $U demand through utility rather than speculation.
+- **External reward demand** — ALGO staked through dualSTAKE converts consensus
+  rewards into $U buying, independent of Magnet's own activity.
 - **Treasury** — protocol capital is deployed into $U-paired liquidity (see
   [TREASURY.md](./TREASURY.md)), building market depth around the token.

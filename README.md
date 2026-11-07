@@ -16,7 +16,7 @@ and partner money markets — and reinvests returns into the token's underlying 
 | [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — PSM swap, peg/backing stats, mVote governance |
 | [`/magnetfi`](https://magnetstrategies.io/magnetfi) | Finance | MagnetFi — LP vaults, mUSD, PSM |
 | [`/trade`](https://magnetstrategies.io/trade) | Trade | Trading Terminal (perps on PEX) |
-| [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Liquidity Pools, C-Vault, Magnet Token ($U + ASA TVL Rank) |
+| [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Magnet Token ($U + ASA TVL Rank), Liquidity Pools, Vaults (C-Vault + magnetALGO) |
 | [`/predict`](https://magnetstrategies.io/predict) | — | VPL volatility ladder |
 | [`/contact`](https://magnetstrategies.io/contact) | Contact | On-chain support inbox |
 | [`/api/leaderboard`](https://magnetstrategies.io/api/leaderboard) | — | Top 100 ASA TVL, public read API |
@@ -55,8 +55,9 @@ carries a vote. UVote itself replaced the "MagnetDAO" quarterly-liquidity model.
 ### Strategy
 The DeFi strategy arm — products where a user **takes a position or deploys capital into
 an engineered strategy**, as opposed to accepting a posted rate (that is the Bank). Some
-run on our contracts, some on a third party's. Magnet writes no contract on either
-product below; every action is a PEX call signed by the user's wallet.
+run on our contracts, some on a third party's. **Magnet writes no contract on any product
+below** — every action is a call to the venue's own contract, signed by the user's wallet,
+and asserted by us before the wallet is asked.
 
 - **Perps** (nav: **Trade**) — leveraged positions on **PEX**, Ultrade's Algorand
   perpetuals protocol. Live on MainNet.
@@ -65,10 +66,14 @@ product below; every action is a PEX call signed by the user's wallet.
   Depositing and withdrawing happen **in our own UI**, with no link-out. Current status,
   including which paths carry a real signature and which destinations are public, is in
   [`strategy/pools/OVERVIEW.md`](./strategy/pools/OVERVIEW.md).
+- **magnetALGO** (nav: **Strategy**) — liquid staking on **Myth Finance**: deposit ALGO,
+  hold magnetALGO, and the staking rewards accrue in **$U** rather than ALGO. That makes a
+  depositor a structural buyer of our own token, which is why this integration exists.
+  Live on MainNet 2026-11-07, on the Vaults pill beside the C-Vault.
 
 CLMM pools on PactFi and structured vaults come later.
 
-→ [`strategy/OVERVIEW.md`](./strategy/OVERVIEW.md) · [`strategy/perps/OVERVIEW.md`](./strategy/perps/OVERVIEW.md) · [`strategy/pools/OVERVIEW.md`](./strategy/pools/OVERVIEW.md)
+→ [`strategy/OVERVIEW.md`](./strategy/OVERVIEW.md) · [`strategy/perps/OVERVIEW.md`](./strategy/perps/OVERVIEW.md) · [`strategy/pools/OVERVIEW.md`](./strategy/pools/OVERVIEW.md) · [`strategy/dualstake/OVERVIEW.md`](./strategy/dualstake/OVERVIEW.md)
 
 ### Predict
 **VPL — Volatility Prediction Ladder.** mUSD-denominated, user-to-user price markets:

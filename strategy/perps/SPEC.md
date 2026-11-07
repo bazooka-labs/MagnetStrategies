@@ -1120,6 +1120,59 @@ The aggregation is over four fields, keyed by their own asset id:
 
 **Deficit closes.** SDK 0.6.6 charges `forcedAccruedCostUsd` to `costUsd` on *every* close, where 0.6.4 and earlier charged it only on liquidation and ADL. Where accrued costs exceed position collateral, quotes from before 0.6.6 **overstated** the payout. 0.6.6 is the floor for any close quote; it does not touch the open path.
 
+### The close panel's figures — what may be shown
+
+Four rules, each from a defect found by the post-hoc review of the ALGO close
+(`65d2755`, 2026-11-06). They are display invariants, not formatting
+preferences: each one was a wrong number on a real screen.
+
+**1. Collateral-denominated costs are `number | null`, never an approximation.**
+`closeColUsd` used to fall back to `baseUnits / 1e6` as dollars whenever the
+collateral could not be priced, labelled "the pre-existing approximation". For
+USDC that is true by definition. For ALGO it is not an approximation at all —
+a 2,070,238 µALGO builder fee rendered as **"$2.07" against a true $0.19**,
+out by 10.7x, and an audit measured $1.054 against $0.098 on market 2. It
+returns `null` for any non-USD collateral, and the `CloseQuote` cost fields
+are nullable so the compiler locates every consumer. Same rule as
+`payoutUsd` above: withhold, do not guess.
+
+**2. An itemisation must reconcile with its own headline, or not appear.**
+"Exit costs, net" showed **+$0.55** above items summing to **−$0.277**. The
+missing $0.83 was the claimable funding leg — inside `payoutUsd`, absent from
+`fundingNetUsd`. `quote.ts` surfaces `claimedFundingUsd`, valued per-asset like
+the payout rather than through the collateral, and the panel compares the
+itemisation against its headline and renders **nothing** if they differ by more
+than a cent. An itemisation that does not add up is worse than no itemisation,
+because it invites the reader to trust the parts.
+
+**3. A refused quote's figures are not figures.** `ok: false` still carries
+whatever the SDK computed before giving up. Driving a
+`close_size_insufficient` quote through the real SDK produced "If closed now
+$0.83", "Net −$17.54", and a price move of −$167.38 — nine times the
+collateral — displayed above an amber line correctly saying PEX would not
+accept the close. Every figure now derives from an accepted quote
+(`p.close?.ok ? p.close : null`) or is withheld.
+
+**4. The close path reads account state, because a close pays out in the
+market's assets.** Not only the collateral: an ALGO-collateral long returns
+profit in USDC. An ASA transfer to a wallet that is not opted in fails, and the
+group is atomic — so an ALGO holder who had never touched USDC had **no exit**
+and a raw logic-eval error to go on. Two preflights now refuse before any
+signature: payout-asset opt-in, and ALGO balance against
+`EXIT_RESERVE_MICRO_ALGO`. Both are refusals rather than fixes; the value is
+telling the user which one it is while they can still act. Pre-emptive — all 33
+position boxes on the trading app were checked and every holder was already
+opted in.
+
+**On gates added as workarounds.** The ALGO close was disabled by a UI gate
+written while the group assertion genuinely refused ALGO. The assertion was
+widened 90 minutes later (`35b988d`); the gate stayed for two days, with a live
+196.888673 ALGO position and no exit, because nothing asserted it should go.
+A temporary gate gets a test *in the same change*, naming the condition that
+removes it, and should key off a capability list — here
+`POSITION_COLLATERAL_ASSETS` — rather than a single hardcoded value, so the
+read path and the action path have to move together.
+
 ---
 
 ## State

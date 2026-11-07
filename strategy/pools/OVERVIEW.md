@@ -585,15 +585,27 @@ also the point: it would move the remaining holders' share of the pool
 sharply. **Unresolved:** decide whether the card discloses largest-holder
 share.
 
-## What is on the page (2026-11-04)
+## What is on the page (2026-11-07)
 
 Three pills, in this order — see SPEC.md §2.2 for why.
 
 | Pill | Holds | Signs anything? |
 |---|---|---|
-| **Liquidity Pools** | $U pools on Tinyman and Pact, plus the Myth Finance U/uALGO pool. Moved here from the Tokens page | No — read-only cards that deep-link to the DEX |
-| **Vaults** | The C-Vault, and the two direct market pools behind the admin control | Yes — deposits and withdrawals are signed here |
 | **Magnet Token** | `MagnetTokenView`, moved here from `/tokens`: $U stats, ASA TVL Rank, the $U/ALGO chart and the Haystack swap | Only the swap, which is TxnLab's widget |
+| **Liquidity Pools** | $U pools on Tinyman and Pact, plus the Myth Finance U/uALGO pool. Moved here from the Tokens page | No — read-only cards that deep-link to the DEX |
+| **Vaults** | The C-Vault, the [magnetALGO dualSTAKE card](../dualstake/OVERVIEW.md), and the two direct market pools behind the admin control | Yes — deposits, withdrawals, and magnetALGO mint/redeem are signed here |
+
+**Magnet Token leads, since 2026-11-05.** The table above used to list the
+pills in the old order and claim it was the rendered one; the order is
+`magnet, liquidity, vaults` in `LiquidityView.tsx` and the landing view
+matches it.
+
+**The Vaults pill holds two strategies as of 2026-11-07.** magnetALGO landed
+beside the C-Vault without touching the grid, which is what the two-per-row
+rule below was written to allow. One change was needed: the grid now sets
+`items-start`, because it had been stretching both cards to the taller one and
+the C-Vault column grew a large empty panel under its button that read as a
+card which had failed to load. Found by rasterising, not by reading the code.
 
 The route is a **server component** since the Magnet Token pill arrived: price,
 holder count and $U TVL are awaited in `app/strategy/page.tsx` and handed to

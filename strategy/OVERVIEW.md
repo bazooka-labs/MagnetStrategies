@@ -15,6 +15,7 @@ both. The umbrella is the user's intent, not who wrote the code.
 | [Trading Terminal](./perps/OVERVIEW.md) | Leveraged positions on PEX, a third-party perpetuals protocol | **Trade** | Live on MainNet |
 | Advanced trading | Surfaces for users who want the full instrument, not the simplified one | **Trade** | Not started |
 | [Strategy Pools](./pools/OVERVIEW.md) | Liquidity into PEX's perp pools and its managed C-Vault — you earn fees and take the other side | **Strategy** | **Live on MainNet and in the nav** (2026-10-23). Only the C-Vault is public; the two direct market pools are admin-gated |
+| [magnetALGO dualSTAKE](./dualstake/OVERVIEW.md) | Liquid staking on **Myth Finance's** contract — deposit ALGO, hold magnetALGO, earn **$U** | **Strategy** | **Live on MainNet and in the nav** (2026-11-07), on the Vaults pill beside the C-Vault |
 | CLMM strategy pools | Automated LP / concentrated-liquidity vaults, likely on **PactFi's** CLMM contracts | Strategy | **Waiting on PactFi** to release the platform. Discussed, not designed |
 | Strategy vaults | Other engineered exposures — looped, structured | Strategy | Not started |
 
@@ -198,5 +199,8 @@ source-available under the PEX Builder License 1.0 — see
 | [perps/OVERVIEW.md](./perps/OVERVIEW.md) | **Perps** — product framing and commitments |
 | [perps/SPEC.md](./perps/SPEC.md) | Perps implementation — architecture, threat model, invariants |
 | [perps/PEX.md](./perps/PEX.md) | PEX platform reference — facts, measured MainNet state, integration paths |
+| [pools/OVERVIEW.md](./pools/OVERVIEW.md) | **Strategy Pools** — the direct pools and the C-Vault |
+| [dualstake/OVERVIEW.md](./dualstake/OVERVIEW.md) | **magnetALGO** — the Myth Finance integration, what the audit found, what is still open with the vendor |
+| [dualstake/SPEC.md](./dualstake/SPEC.md) | magnetALGO implementation — group shapes, the assertion, the decimals trap |
 | [../predict/OVERVIEW.md](../predict/OVERVIEW.md) | **Predict** — the ladder product line, its own tree |
 | [../magnetfi/OVERVIEW.md](../magnetfi/OVERVIEW.md) | **Bank** — MagnetFi lending, mUSD, PSM |

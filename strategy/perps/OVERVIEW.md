@@ -159,6 +159,30 @@ settled on 2026-11-05: 196.888673 ALGO collateral in, 194.386612 ALGO +
 12.259258 USDC out, builder fee exactly 10 bps, reconciled to the microALGO by
 two independent audits.
 
+**The post-hoc review is closed — `65d2755`, 2026-11-06.** The gate lift was
+shipped before the review this repo's rules require on a money path, because
+funds were trapped; the review ran afterwards and both reviewers confirmed the
+lift itself was safe. They found four defects *around* it, all now fixed and
+specified in [SPEC.md](./SPEC.md#the-close-panels-figures--what-may-be-shown):
+
+- `closeColUsd` returned base units as dollars for non-USD collateral — a
+  2,070,238 µALGO builder fee rendered **"$2.07" against a true $0.19**. It
+  returns `null` now and the cost fields are nullable, so the compiler found
+  every consumer.
+- The "Exit costs, net" itemisation did not sum to its own headline; the gap
+  was the claimable funding leg. The panel reconciles and withholds on
+  disagreement.
+- The card printed figures from quotes **PEX had already refused** — `ok:
+  false` still carries whatever the SDK computed before giving up.
+- The close path read no account state, so a holder not opted into the payout
+  asset had **no exit** and a raw logic-eval error. Pre-emptive: all 33
+  position boxes were checked and every holder was already opted in.
+
+The lesson is recorded as doctrine, not just a fix: a gate added as a
+workaround needs a test naming the condition that removes it, or it outlives
+its cause. This one disabled ALGO closes for two days after the assertion it
+was waiting on had already been widened.
+
 ### Open, pinned for a decision — ALGO close (2026-11-05)
 
 Neither of these loses money. Both are judgement calls deliberately left to

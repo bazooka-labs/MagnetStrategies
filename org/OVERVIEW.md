@@ -34,6 +34,9 @@ longer carries a vote. See [TOKENOMICS.md](./TOKENOMICS.md).
 |---|---|---|---|
 | **MagnetFi** (the Bank) | LP-collateral vaults + the **mUSD** stablecoin + Peg Stability Module (PSMv3). Borrow mUSD against Tinyman LP tokens while the LP keeps earning fees. **Live on mainnet.** | `/magnetfi` | [magnetfi/v2/OVERVIEW.md](../magnetfi/v2/OVERVIEW.md) |
 | **Single-Token Markets** | Lend/borrow individual assets via partner **CompX**'s money markets (surfaced read-only + deep-link). | `/magnetfi` → Markets | — |
+| **Trading Terminal** | Leveraged perpetuals on **PEX**, Ultrade's Algorand perps protocol. Magnet writes no contract; every action is a PEX call signed by the user and asserted by us first. **Live on mainnet.** | `/trade` | [strategy/perps/OVERVIEW.md](../strategy/perps/OVERVIEW.md) |
+| **Strategy Pools** | Liquidity into PEX's perp pools and its managed **C-Vault** — you earn fees and take the other side of the book. Deposits and withdrawals are signed in our own UI. **Live on mainnet**; only the C-Vault is public, the two direct market pools are admin-gated. | `/strategy` → Vaults | [strategy/pools/OVERVIEW.md](../strategy/pools/OVERVIEW.md) |
+| **magnetALGO** | Liquid staking on **Myth Finance's** dualSTAKE: deposit ALGO, hold magnetALGO, and consensus rewards accrue in **$U** rather than ALGO — making every holder a structural $U buyer. Third-party contract, upgradeable behind a one-week timelock. **Live on mainnet 2026-11-07.** | `/strategy` → Vaults | [strategy/dualstake/OVERVIEW.md](../strategy/dualstake/OVERVIEW.md) |
 | **mVote** | Advisory, founder-led governance. Holders lock whole **mUSD** to signal on protocol direction, one mUSD to one vote. **Live on mainnet** (App `3763268387`). Replaces UVote, which voted with $U and is retired (App `3679681107`, readable for history only). | `/tokens#governance` | [vote/OVERVIEW.md](../vote/OVERVIEW.md) |
 | **mUSD page** | Nav label **mUSD**. Two pills: Exchange (peg, backing, holders, chart, PSM swap) and Governance (mVote). The swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed `/musd` and `/about`. | `/tokens` | [mUSD.md](../magnetfi/v2/mUSD.md) |
 | **Magnet Token** | $U as a strategy in its own right — the original one: price, holders, TVL, **ASA TVL Rank**, chart and swap, under the **Magnet Token** pill on the Strategy page, beside the $U liquidity pools. Absorbed `/token`, `/pools` and `/earn`. | `/strategy` | [TOKENOMICS.md](./TOKENOMICS.md) |
@@ -87,7 +90,9 @@ UVote kept beside it at `contracts/uvote/`. See the note in
 the root [README](../README.md).
 
 Per-product open items live with their product: [MagnetFi](../magnetfi/v2/OVERVIEW.md),
-[Strategy Pools](../strategy/pools/OVERVIEW.md), [ASA TVL](../ASA_TVL_SPEC.md).
+[Trading Terminal](../strategy/perps/OVERVIEW.md),
+[Strategy Pools](../strategy/pools/OVERVIEW.md),
+[magnetALGO](../strategy/dualstake/OVERVIEW.md), [ASA TVL](../ASA_TVL_SPEC.md).
 
 ---
 

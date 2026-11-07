@@ -25,9 +25,10 @@ and anyone evaluating the protocol.
 |---|---|---|
 | `org/` | The organisation, $U tokenomics, treasury, roadmap | `org/OVERVIEW.md` |
 | `magnetfi/` | MagnetFi — LP-collateral vaults, mUSD, PSM. The "Finance" nav item | `magnetfi/v2/OVERVIEW.md` |
-| `strategy/` | The Strategy arm: shared doctrine + two products | `strategy/OVERVIEW.md` |
+| `strategy/` | The Strategy arm: shared doctrine + three products | `strategy/OVERVIEW.md` |
 | `strategy/perps/` | Trading Terminal on PEX (nav: **Trade**) | `strategy/perps/OVERVIEW.md` |
 | `strategy/pools/` | Strategy Pools + C-Vault on PEX (nav: **Strategy**) | `strategy/pools/OVERVIEW.md` |
+| `strategy/dualstake/` | magnetALGO liquid staking on **Myth Finance** (nav: **Strategy**) | `strategy/dualstake/OVERVIEW.md` |
 | `predict/` | VPL volatility ladder. Its own tree, deliberately | `predict/OVERVIEW.md` |
 | `vote/` | Governance — mVote (mUSD) and retired UVote ($U) | `vote/OVERVIEW.md` |
 | `contracts/mvote/` | **mVote** — mUSD-weighted governance. **Live**, App 3763268387 | `vote/SPEC.md` |
@@ -49,6 +50,7 @@ Look these up; do not restate them in a doc.
 | Fact | Source of truth |
 |---|---|
 | PEX app IDs, program hashes, oracle signer pin | `web/src/lib/strategy/pex/config.ts` |
+| dualSTAKE app/ASA ids, program hash, ARC-4 selectors | `web/src/lib/strategy/dualstake/config.ts` |
 | MagnetFi app IDs, mUSD ASA, admin address | `web/src/lib/magnetfi.ts` |
 | $U / USDC ASA IDs, node URLs | `web/src/lib/constants.ts` |
 | Governance apps, both generations | `web/src/lib/governance.ts` (`MVOTE`, `UVOTE_RETIRED`) — **not** `constants.ts`, whose `VOTING_APP_ID` is an even older voting app and is never read |
@@ -73,9 +75,17 @@ web/src/lib/strategy/
             product that trades on PEX.
   perps/    Trading Terminal only — chart, input, solver, client, preflight
   pools/    Strategy Pools only — deposit/withdraw, C-Vault, gates, quotes
+  dualstake/ magnetALGO on Myth Finance — config, reads, assertion, client
 
-web/src/components/strategy/{perps,pools}/
+web/src/components/strategy/{perps,pools,dualstake}/
 ```
+
+**`dualstake/` holds venue and product code together, on purpose.** Myth is a
+second venue, and the rule below says a new venue gets its own shared folder
+beside `pex/` — but it also says extract against two real implementations
+rather than one real and one hypothetical. There is exactly one product on
+Myth, so splitting a `myth/` layer out now would be the hypothetical case.
+Split it when a second Myth product exists, not before.
 
 **The `pex/` layer is named for the venue, not the instrument**, and that line
 does real work: those modules describe *PEX's contracts*, so they are shared;
