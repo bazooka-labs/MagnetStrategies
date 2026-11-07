@@ -3,7 +3,6 @@ import Image from "next/image";
 import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
-import { AboutModal } from "@/components/tokens/AboutModal";
 import { StatCell } from "@/components/tokens/StatCell";
 import type { MagnetYtd } from "@/lib/tokenStats";
 
@@ -84,8 +83,12 @@ export function MagnetTokenView({
               <h1 className="font-display magnet-glow-soft text-4xl font-bold text-white sm:text-5xl">
                 Magnet Token
               </h1>
+              {/* MOCKUP 2026-11-07. Was "Built to compound liquidity across
+                  Algorand DeFi." — accurate but generic, and it read like a
+                  tagline on a page that now sits inside the Strategy arm.
+                  $U was the first product; the line says so. */}
               <p className="mt-1 max-w-xl text-sm text-gray-300">
-                Built to compound liquidity across Algorand DeFi.
+                The Original Strategy.
               </p>
             </div>
           </div>
@@ -101,22 +104,35 @@ export function MagnetTokenView({
               Kept as a column rather than collapsed: it gains a second pill
               again the moment anything else belongs here. See the note at the
               foot of this file. */}
-          <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-            <AboutModal triggerLabel="About $U" heading="What is $U?">
-              <p>
-                Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
-                organization, with the goal of outperforming a simple ALGO holding over time.
-                Launched in June 2025, $U has a fixed supply of 750,000 tokens (ASA ID:{" "}
-                <span className="font-mono text-gray-300">3081853135</span>).
-              </p>
-              <p>
-                $U is positioned to capture the broader Algorand market through its strategic LP
-                pairings, as well as earn yield across additional DeFi strategies like node
-                staking rewards. Track Magnet&apos;s performance below and decide if you&apos;d
-                like to add $U to your Algorand portfolio using our swap tooling provided by
-                TxnLab.
-              </p>
-            </AboutModal>
+        </div>
+
+        {/* MOCKUP 2026-11-07: the About modal, opened out onto the page.
+
+            Same amber frame the modal used — `border-amber-400/25` on the
+            solid `#0b0b0d` surface — so it still reads as the same object,
+            just no longer behind a button. Solid rather than the site's
+            translucent panel for the reason AboutModal records: an animated
+            field runs behind every route, and body copy being read is the one
+            place that motion is not ambience.
+
+            Sits between the subheader and the metric row, so the page reads
+            name → what it is → how it is doing. */}
+        <div className="relative mt-5 overflow-hidden rounded-2xl border border-amber-400/25 bg-[#0b0b0d] p-5 sm:p-6">
+          <h2 className="font-display text-lg font-semibold text-amber-200">What is $U?</h2>
+          <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-400">
+            <p>
+              Magnet token ($U) is the native asset of Magnet Strategies, an Algorand DeFi
+              organization, with the goal of outperforming a simple ALGO holding over time.
+              Launched in June 2025, $U has a fixed supply of 750,000 tokens (ASA ID:{" "}
+              <span className="font-mono text-gray-300">3081853135</span>).
+            </p>
+            <p>
+              $U is positioned to capture the broader Algorand market through its strategic LP
+              pairings, as well as earn yield across additional DeFi strategies like node
+              staking rewards. Track Magnet&apos;s performance below and decide if you&apos;d
+              like to add $U to your Algorand portfolio using our swap tooling provided by
+              TxnLab.
+            </p>
           </div>
         </div>
       </div>
@@ -161,9 +177,22 @@ export function MagnetTokenView({
 
         <div className="border-t border-white/10" />
 
+        {/* ── The chart gets its own padding, since 2026-11-07 ───────────
+            The iframe sat flush against the card: its dark body met the
+            card's border on the left and bottom with no gap, so the two
+            edges read as one smudged line rather than as a chart inside a
+            card. Every other block in this card is inset — the header by
+            `px-6 py-5`, the stat cells by `p-5`, the swap by its own `p-5` —
+            and the chart was the only one that was not.
+
+            `rounded-xl overflow-hidden` as well as the padding: once inset,
+            a hard-cornered rectangle inside a `rounded-2xl` card is the next
+            thing that looks unfinished. */}
         <div className="grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
-          <div className="lg:col-span-3">
-            <VestigeChart assetId={3081853135} denominatingAssetId={0} title="Magnet ($U) / ALGO Chart" />
+          <div className="lg:col-span-3 p-4 sm:p-5">
+            <div className="overflow-hidden rounded-xl">
+              <VestigeChart assetId={3081853135} denominatingAssetId={0} title="Magnet ($U) / ALGO Chart" />
+            </div>
           </div>
           <div className="lg:col-span-2">
             <HaystackSwap />

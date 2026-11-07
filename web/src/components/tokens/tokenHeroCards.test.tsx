@@ -72,7 +72,10 @@ const CASES = [
   {
     name: "Magnet Token",
     title: "Magnet Token",
-    about: /About \$U/,
+    /* Magnet opened its About out onto the page on 2026-11-07; mUSD kept the
+       modal. A deliberate divergence, so each case states its own shape
+       rather than the table pretending they are the same. */
+    about: { kind: "inline", heading: "What is $U?" } as const,
     mount: async () => {
       const { MagnetTokenView } = await import("./MagnetTokenView");
       return render(
@@ -85,7 +88,7 @@ const CASES = [
   {
     name: "mUSD",
     title: "mUSD",
-    about: /About mUSD/,
+    about: { kind: "pill", name: /About mUSD/ } as const,
     mount: async () => {
       const { MusdTokenView } = await import("./MusdTokenView");
       return render(<MusdTokenView holders="8" marketPrice={1.0001} />);
@@ -135,10 +138,41 @@ describe.each(CASES)("$name — the merged card", (c) => {
     expect(h1.className).toContain("sm:text-5xl");
   });
 
-  it("keeps the About pill inside the card", async () => {
+  it("insets the chart instead of letting it meet the card border", async () => {
+    /*
+      The iframe sat flush: its dark body met the card's border on the left
+      and bottom, so the two edges read as one smudged line. Every other
+      block in this card is inset — header, stat cells, swap — and the chart
+      was the only one that was not.
+
+      Asserted on BOTH views, because they are meant to stay the same shape
+      and a fix applied to one of them is the drift this file exists to
+      catch.
+    */
     const { container } = await c.mount();
-    const button = screen.getByRole("button", { name: c.about });
-    expect(glowing(container)[0].contains(button)).toBe(true);
+    const chart = container.querySelector("[data-testid='chart']")!;
+    expect(chart, "no chart rendered").toBeTruthy();
+    // Clipped, so a hard corner does not sit inside a rounded card.
+    expect(chart.parentElement!.className).toContain("rounded-xl");
+    expect(chart.parentElement!.className).toContain("overflow-hidden");
+    // And the column it sits in carries real padding.
+    const column = chart.closest("[class*='col-span-3']") as HTMLElement;
+    expect(column, "chart is not in the wide column").toBeTruthy();
+    expect(column.className).toMatch(/\bp-4\b/);
+  });
+
+  it("keeps its About content inside the card", async () => {
+    const { container } = await c.mount();
+    const card = glowing(container)[0];
+    if (c.about.kind === "pill") {
+      expect(card.contains(screen.getByRole("button", { name: c.about.name }))).toBe(true);
+    } else {
+      // Inline: the heading and the copy are on the page, and there is no
+      // longer a trigger to press.
+      expect(card.textContent).toContain(c.about.heading);
+      expect(card.textContent).toContain("fixed supply of 750,000 tokens");
+      expect(screen.queryByRole("button", { name: /About \$U/ })).toBeNull();
+    }
   });
 });
 
@@ -231,5 +265,25 @@ describe("the Magnet YTD cell", () => {
   it("does not put the treasury on this page any more", async () => {
     await withYtd(YTD);
     expect(screen.queryByText(/USDC for liquidity/)).toBeNull();
+  });
+});
+
+describe("the Magnet subheader", () => {
+  it('reads "The Original Strategy."', async () => {
+    /*
+      Changed 2026-11-07 from "Built to compound liquidity across Algorand
+      DeFi." — accurate but generic, and it read as a tagline on a page that
+      now sits inside the Strategy arm. $U was the first product and the line
+      says so.
+
+      A product decision in one string, which is the easiest kind of thing to
+      revert by accident in a merge.
+    */
+    const { MagnetTokenView } = await import("./MagnetTokenView");
+    const { container } = render(
+      <MagnetTokenView holders="120" price="$0.139636" tvl="442,531 ALGO"
+        ytd={{ pct: 5, base: 1.4015, now: 1.4716, since: new Date("2026-06-19T00:00:00Z") }} />);
+    expect(screen.getByText("The Original Strategy.")).toBeTruthy();
+    expect(container.textContent).not.toContain("Built to compound liquidity");
   });
 });

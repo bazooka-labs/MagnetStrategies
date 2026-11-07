@@ -135,9 +135,22 @@ export function MusdTokenView({
 
         <div className="border-t border-white/10" />
 
+        {/* ── The chart gets its own padding, since 2026-11-07 ───────────
+            The iframe sat flush against the card: its dark body met the
+            card's border on the left and bottom with no gap, so the two
+            edges read as one smudged line rather than as a chart inside a
+            card. Every other block in this card is inset — the header by
+            `px-6 py-5`, the stat cells by `p-5`, the swap by its own `p-5` —
+            and the chart was the only one that was not.
+
+            `rounded-xl overflow-hidden` as well as the padding: once inset,
+            a hard-cornered rectangle inside a `rounded-2xl` card is the next
+            thing that looks unfinished. */}
         <div className="grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
-          <div className="lg:col-span-3">
-            <VestigeChart assetId={3615600399} denominatingAssetId={31566704} title="mUSD / USDC Chart" />
+          <div className="lg:col-span-3 p-4 sm:p-5">
+            <div className="overflow-hidden rounded-xl">
+              <VestigeChart assetId={3615600399} denominatingAssetId={31566704} title="mUSD / USDC Chart" />
+            </div>
           </div>
           <div className="lg:col-span-2">
             <MusdTab />

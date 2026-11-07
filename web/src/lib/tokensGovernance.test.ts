@@ -323,30 +323,33 @@ describe("the hero points at governance", () => {
     expect(pill).not.toMatch(/if \(n === 0\) return null|if \(!open\) return null/);
   });
 
-  it("keeps the Magnet hero's pill column, now holding one pill", () => {
+  it("has no pill column left in the Magnet hero", () => {
     /*
-      ── This test asserted nothing for some time, and the rewrite is the fix ──
-      It read:
+      This has now been rewritten twice, and both times for the same reason:
+      it measured a column whose contents kept leaving.
 
-        const head = magnet.slice(indexOf("flex shrink-0 flex-col"),
-                                  indexOf("<LiveProposalsPill />"));
-        expect(head.indexOf("Live on Algorand mainnet"))
-          .toBeLessThan(head.indexOf('triggerLabel="About $U"'));
+      It began asserting an ordering between three pills, using `indexOf` of
+      a string that is not in the file (-1) against one that is — so -1 <
+      positive passed and it certified nothing. Rewritten on 2026-11-07 to
+      assert the column held About $U. Later the same day the About modal
+      opened out onto the page as an inline panel, and the column had no
+      children at all.
 
-      "Live on Algorand mainnet" is not in that file and has not been: its
-      `indexOf` was -1, About $U's was positive, and -1 < positive passes. So
-      it certified an ordering between a string that exists and one that does
-      not. Removing the pill on 2026-11-07 only made the breakage visible, by
-      turning the slice's end index into -1 as well.
-
-      What is actually true is asserted instead: the column is still there
-      with the layout the comment above it describes, and About $U is in it.
-      One element needs no ordering, so none is claimed.
+      So it asserts the end state: no column, no trigger, and the copy that
+      used to be behind the button now in the document.
     */
-    const start = magnet.indexOf("flex shrink-0 flex-col items-start gap-2 sm:items-end");
-    expect(start, "the pill column is gone from the Magnet hero").toBeGreaterThan(-1);
-    const column = magnet.slice(start, magnet.indexOf("</AboutModal>", start));
-    expect(column).toContain('triggerLabel="About $U"');
+    expect(magnet).not.toContain("flex shrink-0 flex-col items-start gap-2 sm:items-end");
+    expect(magnet).not.toContain('triggerLabel="About $U"');
+    expect(magnet).not.toContain('from "@/components/tokens/AboutModal"');
+    expect(magnet).toContain("What is $U?");
+    expect(magnet).toContain("fixed supply of 750,000 tokens");
+  });
+
+  it("keeps the modal on mUSD, which did NOT change", () => {
+    // The divergence is deliberate and one-sided; asserting only the Magnet
+    // half would pass with mUSD's modal removed too.
+    expect(musd).toContain('triggerLabel="About mUSD"');
+    expect(musd).toContain('from "@/components/tokens/AboutModal"');
   });
 
   it("puts the pill beside About mUSD in the mUSD hero", () => {
