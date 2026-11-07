@@ -107,3 +107,91 @@ export async function fetchTVL(): Promise<string> {
   const tvlAlgo = Math.round(chosen / algoUSD);
   return `${tvlAlgo.toLocaleString("en-US")} ALGO`;
 }
+
+// ── Year-to-date, in ALGO ──────────────────────────────────────────────────
+
+/** Magnet's inception. The "year mark" is this date in the current year. */
+export const MAGNET_INCEPTION = { month: 5 /* June, 0-indexed */, day: 19 };
+
+/**
+ * The most recent anniversary of inception, at or before `now`, UTC midnight.
+ *
+ * Computed rather than pinned. A hardcoded 2026-06-19 is correct for about
+ * seven months and then silently measures a 19-month "year" — the same shape
+ * as the two constants that expired in this repo on 2026-11-07, and the
+ * failure is quieter because nothing throws and the figure stays plausible.
+ */
+export function yearMark(now: Date = new Date()): Date {
+  const mark = new Date(Date.UTC(
+    now.getUTCFullYear(), MAGNET_INCEPTION.month, MAGNET_INCEPTION.day));
+  if (mark.getTime() > now.getTime()) mark.setUTCFullYear(mark.getUTCFullYear() - 1);
+  return mark;
+}
+
+export interface MagnetYtd {
+  /** Percentage change in ALGO terms since the year mark. */
+  pct: number;
+  /** ALGO per $U at the year mark — the candle's open. */
+  base: number;
+  /** ALGO per $U now. */
+  now: number;
+  /** The year mark the figure is measured from. */
+  since: Date;
+}
+
+/**
+ * How $U has done against ALGO since the year mark.
+ *
+ * ── Why ALGO and not dollars ──────────────────────────────────────────────
+ * The protocol's stated goal is to beat holding vanilla ALGO. A dollar figure
+ * answers a different question and would read as a gain in a month when ALGO
+ * itself rose further — the one case where this number most needs to be
+ * honest. Vestige's `/assets/price` is ALGO-denominated by default, so this
+ * is the API's native basis rather than a conversion.
+ *
+ * ── The baseline is a candle OPEN, not a close ────────────────────────────
+ * The year mark is a moment — midnight UTC on the anniversary — and the open
+ * of that day's candle is the price at that moment. The close is a day later
+ * and would quietly measure a 364-day year. Measured 2026-11-07: the
+ * 2026-06-19 candle opened 1.4015 and closed 1.4342, a 2.3% difference, which
+ * is the size of the error the wrong field would introduce.
+ *
+ * A seven-day window is requested rather than one day, because a day with no
+ * trades has no candle; the earliest candle at or after the mark is used.
+ * Returns null — never 0 — if either side could not be read.
+ */
+export async function fetchMagnetYtd(): Promise<MagnetYtd | null> {
+  try {
+    const since = yearMark();
+    const start = Math.floor(since.getTime() / 1000);
+    const end = start + 7 * 86_400;
+    const [candleRes, priceRes] = await Promise.all([
+      fetch(
+        `https://api.vestigelabs.org/assets/${MAGNET_ASA_ID}/candles`
+        + `?interval=86400&start=${start}&end=${end}&denominating_asset_id=0&network_id=0`,
+        { next: { revalidate: 3600 } },
+      ),
+      fetch(
+        `https://api.vestigelabs.org/assets/price?asset_ids=${MAGNET_ASA_ID}&network_id=0`,
+        { next: { revalidate: 300 } },
+      ),
+    ]);
+    if (!candleRes.ok || !priceRes.ok) return null;
+
+    const candles = await candleRes.json();
+    if (!Array.isArray(candles) || candles.length === 0) return null;
+    const earliest = candles
+      .filter((c) => Number(c?.timestamp) >= start && Number(c?.open) > 0)
+      .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))[0];
+    const base = Number(earliest?.open);
+    if (!Number.isFinite(base) || base <= 0) return null;
+
+    const prices = await priceRes.json();
+    const now = Number((Array.isArray(prices) ? prices[0] : null)?.price);
+    if (!Number.isFinite(now) || now <= 0) return null;
+
+    return { pct: ((now - base) / base) * 100, base, now, since };
+  } catch {
+    return null;
+  }
+}

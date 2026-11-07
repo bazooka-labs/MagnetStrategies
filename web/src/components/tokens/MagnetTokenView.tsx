@@ -5,7 +5,7 @@ import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
 import { StatCell } from "@/components/tokens/StatCell";
-import { TreasuryStat } from "@/components/tokens/TreasuryStat";
+import type { MagnetYtd } from "@/lib/tokenStats";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -18,11 +18,19 @@ export function MagnetTokenView({
   holders,
   price,
   tvl,
+  ytd,
 }: {
   holders: string;
   price: string;
   tvl: string;
+  /** Null when Vestige could not be read — the cell shows a dash, not a zero. */
+  ytd: MagnetYtd | null;
 }) {
+  const since = ytd
+    ? ytd.since.toLocaleDateString("en-US", {
+        month: "short", day: "numeric", timeZone: "UTC",
+      })
+    : null;
   return (
     <>
       {/*
@@ -123,7 +131,32 @@ export function MagnetTokenView({
           <StatCell label="Holders" value={holders} sub="Active wallets" tone="amber" />
           <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" tone="teal" />
           <TvlRankStat />
-          <div className="col-span-2 lg:col-span-1"><TreasuryStat /></div>
+          {/*
+            ── Treasury left this row on 2026-11-07, YTD took its place ─────
+            The treasury figure is still on the mUSD page, which is where it
+            belongs: it is USDC available for liquidity, a fact about the
+            protocol's balance sheet rather than about $U.
+
+            What a reader of THIS page wants is whether the thing has worked,
+            and the protocol's stated goal is to beat holding vanilla ALGO —
+            so the figure is in ALGO, not dollars. A dollar return would read
+            as a gain in a month when ALGO itself rose further, which is
+            exactly when this number most needs to be honest.
+
+            The sub-line carries the arithmetic rather than a sentence under
+            it: "1.4015 → 1.4716" is a measurement showing its own basis,
+            where "+5.00%" alone is a claim.
+          */}
+          <div className="col-span-2 lg:col-span-1">
+            <StatCell
+              label="YTD vs ALGO"
+              value={ytd ? `${ytd.pct >= 0 ? "+" : ""}${ytd.pct.toFixed(2)}%` : "—"}
+              sub={ytd
+                ? `${ytd.base.toFixed(4)} → ${ytd.now.toFixed(4)} ALGO since ${since}`
+                : "Couldn't read the price history"}
+              tone={ytd && ytd.pct < 0 ? "red" : "green"}
+            />
+          </div>
         </div>
 
         <div className="border-t border-white/10" />

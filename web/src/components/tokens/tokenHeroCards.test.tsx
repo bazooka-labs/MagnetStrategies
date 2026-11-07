@@ -76,7 +76,8 @@ const CASES = [
     mount: async () => {
       const { MagnetTokenView } = await import("./MagnetTokenView");
       return render(
-        <MagnetTokenView holders="120" price="$0.139636" tvl="442,531 ALGO" />);
+        <MagnetTokenView holders="120" price="$0.139636" tvl="442,531 ALGO"
+          ytd={{ pct: 5.0, base: 1.4015, now: 1.4716, since: new Date("2026-06-19T00:00:00Z") }} />);
     },
     /** A figure only the stats half renders, to prove both halves are inside. */
     figure: "$0.139636",
@@ -166,5 +167,69 @@ describe("the two views stay the same shape", () => {
     }
     expect(shapes[0], "Magnet Token and mUSD have drifted apart")
       .toBe(shapes[1]);
+  });
+});
+
+/**
+ * The fifth cell on the Magnet page, which replaced the treasury.
+ *
+ * ── Why these are rendered rather than grepped ───────────────────────────
+ * Mutation run, 2026-11-07: forcing the tone to `green` regardless of sign,
+ * and rendering `0.00%` for an unread figure, both SURVIVED every other test
+ * in the repo. The source-text tests check the cell EXISTS and the maths
+ * tests check the number; neither looks at what a negative or unread figure
+ * actually renders as.
+ *
+ * Those are the two cases that matter. A loss shown in green is a false
+ * statement about performance, and a 0.00% we never measured is a claim.
+ */
+describe("the Magnet YTD cell", () => {
+  const withYtd = async (ytd: {
+    pct: number; base: number; now: number; since: Date;
+  } | null) => {
+    const { MagnetTokenView } = await import("./MagnetTokenView");
+    return render(
+      <MagnetTokenView holders="120" price="$0.139636" tvl="442,531 ALGO" ytd={ytd} />);
+  };
+  const YTD = { pct: 5.0, base: 1.4015, now: 1.4716, since: new Date("2026-06-19T00:00:00Z") };
+
+  it("shows a gain in green, signed", async () => {
+    await withYtd(YTD);
+    const v = screen.getByText("+5.00%");
+    expect(v.className).toContain("text-green-400");
+  });
+
+  it("shows a LOSS in red, which is the whole reason the tone is dynamic", async () => {
+    await withYtd({ ...YTD, pct: -7.24, now: 1.3 });
+    const v = screen.getByText("-7.24%");
+    expect(v.className).toContain("text-red-300");
+    expect(v.className).not.toContain("text-green-400");
+  });
+
+  it("renders a dash, never 0.00%, when Vestige could not be read", async () => {
+    await withYtd(null);
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("0.00%")).toBeNull();
+    expect(screen.getByText(/Couldn't read the price history/)).toBeTruthy();
+  });
+
+  it("carries its own basis, so the figure is not a bare claim", async () => {
+    // "1.4015 → 1.4716 ALGO since Jun 19" is a measurement showing its
+    // working; "+5.00%" alone is an assertion.
+    await withYtd(YTD);
+    expect(screen.getByText(/1\.4015 → 1\.4716 ALGO since Jun 19/)).toBeTruthy();
+  });
+
+  it("states the date in UTC, matching the candle boundary", async () => {
+    // A local-time render would read "Jun 18" for anyone west of London
+    // while the figure was measured from the 19th.
+    await withYtd(YTD);
+    expect(screen.getByText(/since Jun 19/)).toBeTruthy();
+    expect(screen.queryByText(/since Jun 18/)).toBeNull();
+  });
+
+  it("does not put the treasury on this page any more", async () => {
+    await withYtd(YTD);
+    expect(screen.queryByText(/USDC for liquidity/)).toBeNull();
   });
 });

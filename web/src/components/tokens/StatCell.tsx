@@ -29,6 +29,20 @@ export const STAT_TONES = {
   teal: "text-teal-400",
   /** The brand accent — the same family as the nav's "M" button. */
   magnet: "text-magnet-400",
+  /**
+   * The exception the note above predicted.
+   *
+   * Every other tone here is POSITIONAL — colour to break up four identical
+   * numbers, carrying no meaning. This one carries meaning: the fifth box on
+   * the Magnet page is a year-to-date return, and a negative return rendered
+   * in green is not a styling slip but a false statement about performance.
+   *
+   * So `red` exists for sign, and `green` does double duty — positional in
+   * the first cell, semantic in the fifth. That is the rule bent a second
+   * time rather than a third: a sixth box should not reach for a colour
+   * here without resolving the split.
+   */
+  red: "text-red-300",
 } as const;
 
 export type StatTone = keyof typeof STAT_TONES;

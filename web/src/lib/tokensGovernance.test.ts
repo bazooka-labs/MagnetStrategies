@@ -25,21 +25,44 @@ const treasury = readFileSync("src/components/tokens/TreasuryStat.tsx", "utf8");
 const navbar = readFileSync("src/components/Navbar.tsx", "utf8");
 const config = readFileSync("next.config.js", "utf8");
 
-describe("the treasury is the fifth box on both token views", () => {
-  it("appears on each", () => {
-    // One balance stands behind both tokens, so it is not a property of
-    // whichever view is on screen — and since 2026-11-04 the two are not even
-    // on the same page.
-    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
-      expect(src, name).toContain("<TreasuryStat />");
-      expect(src, name).toContain("lg:grid-cols-5");
-      expect(src, name).not.toContain("lg:grid-cols-4");
-    }
+describe("the fifth box differs by view, since 2026-11-07", () => {
+  /*
+    It was the treasury on BOTH, and this block asserted that. The treasury
+    is USDC available for liquidity — a fact about the protocol's balance
+    sheet rather than about $U — so it stayed on the mUSD page and the Magnet
+    page took a year-to-date return instead, which is what a reader of that
+    page is actually asking.
+
+    Both views still run five across with the fifth cell spanning two columns
+    on the narrow breakpoint, because that part was never about which figure
+    sits in it.
+  */
+  it("keeps the treasury on mUSD and NOT on Magnet", () => {
+    expect(musd).toContain("<TreasuryStat />");
+    expect(magnet).not.toContain("<TreasuryStat />");
+    // The import has to go with it, or the next edit re-adds the element
+    // against a still-valid symbol.
+    expect(magnet).not.toContain('from "@/components/tokens/TreasuryStat"');
   });
 
-  it("spans the row on two columns rather than orphaning a half cell", () => {
-    for (const src of [magnet, musd]) {
-      expect(src).toContain('<div className="col-span-2 lg:col-span-1"><TreasuryStat /></div>');
+  it("puts the YTD return on Magnet and NOT on mUSD", () => {
+    expect(magnet).toContain('label="YTD vs ALGO"');
+    expect(musd).not.toContain("YTD");
+  });
+
+  it("measures it in ALGO, not dollars", () => {
+    // The protocol's goal is to beat holding vanilla ALGO. A dollar figure
+    // answers a different question and flatters it in exactly the month it
+    // most needs to be honest — when ALGO itself rose further.
+    expect(magnet).toContain("ALGO since");
+    expect(magnet).not.toMatch(/label="YTD[^"]*\$"/);
+  });
+
+  it("keeps both rows five across, fifth cell spanning", () => {
+    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
+      expect(src, name).toContain("lg:grid-cols-5");
+      expect(src, name).not.toContain("lg:grid-cols-4");
+      expect(src, name).toContain('className="col-span-2 lg:col-span-1"');
     }
   });
 

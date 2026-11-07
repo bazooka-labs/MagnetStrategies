@@ -600,6 +600,25 @@ pills in the old order and claim it was the rendered one; the order is
 `magnet, liquidity, vaults` in `LiquidityView.tsx` and the landing view
 matches it.
 
+**The Magnet row's fifth box is a YTD return, since 2026-11-07.** It was the
+treasury, which is still on the mUSD page — that figure is USDC available for
+liquidity, a fact about the balance sheet rather than about $U. What a reader
+of the Magnet page is asking is whether the thing has worked.
+
+**In ALGO, not dollars.** The protocol's goal is to beat holding vanilla ALGO;
+a dollar return answers a different question and flatters the result in
+exactly the month it most needs to be honest — when ALGO itself rose further.
+Vestige's `/assets/price` is ALGO-denominated natively, so no conversion is
+involved.
+
+The year mark is the most recent anniversary of inception (2025-06-19),
+**computed, not pinned**: a hardcoded 2026-06-19 is right for about seven
+months and then silently measures a 19-month "year". The baseline is that
+day's candle **open**, not its close — the mark is midnight UTC and the open
+is the price at that moment. Measured 2026-11-07: open 1.4015 against close
+1.4342, which is +5.00% versus +2.61% against a live 1.4716. Reading the
+wrong field halves the headline.
+
 **The swap presets ALGO, since 2026-11-07.** It offered USDC only. The
 protocol's claim is that $U beats holding vanilla ALGO, so ALGO → $U is the
 route that acts on the claim, and leading with the stablecoin asked a visitor

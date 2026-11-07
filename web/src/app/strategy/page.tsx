@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import { MagnetTokenView } from "@/components/tokens/MagnetTokenView";
 import {
-  MAGNET_ASA_ID, fetchHolderCount, fetchMagnetPriceUSDC, fetchTVL,
+  MAGNET_ASA_ID, fetchHolderCount, fetchMagnetPriceUSDC, fetchMagnetYtd, fetchTVL,
 } from "@/lib/tokenStats";
 
 /**
@@ -68,11 +68,14 @@ const LiquidityView = dynamic(
  * dead indexer degrades this page's third tab instead of 500-ing the route.
  */
 export default async function LiquidityPage() {
-  const [holders, price, tvl] = await Promise.all([
+  const [holders, price, tvl, ytd] = await Promise.all([
     fetchHolderCount(MAGNET_ASA_ID),
     fetchMagnetPriceUSDC(),
     fetchTVL(),
+    fetchMagnetYtd(),
   ]);
 
-  return <LiquidityView magnetView={<MagnetTokenView holders={holders} price={price} tvl={tvl} />} />;
+  return <LiquidityView
+    magnetView={<MagnetTokenView holders={holders} price={price} tvl={tvl} ytd={ytd} />}
+  />;
 }
