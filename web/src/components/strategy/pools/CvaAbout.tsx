@@ -168,7 +168,12 @@ export function CvaAbout({ stats, stale, sharePrice = null }: {
           understand what you are looking at". Worded "Learn more" to match
           the MagnetFi LP-vault button exactly — same control, same shape, same
           words. */}
-      <button onClick={() => setOpen(true)} aria-haspopup="dialog" className={RAISED_AMBER}>
+      {/* `aria-label` names the product. The visible words stay "Learn more"
+          — the same control, shape and wording as the MagnetFi LP vault and
+          now dualSTAKE — but three buttons reading only "Learn more" are
+          indistinguishable in a screen reader's button list. */}
+      <button onClick={() => setOpen(true)} aria-haspopup="dialog"
+        aria-label="Learn more about the C-Vault Strategy" className={RAISED_AMBER}>
         <BookOpen className="h-3.5 w-3.5" /> Learn more
       </button>
 

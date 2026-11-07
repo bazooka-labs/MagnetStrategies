@@ -201,6 +201,6 @@ source-available under the PEX Builder License 1.0 — see
 | [perps/PEX.md](./perps/PEX.md) | PEX platform reference — facts, measured MainNet state, integration paths |
 | [pools/OVERVIEW.md](./pools/OVERVIEW.md) | **Strategy Pools** — the direct pools and the C-Vault |
 | [dualstake/OVERVIEW.md](./dualstake/OVERVIEW.md) | **magnetALGO** — the Myth Finance integration, what the audit found, what is still open with the vendor |
-| [dualstake/SPEC.md](./dualstake/SPEC.md) | magnetALGO implementation — group shapes, the assertion, the decimals trap |
+| [dualstake/SPEC.md](./dualstake/SPEC.md) | magnetALGO implementation — group shapes, the assertion, the decimals trap, and how the staking rate is derived |
 | [../predict/OVERVIEW.md](../predict/OVERVIEW.md) | **Predict** — the ladder product line, its own tree |
 | [../magnetfi/OVERVIEW.md](../magnetfi/OVERVIEW.md) | **Bank** — MagnetFi lending, mUSD, PSM |

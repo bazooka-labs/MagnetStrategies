@@ -5,6 +5,10 @@ Built against Myth's official TypeScript SDK — see "Use the SDK, not my
 reverse-engineering" below, which is still the most important section in this
 file._
 
+_Revised 2026-11-07: the card's prose moved into a **Learn more** modal
+shaped after the C-Vault's, and it now shows a **staking rate**. See
+"The rate on the card" below, and [SPEC.md §7–8](./SPEC.md)._
+
 | | |
 |---|---|
 | Code | `web/src/lib/strategy/dualstake/`, `web/src/components/strategy/dualstake/` |
@@ -181,6 +185,53 @@ did not check, not in what it checked wrongly.**
 
 Every new guard was mutation-tested: each was disabled in turn and the named
 test confirmed to go red. A guard whose removal breaks nothing is not a guard.
+
+## The rate on the card
+
+The card showed no APR until 2026-11-07, on the grounds that the only
+candidate was an extrapolation from our own short history. That reasoning
+still holds and is what chose the figure now shown.
+
+**Myth publish no rate.** Their SDK README says so of both contract views —
+*"Neither includes APR or farm info"* — and their docs give no number. So the
+request to "pull the yield from Myth's SDK" could not be met as put; the
+figure is derived from live chain reads instead, and the modal shows the
+derivation rather than asserting the result.
+
+**What it is.** Algorand consensus rewards on the staked balance, net of
+Myth's fee: `blocksPerYear × payoutPerBlock / onlineStake`, times
+`1 − feeBps/10000`. Every input is read live. Measured 2026-11-07: 4.83%
+gross, **4.51% net**. The derivation is identical for every eligible account
+regardless of stake, which is why it carries no sampling error.
+
+**Why not a trailing realised figure.** Block proposal is a Poisson process
+and ~49.9K ALGO expects **0.8 proposals a day** — three had happened when this
+shipped. Annualising three samples carries about ±58%, the same objection that
+kept an APR off the card in the first place. The realised harvests are shown
+in the modal instead, unannualised, so the spread is visible rather than
+hidden behind one figure.
+
+The two agree inside the band: 4.83% expected against 6.00% realised gross
+over 3.00 days. A MainNet test asserts they stay the same order of magnitude.
+
+**A reconciliation worth keeping.** Myth's fee comes off *before* the ALGO →
+$U swap, so the amounts in the harvest log are what holders actually received.
+Proved arithmetically rather than assumed: 22.864667 ALGO swapped against fee
+counters of 1.589520, and `1.589520 / (22.864667 + 1.589520) = 0.065000`
+exactly — 650bps, to five figures.
+
+### One test expired while this was built
+
+`"holds enough $U and ALGO to redeem every token outstanding"` asserted the
+$U surplus was "a whole base unit or less". It was, when written; it was five
+on 2026-11-07 and failed. Nothing had broken — `mintRewardCost` rounds the $U
+leg **up** by one base unit on every mint, so the surplus grows by one per
+deposit, forever. A constant bound on a monotonically growing quantity was
+always going to expire.
+
+Now relative: the surplus must stay a negligible share of the balance, which
+holds at five mints or five thousand. Second time a pin like this has expired
+here — see "Temporary gates expire".
 
 ## Still open
 

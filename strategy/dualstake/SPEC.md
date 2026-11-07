@@ -102,15 +102,19 @@ web/src/lib/strategy/dualstake/
   config.ts    pinned ids, program SHA-256, ARC-4 selectors, fee caps
   reads.ts     snapshot, holdings, mintRewardCost, readRateIndependently
   amount.ts    exact decimal text <-> base units (no floating point)
+  yield.ts     the APR: network parameters in, expected consensus rate out (§8)
+  events.ts    the harvest log, decoded by the SDK's own ARC-28 parser (§8)
   group.ts     the pre-sign assertion (§5)
   client.ts    deposit / redeem: SDK builds, we assert, chain simulates, user signs
 web/src/components/strategy/dualstake/
-  DualStakeCard.tsx      the card
+  DualStakeCard.tsx      the card: rate box, stats, action, one-line disclosure
   DualStakeActions.tsx   deposit / redeem form
+  DualStakeAbout.tsx     the Learn more modal — mechanism, derivation, risks
 ```
 
 Tests: `group.test.ts`, `amount.test.ts`, `depositGuards.test.ts`,
-`reads.test.ts`, and `__live__/dualstake.live.test.ts` on MainNet.
+`reads.test.ts`, `yield.test.ts`, `events.test.ts`,
+`DualStakeCard.test.tsx`, and `__live__/dualstake.live.test.ts` on MainNet.
 
 **`amount.ts` exists because floats lose base units.**
 `BigInt(Math.floor(n * 1e6))` truncates 1,196 of the 100,000 two-decimal
@@ -185,11 +189,11 @@ Then a MainNet **simulation** before signing. Nothing ships without it.
 
 | Figure | Source |
 |---|---|
+| Staking rate | **§8** — derived, and the modal shows the derivation |
 | Total staked | `staked` |
 | Capacity left | `max_balance − staked` |
 | Your magnetALGO | account holding of 3760411000 |
 | $U on redemption | `holding × rate / ratePrecision` |
-| Yield | **§7 — do not invent one** |
 
 A read that fails renders `—`, never `0`; `readHolding` returns `null` for
 unknown and `0` only for a successful read of no holding. A non-zero amount
@@ -218,20 +222,124 @@ honest label rather than a net one it cannot compute.
   to redeem immediately. Materially better than unqualified "upgradeable", and
   still not our own audited code — say which it is.
 
-## 7. The question the card must not answer by guessing
+## 7. What goes on the face, and what goes behind Learn more
 
-There is no defensible **APR** yet. The yield is consensus rewards swapped
-into $U through a ~$9.5K Tinyman pool, so realised return depends on harvest
-slippage, which grows with TVL. One observed redemption is not an annualised
-rate and must not be presented as one.
+The card carried its whole argument on its face until 2026-11-07: a mechanism
+panel, a paragraph on why no rate was shown, and a four-sentence amber
+disclosure. Nothing in it was wrong and all of it was longer than the figures
+a depositor came for — it was the tallest card in the grid by enough that
+`items-start` had to be added to the grid so the C-Vault beside it did not
+stretch to match.
 
-Until there is a measured series the card shows the mechanism and the accrued
-amount, states that no rate is shown and why, and gives **no APR** — the same
-withhold-rather-than-guess rule the perps terminal applies to an unpriced
-payout. An empty space would be filled by the reader's own guess, so the
-absence is explained rather than left.
+It now follows the C-Vault's division, because the two cards sit side by side
+and a shared frame is the thing that makes a page read as one shelf:
 
-## 8. Verifying a change here
+| On the card | Behind **Learn more** |
+|---|---|
+| Heading, one-line summary | What dualSTAKE is, and whose it is |
+| The rate box (§8) | How it earns, and the rate's full derivation |
+| Four stats | Every harvest, unannualised |
+| Deposit / redeem | Minting's $U cost; how redemption works |
+| *"This is Myth Finance's contract, not ours"* | "What you carry" — six risks, in full |
+
+**One sentence of disclosure stays on the face.** "Not ours" is what a
+depositor must know before pressing the button, so it lives beside the button.
+The upgrade path, the fee, the ceiling and the rest moved; none was deleted,
+and `DualStakeCard.test.tsx` asserts each moved claim is present *inside the
+opened modal* rather than trusting that it arrived.
+
+Both triggers carry an `aria-label` naming their product. The visible words
+stay "Learn more" on all of them, but three buttons reading only "Learn more"
+are indistinguishable in a screen reader's button list — and were ambiguous to
+the test suite first, which is how it was noticed.
+
+## 8. The APR, and why there finally is one
+
+### Myth do not publish one
+
+Checked 2026-11-07, both sources. The SDK's README, on `DSContractListing`
+and `DSContractState`: *"Neither includes APR or farm info."*
+`docs.myth.finance/dualSTAKE` mentions "dualSTAKE farms offering higher APR
+(where available)" and gives no number. There is no vendor figure to read, so
+the card derives one or shows none.
+
+### The derivation
+
+The yield is Algorand consensus rewards. The contract is online and incentive
+eligible, so each time it proposes a block it collects the proposer payout;
+Myth take their fee and the remainder is swapped ALGO → $U.
+
+A staker's expected annual reward is
+`(stake / onlineStake) × blocksPerYear × payoutPerBlock`, and dividing by
+`stake` cancels it:
+
+```
+grossApr = blocksPerYear × payoutPerBlock / onlineStake
+netApr   = grossApr × (1 − (platformFeeBps + noderunnerFeeBps) / 10000)
+```
+
+**The same for every eligible account, regardless of size.** All four inputs
+are live reads — three from algod (`/v2/status`, `/v2/ledger/supply`, and
+nine block headers), the fees from the contract's own state. Measured
+2026-11-07: 8.186062 ALGO per block, 2.714 s per block, 1.9705B ALGO online →
+**4.83% gross, 4.51% net** of 650bps.
+
+Block headers are fetched with `?header-only=true` — 1.1KB against 5.7KB for
+a quiet block and far more for a busy one. algosdk has no binding for it, so
+`yield.ts` uses `fetch` directly.
+
+### Why expected, and not a trailing realised figure
+
+Because block proposal is a Poisson process and this stake is small. At ~49.9K
+ALGO against 1.97B online the contract expects **0.8 proposals a day**, and it
+had made three when this shipped. Annualising three samples carries roughly
+±58% — which is the same objection that kept an APR off this card originally,
+applied to the only other candidate.
+
+The expected figure has no sampling error: it is an expectation over the
+network's parameters, not an extrapolation from our own history. The two agree
+inside the band — 4.83% expected against 6.00% realised gross over 3.00 days —
+and a MainNet test asserts they stay the same order of magnitude, which is
+enough to catch a decimals slip or a misread block time and is not claimed to
+be more.
+
+**So the earlier "no APR" position is not reversed; its reasoning is what
+chose this figure.** What changed is that a second candidate existed.
+
+### The harvest log is the realised side
+
+Every reward that reaches a holder passes through one ARC-28
+`swap(uint64,uint64)` event. `events.ts` reads them through the SDK's own
+`getParsedArc28EventsFromTransaction` — the vendor's spec and the vendor's
+decoder, not a hand-rolled prefix table that could drift from it.
+
+**`algo_amount` on a swap is already net of Myth's cut.** Verified
+arithmetically: 22.864667 ALGO swapped against `platform_fees` +
+`noderunner_fees` of 1.589520, and `1.589520 / (22.864667 + 1.589520) =
+0.065000` exactly. So the modal presents those figures with nothing further
+deducted.
+
+The modal shows them **unannualised, with no day count**. An earlier draft
+read "over 1.3 days", which is first-harvest to last — a window with a harvest
+at each end, excluding the dry stretches either side, so dividing by it
+overstates the rate. It sat two lines above the card's 4.46%, which is an
+invitation to do exactly that division.
+
+### Three states, and none is a number we did not read
+
+| State | Renders |
+|---|---|
+| read, node earning | the figure, green |
+| read, node **offline** | the figure **struck through**, and why |
+| unread | `—` |
+
+The offline case is the one that needed building. `grossAprPct` describes the
+*network*, so it reads perfectly well while this contract earns nothing — the
+single state in which a confident green 4.5% is flatly false. A null snapshot
+is *unknown* and must not produce it either: asserting an outage we never
+observed is its own error.
+
+## 9. Verifying a change here
 
 ```bash
 cd web

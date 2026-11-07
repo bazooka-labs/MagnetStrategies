@@ -4,11 +4,23 @@
  * magnetALGO dualSTAKE — stake ALGO with Myth Finance, earn $U.
  *
  * Shaped after the C-Vault card deliberately: same `CardShell`, same drifting
- * blob, same `glow-text-card` heading, same `Stat` grid. A second strategy
- * that invents its own layout makes the page read as two products bolted
- * together rather than one shelf.
+ * blob, same `glow-text-card` heading, same amber `Learn more` beside the
+ * title, same rate box, same `Stat` grid. A second strategy that invents its
+ * own layout makes the page read as two products bolted together rather than
+ * one shelf.
  *
- * ── Three rules this card follows that the others do not have to ───────────
+ * ── What moved off this card, and why ─────────────────────────────────────
+ * It used to carry a mechanism panel, a paragraph explaining why no rate was
+ * shown, and a four-sentence amber disclosure, all on its face. That made it
+ * by far the tallest card in the grid — enough that `items-start` had to be
+ * added to the grid so the C-Vault beside it did not stretch — and it pushed
+ * the figures a depositor came for below the fold on a phone.
+ *
+ * All of it is now in `DualStakeAbout`, none of it deleted. The C-Vault did
+ * exactly this with its own disclosures: the card is the figures and the
+ * action, Learn more is the argument.
+ *
+ * ── The rules this card follows ───────────────────────────────────────────
  *
  * 1. NEVER quote the ratio alone. magnetALGO redeems 1:1 for ALGO — measured
  *    exactly 1.00000000 across every mint and redeem on chain — and that
@@ -16,12 +28,18 @@
  *    plus the $U accrued against it*. The accrual is the entire return. Copy
  *    here always says both.
  *
- * 2. NO APR. The yield is consensus rewards swapped into $U through a ~$9.5K
- *    Tinyman pool, so realised return depends on harvest slippage, which
- *    grows with TVL. One observed redemption is not an annualised rate, and
- *    inventing one would be the same error as a payout figure derived from a
- *    price we could not read. The card shows the mechanism and the accrued
- *    amount, and withholds the rate until there is a measured series.
+ * 2. The APR is DERIVED and says so. Myth's SDK does not publish one — their
+ *    README, of both contract views: "Neither includes APR or farm info" —
+ *    and their docs publish no figure either. So the headline is an expected
+ *    consensus rate computed from live network parameters, labelled as an
+ *    expectation, with the whole derivation in Learn more. See `yield.ts` for
+ *    why it is the expected rate rather than a trailing realised one: three
+ *    harvests is not a series, and annualising them carries a ±58% error.
+ *
+ *    This replaces the earlier "no rate at all" position, which was correct
+ *    for as long as the only candidate was an extrapolation from our own
+ *    history. It is not a reversal of the reasoning — the reasoning is what
+ *    rejects the trailing figure and chose this one.
  *
  * 3. The $U figure is labelled GROSS, because that is what it is. `rate *
  *    holding` is the $U a redemption pays out, and part of it is the $U the
@@ -34,19 +52,24 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Coins, ExternalLink, Info } from "lucide-react";
+import { Coins } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
-import { ALGOD_URLS } from "@/lib/constants";
+import { ALGOD_URLS, INDEXER_URLS } from "@/lib/constants";
 import algosdk from "algosdk";
 import {
   accruedReward, readHolding, readSnapshot, toAlgo, toMagnetAlgo, toReward,
   type DualStakeSnapshot,
 } from "@/lib/strategy/dualstake/reads";
-import { FEE_UPDATE_MAX_DELTA_BPS } from "@/lib/strategy/dualstake/config";
+import {
+  netAprPct, readConsensusYield, type ConsensusYield,
+} from "@/lib/strategy/dualstake/yield";
+import { readHarvests, type Harvest } from "@/lib/strategy/dualstake/events";
 import { DualStakeActions } from "./DualStakeActions";
+import { DualStakeAbout } from "./DualStakeAbout";
 
 const ALGOD = ALGOD_URLS.mainnet;
+const INDEXER = INDEXER_URLS.mainnet;
 
 function Stat({ label, value, tone }: {
   label: string; value: string; tone?: "up" | "muted";
@@ -78,17 +101,107 @@ const small = (n: number, dp: number) => {
   return n > 0 && n < floor ? `< ${floor.toFixed(dp)}` : fmt(n, dp);
 };
 
+/**
+ * The rate, in the metric box the rest of the site uses for one.
+ *
+ * Same frame as `CvaRateBox` and `LpPoolsSection`'s headline — `glow-accent
+ * rounded-xl border-white/10 bg-black/30`, label and basis on the left, the
+ * figure right in `font-mono text-[33px] font-bold text-green-400`. Matching
+ * it is the point: an APR should look the same wherever this site shows one.
+ *
+ * ── Three states, and none of them is a number we did not read ────────────
+ *   - read, node earning          -> the figure
+ *   - read, node OFFLINE          -> the figure struck through, and why
+ *   - unread                      -> a dash
+ *
+ * The offline case matters more than it looks. `grossAprPct` is a property of
+ * the NETWORK, so it is perfectly readable while this particular contract is
+ * earning nothing at all — the one state in which a confident green 4.5%
+ * would be flatly false. The card already warned about it in a panel below;
+ * the warning has to reach the figure itself.
+ */
+function DualStakeRateBox({ snapshot, yieldRead, loading }: {
+  snapshot: DualStakeSnapshot | null;
+  yieldRead: ConsensusYield | null;
+  loading: boolean;
+}) {
+  const net = yieldRead && snapshot
+    ? netAprPct(yieldRead.grossAprPct, snapshot.platformFeeBps, snapshot.noderunnerFeeBps)
+    : null;
+  /* `snapshot.earning` is `isOnline && incentiveEligible`. A null snapshot is
+     unknown, not offline — it must not produce the struck-through state. */
+  const offline = snapshot !== null && !snapshot.earning;
+
+  return (
+    <div className="glow-accent mb-2 mt-4 rounded-xl border border-white/10 bg-black/30 py-4 pl-5 pr-7">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-[17px] font-semibold leading-snug text-gray-200">
+            Staking rate, paid in $U
+          </p>
+          <p className="mt-0.5 text-xs leading-snug text-gray-500">
+            {/* Short enough to keep the figure on the label's own row, which
+                is where CvaRateBox puts it. The first wording ran to 58
+                characters and `flex-wrap` dropped the number onto a line of
+                its own — not broken, but visibly unlike the card beside it,
+                which is the one thing a shared frame exists to prevent.
+                Rasterised side by side before and after. The full basis is
+                in Learn more, under the derivation. */}
+            {net !== null
+              ? "Expected · net of Myth's fee"
+              : loading ? "Reading the network…" : "Network parameters unavailable"}
+          </p>
+        </div>
+        <p className={`font-mono text-[33px] font-bold leading-none ${
+          net === null ? "text-gray-600"
+            : offline ? "text-gray-500 line-through decoration-amber-400/70 decoration-2"
+            : "text-green-400"
+        }`}>
+          {net !== null ? `${fmt(net, 2)}%` : loading ? "…" : "—"}
+        </p>
+      </div>
+
+      {/* Why the figure is struck through, inside the same box as the figure.
+          A caveat one element away gets read as being about something else. */}
+      {offline && (
+        <p className="mt-2.5 border-t border-white/[0.07] pt-2.5 text-[11px] leading-relaxed text-amber-200/90">
+          Myth&apos;s node is not online and incentive-eligible right now, so nothing is accruing
+          at this rate — or any other. Redeeming is unaffected.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function DualStakeCard() {
   const { address, isConnected, algodClient } = useWallet();
   const [snap, setSnap] = useState<DualStakeSnapshot | null>(null);
   /** `null` is unknown — never rendered as zero. */
   const [holding, setHolding] = useState<bigint | null>(null);
+  const [yieldRead, setYieldRead] = useState<ConsensusYield | null>(null);
+  /** `null` is unread, `[]` is read-and-none. The modal distinguishes them. */
+  const [harvests, setHarvests] = useState<Harvest[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const s = await readSnapshot(ALGOD);
+    /*
+      In parallel, and each independently fallible.
+
+      The yield read is ~10 HTTP calls against algod (status, supply, and a
+      spread of block headers) and the harvest read is an indexer scan, so
+      neither waits on the other or on the snapshot. Any of the three coming
+      back null degrades its own figure to a dash and leaves the rest of the
+      card working — the same rule `fetchTVL` follows on /strategy.
+    */
+    const [s, y, h] = await Promise.all([
+      readSnapshot(ALGOD),
+      readConsensusYield(ALGOD),
+      readHarvests(ALGOD, INDEXER),
+    ]);
     setSnap(s);
+    setYieldRead(y);
+    setHarvests(h);
     if (address) {
       const algod = algodClient ?? new algosdk.Algodv2("", ALGOD, "");
       setHolding(await readHolding(algod, address));
@@ -109,6 +222,9 @@ export function DualStakeCard() {
       </div>
 
       <div className="relative flex flex-col gap-4">
+        {/* Title and the Learn more pill on one row, exactly as the C-Vault
+            has it — a lone pill under the heading read as an orphan there and
+            would read the same here. */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -117,50 +233,21 @@ export function DualStakeCard() {
                 magnetALGO
               </h2>
             </div>
+            {/* One sentence, and it still says BOTH halves of the return —
+                rule 1. The mechanism it used to be followed by is in Learn
+                more. */}
             <p className="mt-1 text-sm text-gray-400">
-              Stake ALGO with Myth Finance and earn <strong className="font-semibold text-gray-300">$U</strong>.
-              Your ALGO comes back 1:1, and the return is the $U that accrues on top of it.
+              Liquid staking on Myth Finance. Your ALGO comes back 1:1, and the return is the{" "}
+              <strong className="font-semibold text-gray-300">$U</strong> that accrues on top
+              of it.
             </p>
+          </div>
+          <div className="shrink-0">
+            <DualStakeAbout snapshot={snap} yieldRead={yieldRead} harvests={harvests} />
           </div>
         </div>
 
-        {/* The mechanism, stated before any figure. It is the reason the
-            rewards are in $U at all, and the thing that makes this card
-            different from an ordinary liquid-staking box.
-
-            ── On "without depending on pool liquidity" ───────────────────────
-            Both audits flagged this clause as unsubstantiated, and I removed
-            it. That was the right call on the evidence I had and the wrong
-            conclusion: the claim is true, and structurally so.
-
-            Redemption is fixed per token — locked ALGO plus $U, straight from
-            the contract. No pool is involved. The proof is in the rate's own
-            definition, `asaBalance / staked`: the $U owed is DERIVED from the
-            $U already held, so if every token outstanding redeemed at once the
-            contract would owe 1,538,506 base $U against 1,538,507 on hand
-            (measured 2026-11-07; the one unit is floor rounding, in its
-            favour). A payout computed from the balance can never exceed it, so
-            it can never need a swap to cover it.
-
-            What misled me: Myth's docs say the reward swap runs before a mint
-            or a redeem, and the SDK passes Tinyman as a reference on both
-            paths. Both are true and neither bears on the payout — the swap
-            tops up accrual, it does not fund the exit. `dualstake.live.test`
-            pins the backing invariant, so if Myth ever redefines the rate this
-            sentence fails a test rather than quietly becoming false. */}
-        <div className="rounded-xl border border-magnet-400/20 bg-magnet-500/[0.06] px-4 py-3">
-          <p className="flex items-start gap-2 text-xs leading-relaxed text-gray-400">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-300" aria-hidden="true" />
-            <span>
-              The contract stakes your ALGO in Algorand consensus and swaps the rewards into
-              $U. Redeem any time for <strong className="font-semibold text-gray-300">1 ALGO
-              per magnetALGO plus the $U accrued</strong> — a fixed amount, paid straight from
-              the contract, with no unbonding period and no pool to exit through. Minting also
-              costs a little $U up front, because a new token has to arrive backed like the
-              existing ones; that comes back when you redeem.
-            </span>
-          </p>
-        </div>
+        <DualStakeRateBox snapshot={snap} yieldRead={yieldRead} loading={loading} />
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Stat label="Total staked"
@@ -180,63 +267,26 @@ export function DualStakeCard() {
               : `${small(toReward(accrued), 5)} $U`} />
         </dl>
 
-        {/*
-          Whether the node is actually earning.
-
-          `snapshot.earning` was read from the start and never displayed, while
-          the copy above asserts the contract "stakes your ALGO in Algorand
-          consensus". That claim has a live truth value — online, and incentive
-          eligible — and if it ever goes false the yield stops while the card
-          goes on describing it. Only shown when false, because "working
-          normally" does not need a badge.
-        */}
-        {snap && !snap.earning && (
-          <p className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
-            Myth&apos;s node is not currently online and incentive-eligible, so no consensus
-            rewards are accruing right now. Redeeming is unaffected.
-          </p>
-        )}
-
-        {/* Deliberately no APR — see the file header. Saying why beats an
-            empty space a reader fills with their own guess. */}
-        <p className="text-[11px] leading-relaxed text-white/35">
-          No rate is shown yet. The yield is consensus rewards converted to $U, so the realised
-          return depends on conversion slippage and on how long the position is held — we will
-          publish a rate once there is enough history to measure one rather than estimate it.
-        </p>
-
         <DualStakeActions snapshot={snap} holding={holding} onDone={load} />
 
-        {/* The disclosure. A third-party contract is not our audited code and
-            the card says which it is, in those words. */}
-        <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.05] px-4 py-3">
-          <p className="text-[11px] leading-relaxed text-amber-200/80">
-            <strong className="font-semibold">This is Myth Finance&apos;s contract, not ours.</strong>{" "}
-            Depositing means trusting their code and their admin keys. It is upgradeable behind a
-            one-week timelock with the new code&apos;s hash published in advance, and holders who
-            disagree can redeem immediately or protest.{" "}
-            {/* Read live or not stated. It used to fall back to a hardcoded
-                "6.5% (2.5% platform, 4% node runner)" whenever `snap` was
-                null, which rendered a figure we had failed to read as though
-                we had read it — the one thing every other stat on this card
-                refuses to do. Fees are also not fixed: `fee_update_max_delta`
-                is 250bps per `fee_update_period` of one week. */}
-            {snap ? <>
-              Fees are {(snap.platformFeeBps + snap.noderunnerFeeBps) / 100}% of rewards
-              ({snap.platformFeeBps / 100}% platform, {snap.noderunnerFeeBps / 100}% node
-              runner), and Myth may raise them by up to{" "}
-              {FEE_UPDATE_MAX_DELTA_BPS / 100}% a week.
-            </> : <>
-              We couldn&apos;t read the current fees; Myth takes a share of rewards and may
-              raise it by up to {FEE_UPDATE_MAX_DELTA_BPS / 100}% a week.
-            </>}{" "}
-            <a href="https://docs.myth.finance/dualSTAKE/overview" target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-amber-100">
-              Myth&apos;s docs <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
-        </div>
+        {/*
+          The disclosure, reduced to its one load-bearing sentence with the
+          rest a click away.
+
+          It is NOT removed and it is not softened: "not ours" is the thing a
+          depositor has to know before they press the button, so it stays on
+          the face where the button is. The upgrade path, the fee and the
+          ceiling were three more sentences in the same amber box, which is
+          how the box came to be longer than the card's own content — they are
+          in Learn more under "What you carry", in full.
+        */}
+        <p className="text-[11px] leading-relaxed text-amber-200/70">
+          <strong className="font-semibold text-amber-200/90">This is Myth Finance&apos;s
+          contract, not ours.</strong>{" "}
+          Depositing means trusting their code and their admin keys, and they can change both
+          behind a one-week timelock. <span className="text-amber-200/55">Learn more has the
+          detail.</span>
+        </p>
       </div>
     </CardShell>
   );

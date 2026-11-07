@@ -40,8 +40,11 @@ export interface DualStakeSnapshot {
  * with `overspend` before reading anything. The `*Fallback` methods read
  * global state directly and need neither a signer nor a balance, which is what
  * a card that renders before a wallet connects actually requires.
+ *
+ * Exported for `events.ts`, which needs the same client for its ARC-28
+ * decoder and must not build a second one from a second copy of the config.
  */
-function readClient(algodServer: string) {
+export function readClient(algodServer: string) {
   const algorand = AlgorandClient.fromConfig({
     algodConfig: { server: algodServer, port: "", token: "" },
   });

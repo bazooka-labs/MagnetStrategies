@@ -61,6 +61,35 @@ vi.mock("@/lib/strategy/pools/reads", () => ({
     : Promise.reject(new Error("no node in this test")),
   cvaShareOfMarket: () => null,
 }));
+/**
+ * dualSTAKE's own reads, stubbed to nothing.
+ *
+ * `DualStakeCard` renders for real in this file — it is a sibling in the same
+ * grid and its placement is asserted below — and its reads go to MainNet. The
+ * snapshot read always did, catching its own failure and returning null, so
+ * the suite tolerated it. `readConsensusYield` makes about ten HTTP calls of
+ * its own and `readHarvests` scans the indexer, which would put thirty-odd
+ * network round trips into a hermetic suite across this file's mounts.
+ *
+ * So they return null here, which is the card's unread state — exactly what
+ * the placement assertions want, since they are about the grid and not about
+ * the figures. The figures are tested in `DualStakeCard.test.tsx` against
+ * stubs that return data, and against MainNet in `dualstake.live.test.ts`.
+ */
+vi.mock("@/lib/strategy/dualstake/reads", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  readSnapshot: () => Promise.resolve(null),
+  readHolding: () => Promise.resolve(null),
+  readRewardHolding: () => Promise.resolve(null),
+}));
+vi.mock("@/lib/strategy/dualstake/yield", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  readConsensusYield: () => Promise.resolve(null),
+}));
+vi.mock("@/lib/strategy/dualstake/events", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  readHarvests: () => Promise.resolve(null),
+}));
 vi.mock("@/lib/strategy/pools/performance", async (orig) => ({
   // The REAL pickLongest — the annualization is the thing under test, so
   // stubbing it would certify arithmetic nobody ran.
@@ -269,8 +298,16 @@ describe("the C-Vault card", () => {
   it("offers the About explainer to a public visitor", async () => {
     // Not admin-gated: a visitor who cannot see the direct pools is exactly
     // the reader who needs this.
+    //
+    // Named, not matched on "Learn more" alone. dualSTAKE now has a trigger
+    // of its own in the same grid with the same visible words, and an
+    // unqualified query matched both and threw — which is also why each
+    // button carries an `aria-label` naming its product: two identically
+    // named buttons on one page are ambiguous to anyone navigating by
+    // button list, not just to this test.
     await mount("visitor");
-    expect(screen.getByRole("button", { name: /Learn more/ })).toBeTruthy();
+    expect(screen.getByRole("button",
+      { name: "Learn more about the C-Vault Strategy" })).toBeTruthy();
   });
 
   it("headlines the annualized return, derived from the LONGEST window", async () => {
