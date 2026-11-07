@@ -600,6 +600,18 @@ pills in the old order and claim it was the rendered one; the order is
 `magnet, liquidity, vaults` in `LiquidityView.tsx` and the landing view
 matches it.
 
+**The swap presets ALGO, since 2026-11-07.** It offered USDC only. The
+protocol's claim is that $U beats holding vanilla ALGO, so ALGO → $U is the
+route that acts on the claim, and leading with the stablecoin asked a visitor
+to arrive already holding USDC. USDC stays as a second option — plenty of
+people do.
+
+`0` is ALGO to Haystack's router. Verified against the live router before
+shipping rather than taken from the README alone: 10 ALGO quoted 6.78886 $U
+at −0.15% impact, which also agrees with the 0.676 $U/ALGO the dualSTAKE
+contract realises on its own harvests. Driven in a browser afterwards, both
+routes and the switch between them.
+
 **The Liquidity Pools pill marks liquid staking, since 2026-11-07.** tALGO
 and uALGO are the same kind of pair — $U against ALGO staked for consensus by
 a third party — and read as two different kinds, because uALGO was gold and

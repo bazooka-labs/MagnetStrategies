@@ -9,7 +9,30 @@ import { toast } from "sonner"
 const USDC_ID = 31566704
 const MAGNET_ID = 3081853135
 const MAGNET_FACTOR = 100_000
-const USDC_FACTOR = 1_000_000
+
+/**
+ * What a visitor can pay with, and what they land on by default.
+ *
+ * ── ALGO leads, since 2026-11-07 ──────────────────────────────────────────
+ * This panel offered USDC only. The product's whole claim is that $U beats
+ * holding vanilla ALGO, so the swap a reader of this page is most likely to
+ * want is the one that acts on that claim — and presenting the stablecoin
+ * route first asked them to arrive already holding USDC.
+ *
+ * USDC stays, because plenty of people do arrive holding it; it is a second
+ * option rather than the only one.
+ *
+ * `0` is ALGO to Haystack's router — its README's own convention, and
+ * verified against the live router before this shipped: 10 ALGO quoted
+ * 6.78886 $U at a −0.15% impact, which also agrees with the 0.676 $U/ALGO
+ * the dualSTAKE contract realises on its own harvests.
+ */
+const PAY_ASSETS = {
+  ALGO: { id: 0, factor: 1_000_000, label: "ALGO" },
+  USDC: { id: USDC_ID, factor: 1_000_000, label: "USDC" },
+} as const
+type PayAsset = keyof typeof PAY_ASSETS
+const DEFAULT_PAY: PayAsset = "ALGO"
 /**
  * Haystack Router key.
  *
@@ -38,7 +61,8 @@ const router = new RouterClient({ apiKey: HAYSTACK_KEY, autoOptIn: true })
 export function HaystackSwap() {
   const { isConnected, activeAddress, transactionSigner, wallets } = useWallet()
 
-  const [usdcIn, setUsdcIn] = useState("")
+  const [pay, setPay] = useState<PayAsset>(DEFAULT_PAY)
+  const [amountIn, setAmountIn] = useState("")
   const [previewOut, setPreviewOut] = useState<number | null>(null)
   const [priceImpact, setPriceImpact] = useState<number | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
@@ -48,9 +72,11 @@ export function HaystackSwap() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestQuoteRef = useRef<SwapQuote | null>(null)
 
+  const asset = PAY_ASSETS[pay]
+
   useEffect(() => {
-    const microUsdc = Math.round(parseFloat(usdcIn) * USDC_FACTOR)
-    if (!usdcIn || isNaN(microUsdc) || microUsdc <= 0) {
+    const micro = Math.round(parseFloat(amountIn) * asset.factor)
+    if (!amountIn || isNaN(micro) || micro <= 0) {
       setPreviewOut(null)
       setPriceImpact(null)
       latestQuoteRef.current = null
@@ -61,9 +87,9 @@ export function HaystackSwap() {
       setQuoteLoading(true)
       try {
         const q = await router.newQuote({
-          fromASAID: USDC_ID,
+          fromASAID: asset.id,
           toASAID: MAGNET_ID,
-          amount: microUsdc,
+          amount: micro,
           address: activeAddress ?? undefined,
         })
         latestQuoteRef.current = q
@@ -77,19 +103,21 @@ export function HaystackSwap() {
         setQuoteLoading(false)
       }
     }, 500)
-  }, [usdcIn, activeAddress])
+    /* `asset.id` and `asset.factor`, not `asset`: the object is rebuilt on
+       every render, so depending on it re-ran the quote in a loop. */
+  }, [amountIn, activeAddress, asset.id, asset.factor])
 
   async function handleSwap() {
     if (!isConnected || !activeAddress || !transactionSigner) return
-    const microUsdc = Math.round(parseFloat(usdcIn) * USDC_FACTOR)
-    if (!usdcIn || isNaN(microUsdc) || microUsdc <= 0) return
+    const micro = Math.round(parseFloat(amountIn) * asset.factor)
+    if (!amountIn || isNaN(micro) || micro <= 0) return
 
     setSwapping(true)
     try {
       const q = await router.newQuote({
-        fromASAID: USDC_ID,
+        fromASAID: asset.id,
         toASAID: MAGNET_ID,
-        amount: microUsdc,
+        amount: micro,
         address: activeAddress,
       })
       const swap = await router.newSwap({
@@ -100,7 +128,7 @@ export function HaystackSwap() {
       })
       await swap.execute()
       toast.success("Swap successful!")
-      setUsdcIn("")
+      setAmountIn("")
       setPreviewOut(null)
       setPriceImpact(null)
       latestQuoteRef.current = null
@@ -118,15 +146,66 @@ export function HaystackSwap() {
     <div className="flex flex-col gap-4 p-5">
       <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 text-left">Swap</p>
 
-      {/* USDC input */}
+      {/* What you pay with. ALGO first — see PAY_ASSETS.
+
+          A real segmented control rather than the static label this used to
+          be: the label looked like a caption, and a caption does not invite a
+          click. Switching CLEARS the amount, because "10" means something
+          different in each asset and carrying it over would re-quote a figure
+          the user never typed for this side.
+
+          ── Two of the lines below are REDUNDANT, and stay ──
+          Said plainly because the mutation run says so. Clearing the amount
+          is what the tests catch; nulling the preview and the impact
+          survived removal on their own, because the empty amount makes the
+          effect null them a tick later anyway. Removing BOTH does turn the
+          tests red, which was run and confirmed.
+
+          They stay for the tick in between: React re-renders with the amount
+          gone while the old asset's output figure is still on screen, so for
+          one frame "6.78886" sits under a label now reading USDC. Too brief
+          for jsdom to catch and perfectly visible to a person.
+
+          The same applies to `asset.id`/`asset.factor` in the effect's deps:
+          unnecessary only because switching clears the amount. If that clear
+          ever goes, the deps are the only thing left stopping a quote for the
+          wrong asset. */}
+      <div role="tablist" aria-label="Asset to pay with"
+        className="inline-flex self-start rounded-full border border-white/10 bg-black/40 p-0.5">
+        {(Object.keys(PAY_ASSETS) as PayAsset[]).map((k) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={pay === k}
+            onClick={() => {
+              if (k === pay) return
+              setPay(k)
+              setAmountIn("")
+              setPreviewOut(null)
+              setPriceImpact(null)
+              latestQuoteRef.current = null
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              pay === k
+                ? "bg-gradient-to-r from-magnet-600 to-magnet-500 text-white"
+                : "text-white/50 hover:text-white"
+            }`}
+          >
+            {PAY_ASSETS[k].label}
+          </button>
+        ))}
+      </div>
+
+      {/* Pay input */}
       <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 flex items-center gap-3">
-        <span className="text-sm font-semibold text-gray-400 w-12 shrink-0">USDC</span>
+        <span className="text-sm font-semibold text-gray-400 w-12 shrink-0">{asset.label}</span>
         <input
           type="number"
           min="0"
           placeholder="0.00"
-          value={usdcIn}
-          onChange={(e) => setUsdcIn(e.target.value)}
+          aria-label={`${asset.label} to swap`}
+          value={amountIn}
+          onChange={(e) => setAmountIn(e.target.value)}
           className="flex-1 bg-transparent text-white text-right text-lg font-bold placeholder-white/20 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
       </div>
