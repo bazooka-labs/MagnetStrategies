@@ -258,7 +258,16 @@ describe("pool token icons", () => {
    * Pera is in progress and the art is expected within the week, at which
    * point this entry comes out rather than being left to rot.
    */
-  const KNOWN_ICONLESS = new Set(["uALGO"]);
+  /*
+    Empty, and that is the point of the staleness check below.
+
+    uALGO sat here from 2026-11-04 while magnetALGO waited on Pera
+    verification. It verified on 2026-11-05 and the logo is now vendored at
+    /tokens/ualgo.png, so the exception had to go — the test two blocks down
+    fails if a symbol listed here turns out to have an icon after all, which
+    is what stopped this becoming a permanent "known missing".
+  */
+  const KNOWN_ICONLESS = new Set<string>([]);
 
   it("covers every token shown on a pool card", () => {
     const missing = symbols.filter((s) => tokenIcon(s) === null && !KNOWN_ICONLESS.has(s));

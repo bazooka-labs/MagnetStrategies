@@ -16,6 +16,11 @@ const TOKEN_ICONS: Record<string, string> = {
   COMPX: "/tokens/compx.png",
   HAY: "/tokens/hay.png",
   FOLKS: "/tokens/folks.png",
+  // magnetALGO (ASA 3760411000, unit uALGO) — Myth Finance's ALGO+U dualSTAKE
+  // token. Pera-verified 2026-11-05; the logo is their published artwork,
+  // vendored here rather than hot-linked from Pera's CDN so the card does not
+  // depend on a third-party host, and so the CSP has one less origin to admit.
+  UALGO: "/tokens/ualgo.png",
 };
 /** Real icon path for a token symbol ("$"/case-insensitive), or null for a text fallback. */
 export const tokenIcon = (sym: string) => TOKEN_ICONS[sym.replace("$", "").toUpperCase()] ?? null;
