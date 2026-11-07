@@ -23,6 +23,7 @@ import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DualStakeSnapshot } from "@/lib/strategy/dualstake/reads";
 import type { ConsensusYield, Harvest } from "@/lib/strategy/dualstake/yield";
+import type { HarvestScan } from "@/lib/strategy/dualstake/events";
 
 const HOLDER = "KNML6OW2XVXYSSGQX7EBLBMSLAPY6QFNBZUJMNEFIEXIIVJLMW4VINYU6A";
 
@@ -39,7 +40,7 @@ vi.mock("@/hooks/useWallet", () => ({
 
 let snapshot: DualStakeSnapshot | null = null;
 let consensus: ConsensusYield | null = null;
-let harvests: Harvest[] | null = null;
+let scan: HarvestScan | null = null;
 let holding: bigint | null = null;
 
 vi.mock("@/lib/strategy/dualstake/reads", async (orig) => ({
@@ -56,7 +57,7 @@ vi.mock("@/lib/strategy/dualstake/yield", async (orig) => ({
 }));
 vi.mock("@/lib/strategy/dualstake/events", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),      // real harvestTotals
-  readHarvests: () => Promise.resolve(harvests),
+  readHarvests: () => Promise.resolve(scan),
 }));
 
 /** MainNet, 2026-11-07. */
@@ -82,6 +83,10 @@ const YIELD: ConsensusYield = {
   grossAprPct: 4.8268,
 };
 
+/** A complete scan: the indexer reached the beginning of the record. */
+const complete = (harvests: Harvest[]): HarvestScan =>
+  ({ harvests, complete: true, scanned: 91 });
+
 const HARVESTS: Harvest[] = [
   { round: 66_694_896, timestamp: 1_793_965_320, algoMicro: BigInt(7_659_112), rewardBase: BigInt(517_363) },
   { round: 66_666_169, timestamp: 1_793_886_180, algoMicro: BigInt(7_650_229), rewardBase: BigInt(516_308) },
@@ -96,15 +101,26 @@ async function mount() {
 }
 
 /** Opens the explainer and returns its dialog. */
+/**
+ * Opens the explainer and waits for its harvest read to settle.
+ *
+ * The log is fetched when the modal first opens rather than on card mount —
+ * it pages the indexer, so its cost grows with the product and nothing on
+ * the card's face shows it. That makes the panel's content arrive a tick
+ * after the dialog, so every assertion here waits for the read, not just for
+ * the dialog element.
+ */
 async function openModal() {
   fireEvent.click(screen.getByRole("button", { name: "Learn more about magnetALGO" }));
-  return await waitFor(() =>
+  const dialog = await waitFor(() =>
     screen.getByRole("dialog", { name: "About magnetALGO dualSTAKE" }));
+  await waitFor(() => expect(screen.queryByText("Reading the log…")).toBeNull());
+  return dialog;
 }
 
 beforeEach(() => {
   wallet = { address: null, isConnected: false };
-  snapshot = SNAP; consensus = YIELD; harvests = HARVESTS; holding = null;
+  snapshot = SNAP; consensus = YIELD; scan = complete(HARVESTS); holding = null;
 });
 afterEach(cleanup);
 
@@ -261,16 +277,105 @@ describe("what moved into Learn more", () => {
 
   it("distinguishes an unread harvest log from an empty one", async () => {
     // `null` and `[]` mean different things; "no harvests yet" is a claim.
-    harvests = null;
+    scan = null;
     await mount();
     await openModal();
     expect(screen.getByText(/Couldn't read the harvest log/)).toBeTruthy();
     cleanup();
 
-    harvests = [];
+    scan = complete([]);
     await mount();
     await openModal();
     expect(screen.getByText(/No harvests recorded yet/)).toBeTruthy();
+  });
+
+  /*
+    ── The heading is a claim, and it expires ──
+    "Every harvest so far" was true of a 300-transaction scan on the day it
+    shipped and was going to stop being true silently: deposits fill the
+    window, so a busier product pushes the oldest harvests off the end while
+    the title goes on claiming completeness. Same shape as the two bounds
+    that expired here on 2026-11-07.
+
+    These are the tests that make the claim falsifiable.
+  */
+  it("only claims completeness when the scan actually reached the end", async () => {
+    await mount();
+    await openModal();
+    expect(screen.getByText("Every harvest so far")).toBeTruthy();
+    expect(screen.queryByText("Recent harvests")).toBeNull();
+    expect(screen.queryByText(/not its whole history/)).toBeNull();
+  });
+
+  it("retitles and says so when the scan was truncated", async () => {
+    scan = { harvests: HARVESTS, complete: false, scanned: 12_000 };
+    await mount();
+    await openModal();
+    expect(screen.getByText("Recent harvests")).toBeTruthy();
+    expect(screen.queryByText("Every harvest so far")).toBeNull();
+    // Names its own window rather than leaving the reader to guess it.
+    expect(screen.getByText(/last 12,000 transactions on the contract/)).toBeTruthy();
+    expect(screen.getByText(/older harvests than the ones above/)).toBeTruthy();
+  });
+
+  it("does not call a truncated count a total", async () => {
+    // "3 total" beside a truncated list is the same overclaim as the
+    // heading, in a place that is easier to miss.
+    scan = { harvests: HARVESTS, complete: false, scanned: 12_000 };
+    await mount();
+    await openModal();
+    expect(screen.queryByText(/3 total/)).toBeNull();
+    cleanup();
+
+    scan = complete(HARVESTS);
+    await mount();
+    await openModal();
+    expect(screen.getByText(/3 total/)).toBeTruthy();
+  });
+
+  it("says how many rows it is showing when the list is cut to 12", async () => {
+    const many: Harvest[] = Array.from({ length: 20 }, (_, i) => ({
+      round: 66_700_000 - i * 1000,
+      timestamp: 1_793_965_320 - i * 3600,
+      algoMicro: BigInt(7_600_000),
+      rewardBase: BigInt(513_000),
+    }));
+    scan = complete(many);
+    await mount();
+    await openModal();
+    expect(screen.getByText(/Showing the 12 most recent of 20/)).toBeTruthy();
+    // The totals still cover all twenty, which is why the line is needed.
+    expect(screen.getByText(/152\.0000 ALGO/)).toBeTruthy();
+  });
+
+  it("does not read the harvest log until the modal is opened", async () => {
+    /*
+      The reason the fetch moved off card mount: it pages the indexer to
+      exhaustion, so its cost grows with the product, and nothing on the
+      card's face shows it.
+    */
+    const events = await import("@/lib/strategy/dualstake/events");
+    const spy = vi.spyOn(events, "readHarvests");
+    spy.mockClear();
+    await mount();
+    expect(spy).not.toHaveBeenCalled();
+    await openModal();
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("does not refetch the log every time the modal is reopened", async () => {
+    const events = await import("@/lib/strategy/dualstake/events");
+    const spy = vi.spyOn(events, "readHarvests");
+    spy.mockClear();
+    await mount();
+    await openModal();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(
+      screen.queryByRole("dialog", { name: "About magnetALGO dualSTAKE" })).toBeNull());
+    await openModal();
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("does not state a fee it failed to read", async () => {

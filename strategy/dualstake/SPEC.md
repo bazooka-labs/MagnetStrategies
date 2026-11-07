@@ -319,6 +319,21 @@ arithmetically: 22.864667 ALGO swapped against `platform_fees` +
 0.065000` exactly. So the modal presents those figures with nothing further
 deducted.
 
+**The scan pages to exhaustion, and reports truncation.** It was a single
+`limit: 300` call under the heading "Every harvest so far" — true at three
+harvests in ninety transactions, and due to stop being true silently, because
+deposits are what fill that window. `readHarvests` now follows the
+continuation token up to 12 pages of 1,000 and returns
+`{ harvests, complete, scanned }`; when `complete` is false the modal retitles
+to "Recent harvests", names its window, and stops calling the count a total.
+Third bound of this shape to need fixing here, so the loop carries its own
+hermetic tests against a faked indexer — the live contract has under one page
+and cannot exercise it.
+
+**It is read when the modal opens, not on card mount.** The cost grows with
+the product and nothing on the card's face shows it, so the reader who presses
+Learn more is the one who pays. Fetched once per mount.
+
 The modal shows them **unannualised, with no day count**. An earlier draft
 read "over 1.3 days", which is first-harvest to last — a window with a harvest
 at each end, excluding the dry stretches either side, so dividing by it

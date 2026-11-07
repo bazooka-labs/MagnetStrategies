@@ -220,6 +220,24 @@ Proved arithmetically rather than assumed: 22.864667 ALGO swapped against fee
 counters of 1.589520, and `1.589520 / (22.864667 + 1.589520) = 0.065000`
 exactly — 650bps, to five figures.
 
+### A third bound that would have expired
+
+The harvest list was one `limit: 300` indexer call headed *"Every harvest so
+far"*. Correct on the day and designed to rot: deposits fill that window, so a
+busier product pushes the oldest harvests off the end while the heading keeps
+claiming completeness — no error, no failing test, just a quietly false title.
+
+Now it pages to exhaustion (12 × 1,000) and returns whether it got there. A
+truncated scan retitles to "Recent harvests", names how far back it looked,
+and drops the word "total" from the count. The loop has hermetic tests against
+a faked indexer, because the live contract has under one page of history and
+cannot reach the second iteration — a mutation breaking the loop after page
+one survived both suites until those tests existed.
+
+The read also moved off card mount and onto the modal's first open: a scan
+whose cost grows with the product should not be paid by every visitor to
+render four stats.
+
 ### One test expired while this was built
 
 `"holds enough $U and ALGO to redeem every token outstanding"` asserted the

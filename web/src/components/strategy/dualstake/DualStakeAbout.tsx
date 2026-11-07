@@ -39,8 +39,10 @@ import {
   netAprPct, proposalsPerDay, type ConsensusYield,
 } from "@/lib/strategy/dualstake/yield";
 import {
-  harvestTotals, realisedRewardPerAlgo, type Harvest,
+  harvestTotals, readHarvests, realisedRewardPerAlgo,
+  type Harvest, type HarvestScan,
 } from "@/lib/strategy/dualstake/events";
+import { ALGOD_URLS, INDEXER_URLS } from "@/lib/constants";
 
 const num = (n: number, dp = 2) =>
   n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -134,13 +136,33 @@ function HarvestRow({ h }: { h: Harvest }) {
   );
 }
 
-export function DualStakeAbout({ snapshot, yieldRead, harvests }: {
+export function DualStakeAbout({ snapshot, yieldRead }: {
   snapshot: DualStakeSnapshot | null;
   yieldRead: ConsensusYield | null;
-  /** `null` is unread; `[]` is read-and-none-yet. They render differently. */
-  harvests: Harvest[] | null;
 }) {
   const [open, setOpen] = useState(false);
+  /**
+   * The harvest log, fetched when the modal first opens — never on mount.
+   *
+   * It pages the indexer to exhaustion, so its cost grows with the product.
+   * The card renders four stats and a rate without it, and most readers never
+   * press this button; making every visitor pay for a scan that only this
+   * panel displays is the wrong trade. Fetched once per mount and kept.
+   *
+   * `null` here means not-yet-loaded OR unread, and `loading` separates them.
+   */
+  const [scan, setScan] = useState<HarvestScan | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [tried, setTried] = useState(false);
+
+  useEffect(() => {
+    if (!open || tried) return;
+    setTried(true);
+    setLoading(true);
+    void readHarvests(ALGOD_URLS.mainnet, INDEXER_URLS.mainnet)
+      .then(setScan)
+      .finally(() => setLoading(false));
+  }, [open, tried]);
 
   // Escape closes it. The C-Vault modal predates this and should get it too;
   // not changing that file in this pass.
@@ -158,6 +180,7 @@ export function DualStakeAbout({ snapshot, yieldRead, harvests }: {
     ? proposalsPerDay(snapshot.stakedMicroAlgo, yieldRead.onlineStakeMicroAlgo,
       yieldRead.blockSeconds)
     : null;
+  const harvests: Harvest[] | null = scan ? scan.harvests : null;
   const totals = harvests ? harvestTotals(harvests) : null;
   const perAlgo = harvests ? realisedRewardPerAlgo(harvests) : null;
   const feeBps = snapshot
@@ -315,12 +338,17 @@ export function DualStakeAbout({ snapshot, yieldRead, harvests }: {
               */}
               <div className="rounded-xl border border-white/10 bg-black/30 p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  {/* The heading is a CLAIM, and it only holds when the scan
+                      reached the beginning of the record. A truncated scan
+                      says "recent" and names its window — the alternative is
+                      a list that silently loses its oldest rows as the app
+                      gets busier while the title still says "every". */}
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    Every harvest so far
+                    {scan && !scan.complete ? "Recent harvests" : "Every harvest so far"}
                   </span>
                   {totals && (
                     <span className="font-mono text-[11px] text-gray-500">
-                      {totals.count} total
+                      {totals.count}{scan && scan.complete ? " total" : ""}
                     </span>
                   )}
                 </div>
@@ -331,7 +359,9 @@ export function DualStakeAbout({ snapshot, yieldRead, harvests }: {
                 </p>
 
                 <div className="mt-3">
-                  {harvests === null
+                  {loading
+                    ? <p className="py-2 text-[11.5px] text-gray-500">Reading the log…</p>
+                    : harvests === null
                     ? <p className="py-2 text-[11.5px] text-gray-500">
                         Couldn&apos;t read the harvest log just now.
                       </p>
@@ -341,6 +371,20 @@ export function DualStakeAbout({ snapshot, yieldRead, harvests }: {
                         </p>
                       : harvests.slice(0, 12).map((h) => <HarvestRow key={h.round} h={h} />)}
                 </div>
+
+                {/* Said once, plainly, when it applies. */}
+                {scan && !scan.complete && (
+                  <p className="mt-2 text-[10.5px] leading-relaxed text-amber-200/70">
+                    This is the last {scan.scanned.toLocaleString()} transactions on the
+                    contract, not its whole history — there are older harvests than the ones
+                    above, and the totals below cover only what is listed.
+                  </p>
+                )}
+                {harvests !== null && harvests.length > 12 && (
+                  <p className="mt-2 text-[10.5px] text-gray-500">
+                    Showing the 12 most recent of {harvests.length}.
+                  </p>
+                )}
 
                 {totals && perAlgo !== null && (
                   <p className="mt-3 border-t border-white/[0.07] pt-3 text-[11px] leading-relaxed text-gray-400">

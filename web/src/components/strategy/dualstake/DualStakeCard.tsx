@@ -55,7 +55,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Coins } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
-import { ALGOD_URLS, INDEXER_URLS } from "@/lib/constants";
+import { ALGOD_URLS } from "@/lib/constants";
 import algosdk from "algosdk";
 import {
   accruedReward, readHolding, readSnapshot, toAlgo, toMagnetAlgo, toReward,
@@ -64,12 +64,10 @@ import {
 import {
   netAprPct, readConsensusYield, type ConsensusYield,
 } from "@/lib/strategy/dualstake/yield";
-import { readHarvests, type Harvest } from "@/lib/strategy/dualstake/events";
 import { DualStakeActions } from "./DualStakeActions";
 import { DualStakeAbout } from "./DualStakeAbout";
 
 const ALGOD = ALGOD_URLS.mainnet;
-const INDEXER = INDEXER_URLS.mainnet;
 
 function Stat({ label, value, tone }: {
   label: string; value: string; tone?: "up" | "muted";
@@ -179,29 +177,25 @@ export function DualStakeCard() {
   /** `null` is unknown — never rendered as zero. */
   const [holding, setHolding] = useState<bigint | null>(null);
   const [yieldRead, setYieldRead] = useState<ConsensusYield | null>(null);
-  /** `null` is unread, `[]` is read-and-none. The modal distinguishes them. */
-  const [harvests, setHarvests] = useState<Harvest[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     /*
-      In parallel, and each independently fallible.
+      In parallel, and each independently fallible. Either coming back null
+      degrades its own figure to a dash and leaves the rest of the card
+      working — the same rule `fetchTVL` follows on /strategy.
 
-      The yield read is ~10 HTTP calls against algod (status, supply, and a
-      spread of block headers) and the harvest read is an indexer scan, so
-      neither waits on the other or on the snapshot. Any of the three coming
-      back null degrades its own figure to a dash and leaves the rest of the
-      card working — the same rule `fetchTVL` follows on /strategy.
+      The harvest log is NOT read here. It pages the indexer to exhaustion,
+      so its cost grows with the product, and nothing on the card's face
+      shows it — `DualStakeAbout` fetches it when the modal first opens.
     */
-    const [s, y, h] = await Promise.all([
+    const [s, y] = await Promise.all([
       readSnapshot(ALGOD),
       readConsensusYield(ALGOD),
-      readHarvests(ALGOD, INDEXER),
     ]);
     setSnap(s);
     setYieldRead(y);
-    setHarvests(h);
     if (address) {
       const algod = algodClient ?? new algosdk.Algodv2("", ALGOD, "");
       setHolding(await readHolding(algod, address));
@@ -243,7 +237,7 @@ export function DualStakeCard() {
             </p>
           </div>
           <div className="shrink-0">
-            <DualStakeAbout snapshot={snap} yieldRead={yieldRead} harvests={harvests} />
+            <DualStakeAbout snapshot={snap} yieldRead={yieldRead} />
           </div>
         </div>
 

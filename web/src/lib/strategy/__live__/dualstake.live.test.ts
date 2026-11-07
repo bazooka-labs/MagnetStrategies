@@ -307,11 +307,17 @@ describe("the yield on the card", () => {
   }, 60_000);
 
   it("reads the contract's own harvests, and they are net of Myth's cut", async () => {
-    const harvests = await readHarvests(SERVER, INDEXER);
-    expect(harvests, "could not read the harvest log").not.toBeNull();
-    expect(harvests!.length).toBeGreaterThan(0);
+    const scan = await readHarvests(SERVER, INDEXER);
+    expect(scan, "could not read the harvest log").not.toBeNull();
+    expect(scan!.harvests.length).toBeGreaterThan(0);
+    /* The scan must reach the beginning of the record while the contract is
+       this young. When it stops being able to, this fails and the modal's
+       "Every harvest so far" heading is the thing to go and look at — it
+       retitles itself, but the test is what tells us it happened. */
+    expect(scan!.complete).toBe(true);
+    expect(scan!.scanned).toBeGreaterThan(0);
 
-    const t = harvestTotals(harvests!)!;
+    const t = harvestTotals(scan!.harvests)!;
     expect(t.algoMicro).toBeGreaterThan(BigInt(0));
     expect(t.rewardBase).toBeGreaterThan(BigInt(0));
 
@@ -349,13 +355,14 @@ describe("the yield on the card", () => {
   }, 90_000);
 
   it("the realised harvests agree with the expected APR, inside the sampling band", async () => {
-    const [y, snap, harvests] = await Promise.all([
+    const [y, snap, scan] = await Promise.all([
       readConsensusYield(SERVER), readSnapshot(SERVER),
       readHarvests(SERVER, INDEXER),
     ]);
     expect(y).not.toBeNull();
     expect(snap).not.toBeNull();
-    expect(harvests).not.toBeNull();
+    expect(scan).not.toBeNull();
+    const harvests = scan!.harvests;
 
     const perDay = proposalsPerDay(
       snap!.stakedMicroAlgo, y!.onlineStakeMicroAlgo, y!.blockSeconds)!;
@@ -377,7 +384,7 @@ describe("the yield on the card", () => {
       the card shows the expected figure and the modal shows these harvests
       unannualised beside it.
     */
-    const t = harvestTotals(harvests!);
+    const t = harvestTotals(harvests);
     if (t && t.days !== null && t.days > 0.5 && t.count >= 3) {
       const realisedNetPct =
         (Number(t.algoMicro) / Number(snap!.stakedMicroAlgo))
@@ -391,7 +398,7 @@ describe("the yield on the card", () => {
 
     // The conversion the contract achieved, which is what holders were paid
     // at. Bounded away from a 10x decimals slip in either direction.
-    const perAlgo = realisedRewardPerAlgo(harvests!);
+    const perAlgo = realisedRewardPerAlgo(harvests);
     if (perAlgo !== null) {
       expect(perAlgo).toBeGreaterThan(0.01);
       expect(perAlgo).toBeLessThan(100);

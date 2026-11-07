@@ -46,51 +46,102 @@ import type { Harvest } from "./yield";
    module they called, not from wherever the type happens to live. */
 export type { Harvest };
 
-/** How many app transactions to scan. Harvests are a few percent of them. */
-const SCAN_LIMIT = 300;
+/**
+ * Pagination, and the honesty it exists to buy.
+ *
+ * ── Why this is not a single bounded scan any more ────────────────────────
+ * It was `limit: 300`, one call, and the modal headed the result "Every
+ * harvest so far". That was true on the day — three harvests inside about
+ * ninety transactions — and it was going to stop being true without anything
+ * breaking: deposits are what fill the window, so the busier the product
+ * gets, the sooner the oldest harvests fall off the end while the heading
+ * goes on claiming completeness.
+ *
+ * That is the same shape as the two bounds that expired here on 2026-11-07
+ * (the `$U` surplus pin, and the perps gate before it): a constant sized to
+ * today's volume, with no test that can notice when today's volume changes.
+ * See [[feedback-temporary-gates-expire]].
+ *
+ * So the scan pages to exhaustion, and when it cannot finish it SAYS so —
+ * `complete: false` — and the modal retitles itself rather than overclaiming.
+ * Truncation is reported, never silent.
+ */
+const PAGE_SIZE = 1000;          // the indexer's maximum
+const MAX_PAGES = 12;            // 12,000 transactions before we admit defeat
+
+/** A harvest scan, and whether it reached the beginning of the record. */
+export interface HarvestScan {
+  /** Newest first. */
+  harvests: Harvest[];
+  /** The scan exhausted the app's history rather than hitting MAX_PAGES. */
+  complete: boolean;
+  /** App transactions examined, so a truncated scan can name its window. */
+  scanned: number;
+}
 
 /**
- * Harvests, newest first, or null if the indexer could not be read.
+ * Every harvest the indexer will give us, newest first.
  *
- * `null` is unread and `[]` is "read successfully, none yet" — the modal
- * renders those differently, for the same reason `readHolding` distinguishes
- * them.
+ * `null` is unread and an empty `harvests` is "read successfully, none yet" —
+ * the modal renders those differently, for the same reason `readHolding`
+ * distinguishes them.
+ *
+ * ── Called lazily, when the modal opens ──
+ * Not on card mount. A full scan costs one round trip per thousand app
+ * transactions and grows with the product, which is not a price the card
+ * should pay to render four stats and a rate the user may never scroll past.
+ * The reader who opens Learn more is the one who wants it.
  */
 export async function readHarvests(
   algodServer: string, indexerServer: string,
-): Promise<Harvest[] | null> {
+): Promise<HarvestScan | null> {
   try {
     const client = readClient(algodServer);
     const indexer = new algosdk.Indexer("", indexerServer, "");
-    const res = await indexer
-      .searchForTransactions()
-      .applicationID(DUALSTAKE_APP_ID)
-      .limit(SCAN_LIMIT)
-      .do();
 
     const out: Harvest[] = [];
-    for (const txn of res.transactions ?? []) {
-      /* Walks inner transactions and filters to our app id. The swap is
-         logged on an inner call, so a scan of outer logs alone finds none. */
-      for (const ev of client.getParsedArc28EventsFromTransaction(txn)) {
-        if (ev.spec.name !== "swap") continue;
-        const algoMicro = ev.argsByName["algo_amount"];
-        const rewardBase = ev.argsByName["asa_amount"];
-        if (typeof algoMicro !== "bigint" || typeof rewardBase !== "bigint") continue;
-        /* A swap of nothing is not a harvest, and would divide by zero in the
-           realised-rate column. */
-        if (algoMicro <= BigInt(0)) continue;
-        out.push({
-          round: Number(ev.outerTransaction.confirmedRound ?? 0),
-          timestamp: Number(ev.outerTransaction.roundTime ?? 0),
-          algoMicro,
-          rewardBase,
-        });
+    let next: string | undefined;
+    let scanned = 0;
+    let complete = false;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      let q = indexer.searchForTransactions()
+        .applicationID(DUALSTAKE_APP_ID)
+        .limit(PAGE_SIZE);
+      if (next) q = q.nextToken(next);
+      const res = await q.do();
+
+      const txns = res.transactions ?? [];
+      scanned += txns.length;
+
+      for (const txn of txns) {
+        /* Walks inner transactions and filters to our app id. The swap is
+           logged on an inner call, so a scan of outer logs alone finds none. */
+        for (const ev of client.getParsedArc28EventsFromTransaction(txn)) {
+          if (ev.spec.name !== "swap") continue;
+          const algoMicro = ev.argsByName["algo_amount"];
+          const rewardBase = ev.argsByName["asa_amount"];
+          if (typeof algoMicro !== "bigint" || typeof rewardBase !== "bigint") continue;
+          /* A swap of nothing is not a harvest, and would divide by zero in
+             the realised-rate column. */
+          if (algoMicro <= BigInt(0)) continue;
+          out.push({
+            round: Number(ev.outerTransaction.confirmedRound ?? 0),
+            timestamp: Number(ev.outerTransaction.roundTime ?? 0),
+            algoMicro,
+            rewardBase,
+          });
+        }
       }
+
+      next = res.nextToken;
+      /* No continuation token, or a short page: the indexer has nothing
+         further. Either one means we reached the beginning of the record. */
+      if (!next || txns.length < PAGE_SIZE) { complete = true; break; }
     }
 
     out.sort((a, b) => b.round - a.round);
-    return out;
+    return { harvests: out, complete, scanned };
   } catch {
     return null;
   }
