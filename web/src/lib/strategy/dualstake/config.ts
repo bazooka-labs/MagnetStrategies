@@ -49,6 +49,10 @@ export const NODERUNNER_FEE_BPS = 400;
 /**
  * The approval program we reviewed, as of 2026-11-06.
  *
+ * SHA-256 of the program bytes, matching `PEX_PROGRAM_SHA256`'s convention
+ * and `verifyProgramPins`' `crypto.subtle.digest` check — one way of
+ * pinning a program in this codebase, not two.
+ *
  * ── Why pin a program that is MEANT to change ─────────────────────────────
  * dualSTAKE is upgradeable: a one-week timelock, hashes published in advance,
  * and a protest mechanism, with dissenters free to redeem immediately. That
@@ -64,8 +68,8 @@ export const NODERUNNER_FEE_BPS = 400;
  *     `exitBlocked` already applies on the perps path: a stale pin is no
  *     reason to stand between a holder and their funds.
  */
-export const DUALSTAKE_APPROVAL_HASH =
-  "FL5ST2MRMI25Z7TZ5EZDTX7KYZZGGATL6SXBE7QQ44CMOWECOMOHBKRFVA";
+export const DUALSTAKE_PROGRAM_SHA256 =
+  "f6ba9e2f58ca5a703161c4a796b176b4bf57a8fb2c4d1d03c791aced4a7a7d97";
 
 /**
  * Minimum deposit, in microALGO.
