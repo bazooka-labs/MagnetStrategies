@@ -49,13 +49,47 @@ Observed: 2.000000 ALGO in, 2,000,000 magnetALGO out. Total group fee
              inner: pay   ALGO  app -> user     (principal)
 ```
 
-Observed: 353,286,105 magnetALGO redeemed for **353.286105 ALGO (1:1) plus
-11,020 µ$U of accrued rewards**.
+Observed: 353,286,105 magnetALGO redeemed for **353.286105 ALGO plus 11,020
+µ$U of accrued rewards**.
 
-**This is the finding that matters most.** There is a direct redemption path,
-so an exit does not depend on the U/uALGO Tinyman pool — which holds only
-~$9.5K and could not absorb a meaningful position. A card built on this is not
-selling users into an illiquid exit.
+### The ALGO leg is exactly 1:1; the appreciation is the $U
+
+Measured across every mint and redeem in the last 200 app transactions, at
+sizes from 2 ALGO to 49,500 ALGO, the ALGO:magnetALGO ratio is
+**1.00000000 on all five, both directions**. The ALGO side does not drift
+upward the way a conventional LST's exchange rate does.
+
+That is not the same as "magnetALGO is worth 1 ALGO". It is worth **1 ALGO
+plus the $U accrued against it**, and that $U is paid as its own leg on
+redemption. Describing it as "1:1" is accurate about the ALGO and misleading
+about the holding, so UI copy should say *1 ALGO + accrued $U* and never the
+ratio alone.
+
+### Where the $U comes from — and why the Tinyman pool is load-bearing
+
+Selector `93239802` is the harvest. Measured at round 66654225, its inner
+transactions are: take the accrued consensus rewards (7.555326 ALGO in that
+call) and swap them through **Tinyman v2 app `1002541853`** — the U/uALGO
+pool — into $U, which is then what redeemers are paid.
+
+Two consequences, and the second corrects an earlier reading of mine:
+
+1. **This is standing, automated $U buy pressure funded by consensus rewards
+   on the whole staked balance** (~49,319 ALGO today), recurring for as long
+   as the product has TVL. It is a materially stronger alignment argument than
+   "rewards happen to be denominated in $U".
+
+2. **The U/uALGO pool is NOT incidental.** User exits genuinely do not depend
+   on it — `redeem()` pays ALGO straight from the contract — but the entire
+   yield does, because that pool is the conversion venue. An earlier draft of
+   this document treated the pool as unimportant to the product on the
+   strength of the exit path. That was wrong.
+
+   The pool holds ~$9.5K. As dualSTAKE TVL grows, each harvest pushes more
+   ALGO through it, and slippage comes straight out of the yield delivered to
+   magnetALGO holders. That gives Magnet a concrete, self-interested reason to
+   deepen that pool beyond the farm incentive already planned — it is the
+   throughput limit on the product's entire return.
 
 ## Answering "is there an MCP or SDK?"
 
