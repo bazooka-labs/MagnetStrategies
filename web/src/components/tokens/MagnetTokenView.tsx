@@ -1,6 +1,6 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { Panel } from "@/components/magnetfi/v2/shared";
+import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
@@ -25,9 +25,33 @@ export function MagnetTokenView({
 }) {
   return (
     <>
-      {/* Hero */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+      {/*
+        ── One card, since 2026-11-07 ────────────────────────────────────────
+        The hero and the stats panel were two stacked blocks with IDENTICAL
+        chrome: same `rounded-2xl`, same `border-white/10`, same
+        `bg-black/40 backdrop-blur-sm`, and each drew its own top hairline. It
+        was the same card rendered twice with a gap between, which is what made
+        the page read as a header bolted onto a widget rather than one object.
+
+        Merged, `Panel` supplies all of that once and the glow wraps the whole
+        thing. The header is now a padded section inside it, divided from the
+        stats by a hairline rather than by empty page.
+
+        ── The padding had to come down with it ──
+        It was `py-8 sm:py-10`, sized for a card standing on its own. Inside
+        the merged card that read as a tall empty strip above a dense row of
+        stat cells, with the title floating in the middle of it. `py-5 sm:py-6`
+        puts the title band in proportion with the cells beneath. Both were
+        rasterised and compared before choosing.
+
+        ── Known trade-off, accepted ──
+        The merged card is long: on a desktop viewport its bottom edge — and
+        so the bottom of the glow — sits below the fold, where two shorter
+        blocks each closed on screen. That is inherent to merging them, not a
+        spacing bug, and is not worth "fixing" by shrinking the chart.
+      */}
+      <Panel glowClass={MAGNET_GLOW} className="animate-enter mb-8">
+      <div className="relative px-6 py-5 sm:px-10 sm:py-6">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
         </div>
@@ -41,7 +65,15 @@ export function MagnetTokenView({
               <Image src="/tokens/u.png" alt="$U" width={56} height={56} className="h-full w-full object-cover" priority />
             </div>
             <div>
-              <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">
+              {/* One step up from `text-3xl sm:text-4xl` on 2026-11-07.
+
+                  It now heads a card roughly twice as tall, and a title sized
+                  for the old standalone hero read small against it. This is
+                  deliberately LARGER than the mUSD hero's h1, which still
+                  carries 3xl/4xl and heads a card of the original height —
+                  the two are on different pages and sized to what each one
+                  actually caps. */}
+              <h1 className="font-display magnet-glow-soft text-4xl font-bold text-white sm:text-5xl">
                 Magnet Token
               </h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
@@ -81,8 +113,8 @@ export function MagnetTokenView({
         </div>
       </div>
 
-      {/* Stats + chart + swap, one unified panel */}
-      <Panel className="animate-enter mb-8">
+        <div className="border-t border-white/10" />
+
         {/* Five across on desktop. On two columns the fifth would sit alone in a
             half-width cell with a hanging divider, so it spans the row — a
             deliberate last-row rule, not a gap. */}
