@@ -9,7 +9,7 @@ import {
   getProtocolStats, getStrategyStats,
   type ProtocolStats, type StrategyStats,
 } from "@/lib/magnetfiReads";
-import { Panel } from "@/components/magnetfi/v2/shared";
+import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { AboutModal } from "@/components/tokens/AboutModal";
 import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
@@ -64,9 +64,22 @@ export function MusdTokenView({
 
   return (
     <>
-      {/* Hero */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-8 backdrop-blur-sm sm:px-10 sm:py-10">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
+      {/*
+        ── One card, since 2026-11-07 ────────────────────────────────────────
+        The same merge the Magnet Token view got on the same day, and for the
+        same reason: the hero and the stats panel carried IDENTICAL chrome —
+        `rounded-2xl`, `border-white/10`, `bg-black/40 backdrop-blur-sm` —
+        and each drew its own top hairline, so the page rendered the same card
+        twice with a gap between it.
+
+        Kept deliberately identical to MagnetTokenView: same `MAGNET_GLOW`,
+        same `py-5 sm:py-6` header padding, same `text-4xl sm:text-5xl` title.
+        These two views are the same layout with different figures, and the
+        one thing worse than both being unmerged is one of them being merged.
+        See that file for how the padding and the title size were chosen.
+      */}
+      <Panel glowClass={MAGNET_GLOW} className="animate-enter mb-8">
+      <div className="relative px-6 py-5 sm:px-10 sm:py-6">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
         </div>
@@ -77,7 +90,8 @@ export function MusdTokenView({
               <Image src="/musd-icon.png" alt="mUSD" width={56} height={56} className="h-full w-full object-cover" />
             </div>
             <div>
-              <h1 className="font-display magnet-glow-soft text-3xl font-bold text-white sm:text-4xl">mUSD</h1>
+              {/* Stepped up with the merge, matching MagnetTokenView. */}
+              <h1 className="font-display magnet-glow-soft text-4xl font-bold text-white sm:text-5xl">mUSD</h1>
               <p className="mt-1 max-w-xl text-sm text-gray-300">
                 Magnet Strategies&apos; <span className="font-semibold text-white">USDC-backed</span> stablecoin.
               </p>
@@ -107,8 +121,8 @@ export function MusdTokenView({
         </div>
       </div>
 
-      {/* Stats + chart + swap, one unified panel */}
-      <Panel className="animate-enter mb-8">
+        <div className="border-t border-white/10" />
+
         {/* The treasury repeats on both tabs on purpose: it is one balance
             behind both tokens, not a property of whichever is selected. */}
         <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-5 lg:divide-y-0">
