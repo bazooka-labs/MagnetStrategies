@@ -18,7 +18,7 @@ import { DualStake, networkConstants } from "@myth-finance/dualstake-ts-sdk";
 import { AlgorandClient } from "@algorandfoundation/algokit-utils";
 import { assertDualStakeGroup } from "@/lib/strategy/dualstake/group";
 import {
-  mintRewardCost, readRateIndependently, readSnapshot,
+  accruedReward, mintRewardCost, readRateIndependently, readSnapshot,
 } from "@/lib/strategy/dualstake/reads";
 import { approvalMatchesPin } from "@/lib/strategy/dualstake/client";
 import {
@@ -133,6 +133,40 @@ describe("dualSTAKE against MainNet", () => {
     expect(Number(mintCall!.applicationCall!.onComplete ?? 0)).toBe(0);
     expect(REDEEM_SELECTOR).toHaveLength(8);
   }, 60_000);
+
+  /*
+    Redemption is fully backed by assets already in the contract.
+
+    This is the invariant behind the card's claim that you exit "straight from
+    the contract, with no pool to exit through", and it is worth a test
+    because it is the kind of thing that is true by DEFINITION until someone
+    changes the definition.
+
+    `rate` is `asaBalance / staked`, so the $U owed if every token outstanding
+    redeemed at once is the $U already held — the payout is derived from the
+    balance and so can never exceed it. Nothing has to be swapped to cover an
+    exit. Same on the ALGO side: the app's balance covers `staked`.
+
+    If Myth ever redefines the rate so that redemption draws on value the
+    contract does not yet hold, this fails and the card's copy has to change
+    with it.
+  */
+  it("holds enough \$U and ALGO to redeem every token outstanding", async () => {
+    const APP_ADDR = algosdk.getApplicationAddress(DUALSTAKE_APP_ID).toString();
+    const [snap, acct] = await Promise.all([
+      readSnapshot(SERVER),
+      algod.accountInformation(APP_ADDR).do(),
+    ]);
+    expect(snap).not.toBeNull();
+
+    const owedReward = accruedReward(snap!.stakedMicroAlgo, snap!.rate);
+    expect(snap!.rewardBalance).toBeGreaterThanOrEqual(owedReward);
+    // And the shortfall is rounding, not a gap: a whole base unit or less.
+    expect(snap!.rewardBalance - owedReward).toBeLessThanOrEqual(BigInt(1));
+
+    // The ALGO leg is 1:1, so the app must cover `staked` outright.
+    expect(BigInt(acct.amount)).toBeGreaterThanOrEqual(snap!.stakedMicroAlgo);
+  }, 30_000);
 
   it("builds a redeem the SDK produces and our assertion accepts", async () => {
     /*

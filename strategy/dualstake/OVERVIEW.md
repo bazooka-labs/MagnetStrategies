@@ -184,25 +184,48 @@ test confirmed to go red. A guard whose removal breaks nothing is not a guard.
 
 ## Still open
 
-1. **"No dependence on pool liquidity to exit" is removed from the card, not
-   resolved.** Myth's `rewards` page says the reward swap runs automatically
-   before a mint *or* a redeem, and the SDK passes the Tinyman app and LP
-   account as references on the redeem path. If a failing swap can block a
-   redemption, the pool size is an exit risk and should be disclosed as one.
-   The observed redemption at round 66705349 had no swap inner transactions,
-   so this is unconfirmed in both directions. **Ask Myth.**
-2. **The SDK's licence contradicts itself.** `package.json` declares
+1. **The SDK's licence contradicts itself.** `package.json` declares
    `"license": "BSL"`; the shipped `LICENSE` file is verbatim MIT with an
    unfilled `<copyright holders>` placeholder. BSL normally restricts
    production use and MIT does not, so the grant we are relying on is
    genuinely ambiguous. **Ask Myth**, and pin the dependency exactly
    (currently `^3.3.10`) in the meantime.
-3. **Open a vendor line to Myth**, as we have with Ultrade. Both items above
-   are questions only they can answer, and the Ultrade relationship is the
-   reason the PEX integration is trustworthy.
-4. **Sunsetting.** Myth disable minting and rewards eligibility if staked
-   stays under 30,000 ALGO for four weeks. It currently sits at ~49,319, so
-   the margin is about 19K ALGO. Not disclosed on the card yet.
+2. **Open a vendor line to Myth.** The licence above is a question only they
+   can answer, and the Ultrade relationship is the reason the PEX integration
+   is trustworthy.
+
+## Closed since the audit
+
+**Exit does not depend on pool liquidity.** Both audits flagged the card's
+"no dependence on pool liquidity to exit" as unsubstantiated and it was
+removed. That was right on the evidence available and wrong as a conclusion.
+The founder confirmed the mechanism — redemption is fixed per token, locked
+ALGO plus $U, straight from the contract — and it is verifiable without
+taking anyone's word for it.
+
+`rate` is defined as `asaBalance / staked`, so the $U owed is derived from the
+$U the contract already holds. Measured 2026-11-07: if every token outstanding
+redeemed at once the contract would owe 1,538,506 base $U against 1,538,507 on
+hand, and its ALGO balance (49,321,369,374 µALGO) covers `staked`
+(49,319,479,854) outright. A payout computed from the balance can never exceed
+it, so no swap is ever needed to fund an exit.
+
+What misled the audits — and me — is that Myth's docs say the reward swap runs
+before a mint *or* a redeem, and the SDK passes Tinyman as a reference on both
+paths. Both are true; neither bears on the payout. The swap tops up accrual, it
+does not fund the exit. Two sampled redemptions carried `axfer, pay` inner
+transactions and no app call, consistent with that, though the structural
+argument is what settles it — per
+[[feedback-vendor-spec-beats-sampling]], two observations would not.
+
+The claim is now pinned by a MainNet test ("holds enough $U and ALGO to redeem
+every token outstanding"), so if Myth redefine the rate the copy fails a test
+rather than quietly becoming false.
+
+**Sunsetting is not a risk here.** Myth disable minting and rewards
+eligibility below 30,000 ALGO staked for four weeks. The ~49,319 ALGO staked
+is the founder's own and is not being withdrawn, so the threshold is not in
+play. Not disclosed on the card.
 
 ## Open question for the founder
 

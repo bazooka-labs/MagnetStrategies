@@ -128,23 +128,36 @@ export function DualStakeCard() {
             rewards are in $U at all, and the thing that makes this card
             different from an ordinary liquid-staking box.
 
-            The exit sentence says "no unbonding period" and stops there. It
-            used to add "and no dependence on pool liquidity to exit", which we
-            cannot substantiate: Myth's own docs say the reward swap runs
-            automatically before a mint OR a redeem, and the SDK passes the
-            Tinyman app and LP account as references on the redeem path too. If
-            a pending swap can fail a redemption, that clause was the opposite
-            of true, and it is not a claim to make on a guess. Both audits
-            flagged it independently. Open with Myth — see OVERVIEW.md. */}
+            ── On "without depending on pool liquidity" ───────────────────────
+            Both audits flagged this clause as unsubstantiated, and I removed
+            it. That was the right call on the evidence I had and the wrong
+            conclusion: the claim is true, and structurally so.
+
+            Redemption is fixed per token — locked ALGO plus $U, straight from
+            the contract. No pool is involved. The proof is in the rate's own
+            definition, `asaBalance / staked`: the $U owed is DERIVED from the
+            $U already held, so if every token outstanding redeemed at once the
+            contract would owe 1,538,506 base $U against 1,538,507 on hand
+            (measured 2026-11-07; the one unit is floor rounding, in its
+            favour). A payout computed from the balance can never exceed it, so
+            it can never need a swap to cover it.
+
+            What misled me: Myth's docs say the reward swap runs before a mint
+            or a redeem, and the SDK passes Tinyman as a reference on both
+            paths. Both are true and neither bears on the payout — the swap
+            tops up accrual, it does not fund the exit. `dualstake.live.test`
+            pins the backing invariant, so if Myth ever redefines the rate this
+            sentence fails a test rather than quietly becoming false. */}
         <div className="rounded-xl border border-magnet-400/20 bg-magnet-500/[0.06] px-4 py-3">
           <p className="flex items-start gap-2 text-xs leading-relaxed text-gray-400">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-300" aria-hidden="true" />
             <span>
               The contract stakes your ALGO in Algorand consensus and swaps the rewards into
-              $U. Redeem any time, with no unbonding period, for <strong
-                className="font-semibold text-gray-300">1 ALGO per magnetALGO plus the $U
-              accrued</strong>. Minting also costs a little $U up front — a new token has to
-              arrive backed like the existing ones — and that comes back when you redeem.
+              $U. Redeem any time for <strong className="font-semibold text-gray-300">1 ALGO
+              per magnetALGO plus the $U accrued</strong> — a fixed amount, paid straight from
+              the contract, with no unbonding period and no pool to exit through. Minting also
+              costs a little $U up front, because a new token has to arrive backed like the
+              existing ones; that comes back when you redeem.
             </span>
           </p>
         </div>
