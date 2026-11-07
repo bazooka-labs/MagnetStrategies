@@ -1,7 +1,8 @@
 # magnetALGO dualSTAKE — Myth Finance
 
-_Status: **investigated, not built.** Everything below was measured against
-mainnet on 2026-11-06, not taken from documentation._
+_Status: **investigated, not built.** Build against Myth's official
+TypeScript SDK — see "Use the SDK, not my reverse-engineering" below, which is
+the most important section in this file._
 
 ## What it is
 
@@ -27,18 +28,25 @@ buyer of $U. It is the strongest third-party alignment on the board.
 
 ## Measured transaction shapes
 
-**Deposit — `mint()void`, selector `5588dcb4`.** Group of 3 (2 once opted in):
+**Deposit — `mint()void`, selector `5588dcb4`.** Minting takes **ALGO *and*
+$U**, not ALGO alone. Myth's docs: "Users stake `X ALGO` + `Y ASA`, receiving
+`X` dualSTAKE tokens."
+
+Measured at round 66669741 — 60 magnetALGO minted:
 
 ```
-[0] axfer  0 magnetALGO, self -> self        (opt-in; first time only)
-[1] appl   mint() on 3760408044, fee 2000
-             foreignAssets [3081853135, 3760411000], 1 account
-           inner: axfer magnetALGO  app -> user
-[2] pay    ALGO  user -> app address
+[0] pay    0.019068 ALGO                      (fee for the swap below)
+[1] appl   swap on Tinyman v2 1002541853      (acquiring the $U leg)
+[2] axfer  0 magnetALGO, self -> self         (opt-in; first time only)
+[3] appl   mint() on 3760408044
+             foreignAssets [3081853135, 3760411000]
+[4] pay    60.000000 ALGO   user -> app
+[5] axfer  1,249 $U         user -> app       <-- the $U requirement
+[6] axfer  60,000,000 magnetALGO  app -> user
 ```
 
-Observed: 2.000000 ALGO in, 2,000,000 magnetALGO out. Total group fee
-4,000 µALGO. Note the payment is LAST.
+`Y` grows as rewards accrue, because a new token must arrive backed by the
+same $U per token as every existing one.
 
 **Exit — `redeem()void`, selector `27172f4a`.** Observed group:
 
@@ -91,12 +99,39 @@ Two consequences, and the second corrects an earlier reading of mine:
    deepen that pool beyond the farm incentive already planned — it is the
    throughput limit on the product's entire return.
 
-## Answering "is there an MCP or SDK?"
+## Use the SDK, not my reverse-engineering
 
-No Myth MCP is available, and none is needed. The group shapes above are
-measured from real mainnet transactions, which is the same basis the PEX
-integration is built on and a better one than a vendored SDK: it is what the
-contract actually accepts today, not what a library claims it accepts.
+**There is an official path and it must be used.** Myth publish
+[dualSTAKE documentation](https://docs.myth.finance/dualSTAKE/overview) with a
+"For Developers" section containing a **TypeScript SDK**, and a
+`dualSTAKE-ts-sdk` repository under [github.com/MythFinance](https://github.com/MythFinance/).
+
+The first draft of this document reverse-engineered the group shapes from
+five on-chain transactions and asserted that a deposit was "ALGO in, no SDK
+needed". **That was wrong, and measurably so.** Three of those five mints
+carried no $U leg — but only because they happened at zero accrual: one was
+Myth's own 49,500 ALGO seeding mint and one was on launch day. The next mint
+in the record, at round 66669741, required 1,249 µ$U alongside 60 ALGO, and a
+Tinyman swap to obtain it.
+
+A builder written from that sample would have produced groups missing a
+required asset transfer. It would have failed, which is survivable — but the
+same error in the other direction, over-sending or mis-scaling `Y`, is not.
+
+The lesson is narrower than "measure the chain", which is already repo
+doctrine and is exactly what produced the wrong answer here: **a small sample
+of a third-party protocol can be unrepresentative and still look conclusive.**
+Where a vendor publishes a spec or an SDK, that is the authority, and chain
+observation is how you verify it — not a substitute for it.
+
+**Precedent, and the contrast that matters.** The PEX integration is not
+reverse-engineered: Ultrade publish a protocol manifest to a public artifact
+endpoint (`pex/manifest.ts` vendors it and pins its SHA-256), there is an
+official SDK, and there was direct vendor contact — `quote.ts` carries
+"Ultrade, 2026-09-28: do NOT use `collateral_delta`", which is the vendor
+correcting us on a specific field. We have no equivalent relationship with
+Myth yet, and should open one before shipping a card that moves user funds
+into their contract.
 
 ## What must be disclosed on the card, and why
 
@@ -119,6 +154,9 @@ runner, and the 65M ALGO cap is a real ceiling.
 Not a small card. It moves user funds into a third-party contract, so it needs
 the same discipline as the PEX paths:
 
+0. **Read Myth's SDK and minting docs first**, and get the `Y` ($U requirement)
+   calculation from their specification rather than inferring it. Open a line
+   to Myth, as we have with Ultrade.
 1. `lib/strategy/dualstake/` — client, group builder, chain reads for rate,
    `staked`, cap headroom and the user's position.
 2. A group **assertion** of the kind `pex/group.ts` provides: pinned shape,
