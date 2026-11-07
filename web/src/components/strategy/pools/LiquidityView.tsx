@@ -40,6 +40,7 @@ import { StrategySplash } from "./StrategySplash";
 import { LiquidityActions } from "./LiquidityActions";
 import { CvaActions } from "./CvaActions";
 import { LpPoolsSection } from "@/components/strategy/pools/LpPoolsSection";
+import { DualStakeCard } from "@/components/strategy/dualstake/DualStakeCard";
 import { CvaAbout } from "./CvaAbout";
 import { getIndexerClient } from "@/lib/algorand";
 import {
@@ -625,7 +626,17 @@ export function LiquidityView({ magnetView }: {
       */}
       {tab === "vaults" && (
       <div className="max-w-5xl">
-      <div className="grid gap-5 md:grid-cols-2">
+      {/*
+        `items-start`, so each card is its own height.
+
+        The grid defaults to stretching every cell to the tallest, which was
+        invisible while the cards were near-identical in length. The dualSTAKE
+        card is considerably taller — it carries a mechanism note and a
+        third-party disclosure — and stretching left the C-Vault column with a
+        large empty panel below its button, which reads as a card that failed
+        to load rather than one that is simply shorter.
+      */}
+      <div className="grid items-start gap-5 md:grid-cols-2">
         {/* ── C-Vault ──
             The hero card: it is the only product the public sees, so it gets
             the display heading, the drifting blob and the green rate box. The
@@ -914,6 +925,15 @@ export function LiquidityView({ magnetView }: {
             </CardShell>
           );
         })}
+        {/*
+          magnetALGO dualSTAKE, added 2026-11-06 — the second public strategy,
+          and the first one that deposits into a contract we did not write.
+
+          It lands here without touching the layout, which is what the fixed
+          two-up grid above was for: the comment there predicted "a new
+          strategy lands beside this one", and this is that strategy.
+        */}
+        <DualStakeCard />
         {/* Last child, so it fills whichever cell the row count leaves open. */}
         <NextStrategyTile />
       </div>
