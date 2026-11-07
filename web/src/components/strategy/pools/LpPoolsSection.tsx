@@ -19,13 +19,30 @@
  */
 
 import { useEffect, useState } from "react";
-import { Wheat, ArrowUpRight, Info } from "lucide-react";
+import { Blocks, Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
 import { ALGO_GLOW, MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
 const fmtApr = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)}%`);
+
+/**
+ * The shared shape of a status badge, so the two are a matched set.
+ *
+ * They stack on the same card — tALGO is liquid staking AND farming — and two
+ * pills of different sizes above one another reads as a mistake.
+ *
+ * Sized down from `text-[11px] px-2.5 gap-1.5`, which made "Liquid Staking"
+ * 115px wide and left the pair name 79px against the 80px it needed. The
+ * header is a fixed two-column squeeze, so the budget was the real problem:
+ * at the old size a single extra character in any pool name wrapped the
+ * title. 10px type and tighter padding buys the title back about 18px, which
+ * is room for a name, not just for this one.
+ */
+const BADGE =
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border "
+  + "px-2 py-0.5 text-[10px] font-semibold";
 
 function DexBadge({ dex }: { dex: PoolDex }) {
   return (
@@ -82,17 +99,43 @@ function PoolCard({ p }: { p: PoolData }) {
         <div className="flex items-center gap-3">
           <PairGlyph tokens={["$U", p.partner]} />
           <div>
-            <p className="font-display text-base font-semibold text-white">{p.pair}</p>
+            {/* `whitespace-nowrap`: a pair name is one label and must never
+                split. "U / uALGO" needs 80px and had 79, so it broke into
+                "U /" over "uALGO" while "U / tALGO" at 76 fit — two cards of
+                the same kind, side by side, laid out differently over one
+                pixel. `U / FOLKS` at 78 was a character away from the same. */}
+            <p className="whitespace-nowrap font-display text-base font-semibold text-white">{p.pair}</p>
             <p className="mt-0.5 flex flex-wrap gap-1.5">
               {p.venues.map((v) => <DexBadge key={v.dex} dex={v.dex} />)}
             </p>
           </div>
         </div>
-        {farming && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-green-300">
-            <Wheat className="h-3 w-3" /> Farming
-          </span>
-        )}
+        {/*
+          Two badges can be true at once, so they live in a wrapping column
+          rather than as one element pinned to the right.
+
+          uALGO is the case: its Tinyman farm starts next month, at which
+          point it is both liquid staking AND farming. A single right-hand
+          slot would have had them fighting over it — and at 360px a row of
+          two would push the pair name into a second line.
+
+          Amber for liquid staking, matching the gold glow these two cards
+          carry, and distinct from the green that means "a farm is paying".
+          The two badges answer different questions: one is what the pool IS,
+          the other is what it is doing this week.
+        */}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {p.liquidStaking && (
+            <span className={`${BADGE} border-amber-400/30 bg-amber-400/10 text-amber-200`}>
+              <Blocks className="h-3 w-3" /> Liquid Staking
+            </span>
+          )}
+          {farming && (
+            <span className={`${BADGE} border-green-500/30 bg-green-500/10 text-green-300`}>
+              <Wheat className="h-3 w-3" /> Farming
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Total APR headline */}
@@ -216,7 +259,10 @@ export function LpPoolsSection() {
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p>
           <span className="font-medium text-gray-400">Farming</span> badge indicates a farm is currently live for
-          the associated liquidity pool. Farm pools pay reward incentives on top of swap fees.
+          the associated liquidity pool. Farm pools pay reward incentives on top of swap fees.{" "}
+          <span className="font-medium text-gray-400">Liquid Staking</span> marks a pool whose other side is
+          ALGO staked for consensus through a third party — tALGO on Tinyman, uALGO on Myth Finance — so the
+          position carries that protocol&apos;s risk as well as the pool&apos;s.
         </p>
       </div>
     </section>

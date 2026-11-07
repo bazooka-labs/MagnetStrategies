@@ -295,3 +295,48 @@ describe("pool token icons", () => {
     expect(broken, `icon path points at no file: ${broken.join(", ")}`).toEqual([]);
   });
 });
+
+/**
+ * The liquid-staking pools, asserted against the REAL data.
+ *
+ * `LpPoolsGlow.test.tsx` renders the card from its own fixture, so it proves
+ * the component honours the flag and proves nothing about which pools carry
+ * it. Deleting `accent` and `liquidStaking` from the tALGO entry survived
+ * that suite untouched — the exact change this was all for.
+ */
+describe("liquid-staking pools", () => {
+  /** Both verified on chain 2026-11-07 — see the `liquidStaking` doc. */
+  const EXPECTED = ["u-talgo", "u-ualgo"];
+
+  it("flags exactly the two ALGO liquid-staking pairs", () => {
+    const flagged = all.filter((p) => p.liquidStaking).map((p) => p.id).sort();
+    expect(flagged).toEqual(EXPECTED);
+  });
+
+  it("gives both of them the gold accent", () => {
+    // The pair the user sees: same kind of pool, same glow. tALGO was purple
+    // and unbadged until 2026-11-07 while uALGO was gold, which made two
+    // pools of one kind read as two different kinds.
+    for (const id of EXPECTED) {
+      const p = all.find((x) => x.id === id)!;
+      expect(p, `${id} missing from POOLS`).toBeDefined();
+      expect(p.accent, `${id} should be gold`).toBe("gold");
+    }
+  });
+
+  it("does not flag plain ALGO", () => {
+    // U/ALGO is the native asset, not a staking derivative. If the badge
+    // ever lands on it the distinction it draws is gone.
+    expect(all.find((p) => p.id === "u-algo")!.liquidStaking).toBeUndefined();
+    expect(all.find((p) => p.id === "u-algo")!.accent).toBeUndefined();
+  });
+
+  it("keeps gold for liquid staking only, so the glow means one thing", () => {
+    // Gold marks the ALGO-family outsider. Today that set and the
+    // liquid-staking set are identical; if a future pool is gold for some
+    // other reason this fails and the legend needs rewording, because it
+    // tells the reader gold means staked ALGO.
+    const gold = all.filter((p) => p.accent === "gold").map((p) => p.id).sort();
+    expect(gold).toEqual(EXPECTED);
+  });
+});

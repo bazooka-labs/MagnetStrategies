@@ -600,6 +600,26 @@ pills in the old order and claim it was the rendered one; the order is
 `magnet, liquidity, vaults` in `LiquidityView.tsx` and the landing view
 matches it.
 
+**The Liquidity Pools pill marks liquid staking, since 2026-11-07.** tALGO
+and uALGO are the same kind of pair — $U against ALGO staked for consensus by
+a third party — and read as two different kinds, because uALGO was gold and
+badged while tALGO was purple and plain. Both now carry the gold glow and a
+`Liquid Staking` badge beside `Farming`; tALGO carries both at once, its farm
+being live.
+
+Carried as a `liquidStaking` flag on the pool record, not as a pool id in the
+component, and **verified on chain rather than inferred from the names**:
+tALGO's reserve (asset `2537013734`, Tinyman) holds 17.8M ALGO online and
+incentive eligible, against 32.3M tALGO issued. Naming decides nothing here —
+gALGO and xALGO are liquid staking, tMOON is not.
+
+One layout consequence, found by measuring rather than reading: the header is
+a fixed two-column squeeze, and at the badges' original size "U / uALGO"
+needed 80px against the 79 it had, so it broke across two lines while
+"U / tALGO" at 76 did not. Both badges are now 10px on tighter padding and the
+pair name never wraps, which buys the title ~18px — room for a name rather
+than for this one name.
+
 **The Vaults pill holds two strategies as of 2026-11-07.** magnetALGO landed
 beside the C-Vault without touching the grid, which is what the two-per-row
 rule below was written to allow. One change was needed: the grid now sets

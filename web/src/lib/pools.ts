@@ -40,6 +40,28 @@ export type Pool = {
    */
   accent?: "gold";
   /**
+   * The partner token is an ALGO liquid-staking token.
+   *
+   * tALGO and uALGO are the same KIND of thing — ALGO staked for consensus,
+   * represented by a transferable token — and a supplier to either pool is
+   * taking that on top of the usual LP exposure. The badge says so.
+   *
+   * Carried as data for the same reason `accent` is: the component should
+   * know about a property, not about two pool ids. Both were verified on
+   * chain rather than inferred from their names (2026-11-07):
+   *
+   *   tALGO  asset 2537013734, Tinyman — reserve EP2YRTCL… holds 17.8M ALGO,
+   *          Online and incentive eligible, 32.3M tALGO in circulation
+   *   uALGO  asset 3760411000, Myth Finance — the dualSTAKE app account,
+   *          Online and incentive eligible. See strategy/dualstake/
+   *
+   * Naming is not evidence: gALGO, xALGO and mALGO are liquid staking and
+   * tMOON is not, so "starts with a letter then ALGO" decides nothing. What
+   * decides it is an account holding staked ALGO online against an issued
+   * token, which is what was checked.
+   */
+  liquidStaking?: true;
+  /**
    * One line under the pair, for something true that the metrics cannot say.
    *
    * A pinned pool with no APR looks broken rather than new, and the reason is
@@ -106,7 +128,17 @@ export const POOLS: Pool[] = ([
   },
   // ── Tinyman ──
   {
+    /**
+     * Tinyman's liquid staking token, asset 2537013734 (unit `TALGO`).
+     *
+     * Gold and badged for the same reason uALGO is: the partner side of this
+     * pair is staked ALGO, not a plain token. It had neither until
+     * 2026-11-07, which made two pools of the same kind look like two
+     * different kinds of pool.
+     */
     id: "u-talgo", pair: "U / tALGO", partner: "tALGO",
+    accent: "gold",
+    liquidStaking: true,
     venues: [{ dex: "tinyman", ref: "AIR4CSC54U33WCX4JTMJA4X6PHBVG7OGX7XVV2MCACYSSDULZNJ2KNGRZI" }],
   },
   {
@@ -130,6 +162,7 @@ export const POOLS: Pool[] = ([
     id: "u-ualgo", pair: "U / uALGO", partner: "uALGO",
     featured: true,
     accent: "gold",
+    liquidStaking: true,
     note: "Tinyman farm starts next month — the rate here is fees only until then.",
     venues: [{ dex: "tinyman", ref: "CVS3GGY5GC3K3AB55PTLK4JCTH6HMAITMTDRBXPVEOWTA7RY5KPJUFY4LM" }],
   },
