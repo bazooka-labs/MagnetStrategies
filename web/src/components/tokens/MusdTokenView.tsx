@@ -12,6 +12,7 @@ import {
 import { Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { AboutModal } from "@/components/tokens/AboutModal";
+import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
 import { MusdPoolsSection } from "@/components/tokens/MusdPoolsSection";
@@ -92,6 +93,16 @@ export function MusdTokenView({
                 or by borrowing against specified collateral options.
               </p>
             </AboutModal>
+            {/*
+              Moved here from the Magnet Token hero on 2026-11-07.
+
+              Voting is weighted by mUSD, so this is where the holder who can
+              actually act on it is reading — and the Governance tab it opens
+              is on THIS page, one pill away, rather than one navigation away.
+              See the note at the foot of MagnetTokenView.tsx for why it lived
+              there first.
+            */}
+            <LiveProposalsPill />
           </div>
         </div>
       </div>

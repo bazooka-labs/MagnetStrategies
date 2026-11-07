@@ -224,21 +224,42 @@ describe("the old route is retired, not orphaned", () => {
   });
 });
 
-describe("the hero points across at governance", () => {
+describe("the hero points at governance", () => {
   const pill = readFileSync("src/components/tokens/LiveProposalsPill.tsx", "utf8");
   const store = readFileSync("src/hooks/useGovernanceProposals.ts", "utf8");
+  const musd = readFileSync("src/components/tokens/MusdTokenView.tsx", "utf8");
 
-  it("links to the other page rather than anchoring within this one", () => {
+  it("uses the full path, not a bare fragment", () => {
     /**
      * It was `#governance`, which worked while the pill and the section shared
-     * a page. They no longer do: the pill rides in the Magnet Token hero on
-     * /strategy and the section is a pill on /tokens, so a bare fragment points
-     * at an element that is not in the document — which scrolls nowhere and
+     * a page. They parted company on 2026-11-04, and a bare fragment pointed
+     * at an element that was not in the document — which scrolls nowhere and
      * reports nothing, the quietest possible breakage.
+     *
+     * The pill is back on /tokens since 2026-11-07, so a fragment would work
+     * again — and it still must not be one. `TokensView` selects the pill by
+     * reading the hash; the browser's anchor handling has nothing to scroll
+     * to, because the section does not exist until the pill is chosen.
      */
     expect(pill).toContain('href="/tokens#governance"');
     expect(pill).not.toMatch(/href="#governance"/);
-    expect(magnet).toContain("<LiveProposalsPill />");
+  });
+
+  it("rides in the mUSD hero, not the Magnet Token one", () => {
+    /*
+      Moved 2026-11-07. Voting is weighted by mUSD, so the holder who can act
+      on the count is the one reading the mUSD hero — and the Governance pill
+      it opens is on that same page.
+
+      Both halves are asserted. Checking only the new home would pass with the
+      pill rendered in both places, which is the likelier mistake in a move
+      than failing to add it.
+    */
+    expect(musd).toContain("<LiveProposalsPill />");
+    expect(magnet).not.toContain("<LiveProposalsPill />");
+    // The import has to go with it, or the move is half-done and the next
+    // edit re-adds the element against a still-valid symbol.
+    expect(magnet).not.toContain('from "@/components/tokens/LiveProposalsPill"');
   });
 
   it("counts from the SAME list the section renders", () => {
@@ -279,11 +300,42 @@ describe("the hero points across at governance", () => {
     expect(pill).not.toMatch(/if \(n === 0\) return null|if \(!open\) return null/);
   });
 
-  it("stacks the three pills in a fixed order", () => {
-    const head = magnet.slice(magnet.indexOf("flex shrink-0 flex-col"), magnet.indexOf("<LiveProposalsPill />"));
-    expect(head.indexOf("Live on Algorand mainnet")).toBeLessThan(head.indexOf('triggerLabel="About $U"'));
-    expect(magnet).toContain("flex shrink-0 flex-col items-start gap-2 sm:items-end");
+  it("keeps the Magnet hero's pill column, now holding one pill", () => {
+    /*
+      ── This test asserted nothing for some time, and the rewrite is the fix ──
+      It read:
+
+        const head = magnet.slice(indexOf("flex shrink-0 flex-col"),
+                                  indexOf("<LiveProposalsPill />"));
+        expect(head.indexOf("Live on Algorand mainnet"))
+          .toBeLessThan(head.indexOf('triggerLabel="About $U"'));
+
+      "Live on Algorand mainnet" is not in that file and has not been: its
+      `indexOf` was -1, About $U's was positive, and -1 < positive passes. So
+      it certified an ordering between a string that exists and one that does
+      not. Removing the pill on 2026-11-07 only made the breakage visible, by
+      turning the slice's end index into -1 as well.
+
+      What is actually true is asserted instead: the column is still there
+      with the layout the comment above it describes, and About $U is in it.
+      One element needs no ordering, so none is claimed.
+    */
+    const start = magnet.indexOf("flex shrink-0 flex-col items-start gap-2 sm:items-end");
+    expect(start, "the pill column is gone from the Magnet hero").toBeGreaterThan(-1);
+    const column = magnet.slice(start, magnet.indexOf("</AboutModal>", start));
+    expect(column).toContain('triggerLabel="About $U"');
   });
+
+  it("puts the pill beside About mUSD in the mUSD hero", () => {
+    const about = musd.indexOf('triggerLabel="About mUSD"');
+    const pillAt = musd.indexOf("<LiveProposalsPill />");
+    expect(about).toBeGreaterThan(-1);
+    expect(pillAt).toBeGreaterThan(about);
+    // Same flex row: no closing div between the two.
+    expect(musd.slice(musd.indexOf("</AboutModal>", about), pillAt))
+      .not.toContain("</div>");
+  });
+
 });
 
 describe("the metric row lines up", () => {

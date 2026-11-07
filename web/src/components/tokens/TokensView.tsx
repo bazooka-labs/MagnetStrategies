@@ -76,6 +76,14 @@ function TabButton({
  * change, which does not remount this component, so a mount-only read would
  * leave the Exchange pill selected under a URL claiming otherwise.
  */
+/**
+ * "Open the Governance pill", as a DOM event.
+ *
+ * Exported so the pill and this view cannot drift on the string. A same-page
+ * <Link> cannot be relied on to fire `hashchange`; see the listener below.
+ */
+export const OPEN_GOVERNANCE = "magnet:open-governance";
+
 export function TokensView({
   exchangeView,
   governanceView,
@@ -92,8 +100,64 @@ export function TokensView({
     if (wanted()) setTab("governance");
     const onHash = () => { if (wanted()) setTab("governance"); };
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+
+    /*
+      ── Why a custom event, and not just the hash ──
+      `LiveProposalsPill` is on THIS page since 2026-11-07, so pressing it is
+      a same-page navigation. Next's <Link> performs that through the router's
+      history API, which updates `location.hash` and **fires no `hashchange`
+      event** — the listener above never runs, and the pill sets the URL while
+      leaving the Exchange pill showing.
+
+      This was measured in a real browser, not reasoned about. A jsdom test
+      that dispatched `hashchange` by hand passed throughout, because the
+      synthetic event is the one thing the real navigation does not produce.
+      The pill therefore says what it wants explicitly rather than relying on
+      a side effect of routing.
+
+      The hash listener stays: it is what serves `/vote` and `/dao`, and an
+      inbound link followed from another tab on this same page.
+    */
+    const onOpen = () => setTab("governance");
+    window.addEventListener(OPEN_GOVERNANCE, onOpen);
+
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener(OPEN_GOVERNANCE, onOpen);
+    };
   }, []);
+
+  /**
+   * Pick a pill AND make the URL say so.
+   *
+   * ── The hole this closes, which `LiveProposalsPill` moving here opened ──
+   * Selecting a pill used to leave the URL alone, so a visitor who arrived at
+   * `/tokens#governance` and then clicked **Exchange** sat on the Exchange
+   * view under a URL still reading `#governance`. Harmless while the only
+   * links in were from elsewhere.
+   *
+   * It stopped being harmless on 2026-11-07, when the pill moved onto this
+   * page: it links to `/tokens#governance`, and from that stale state the
+   * hash does not CHANGE, so no `hashchange` fires, so nothing happens. A
+   * live count sitting above a button that does nothing when pressed.
+   *
+   * Rewriting the URL on every selection keeps it honest — which also makes
+   * the page shareable from either pill — and guarantees the pill's
+   * navigation is always a real transition. `replaceState` rather than
+   * assigning `location.hash`: it adds no history entry, so Back still leaves
+   * the page rather than cycling pills, and it fires no `hashchange`, so this
+   * cannot loop through the listener above.
+   */
+  const select = (next: Tab) => {
+    setTab(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.hash = next === "governance" ? "governance" : "";
+    // The query form is accepted on the way in, so it has to be cleared on
+    // the way out or it outlives the hash and contradicts the view.
+    url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.toString());
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -102,13 +166,13 @@ export function TokensView({
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
           <TabButton
             active={tab === "exchange"}
-            onClick={() => setTab("exchange")}
+            onClick={() => select("exchange")}
             icon={ArrowLeftRight}
             label="Exchange"
           />
           <TabButton
             active={tab === "governance"}
-            onClick={() => setTab("governance")}
+            onClick={() => select("governance")}
             icon={VoteIcon}
             label="Governance"
           />

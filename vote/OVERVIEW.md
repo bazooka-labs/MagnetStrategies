@@ -33,6 +33,32 @@ existing safeguards.
 
 ---
 
+
+## Where the Live proposals pill lives
+
+In the **mUSD hero**, beside "About mUSD", since 2026-11-07. It rode in the
+Magnet Token hero on /strategy for three days, on a discovery argument: that
+page had the traffic and nothing else in the nav pointed at a vote. Voting is
+weighted by mUSD, so the holder who can act on the count is the one reading
+the mUSD page — and the Governance pill it opens is on that same page.
+
+**It needs an explicit event, not just its href.** Pressing it is now a
+same-page navigation, and Next routes a hash change through the history API
+without firing `hashchange` — so `TokensView`'s listener never ran and the
+pill set the URL while leaving Exchange selected. A live count above a button
+that did nothing.
+
+That shipped nowhere: it was caught by clicking the pill in a real browser
+before the push. A jsdom test passed throughout, because it dispatched
+`hashchange` by hand — the one event the real navigation does not produce.
+The pill now dispatches `OPEN_GOVERNANCE` as well as navigating, and both
+sides of that contract are tested. **Simulation is not a signature** applies
+to UI events as much as to signing.
+
+`TokensView` also keeps the URL in step with the selected pill, so the hash
+can no longer go stale against the view.
+
+
 ## What it is (and what it replaced)
 
 UVote is the evolution of the original "MagnetDAO" concept. That earlier framing —

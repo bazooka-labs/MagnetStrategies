@@ -6,7 +6,6 @@ import { TvlRankStat } from "@/components/TvlRankStat";
 import { AboutModal } from "@/components/tokens/AboutModal";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
-import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 
 const pulse = () => <div className="h-64 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -51,10 +50,17 @@ export function MagnetTokenView({
             </div>
           </div>
 
-          {/* Stacked, right-aligned: status, then what this is, then what needs
-              you. Three pills in a row crowded the mark at tablet width and
-              wrapped unpredictably; a column puts them in a fixed reading
-              order. */}
+          {/* A right-aligned column, holding one pill today.
+
+              It was three — a mainnet status badge, About $U, and
+              LiveProposalsPill — and three in a ROW crowded the mark at tablet
+              width and wrapped unpredictably, which is why it is a column. The
+              status badge went some time ago and the proposals pill moved to
+              the mUSD hero on 2026-11-07.
+
+              Kept as a column rather than collapsed: it gains a second pill
+              again the moment anything else belongs here. See the note at the
+              foot of this file. */}
           <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
             <AboutModal triggerLabel="About $U" heading="What is $U?">
               <p>
@@ -71,7 +77,6 @@ export function MagnetTokenView({
                 TxnLab.
               </p>
             </AboutModal>
-            <LiveProposalsPill />
           </div>
         </div>
       </div>
@@ -112,13 +117,20 @@ export function MagnetTokenView({
         "Governance" pill, and the contract moved with it: mVote locks mUSD and
         UVote is retired. A vote no longer concerns a $U holder as such.
 
-        The hero keeps `LiveProposalsPill` anyway, for discovery rather than
-        relevance — a visitor here is a protocol participant, and it is the
-        only standing pointer to an open vote outside the mUSD page itself.
+        ── `LiveProposalsPill` followed it on 2026-11-07 ──────────────────────
+        It stayed here for three days on a discovery argument: a visitor to
+        this hero is a protocol participant, and the pill was the only standing
+        pointer to an open vote. That was the right call while governance had
+        no live proposal to point at and this page had the most traffic.
+
+        With mVote's first proposal open the argument flips. Voting is weighted
+        by mUSD, so the holder who can act on the pill is the one reading the
+        mUSD hero — and the pill now sits there, beside "About mUSD", one pill
+        away from the Governance tab it opens rather than one page away.
 
         Nothing replaces either one here. A stub reading "governance moved" is a
-        navigational dead end dressed as content; the pill in the hero is the
-        signpost, and it carries a live count rather than a sentence.
+        navigational dead end dressed as content, and a pointer whose audience
+        is on another page is close to the same thing.
       */}
     </>
   );
