@@ -1,8 +1,16 @@
 # magnetALGO dualSTAKE — Myth Finance
 
-_Status: **investigated, not built.** Build against Myth's official
-TypeScript SDK — see "Use the SDK, not my reverse-engineering" below, which is
-the most important section in this file._
+_Status: **built, audited and live** on the Strategy page's Vaults pill.
+Built against Myth's official TypeScript SDK — see "Use the SDK, not my
+reverse-engineering" below, which is still the most important section in this
+file._
+
+| | |
+|---|---|
+| Code | `web/src/lib/strategy/dualstake/`, `web/src/components/strategy/dualstake/` |
+| Spec | [SPEC.md](./SPEC.md) |
+| Hermetic tests | `group.test.ts`, `amount.test.ts`, `depositGuards.test.ts`, `reads.test.ts` |
+| MainNet tests | `web/src/lib/strategy/__live__/dualstake.live.test.ts` |
 
 ## What it is
 
@@ -149,24 +157,52 @@ trusting Myth's admin keys, and should be told so in those words.
 Also worth stating plainly: fees total 650 bps across platform and node
 runner, and the 65M ALGO cap is a real ceiling.
 
-## What building it would take
+## What the audit found
 
-Not a small card. It moves user funds into a third-party contract, so it needs
-the same discipline as the PEX paths:
+Two independent agents reviewed the first working version with no shared
+context — one on fund safety, one on the figures and copy. Both reported, and
+every finding below was reproduced by hand before it was acted on. The
+pattern is worth recording: **the serious defects were in what the assertion
+did not check, not in what it checked wrongly.**
 
-0. **Read Myth's SDK and minting docs first**, and get the `Y` ($U requirement)
-   calculation from their specification rather than inferring it. Open a line
-   to Myth, as we have with Ultrade.
-1. `lib/strategy/dualstake/` — client, group builder, chain reads for rate,
-   `staked`, cap headroom and the user's position.
-2. A group **assertion** of the kind `pex/group.ts` provides: pinned shape,
-   pinned app id, pinned asset ids, an allowed-asset enumeration we build
-   ourselves, a fee cap, and a `value_leaves` rule binding every destination
-   to the dualSTAKE app address.
-3. Live MainNet simulation proving build + assert + simulate on real bytes,
-   both mint and redeem, before anything is signed.
-4. An independent audit pass, per "no hot fixes on money paths".
-5. The disclosures above, on the card rather than in a doc.
+| Severity | Finding | Fix |
+|---|---|---|
+| High | `assertDualStakeGroup` never required an app call, so a lone `pay -> app` passed every check — the user's ALGO donated, no magnetALGO minted | pinned `MINT_SELECTOR` / `REDEEM_SELECTOR`, exactly one dualSTAKE call |
+| High | `rewardToApp` was bounded on mint only, so a redeem could carry the user's entire $U balance to the app and pass `value_leaves` | redeem requires `rewardToApp == 0` |
+| High | Nothing on the card said a deposit **costs $U**; a wallet without it met the requirement as a raw simulate failure | pre-checked balance and opt-in, cost shown in the preview and on the button |
+| High | "$U accrued to you", tinted green, was the GROSS redeemable figure — it counted the user's own entry cost as profit | relabelled "$U on redemption", untinted |
+| Medium | Only pay/axfer/appl were inspected; `keyreg`, `acfg`, `afrz` fell past every branch — a `nonParticipation` rider was irreversible | transaction-type whitelist |
+| Medium | `onComplete` unchecked, so a Tinyman CloseOut or a dualSTAKE ClearState could ride along | every app call must be NoOp |
+| Medium | The $U bound (`2 * est + 1000`) came from the SDK's own rate, so a wrong rate moved the ceiling and the amount together | `readRateIndependently` off raw algod; bound tightened to `est + 1% + 2` |
+| Medium | `BigInt(Math.floor(n * 1e6))` truncated 1,196 of the two-decimal inputs under 1000 — typing `2.01` deposited 2.009999 | `amount.ts`, exact string-to-bigint |
+| Medium | The fee line fell back to a hardcoded "6.5%" when the read failed, stating a figure we had not read | read live or not stated at all |
+| Low | The pin check failed OPEN on deposit: `null` (unreadable) was treated like a match | deposit requires `=== true`; redeem still skips it entirely |
+| Low | 4dp rounding rendered a non-zero holding as "0.0000" | `< 0.0001` |
+
+Every new guard was mutation-tested: each was disabled in turn and the named
+test confirmed to go red. A guard whose removal breaks nothing is not a guard.
+
+## Still open
+
+1. **"No dependence on pool liquidity to exit" is removed from the card, not
+   resolved.** Myth's `rewards` page says the reward swap runs automatically
+   before a mint *or* a redeem, and the SDK passes the Tinyman app and LP
+   account as references on the redeem path. If a failing swap can block a
+   redemption, the pool size is an exit risk and should be disclosed as one.
+   The observed redemption at round 66705349 had no swap inner transactions,
+   so this is unconfirmed in both directions. **Ask Myth.**
+2. **The SDK's licence contradicts itself.** `package.json` declares
+   `"license": "BSL"`; the shipped `LICENSE` file is verbatim MIT with an
+   unfilled `<copyright holders>` placeholder. BSL normally restricts
+   production use and MIT does not, so the grant we are relying on is
+   genuinely ambiguous. **Ask Myth**, and pin the dependency exactly
+   (currently `^3.3.10`) in the meantime.
+3. **Open a vendor line to Myth**, as we have with Ultrade. Both items above
+   are questions only they can answer, and the Ultrade relationship is the
+   reason the PEX integration is trustworthy.
+4. **Sunsetting.** Myth disable minting and rewards eligibility if staked
+   stays under 30,000 ALGO for four weeks. It currently sits at ~49,319, so
+   the margin is about 19K ALGO. Not disclosed on the card yet.
 
 ## Open question for the founder
 

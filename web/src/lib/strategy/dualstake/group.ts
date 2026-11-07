@@ -17,11 +17,28 @@
 import type algosdk from "algosdk";
 import {
   ARC59_APP_ID, DUALSTAKE_APP_ADDRESS, DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID,
-  REWARD_ASA_ID, TINYMAN_APP_ID,
+  MAX_MINT_GROUP_FEE_MICRO_ALGO, MAX_REDEEM_GROUP_FEE_MICRO_ALGO,
+  MINT_SELECTOR, REDEEM_SELECTOR, REWARD_ASA_ID, TINYMAN_APP_ID,
 } from "./config";
 
-/** Total group fee ceiling, microALGO. A mint was measured at 4,000. */
-export const MAX_GROUP_FEE_MICRO_ALGO = 50_000;
+/**
+ * Transaction types this flow may contain.
+ *
+ * A whitelist, not a blacklist, because the cost of the two being different is
+ * asymmetric: an unlisted type that should be allowed produces a refusal the
+ * live test catches, whereas an unchecked type that should be refused produces
+ * a signature. Before this existed, `keyreg` and `acfg` matched none of the
+ * branches below and passed unexamined — so a group could have carried a
+ * `nonParticipation` key registration, permanently and irreversibly ending the
+ * user's own consensus participation, and the assertion would have returned ok.
+ */
+const ALLOWED_TXN_TYPES = new Set(["pay", "axfer", "appl"]);
+
+/** `OnApplicationComplete.NoOpOC`. Anything else touches local state. */
+const ON_COMPLETE_NOOP = 0;
+
+const hex = (b: Uint8Array): string =>
+  Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
 
 export interface AssertResult {
   ok: boolean;
@@ -75,9 +92,18 @@ export function assertDualStakeGroup(
   let algoToApp = BigInt(0);
   let rewardToApp = BigInt(0);
   let lstToApp = BigInt(0);
+  /** App calls to dualSTAKE itself, by selector. The group's actual purpose. */
+  const dualstakeCalls: string[] = [];
 
   for (const [i, t] of txns.entries()) {
     totalFee += BigInt(t.fee ?? 0);
+
+    // The type whitelist comes FIRST: every check below is written against a
+    // specific transaction shape, so an unrecognised type must be refused
+    // rather than fall past all of them.
+    if (!ALLOWED_TXN_TYPES.has(String(t.type))) {
+      fail("txn_type", `txn ${i} is a ${String(t.type)}, which this flow never uses`);
+    }
 
     // Nobody but the user may be paying, and nothing may re-key or close out.
     if (t.sender.toString() !== opts.sender) {
@@ -117,19 +143,55 @@ export function assertDualStakeGroup(
     }
 
     if (t.applicationCall) {
-      const appId = Number(t.applicationCall.appIndex);
+      const ac = t.applicationCall;
+      const appId = Number(ac.appIndex);
       if (!ALLOWED_APPS.has(appId)) {
         fail("app_unpinned", `txn ${i} calls app ${appId}, which this flow never uses`);
       }
+      // A NoOp call cannot alter the user's local state. An OptIn, CloseOut,
+      // ClearState, Update or Delete can — a CloseOut of Tinyman would have
+      // destroyed the user's position there, inside a group they believed was
+      // a redemption.
+      if (Number(ac.onComplete ?? 0) !== ON_COMPLETE_NOOP) {
+        fail("on_complete", `txn ${i} calls app ${appId} with onComplete `
+          + `${Number(ac.onComplete)}, not NoOp`);
+      }
+      if (appId === DUALSTAKE_APP_ID) {
+        dualstakeCalls.push(ac.appArgs?.[0] ? hex(ac.appArgs[0]) : "(no selector)");
+      }
     }
   }
+  did("transaction types limited to pay, axfer and appl");
   did("every transaction sent by the user, no rekey, no close-out");
   did("every destination pinned to the dualSTAKE app");
   did("assets limited to magnetALGO and $U");
   did("apps limited to dualSTAKE, Tinyman and the ARC-59 router");
+  did("every app call is a NoOp");
 
-  if (totalFee > BigInt(MAX_GROUP_FEE_MICRO_ALGO)) {
-    fail("fee_cap", `total fee ${totalFee} exceeds ${MAX_GROUP_FEE_MICRO_ALGO} microALGO`);
+  /*
+    The group must DO the thing, not merely move money in the right direction.
+
+    Exactly one call to dualSTAKE, carrying the selector for the action the
+    user asked for. Without this, destinations and amounts can all be correct
+    while the group accomplishes nothing: a lone `pay -> app` passed every
+    other check here and would have handed the contract the user's ALGO with
+    no magnetALGO minted in return, and a lone `axfer` of magnetALGO would
+    have stranded it in the app with no redemption.
+  */
+  const wantSelector = opts.kind === "mint" ? MINT_SELECTOR : REDEEM_SELECTOR;
+  if (dualstakeCalls.length !== 1) {
+    fail("app_call", `group has ${dualstakeCalls.length} calls to the dualSTAKE app; `
+      + "expected exactly 1");
+  } else if (dualstakeCalls[0] !== wantSelector) {
+    fail("selector", `the dualSTAKE call carries selector ${dualstakeCalls[0]}, `
+      + `not ${opts.kind}'s ${wantSelector}`);
+  }
+  did(`exactly one dualSTAKE ${opts.kind} call, by pinned selector`);
+
+  const feeCap = opts.kind === "mint"
+    ? MAX_MINT_GROUP_FEE_MICRO_ALGO : MAX_REDEEM_GROUP_FEE_MICRO_ALGO;
+  if (totalFee > BigInt(feeCap)) {
+    fail("fee_cap", `total fee ${totalFee} exceeds ${feeCap} microALGO`);
   }
   did("group fee within cap");
 
@@ -156,7 +218,22 @@ export function assertDualStakeGroup(
     if (algoToApp !== BigInt(0)) {
       fail("unexpected_leg", `a redeem paid ${algoToApp} microALGO to the app`);
     }
+    /*
+      A redemption PAYS OUT $U. It never sends any.
+
+      This was the sharpest hole the audit found: `rewardToApp` was computed
+      for both paths but bounded only on a mint, so a redeem group could carry
+      an asset transfer of the user's entire $U balance to the app address —
+      a destination that passed `value_leaves` because it is the pinned app —
+      and the assertion returned ok. The bound on a mint is a ceiling because
+      the SDK owns that amount; here the only correct amount is zero.
+    */
+    if (rewardToApp !== BigInt(0)) {
+      fail("unexpected_leg", `a redeem sent ${rewardToApp} base $U to the app; `
+        + "a redemption pays $U out and never in");
+    }
     did("magnetALGO redeemed equals the amount on screen");
+    did("no ALGO and no $U leaves the user on a redeem");
   }
 
   return { ok: failures.length === 0, failures, checked };

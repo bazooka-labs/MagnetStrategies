@@ -8,7 +8,7 @@
  * that invents its own layout makes the page read as two products bolted
  * together rather than one shelf.
  *
- * ── Two rules this card follows that the others do not have to ────────────
+ * ── Three rules this card follows that the others do not have to ───────────
  *
  * 1. NEVER quote the ratio alone. magnetALGO redeems 1:1 for ALGO — measured
  *    exactly 1.00000000 across every mint and redeem on chain — and that
@@ -22,6 +22,15 @@
  *    inventing one would be the same error as a payout figure derived from a
  *    price we could not read. The card shows the mechanism and the accrued
  *    amount, and withholds the rate until there is a measured series.
+ *
+ * 3. The $U figure is labelled GROSS, because that is what it is. `rate *
+ *    holding` is the $U a redemption pays out, and part of it is the $U the
+ *    user themselves put in at mint — minting is "X ALGO + Y $U". An earlier
+ *    version labelled it "$U accrued to you" and tinted it green, which
+ *    showed a user who had just deposited their own entry cost as profit.
+ *    Net accrual needs the rate at THEIR mint, which the chain does not give
+ *    us per holder, so the card shows the gross figure under an honest label
+ *    rather than a net one it cannot compute.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -34,6 +43,7 @@ import {
   accruedReward, readHolding, readSnapshot, toAlgo, toMagnetAlgo, toReward,
   type DualStakeSnapshot,
 } from "@/lib/strategy/dualstake/reads";
+import { FEE_UPDATE_MAX_DELTA_BPS } from "@/lib/strategy/dualstake/config";
 import { DualStakeActions } from "./DualStakeActions";
 
 const ALGOD = ALGOD_URLS.mainnet;
@@ -44,7 +54,9 @@ function Stat({ label, value, tone }: {
   return (
     <div>
       <dt className="text-xs text-gray-500">{label}</dt>
-      <dd className={`mt-0.5 font-mono text-base ${
+      {/* `min-w-0` and wrapping: at 360px each grid column is about 135px and
+          "64,950,681 ALGO" in `text-base` mono is wider than that. */}
+      <dd className={`mt-0.5 min-w-0 break-words font-mono text-base ${
         tone === "up" ? "text-green-400" : tone === "muted" ? "text-gray-400" : "text-gray-200"
       }`}>{value}</dd>
     </div>
@@ -53,6 +65,18 @@ function Stat({ label, value, tone }: {
 
 const fmt = (n: number, dp = 2) =>
   n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+/**
+ * Like `fmt`, but never renders a non-zero amount as zero.
+ *
+ * At 4dp a holding of 0.00004 magnetALGO printed "0.0000", which reads as "you
+ * have none" when the figure beside it is about to pay out. A real zero still
+ * shows as zero; anything smaller than the last displayed digit gets "< ".
+ */
+const small = (n: number, dp: number) => {
+  const floor = 10 ** -dp;
+  return n > 0 && n < floor ? `< ${floor.toFixed(dp)}` : fmt(n, dp);
+};
 
 export function DualStakeCard() {
   const { address, isConnected, algodClient } = useWallet();
@@ -95,22 +119,32 @@ export function DualStakeCard() {
             </div>
             <p className="mt-1 text-sm text-gray-400">
               Stake ALGO with Myth Finance and earn <strong className="font-semibold text-gray-300">$U</strong>.
-              Your ALGO comes back 1:1 — the return is the $U that accrues on top.
+              Your ALGO comes back 1:1, and the return is the $U that accrues on top of it.
             </p>
           </div>
         </div>
 
         {/* The mechanism, stated before any figure. It is the reason the
             rewards are in $U at all, and the thing that makes this card
-            different from an ordinary liquid-staking box. */}
+            different from an ordinary liquid-staking box.
+
+            The exit sentence says "no unbonding period" and stops there. It
+            used to add "and no dependence on pool liquidity to exit", which we
+            cannot substantiate: Myth's own docs say the reward swap runs
+            automatically before a mint OR a redeem, and the SDK passes the
+            Tinyman app and LP account as references on the redeem path too. If
+            a pending swap can fail a redemption, that clause was the opposite
+            of true, and it is not a claim to make on a guess. Both audits
+            flagged it independently. Open with Myth — see OVERVIEW.md. */}
         <div className="rounded-xl border border-magnet-400/20 bg-magnet-500/[0.06] px-4 py-3">
           <p className="flex items-start gap-2 text-xs leading-relaxed text-gray-400">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-magnet-300" aria-hidden="true" />
             <span>
               The contract stakes your ALGO in Algorand consensus and swaps the rewards into
-              $U. Redeem any time for <strong className="font-semibold text-gray-300">1 ALGO
-              per magnetALGO plus the $U accrued</strong> — there is no unbonding period and
-              no dependence on pool liquidity to exit.
+              $U. Redeem any time, with no unbonding period, for <strong
+                className="font-semibold text-gray-300">1 ALGO per magnetALGO plus the $U
+              accrued</strong>. Minting also costs a little $U up front — a new token has to
+              arrive backed like the existing ones — and that comes back when you redeem.
             </span>
           </p>
         </div>
@@ -124,13 +158,31 @@ export function DualStakeCard() {
           <Stat label="Your magnetALGO"
             value={!isConnected ? "—"
               : holding === null ? (loading ? "…" : "—")
-              : `${fmt(toMagnetAlgo(holding), 4)}`} />
-          <Stat label="$U accrued to you"
+              : small(toMagnetAlgo(holding), 4)} />
+          {/* Labelled "on redemption", not "accrued" — rule 3 in the header.
+              Not tinted green either: a gross figure is not a gain. */}
+          <Stat label="$U on redemption"
             value={!isConnected ? "—"
               : accrued === null ? (loading ? "…" : "—")
-              : `${fmt(toReward(accrued), 5)} $U`}
-            tone={accrued !== null && accrued > BigInt(0) ? "up" : undefined} />
+              : `${small(toReward(accrued), 5)} $U`} />
         </dl>
+
+        {/*
+          Whether the node is actually earning.
+
+          `snapshot.earning` was read from the start and never displayed, while
+          the copy above asserts the contract "stakes your ALGO in Algorand
+          consensus". That claim has a live truth value — online, and incentive
+          eligible — and if it ever goes false the yield stops while the card
+          goes on describing it. Only shown when false, because "working
+          normally" does not need a badge.
+        */}
+        {snap && !snap.earning && (
+          <p className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
+            Myth&apos;s node is not currently online and incentive-eligible, so no consensus
+            rewards are accruing right now. Redeeming is unaffected.
+          </p>
+        )}
 
         {/* Deliberately no APR — see the file header. Saying why beats an
             empty space a reader fills with their own guess. */}
@@ -149,11 +201,22 @@ export function DualStakeCard() {
             <strong className="font-semibold">This is Myth Finance&apos;s contract, not ours.</strong>{" "}
             Depositing means trusting their code and their admin keys. It is upgradeable behind a
             one-week timelock with the new code&apos;s hash published in advance, and holders who
-            disagree can redeem immediately or protest. Fees are {snap
-              ? `${(snap.platformFeeBps + snap.noderunnerFeeBps) / 100}%`
-              : "6.5%"} of rewards
-            ({snap ? snap.platformFeeBps / 100 : 2.5}% platform,{" "}
-            {snap ? snap.noderunnerFeeBps / 100 : 4}% node runner).{" "}
+            disagree can redeem immediately or protest.{" "}
+            {/* Read live or not stated. It used to fall back to a hardcoded
+                "6.5% (2.5% platform, 4% node runner)" whenever `snap` was
+                null, which rendered a figure we had failed to read as though
+                we had read it — the one thing every other stat on this card
+                refuses to do. Fees are also not fixed: `fee_update_max_delta`
+                is 250bps per `fee_update_period` of one week. */}
+            {snap ? <>
+              Fees are {(snap.platformFeeBps + snap.noderunnerFeeBps) / 100}% of rewards
+              ({snap.platformFeeBps / 100}% platform, {snap.noderunnerFeeBps / 100}% node
+              runner), and Myth may raise them by up to{" "}
+              {FEE_UPDATE_MAX_DELTA_BPS / 100}% a week.
+            </> : <>
+              We couldn&apos;t read the current fees; Myth takes a share of rewards and may
+              raise it by up to {FEE_UPDATE_MAX_DELTA_BPS / 100}% a week.
+            </>}{" "}
             <a href="https://docs.myth.finance/dualSTAKE/overview" target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-amber-100">

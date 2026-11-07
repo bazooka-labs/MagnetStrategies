@@ -36,6 +36,49 @@ export const TINYMAN_APP_ID = 1002541853;
 /** ARC-59 inbox router, referenced by the SDK's network constants. */
 export const ARC59_APP_ID = 2449590623;
 
+/**
+ * ARC-4 method selectors on the dualSTAKE app, hex, no `0x`.
+ *
+ * Pinned because "the group moves the right amount to the right address" is
+ * NOT the same claim as "the group does the thing the user asked for". An
+ * earlier version of `group.ts` checked only destinations and amounts, and so
+ * accepted a bare `pay -> app address` with no app call at all: a donation of
+ * the user's ALGO to the contract, with no magnetALGO minted in return. Both
+ * audit passes found it independently.
+ *
+ * Measured from the SDK's own builders against MainNet, 2026-11-06.
+ */
+export const MINT_SELECTOR = "5588dcb4";
+export const REDEEM_SELECTOR = "27172f4a";
+
+/**
+ * Group fee ceilings, microALGO — deliberately DIFFERENT for the two paths.
+ *
+ * Measured 2026-11-06: a mint with a magnetALGO opt-in totals 5,000 and a
+ * redeem totals 4,000 (its app call carries 3,000 to cover two inner
+ * transactions).
+ *
+ * The mint cap is tight, because refusing a deposit is a safe failure — the
+ * user keeps their ALGO and can try again. The redeem cap stays loose, because
+ * refusing an EXIT is the dangerous failure: Myth's upgrade path explicitly
+ * contemplates adding AMM routes, and more inner transactions mean a larger
+ * fee on the app call. A cap sized to today's shape would then stand between a
+ * holder and their own funds, which is precisely the trap that cost a live
+ * position two days on the perps path.
+ */
+export const MAX_MINT_GROUP_FEE_MICRO_ALGO = 15_000;
+export const MAX_REDEEM_GROUP_FEE_MICRO_ALGO = 50_000;
+
+/**
+ * Fee governance, read from global state 2026-11-06 and pinned for disclosure.
+ *
+ * `fee_update_max_delta` 250bps per `fee_update_period` 604,800s — Myth may
+ * raise fees by up to 2.5% a week. The card says so, because a fee quoted as
+ * a flat "6.5%" implies a fixed term it does not have.
+ */
+export const FEE_UPDATE_MAX_DELTA_BPS = 250;
+export const FEE_UPDATE_PERIOD_SECONDS = 604_800;
+
 /** Scale of the contract's `rate`. Matches the SDK's PROD constants. */
 export const RATE_PRECISION = 10_000_000_000;
 

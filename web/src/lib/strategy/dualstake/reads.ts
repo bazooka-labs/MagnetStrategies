@@ -8,8 +8,8 @@ import algosdk from "algosdk";
 import { DualStake, networkConstants } from "@myth-finance/dualstake-ts-sdk";
 import { AlgorandClient } from "@algorandfoundation/algokit-utils";
 import {
-  ARC59_APP_ID, DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID, MAGNET_ALGO_DECIMALS,
-  MAX_BALANCE_MICRO_ALGO, RATE_PRECISION, REWARD_DECIMALS, TINYMAN_APP_ID,
+  DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID, MAGNET_ALGO_DECIMALS,
+  MAX_BALANCE_MICRO_ALGO, RATE_PRECISION, REWARD_ASA_ID, REWARD_DECIMALS,
 } from "./config";
 
 /** What the card needs, all of it optional because a read can fail. */
@@ -94,6 +94,95 @@ export async function readHolding(
   } catch {
     return null;
   }
+}
+
+/** A wallet's $U position. Opted-in-with-zero and not-opted-in differ. */
+export interface RewardHolding {
+  /** $U held, base units (5dp). */
+  balance: bigint;
+  /** Opted into $U at all. A mint's $U leg fails outright without this. */
+  optedIn: boolean;
+}
+
+/**
+ * A wallet's $U balance and opt-in, or null if unread.
+ *
+ * Needed because a deposit SPENDS $U — see `mintRewardCost`. Without this the
+ * user met the requirement as a raw `asset missing from sender` out of
+ * simulate, which is the class of message this card exists not to show.
+ */
+export async function readRewardHolding(
+  algod: algosdk.Algodv2, address: string,
+): Promise<RewardHolding | null> {
+  try {
+    const acct = await algod.accountInformation(address).do();
+    const held = (acct.assets ?? []).find(
+      (a: { assetId?: bigint | number }) => Number(a.assetId) === REWARD_ASA_ID);
+    return held
+      ? { balance: BigInt(held.amount), optedIn: true }
+      : { balance: BigInt(0), optedIn: false };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The contract's mint rate, computed from raw algod reads only.
+ *
+ * `readSnapshot` goes through the SDK's `getStateFallback`, which derives the
+ * same number — so using it to BOUND the SDK's own $U leg checks the SDK
+ * against itself. A bug or a compromise in that derivation would move our
+ * ceiling and the amount it is meant to catch together, in step, and the
+ * bound would pass.
+ *
+ * This reads `staked` and `rate_precision` from global state and the app
+ * account's $U balance from its account record, and applies the same
+ * definition the contract does. Returns null if anything could not be read —
+ * never a zero, which would make any bound trivially satisfiable.
+ */
+export async function readRateIndependently(
+  algod: algosdk.Algodv2,
+): Promise<bigint | null> {
+  try {
+    const [app, acct] = await Promise.all([
+      algod.getApplicationByID(DUALSTAKE_APP_ID).do(),
+      algod.accountInformation(
+        algosdk.getApplicationAddress(DUALSTAKE_APP_ID).toString()).do(),
+    ]);
+    const g = new Map<string, bigint>();
+    for (const kv of app.params.globalState ?? []) {
+      const key = Buffer.from(kv.key as unknown as string, "base64").toString();
+      if (kv.value.type === 2) g.set(key, BigInt(kv.value.uint ?? 0));
+    }
+    const staked = g.get("staked");
+    const precision = g.get("rate_precision");
+    if (!staked || !precision || staked <= BigInt(0)) return null;
+
+    const u = (acct.assets ?? []).find(
+      (a: { assetId?: bigint | number }) => Number(a.assetId) === REWARD_ASA_ID);
+    const uBal = u ? BigInt(u.amount) : BigInt(0);
+    return (precision * uBal) / staked;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The $U a mint of `algoMicro` costs the user, in $U base units.
+ *
+ * This is the SDK's own formula (`dualstake-client.js`: `algo * rate /
+ * ratePrecision`, plus one base unit whenever the rate is non-zero) and it is
+ * reproduced here ONLY to show the user the figure and to pre-check their
+ * balance. The transaction's amount still comes from the SDK; we never
+ * substitute this for it.
+ *
+ * A mint of N microALGO produces N base magnetALGO, so the cost is the accrual
+ * that N magnetALGO already carries — a new token has to arrive backed by the
+ * same $U per token as every existing one.
+ */
+export function mintRewardCost(algoMicro: bigint, rate: bigint): bigint {
+  const cost = (algoMicro * rate) / BigInt(RATE_PRECISION);
+  return rate > BigInt(0) ? cost + BigInt(1) : cost;
 }
 
 /**

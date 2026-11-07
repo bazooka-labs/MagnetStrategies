@@ -9,10 +9,11 @@
 
 import algosdk from "algosdk";
 import { describe, expect, it } from "vitest";
-import { assertDualStakeGroup, MAX_GROUP_FEE_MICRO_ALGO } from "./group";
+import { assertDualStakeGroup } from "./group";
 import {
-  DUALSTAKE_APP_ADDRESS, DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID, REWARD_ASA_ID,
-  TINYMAN_APP_ID,
+  DUALSTAKE_APP_ADDRESS, DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID,
+  MAX_MINT_GROUP_FEE_MICRO_ALGO, MAX_REDEEM_GROUP_FEE_MICRO_ALGO,
+  MINT_SELECTOR, REDEEM_SELECTOR, REWARD_ASA_ID, TINYMAN_APP_ID,
 } from "./config";
 
 const USER = algosdk.generateAccount().addr.toString();
@@ -38,9 +39,19 @@ const pay = (to: string, amount: number, extra = {}) =>
 const axfer = (to: string, assetIndex: number, amount: number, extra = {}) =>
   algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
     sender: USER, receiver: to, assetIndex, amount, suggestedParams: { ...SP }, ...extra });
-const call = (appIndex: number) =>
+const sel = (hex: string) =>
+  Uint8Array.from(hex.match(/../g)!.map((b) => parseInt(b, 16)));
+/**
+ * An app call carrying an ARC-4 selector, because the assertion now checks it.
+ *
+ * The fixtures used to call `DUALSTAKE_APP_ID` with no arguments at all and
+ * pass, which is exactly the hole the selector guard closes: a group can have
+ * every destination and amount right and still not perform the action.
+ */
+const call = (appIndex: number, selector = MINT_SELECTOR, extra = {}) =>
   algosdk.makeApplicationNoOpTxnFromObject({
-    sender: USER, appIndex, suggestedParams: { ...SP } });
+    sender: USER, appIndex, appArgs: [sel(selector)],
+    suggestedParams: { ...SP }, ...extra });
 
 /** A well-formed mint of 60 ALGO with a 1,249 base-$U leg. */
 const goodMint = () => [
@@ -106,13 +117,12 @@ describe("the amounts must match what the user was shown", () => {
 
 describe("only pinned apps and assets", () => {
   it("refuses a call to an app this flow never uses", () => {
-    const g = goodMint();
-    g[1] = call(99_999_999);
+    const g = [...goodMint(), call(99_999_999, MINT_SELECTOR)];
     expect(codes(g, mintOpts)).toContain("app_unpinned");
   });
 
   it("allows Tinyman, which the SDK routes through for the $U leg", () => {
-    const g = [...goodMint(), call(TINYMAN_APP_ID)];
+    const g = [...goodMint(), call(TINYMAN_APP_ID, MINT_SELECTOR)];
     expect(codes(g, mintOpts)).not.toContain("app_unpinned");
   });
 
@@ -146,19 +156,39 @@ describe("no rekey, no close-out, no foreign sender", () => {
 });
 
 describe("fees are bounded", () => {
-  it("refuses a group whose fees exceed the cap", () => {
+  it("refuses a mint whose fees exceed the mint cap", () => {
     const g = goodMint();
-    g[1] = algosdk.makeApplicationNoOpTxnFromObject({
-      sender: USER, appIndex: DUALSTAKE_APP_ID,
-      suggestedParams: { ...SP, flatFee: true, fee: BigInt(MAX_GROUP_FEE_MICRO_ALGO + 1) } });
+    g[1] = call(DUALSTAKE_APP_ID, MINT_SELECTOR,
+      { suggestedParams: { ...SP, flatFee: true,
+        fee: BigInt(MAX_MINT_GROUP_FEE_MICRO_ALGO + 1) } });
     expect(codes(g, mintOpts)).toContain("fee_cap");
+  });
+
+  /*
+    The two caps are deliberately different, and this is the test that pins
+    the reason. Blocking a deposit is a safe failure; blocking an EXIT traps a
+    holder, and Myth's upgrade path contemplates extra AMM routes, which means
+    more inner transactions and a bigger fee on the redeem app call. A redeem
+    fee that a mint would refuse must still get through.
+  */
+  it("lets a redeem carry a fee the mint cap would refuse", () => {
+    const g = [
+      axfer(DUALSTAKE_APP_ADDRESS, MAGNET_ALGO_ASA_ID, 10_000_000),
+      call(DUALSTAKE_APP_ID, REDEEM_SELECTOR,
+        { suggestedParams: { ...SP, flatFee: true,
+          fee: BigInt(MAX_MINT_GROUP_FEE_MICRO_ALGO + 1_000) } }),
+    ];
+    expect(MAX_MINT_GROUP_FEE_MICRO_ALGO + 1_000)
+      .toBeLessThan(MAX_REDEEM_GROUP_FEE_MICRO_ALGO);
+    expect(codes(g, { sender: USER, kind: "redeem",
+      expectedLstBase: BigInt(10_000_000) })).not.toContain("fee_cap");
   });
 });
 
 describe("redeem is checked in its own direction", () => {
   const goodRedeem = () => [
     axfer(DUALSTAKE_APP_ADDRESS, MAGNET_ALGO_ASA_ID, 10_000_000),
-    call(DUALSTAKE_APP_ID),
+    call(DUALSTAKE_APP_ID, REDEEM_SELECTOR),
   ];
   const opts = { sender: USER, kind: "redeem" as const, expectedLstBase: BigInt(10_000_000) };
 
@@ -177,5 +207,129 @@ describe("redeem is checked in its own direction", () => {
     // redeem, whatever the SDK called it.
     const g = [...goodRedeem(), pay(DUALSTAKE_APP_ADDRESS, 1_000_000)];
     expect(codes(g, opts)).toContain("unexpected_leg");
+  });
+});
+
+/*
+  ── The holes two independent audits found in the first version ─────────────
+
+  Every test below describes a group the assertion ACCEPTED before these
+  guards existed. None of them needs a malicious contract: each only needs the
+  SDK to build something other than what it builds today, which is the threat
+  model `group.ts` opens by claiming to defend against.
+*/
+
+describe("the group must actually perform the action", () => {
+  /*
+    The sharpest one. The assertion summed destinations and amounts and never
+    required an app call, so a lone payment to the app address satisfied every
+    check: `expectedAlgoMicro` matched, nothing left to an unpinned address,
+    the fee was fine. The chain would have accepted it too — it is a valid
+    transaction. The user's ALGO becomes a donation and no magnetALGO is
+    minted.
+  */
+  it("refuses a mint that is only a payment, with no mint call", () => {
+    const g = [pay(DUALSTAKE_APP_ADDRESS, 60_000_000)];
+    expect(codes(g, { ...mintOpts, maxRewardBase: BigInt(2_000) })).toContain("app_call");
+  });
+
+  it("refuses a redeem that is only an asset transfer, with no redeem call", () => {
+    const g = [axfer(DUALSTAKE_APP_ADDRESS, MAGNET_ALGO_ASA_ID, 10_000_000)];
+    expect(codes(g, { sender: USER, kind: "redeem", expectedLstBase: BigInt(10_000_000) }))
+      .toContain("app_call");
+  });
+
+  it("refuses two dualSTAKE calls in one group", () => {
+    const g = [...goodMint(), call(DUALSTAKE_APP_ID, MINT_SELECTOR)];
+    expect(codes(g, mintOpts)).toContain("app_call");
+  });
+
+  it("refuses a mint whose call carries the redeem selector", () => {
+    const g = goodMint();
+    g[1] = call(DUALSTAKE_APP_ID, REDEEM_SELECTOR);
+    expect(codes(g, mintOpts)).toContain("selector");
+  });
+
+  it("refuses a redeem whose call carries the mint selector", () => {
+    const g = [
+      axfer(DUALSTAKE_APP_ADDRESS, MAGNET_ALGO_ASA_ID, 10_000_000),
+      call(DUALSTAKE_APP_ID, MINT_SELECTOR),
+    ];
+    expect(codes(g, { sender: USER, kind: "redeem", expectedLstBase: BigInt(10_000_000) }))
+      .toContain("selector");
+  });
+
+  it("refuses a dualSTAKE call with no selector at all", () => {
+    const g = goodMint();
+    g[1] = algosdk.makeApplicationNoOpTxnFromObject({
+      sender: USER, appIndex: DUALSTAKE_APP_ID, suggestedParams: { ...SP } });
+    expect(codes(g, mintOpts)).toContain("selector");
+  });
+});
+
+describe("a redeem never sends $U", () => {
+  /*
+    `rewardToApp` was computed for both paths and bounded only on the mint, so
+    a redeem could carry an asset transfer of the user's whole $U balance to
+    the app. It passed `value_leaves` because the app address IS the pinned
+    destination — the check that normally stops a redirection was what let this
+    through. A redemption pays $U out; the only correct inbound amount is zero.
+  */
+  it("refuses a redeem that also transfers $U to the app", () => {
+    const g = [
+      axfer(DUALSTAKE_APP_ADDRESS, MAGNET_ALGO_ASA_ID, 10_000_000),
+      call(DUALSTAKE_APP_ID, REDEEM_SELECTOR),
+      axfer(DUALSTAKE_APP_ADDRESS, REWARD_ASA_ID, 9_999_999),
+    ];
+    const got = codes(g, { sender: USER, kind: "redeem", expectedLstBase: BigInt(10_000_000) });
+    expect(got).toContain("unexpected_leg");
+  });
+});
+
+describe("transaction types are whitelisted", () => {
+  /*
+    Only `payment`, `assetTransfer` and `applicationCall` were ever inspected.
+    Every other type fell past all three branches unexamined, so a rider could
+    ride along inside a group the user believed was a deposit.
+
+    `nonParticipation` is the worst of them because it is IRREVERSIBLE: it
+    permanently marks the account as not participating in consensus, which
+    costs a user who stakes their own ALGO.
+  */
+  it("refuses a non-participation keyreg rider", () => {
+    const g = [...goodMint(),
+      algosdk.makeKeyRegistrationTxnWithSuggestedParamsFromObject({
+        sender: USER, nonParticipation: true, suggestedParams: { ...SP } })];
+    expect(codes(g, mintOpts)).toContain("txn_type");
+  });
+
+  it("refuses an asset-config rider", () => {
+    const g = [...goodMint(),
+      algosdk.makeAssetConfigTxnWithSuggestedParamsFromObject({
+        sender: USER, assetIndex: MAGNET_ALGO_ASA_ID, manager: ATTACKER,
+        strictEmptyAddressChecking: false, suggestedParams: { ...SP } })];
+    expect(codes(g, mintOpts)).toContain("txn_type");
+  });
+});
+
+describe("app calls may only be NoOp", () => {
+  /*
+    An unchecked `onComplete` let a CloseOut or ClearState ride inside the
+    group. Against Tinyman — which the allowlist permits, because the SDK
+    references it — a CloseOut destroys the user's local state there. Against
+    dualSTAKE, a ClearState abandons their position in the contract.
+  */
+  it("refuses a Tinyman close-out rider", () => {
+    const g = [...goodMint(),
+      algosdk.makeApplicationCloseOutTxnFromObject({
+        sender: USER, appIndex: TINYMAN_APP_ID, suggestedParams: { ...SP } })];
+    expect(codes(g, mintOpts)).toContain("on_complete");
+  });
+
+  it("refuses a dualSTAKE clear-state rider", () => {
+    const g = [...goodMint(),
+      algosdk.makeApplicationClearStateTxnFromObject({
+        sender: USER, appIndex: DUALSTAKE_APP_ID, suggestedParams: { ...SP } })];
+    expect(codes(g, mintOpts)).toContain("on_complete");
   });
 });

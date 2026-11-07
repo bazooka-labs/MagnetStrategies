@@ -17,9 +17,13 @@ import algosdk from "algosdk";
 import { DualStake, networkConstants } from "@myth-finance/dualstake-ts-sdk";
 import { AlgorandClient } from "@algorandfoundation/algokit-utils";
 import { assertDualStakeGroup } from "@/lib/strategy/dualstake/group";
-import { accruedReward, readSnapshot } from "@/lib/strategy/dualstake/reads";
+import {
+  mintRewardCost, readRateIndependently, readSnapshot,
+} from "@/lib/strategy/dualstake/reads";
 import { approvalMatchesPin } from "@/lib/strategy/dualstake/client";
-import { DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID } from "@/lib/strategy/dualstake/config";
+import {
+  DUALSTAKE_APP_ID, MAGNET_ALGO_ASA_ID, MINT_SELECTOR, REDEEM_SELECTOR,
+} from "@/lib/strategy/dualstake/config";
 
 const SERVER = "https://mainnet-api.algonode.cloud";
 const algod = new algosdk.Algodv2("", SERVER, "");
@@ -60,7 +64,6 @@ describe("dualSTAKE against MainNet", () => {
   }, 30_000);
 
   it("builds a mint the SDK produces and our assertion accepts", async () => {
-    const snap = await readSnapshot(SERVER);
     const algoMicro = BigInt(5_000_000);   // 5 ALGO
     const composer = await client(HOLDER).makeMintTransactions({
       algoAmount: Number(algoMicro),
@@ -69,13 +72,66 @@ describe("dualSTAKE against MainNet", () => {
     const txns = built.transactions.map((t) => t.txn);
     expect(txns.length).toBeGreaterThan(0);
 
+    /*
+      The bound is the TIGHT one the client actually uses — `est + 1% + 2`
+      off an independently read rate, not the old `2 * est + 1000` off the
+      SDK's own. A loose bound here would make this test pass while the
+      shipped code refused, which is the opposite of what it is for.
+    */
+    const rate = await readRateIndependently(algod);
+    expect(rate).not.toBeNull();
+    const est = mintRewardCost(algoMicro, rate!);
     const res = assertDualStakeGroup(txns, {
       sender: HOLDER, kind: "mint",
       expectedAlgoMicro: algoMicro,
-      maxRewardBase: accruedReward(algoMicro, snap!.rate) * BigInt(2) + BigInt(1000),
+      maxRewardBase: est + est / BigInt(100) + BigInt(2),
     });
     if (!res.ok) console.error("assertion failures:", res.failures);
     expect(res.failures).toEqual([]);
+  }, 60_000);
+
+  /*
+    The rate we bound with must track the rate the SDK charges with.
+
+    These are two separate derivations on purpose — ours from raw global state
+    and the app's asset holding, the SDK's through its own fallback — so this
+    is the test that tells us if they ever diverge enough for the 1% bound to
+    start refusing honest mints.
+  */
+  it("our independent rate matches the \$U leg the SDK actually builds", async () => {
+    const algoMicro = BigInt(5_000_000);
+    const composer = await client(HOLDER).makeMintTransactions({
+      algoAmount: Number(algoMicro),
+    });
+    const built = await (await composer.composer()).build();
+    const legs = built.transactions
+      .map((t) => t.txn)
+      .filter((t) => t.assetTransfer && Number(t.assetTransfer.assetIndex) !== MAGNET_ALGO_ASA_ID);
+    expect(legs).toHaveLength(1);
+    const sdkAmount = BigInt(legs[0].assetTransfer!.amount);
+
+    const rate = await readRateIndependently(algod);
+    const ours = mintRewardCost(algoMicro, rate!);
+    expect(ours).toBe(sdkAmount);
+  }, 60_000);
+
+  /*
+    The selectors are pinned, so a method rename at Myth must fail HERE —
+    loudly, in a test — rather than in front of a user as a refusal nobody
+    can explain.
+  */
+  it("the SDK still calls the selectors we pinned", async () => {
+    const mint = await (await (await client(HOLDER)
+      .makeMintTransactions({ algoAmount: 5_000_000 })).composer()).build();
+    const mintCall = mint.transactions.map((t) => t.txn)
+      .find((t) => t.applicationCall
+        && Number(t.applicationCall.appIndex) === DUALSTAKE_APP_ID);
+    expect(mintCall).toBeDefined();
+    const hex = (b: Uint8Array) =>
+      Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
+    expect(hex(mintCall!.applicationCall!.appArgs![0])).toBe(MINT_SELECTOR);
+    expect(Number(mintCall!.applicationCall!.onComplete ?? 0)).toBe(0);
+    expect(REDEEM_SELECTOR).toHaveLength(8);
   }, 60_000);
 
   it("builds a redeem the SDK produces and our assertion accepts", async () => {

@@ -12,7 +12,11 @@ import {
   DUALSTAKE_APP_ID, DUALSTAKE_PROGRAM_SHA256, MIN_DEPOSIT_MICRO_ALGO,
 } from "./config";
 import { assertDualStakeGroup } from "./group";
-import { accruedReward, readSnapshot } from "./reads";
+import {
+  mintRewardCost, readRateIndependently, readRewardHolding, readSnapshot,
+} from "./reads";
+import { formatBaseUnits } from "./amount";
+import { REWARD_DECIMALS } from "./config";
 
 type SignFn = (txns: Uint8Array[]) => Promise<(Uint8Array | null)[]>;
 
@@ -108,12 +112,30 @@ export async function deposit(input: DepositInput): Promise<string> {
       + "below that the network fees take most of it.");
   }
 
+  /*
+    The pin check FAILS CLOSED on a deposit.
+
+    `approvalMatchesPin` returns null when it could not read the program, and
+    an earlier version here blocked only on `=== false`. That made an
+    unreachable or erroring algod indistinguishable from a verified match, so
+    the one condition that must hold before new money goes in — this is the
+    code we reviewed — was satisfied by a network error.
+
+    Redeem still skips the check entirely, which is the asymmetry `config.ts`
+    describes: failing to deposit costs a user nothing, failing to exit traps
+    them.
+  */
   const pinned = await approvalMatchesPin(algod);
   if (pinned === false) {
     throw new Error(
       "The dualSTAKE contract's code has changed since we reviewed it, so deposits "
       + "are paused here. Redeeming still works. This is expected during one of "
       + "Myth's timelocked upgrades.");
+  }
+  if (pinned === null) {
+    throw new Error("Couldn't verify the dualSTAKE contract's code against the version "
+      + "we reviewed, so nothing was sent. Try again in a moment. Redeeming is "
+      + "unaffected.");
   }
 
   const snap = await readSnapshot(algodServer);
@@ -127,25 +149,74 @@ export async function deposit(input: DepositInput): Promise<string> {
       + `(${(Number(snap.headroomMicroAlgo) / 1e6).toLocaleString()} ALGO).`);
   }
 
+  /*
+    A deposit SPENDS $U, and the user has to have some.
+
+    Minting is "X ALGO + Y $U", because a new magnetALGO must arrive backed by
+    the same accrued $U per token as every existing one. The SDK opts the user
+    into magnetALGO but never into $U, and always includes the $U leg while the
+    rate is above zero — so a wallet holding plenty of ALGO and no $U cannot
+    deposit at all, and found that out from a raw `asset missing from sender`
+    inside a simulate failure.
+
+    Checked before the build so the message names the amount.
+  */
+  const needReward = mintRewardCost(algoMicro, snap.rate);
+  if (needReward > BigInt(0)) {
+    const uHeld = await readRewardHolding(algod, sender);
+    const amount = `${formatBaseUnits(needReward, REWARD_DECIMALS)} $U`;
+    if (uHeld === null) {
+      throw new Error("Couldn't read your $U balance, so nothing was sent. "
+        + `A deposit of this size also costs about ${amount}.`);
+    }
+    if (!uHeld.optedIn) {
+      throw new Error(`Depositing also costs ${amount}, and this wallet isn't opted `
+        + "into $U yet. Hold a little $U first — the Trade page can swap some for you.");
+    }
+    if (uHeld.balance < needReward) {
+      throw new Error(`Depositing ${formatBaseUnits(algoMicro, 6)} ALGO also costs `
+        + `${amount}, and this wallet holds `
+        + `${formatBaseUnits(uHeld.balance, REWARD_DECIMALS)} $U. `
+        + "The $U comes back when you redeem.");
+    }
+  }
+
   const client = sdkClient(algod, algodServer, sender, algosdk.makeEmptyTransactionSigner());
   const composer = await client.makeMintTransactions({ algoAmount: Number(algoMicro) });
   const built = await (await composer.composer()).build();
   const txns = built.transactions.map((t) => t.txn);
 
   /*
-    The bound on the $U leg.
+    The bound on the $U leg — INDEPENDENTLY computed, and tight.
 
-    `rate` is base-unit $U per base-unit magnetALGO and a mint of N microALGO
-    produces N base magnetALGO, so the $U required is `accruedReward(N, rate)`.
-    Doubling it leaves room for the rate moving between our read and the
-    build without leaving room for a wrong order of magnitude — which is the
-    failure this is actually guarding against.
+    Two things were wrong with the first version, `2 * est + 1000` off
+    `snap.rate`.
+
+    It was not independent. `snap` comes from the SDK's own `getStateFallback`,
+    so the ceiling and the amount it bounds were derived by the same code: a
+    wrong rate would move both together and the check would pass. The rate
+    here is read straight from global state and the app's asset holding.
+
+    And it was loose by design where looseness buys nothing. The honest gap
+    between our read and the SDK's is the pending reward swap, which only fires
+    above about 1 ALGO of accrual, so 1% plus a base unit of rounding covers it
+    with room to spare; 2x permitted a doubled charge on a 100,000 ALGO mint —
+    about 31 $U — to pass as normal. Excess $U is not credited to the user.
+
+    Failing closed when the rate cannot be read independently is deliberate.
+    A null here is not a zero: treating it as one would make any $U leg
+    satisfy the bound.
   */
-  const expectedReward = accruedReward(algoMicro, snap.rate);
+  const rate = await readRateIndependently(algod);
+  if (rate === null) {
+    throw new Error("Couldn't independently check the dualSTAKE mint rate, so nothing "
+      + "was sent. Try again in a moment.");
+  }
+  const expectedReward = mintRewardCost(algoMicro, rate);
   const check = assertDualStakeGroup(txns, {
     sender, kind: "mint",
     expectedAlgoMicro: algoMicro,
-    maxRewardBase: expectedReward * BigInt(2) + BigInt(1000),
+    maxRewardBase: expectedReward + expectedReward / BigInt(100) + BigInt(2),
   });
   if (!check.ok) {
     console.warn("dualstake: assertion refused the deposit", check.failures);
