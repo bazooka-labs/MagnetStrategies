@@ -20,10 +20,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OPEN_GOVERNANCE } from "./TokensView";
 
+/* The pill reads `useLiveProposalCount` since 2026-11-08 — the timer that
+   keeps the count honest as a window closes moved in there when the
+   Governance pill's dot became a third consumer of it. */
 vi.mock("@/hooks/useGovernanceProposals", () => ({
-  liveCount: () => 1,
-  useGovernanceProposals: () => ({
-    proposals: [], loading: false, incomplete: false, refresh: () => {},
+  useLiveProposalCount: () => ({
+    count: 1, loading: false, incomplete: false, refresh: () => {},
   }),
 }));
 vi.mock("next/link", () => ({

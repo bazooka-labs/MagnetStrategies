@@ -17,6 +17,19 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OPEN_GOVERNANCE, TokensView } from "./TokensView";
 
+/*
+  The live count drives the Governance pill's dot, and the real hook reads
+  the chain through `useWallet`, which throws outside the provider. Driven
+  by hand here so the dot's two states are both reachable; DEFAULT ZERO, so
+  every pre-existing test below still matches a bare "Governance" name.
+*/
+let liveCount = 0;
+vi.mock("@/hooks/useGovernanceProposals", () => ({
+  useLiveProposalCount: () => ({
+    count: liveCount, loading: false, incomplete: false, refresh: () => {},
+  }),
+}));
+
 const MINT = <div>mint-content</div>;
 const EXCHANGE = <div>exchange-content</div>;
 const GOVERNANCE = <div>governance-content</div>;
@@ -27,8 +40,12 @@ const mount = () => render(
 
 afterEach(() => {
   cleanup();
+  liveCount = 0;
   window.history.replaceState({}, "", "/tokens");
 });
+
+/** The dot: the only pulsing round thing in the pill row. */
+const dot = (c: HTMLElement) => c.querySelector("span.animate-pulse.rounded-full");
 
 describe("the two pills", () => {
   it("offers Exchange and Governance, and neither of the asset pills it replaced", () => {
@@ -289,5 +306,88 @@ describe("the URL follows the pill", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Exchange$/ }));
     }
     expect(window.history.length).toBe(before);
+  });
+});
+
+describe("the Governance pill signals an open vote", () => {
+  /*
+    A small prompt to go and look, matching the hero's "Live proposals" pill
+    so the two read as one vocabulary rather than two notifications.
+
+    Driven off the SAME count as that pill, through one module-level store:
+    a pill row saying a vote is open above a hero pill reading 0 is not a
+    state this page should be able to reach.
+  */
+  it("shows no dot when nothing is open", () => {
+    const { container } = mount();
+    expect(dot(container)).toBeNull();
+  });
+
+  it("shows one when a proposal is live", () => {
+    liveCount = 1;
+    const { container } = mount();
+    expect(dot(container)).toBeTruthy();
+  });
+
+  it("puts it on Governance and on no other pill", () => {
+    // A signal on Mint or Exchange would point at the wrong tab, which is
+    // worse than no signal: it spends the reader's attention and misroutes it.
+    liveCount = 2;
+    mount();
+    const pill = (name: RegExp) => screen.getByRole("button", { name });
+    expect(pill(/^Governance/).querySelector("span.animate-pulse")).toBeTruthy();
+    for (const name of [/^Mint$/, /^Exchange$/]) {
+      expect(pill(name).querySelector("span.animate-pulse"), String(name)).toBeNull();
+    }
+  });
+
+  it("says what the dot means, for a reader who cannot see it", () => {
+    // A bare coloured circle is invisible to a screen reader, and `aria-hidden`
+    // on it without this would make the state unreachable rather than quiet.
+    liveCount = 1;
+    mount();
+    expect(screen.getByRole("button", { name: "Governance, a proposal is open" })).toBeTruthy();
+  });
+
+  it("stays visible once the tab is selected, in a colour that survives the gradient", () => {
+    /*
+      `bg-magnet-400` on the selected pill's magnet-600→500 gradient is
+      purple on purple. The dot does not vanish when you arrive — it is the
+      same object either way — so the active state flips it to white.
+    */
+    liveCount = 1;
+    const { container } = mount();
+    expect(dot(container)!.className).toContain("bg-magnet-400");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Governance/ }));
+    const active = dot(container)!;
+    expect(active).toBeTruthy();
+    expect(active.className).toContain("bg-white");
+    expect(active.className).not.toContain("bg-magnet-400");
+  });
+
+  it("keeps the row narrow enough for a 360px phone", () => {
+    /*
+      A STYLING guard, and a weak one — jsdom computes no layout, so this
+      pins the class rather than the width. It is here because the fact it
+      records was measured in a browser and is invisible in a diff: at
+      `px-4` the three pills run 355px wide, the dot adds 14, and 369 against
+      360px of viewport is 4px of real horizontal page scroll. Re-measure in
+      a browser before changing it; do not reason about it.
+    */
+    mount();
+    for (const name of [/^Mint$/, /^Exchange$/, /^Governance$/]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls, String(name)).toContain("px-3");
+      expect(cls, String(name)).toContain("sm:px-4");
+    }
+  });
+
+  it("glows, rather than being a flat 6px circle", () => {
+    // It carries the message alone here: the hero pill has a number and the
+    // word "proposals" beside its dot, and this row reads as navigation.
+    liveCount = 1;
+    const { container } = mount();
+    expect(dot(container)!.className).toMatch(/shadow-\[0_0_\d+px/);
   });
 });

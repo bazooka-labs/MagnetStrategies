@@ -44,34 +44,23 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { Vote as VoteIcon } from "lucide-react";
 import { RAISED_MAGNET } from "../raisedButton";
 import { GOVERNANCE_LIVE } from "@/lib/governance";
-import { liveCount, useGovernanceProposals } from "@/hooks/useGovernanceProposals";
+import { useLiveProposalCount } from "@/hooks/useGovernanceProposals";
 import { OPEN_GOVERNANCE } from "@/components/tokens/TokensView";
 
 export function LiveProposalsPill() {
-  const { proposals, loading, incomplete, refresh } = useGovernanceProposals();
-
-  /**
-   * Re-render on a timer, so a window closing is noticed here too.
-   *
-   * The count comes from the browser clock, and nothing re-rendered this pill
-   * when that crossed a proposal's `endTime` — so it could keep advertising a
-   * vote that had closed. GovernanceSection ticks for the same reason; this
-   * one was missed because it lives in a different tree.
-   */
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => tick((t) => t + 1), 15_000);
-    return () => clearInterval(id);
-  }, []);
+  /*
+    The timer that keeps this honest as a window closes moved into
+    `useLiveProposalCount` on 2026-11-08, when the Governance pill's dot
+    became a third consumer of the same count. Its doc records the bug.
+  */
+  const { count: n, loading, incomplete, refresh } = useLiveProposalCount();
 
   // Nothing to point at before the contract is live.
   if (!GOVERNANCE_LIVE) return null;
 
-  const n = liveCount(proposals);
   const open = n > 0;
 
   return (

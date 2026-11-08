@@ -20,6 +20,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { ArrowLeftRight, Coins, Vote as VoteIcon } from "lucide-react";
+import { useLiveProposalCount } from "@/hooks/useGovernanceProposals";
 
 type Tab = "mint" | "exchange" | "governance";
 
@@ -28,16 +29,37 @@ function TabButton({
   onClick,
   icon: Icon,
   label,
+  signal = false,
+  signalLabel,
 }: {
   active: boolean;
   onClick: () => void;
   icon: typeof VoteIcon;
   label: string;
+  /** Draw the attention dot — something behind this pill wants a visit. */
+  signal?: boolean;
+  /** What the dot MEANS, for a reader who cannot see it. Required with it. */
+  signalLabel?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+      /*
+        `px-3` below `sm`, measured rather than guessed.
+
+        The three pills ran 355px wide at `px-4`, against 360px of viewport
+        on the narrowest phones still in use — already spilling past the
+        page's 16px gutter and centred so it showed on both sides. The
+        signal dot adds 14px (6px plus its gap), which tipped that into 4px
+        of real horizontal page scroll at 360px. Confirmed by removing the
+        dot from the live DOM and re-measuring: 369 and overflowing, 355 and
+        not.
+
+        24px comes back here, which clears it at 360 and leaves the row
+        better spaced at 375 than it was before the dot existed. Full
+        padding returns at `sm`, where there was never a problem.
+      */
+      className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
         active
           ? "bg-gradient-to-r from-magnet-600 to-magnet-500 text-white shadow-lg shadow-magnet-900/40"
           : "text-white/60 hover:text-white"
@@ -47,6 +69,39 @@ function TabButton({
           mark; these name an exchange and a vote, neither of which does. */}
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {label}
+      {signal && (
+        <>
+          {/*
+            The same dot as `LiveProposalsPill`'s, deliberately: one visual
+            vocabulary for "a vote is open", whether you meet it in the hero
+            or on the pill row. Size, shape and pulse are copied from there.
+
+            It gains a halo that the hero's does not have, because it has to
+            carry the message ALONE. The hero pill has a number and the word
+            "proposals" beside it; here there is nothing but the dot, on a
+            row the eye reads as navigation rather than as status.
+
+            ── Why the colour flips on the active pill ──
+            `bg-magnet-400` on the selected pill's magnet-600→500 gradient is
+            purple on purple — the dot all but disappears at the one moment
+            it is also least needed. White reads on the gradient, and keeps
+            the dot a consistent OBJECT across both states rather than
+            something that comes and goes with selection.
+          */}
+          <span
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 shrink-0 animate-pulse rounded-full ${
+              active
+                ? "bg-white shadow-[0_0_6px_1px_rgba(255,255,255,0.85)]"
+                : "bg-magnet-400 shadow-[0_0_7px_2px_rgba(192,132,252,0.75)]"
+            }`}
+          />
+          {/* A dot is not readable. This makes the button announce itself as
+              "Governance, a proposal is open" rather than as "Governance",
+              identical to the pill beside it. */}
+          <span className="sr-only">, {signalLabel}</span>
+        </>
+      )}
     </button>
   );
 }
@@ -100,6 +155,23 @@ export function TokensView({
   governanceView: ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>("mint");
+
+  /**
+   * The dot on the Governance pill.
+   *
+   * ── Why it shares the hero pill's count rather than reading its own ──────
+   * `useLiveProposalCount` is backed by one module-level store, so this is a
+   * third subscriber and not a third network read. It also means the dot and
+   * `LiveProposalsPill` cannot disagree: a pill row saying a vote is open
+   * above a hero pill reading 0 is not a state this page can reach.
+   *
+   * `count > 0` even when the read came back `incomplete`, matching the hero
+   * pill exactly. `incomplete` means an era could not be read, so the count
+   * may be LOW — but every proposal it did count is one we actually read, so
+   * a dot is still true. The hero pill prints a dash in that case because it
+   * is claiming a total; a dot claims only "at least one", which survives.
+   */
+  const { count: liveProposals } = useLiveProposalCount();
 
   useEffect(() => {
     const wanted = () =>
@@ -189,6 +261,8 @@ export function TokensView({
             onClick={() => select("governance")}
             icon={VoteIcon}
             label="Governance"
+            signal={liveProposals > 0}
+            signalLabel="a proposal is open"
           />
         </div>
       </div>

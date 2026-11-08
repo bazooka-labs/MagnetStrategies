@@ -21,6 +21,7 @@ const musd = readFileSync("src/components/tokens/MusdTokenView.tsx", "utf8");
 const tokensRoute = readFileSync("src/app/tokens/page.tsx", "utf8");
 const strategyRoute = readFileSync("src/app/strategy/page.tsx", "utf8");
 const gov = readFileSync("src/components/tokens/GovernanceSection.tsx", "utf8");
+const tokensView = readFileSync("src/components/tokens/TokensView.tsx", "utf8");
 const treasury = readFileSync("src/components/tokens/TreasuryStat.tsx", "utf8");
 const govFigure = readFileSync("src/components/tokens/GovFigure.tsx", "utf8");
 const navbar = readFileSync("src/components/Navbar.tsx", "utf8");
@@ -354,8 +355,25 @@ describe("the hero points at governance", () => {
   });
 
   it("defines the count once", () => {
+    /*
+      Three consumers now: the hero pill, the Governance pill's dot, and the
+      section. The first two take it through `useLiveProposalCount`, which
+      also owns the 15s re-render that notices a window closing — written
+      twice before, and missed the first time in the hero pill precisely
+      because the same fix already existed elsewhere.
+
+      So what is pinned is that neither caller counts for itself.
+    */
     expect(store).toContain("export const liveCount");
-    expect(pill).toContain("liveCount(proposals)");
+    expect(store).toContain("export function useLiveProposalCount");
+    expect(store).toContain("setInterval");
+    for (const [name, src] of [["pill", pill], ["tokensView", tokensView]] as const) {
+      expect(src, name).toContain("useLiveProposalCount");
+      expect(src, name).not.toContain("liveCount(proposals)");
+      // The timer belongs to the hook; a second one here is the duplication
+      // that produced the stale-count bug in the first place.
+      expect(src, name).not.toContain("setInterval");
+    }
   });
 
   it("shares one request between the two consumers", () => {

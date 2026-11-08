@@ -18,12 +18,12 @@
  * keeps /tokens shipping its content in statically generated HTML.
  */
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type algosdk from "algosdk";
 import { useWallet } from "@/hooks/useWallet";
 import { listProposals } from "@/lib/governanceReads";
 import {
-  GOVERNANCE_ERAS, isActive, type GovernanceEra, type Proposal,
+  GOVERNANCE_ERAS, GOVERNANCE_LIVE, isActive, type GovernanceEra, type Proposal,
 } from "@/lib/governance";
 
 type Snapshot = {
@@ -146,6 +146,38 @@ export function useGovernanceProposals() {
   }, [algodClient]);
 
   return { ...state, refresh };
+}
+
+/**
+ * The live count, re-rendered as a window closes.
+ *
+ * ── Why the timer is here and not in each caller ──────────────────────────
+ * `liveCount` asks `isActive`, which compares a proposal's `endTime` to the
+ * BROWSER CLOCK. Nothing in the store changes when that clock crosses the
+ * end of a window, so a component that only re-renders on store updates goes
+ * on advertising a vote that has closed — a bug found and fixed once in
+ * `LiveProposalsPill`, which had been missed because the same fix had
+ * already been made in `GovernanceSection` and the two live in different
+ * trees.
+ *
+ * The Governance pill's dot is the third consumer of that count, so the
+ * timer moved in here rather than being written a third time. Two real
+ * callers, not one real and one hypothetical — the bar CLAUDE.md sets for
+ * extracting something.
+ *
+ * `GOVERNANCE_LIVE` is folded in for the same reason: every caller has to
+ * ask it, and a count of proposals from a contract that is not accepting
+ * votes is not a reason to point anyone at the tab.
+ */
+export function useLiveProposalCount() {
+  const { proposals, loading, incomplete, refresh } = useGovernanceProposals();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((t) => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const count = GOVERNANCE_LIVE ? liveCount(proposals) : 0;
+  return { count, loading, incomplete, refresh };
 }
 
 /** The count the pill advertises, defined once so it cannot drift from the list. */
