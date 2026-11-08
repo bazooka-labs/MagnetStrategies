@@ -34,10 +34,18 @@
  * one click away. It keeps the amber treatment so it still reads as the page's
  * informative voice.
  *
- * ── The treasury is NOT here ───────────────────────────────────────────────
- * It is the fifth metric box at the top of both tabs now. It used to be a panel
- * beside "How it works", and showing the same balance twice on one page would
- * invite the reader to wonder which one is current.
+ * ── The treasury is here again, since 2026-11-08 ───────────────────────────
+ * It was a panel beside "How it works", then the fifth metric box at the top
+ * of the token tabs, and it is now the left half of a figure pair inside this
+ * explanation. The rule that moved it out the first time still holds and is
+ * what keeps it honest: ONE copy on the page. It is not in the metric row any
+ * more, because governance and that row are two pills of a single page and a
+ * balance shown twice invites the reader to ask which one is current.
+ *
+ * Why here rather than the metric row: that row is figures about the token —
+ * peg, holders, supply, backing — and the treasury is not one of those. It is
+ * the balance proposals direct, so it belongs next to the rules for directing
+ * it, where it also gives "current vote power" something to be a share of.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -46,6 +54,8 @@ import { AlertTriangle, Info, ShieldCheck, Sparkles, Vote as VoteIcon } from "lu
 import { useWallet } from "@/hooks/useWallet";
 import { AdminPanel } from "@/components/vote/AdminPanel";
 import { ProposalCard } from "@/components/vote/ProposalCard";
+import { TreasuryStat } from "@/components/tokens/TreasuryStat";
+import { GovFigure } from "@/components/tokens/GovFigure";
 import { getVotingBalance } from "@/lib/governanceReads";
 import { useGovernanceProposals } from "@/hooks/useGovernanceProposals";
 import { getFounder, getPendingFounder } from "@/lib/governanceReads";
@@ -354,35 +364,48 @@ export function GovernanceSection() {
             Nothing can take them in between: the contract has no sweep path, and mUSD has no freeze
             or clawback address, so a reclaim cannot be blocked by anyone, including us.
           </p>
+          <p>
+            Proposals often direct how the treasury below deploys liquidity. The vote is
+            advisory — deployment stays a founder action, informed by the result — so the
+            balance is here to show what a decision is about, beside the weight you would
+            bring to it.
+          </p>
         </div>
 
-        {/* Vote power, full width inside the explanation.
-            It sits HERE rather than in the header row because the number only
-            means anything next to the sentence that says one whole token is one
-            vote. As a lone pill it was a figure without a unit. */}
-        <div className="mt-5 rounded-xl border border-white/10 bg-black/30 px-5 py-4">
-          {/* White label, Magnet-purple figure — the inverse of the metric row
-              above, where the label is grey and the colour carries the number.
-              Here the box sits inside an amber panel, so a grey label would
-              read as disabled against it. */}
-          <p className="text-xs font-medium uppercase tracking-wider text-white">
-            Current vote power
-          </p>
-          <p className="mt-1.5 font-mono text-2xl font-bold text-magnet-400">
-            {!isConnected || balance === null
-              ? "—"
-              : `${formatWeight(MVOTE, balance)} ${MVOTE.unit}`}
-          </p>
-          <p className="mt-0.5 text-xs text-gray-500">
-            {!isConnected
-              ? "Connect a wallet to see your voting power"
-              : balanceState === "loading"
-                ? "Reading your balance…"
-                : balanceState === "error"
-                  // Not "0 mUSD", and not silence. A failed read is not a balance.
-                  ? "Couldn't read your balance just now — withheld rather than guessed"
-                  : `Whole ${MVOTE.unit} only — fractions do not count toward a vote`}
-          </p>
+        {/* The two figures a voter weighs: the pot a proposal points at, and
+            their own say in where it points.
+
+            Vote power sits HERE rather than in the header row because the
+            number only means anything next to the sentence that says one
+            whole token is one vote. As a lone pill it was a figure without a
+            unit. The treasury joined it on 2026-11-08 for the same reason in
+            reverse — in the metric row it was a balance with no question
+            attached.
+
+            Both come from `GovFigure`, so the pair cannot drift: same frame,
+            same label size, same baseline. `items-stretch` is the grid
+            default and is what keeps them level when one sub-line wraps. */}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <TreasuryStat />
+          <GovFigure
+            label="Current vote power"
+            tone="magnet"
+            value={
+              !isConnected || balance === null
+                ? "\u2014"
+                : `${formatWeight(MVOTE, balance)} ${MVOTE.unit}`
+            }
+            sub={
+              !isConnected
+                ? "Connect a wallet to see your voting power"
+                : balanceState === "loading"
+                  ? "Reading your balance\u2026"
+                  : balanceState === "error"
+                    // Not "0 mUSD", and not silence. A failed read is not a balance.
+                    ? "Couldn't read your balance just now \u2014 withheld rather than guessed"
+                    : `Whole ${MVOTE.unit} only \u2014 fractions do not count toward a vote`
+            }
+          />
         </div>
       </div>
 

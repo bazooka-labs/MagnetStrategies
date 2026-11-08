@@ -13,7 +13,6 @@ import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
 import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 import { StatCell } from "@/components/tokens/StatCell";
-import { TreasuryStat } from "@/components/tokens/TreasuryStat";
 
 const pulse = () => <div className="h-96 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -144,14 +143,16 @@ export function MusdTokenView({
 
         <div className="border-t border-white/10" />
 
-        {/* The treasury repeats on both tabs on purpose: it is one balance
-            behind both tokens, not a property of whichever is selected. */}
-        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-5 lg:divide-y-0">
+        {/* Four across, since 2026-11-08. The treasury was the fifth and it
+            moved into "How voting works" on the Governance pill: it is the
+            balance proposals direct, not a figure about the token, and every
+            cell left here IS one. Four also drops the spanning fifth that
+            left a lone wide cell under a 2x2 on narrow screens. */}
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
           <StatCell label="mUSD Peg" value={pegDisplay} sub="Market Price via Vestige" tone="green" />
           <StatCell label="Holders" value={holders} sub="mUSD wallets" tone="amber" />
           <StatCell label="Circulating Supply" value={val(stats?.circulating)} sub="Held by Users" tone="teal" />
           <StatCell label="Backing Ratio" value={backing} sub="USDC Reserves" tone="magnet" />
-          <div className="col-span-2 lg:col-span-1"><TreasuryStat /></div>
         </div>
 
         <div className="border-t border-white/10" />

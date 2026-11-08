@@ -82,7 +82,9 @@ surface going forward.
 ## The model
 
 **Founder-led, advisory.** This is not a decentralized DAO. The founder retains
-execution authority; UVote produces a clear, on-chain mandate that guides decisions.
+execution authority; mVote produces a clear, on-chain mandate that guides decisions.
+(It said UVote until 2026-11-08 — that contract is retired, and the sentence defining
+the current model was still naming it.)
 Framing every proposal honestly as advisory keeps expectations calibrated and keeps
 the protocol inside the trust model its contracts were audited against.
 
@@ -135,10 +137,12 @@ for the audited detail), stated plainly:
   anchor across MagnetFi, plus the strategy itself. That is a narrowing, and a
   deliberate one — see "Why mUSD rather than $U".
 - **Treasury.** Proposals often direct how the Magnet Strategies treasury deploys
-  liquidity. The treasury's live USDC balance is shown as a metric box on both token
-  views so voters
-  can see the pool a decision is directing. Treasury deployment remains a founder
-  action informed by the vote.
+  liquidity. The treasury's live USDC balance is shown inside the "How voting works"
+  panel on the Governance pill, paired with the reader's own vote power, so a voter
+  sees the pool a decision is directing beside the weight they would bring to it. It
+  moved there from the token metric rows on 2026-11-08 and is shown in one place
+  only — two copies on one page invite the question of which is current. Treasury
+  deployment remains a founder action informed by the vote.
 
 ---
 

@@ -242,8 +242,11 @@ export async function getVotingBalance(
  * Treasury wallet USDC balance (base units). 0 if not opted in / unreachable.
  *
  * Left returning 0 on failure, unlike the reads above, and the difference is
- * deliberate: this feeds one decorative metric box that already renders a dash
- * for null from its own loading state. Nothing is decided from it.
+ * deliberate: it feeds one display box, which already renders a dash for null
+ * from its own loading state, and `TreasuryStat` keeps the last good figure
+ * rather than painting a zero. Nothing is computed or signed from it — since
+ * 2026-11-08 it sits beside the voting rules as context for a proposal, and
+ * that is still reading, not deciding.
  */
 export async function getTreasuryUsdc(algod: algosdk.Algodv2): Promise<number> {
   try {

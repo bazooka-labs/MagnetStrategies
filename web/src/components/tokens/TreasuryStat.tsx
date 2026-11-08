@@ -1,13 +1,31 @@
 "use client";
 
 /**
- * The fifth box in the metric row: what the Magnet treasury holds.
+ * What the Magnet treasury holds, shown inside "How voting works".
+ *
+ * ── Where it sits, and why it moved there on 2026-11-08 ────────────────────
+ * It was the fifth box in the mUSD metric row, and before that a panel beside
+ * this same explanation. It is back in the explanation, as the left half of a
+ * pair with your own vote power.
+ *
+ * The round trip is not indecision. In the metric row it sat among figures
+ * about the token — peg, holders, supply, backing — and it is not one: it is
+ * the balance proposals direct. Beside the voting rules it answers the
+ * question a reader of that panel actually has, which is what a vote is
+ * about, and it is the figure that gives "your vote power" something to be a
+ * share of. What was wrong the first time was the panel it sat in, not the
+ * page.
+ *
+ * It is NOT in both places. Governance and the metric row are two pills of
+ * one page, so two copies would invite a reader to ask which is current —
+ * the reason it left this panel originally, and `tokensGovernance.test.ts`
+ * pins the single copy from both ends.
  *
  * ── Why it is a component and not a `StatCell` ─────────────────────────────
  * It carries a link to the account on allo.info, which `StatCell`'s plain
  * `sub` string cannot hold. `TvlRankStat` is here for the same reason — it owns
- * a popover — and both take their colour from `STAT_TONES` rather than naming a
- * class, or the row drifts the first time one of them is touched.
+ * a popover. Its frame comes from `GovFigure`, shared with the vote-power box
+ * beside it so the pair cannot drift apart.
  *
  * ── Why it reads its own chain data ────────────────────────────────────────
  * It builds its own algod client rather than taking the wallet's. The treasury
@@ -29,7 +47,7 @@ import { ExternalLink } from "lucide-react";
 import { ALGOD_URLS } from "@/lib/constants";
 import { TREASURY_ADDRESS, formatUsdc } from "@/lib/governance";
 import { getTreasuryUsdc } from "@/lib/governanceReads";
-import { STAT_TONES } from "@/components/tokens/StatCell";
+import { GovFigure } from "@/components/tokens/GovFigure";
 
 export function TreasuryStat() {
   const [usdc, setUsdc] = useState<number | null>(null);
@@ -48,7 +66,9 @@ export function TreasuryStat() {
   useEffect(() => { void load(); }, [load]);
 
   // Refetch when the tab regains focus, matching TvlRankStat — a page left open
-  // overnight should not keep showing yesterday's balance.
+  // overnight should not keep showing yesterday's balance. It matters more
+  // here than it did in the metric row: this figure now sits beside an open
+  // proposal, and a stale balance is a stale premise for a vote.
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -60,20 +80,21 @@ export function TreasuryStat() {
   }, [load]);
 
   return (
-    <div className="p-5">
-      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Treasury</p>
-      <p className={`mt-2 font-mono text-2xl font-bold ${STAT_TONES.green}`}>
-        {usdc === null ? "…" : `$${formatUsdc(usdc)}`}
-      </p>
-      <a
-        href={`https://allo.info/account/${TREASURY_ADDRESS}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-0.5 inline-flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-300"
-      >
-        USDC for liquidity
-        <ExternalLink className="h-3 w-3" />
-      </a>
-    </div>
+    <GovFigure
+      label="Treasury"
+      value={usdc === null ? "…" : `$${formatUsdc(usdc)}`}
+      tone="green"
+      sub={
+        <a
+          href={`https://allo.info/account/${TREASURY_ADDRESS}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 transition-colors hover:text-gray-300"
+        >
+          USDC for liquidity
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      }
+    />
   );
 }

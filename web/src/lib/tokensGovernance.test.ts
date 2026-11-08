@@ -1,4 +1,4 @@
-// Governance's home, and the treasury promoted to a metric box.
+// Governance's home, and where the treasury box lives.
 //
 // ── What moved on 2026-11-04, and why this file was rewritten ─────────────
 // Governance was a SECTION at the foot of the $U tab of /tokens. $U is now the
@@ -22,6 +22,7 @@ const tokensRoute = readFileSync("src/app/tokens/page.tsx", "utf8");
 const strategyRoute = readFileSync("src/app/strategy/page.tsx", "utf8");
 const gov = readFileSync("src/components/tokens/GovernanceSection.tsx", "utf8");
 const treasury = readFileSync("src/components/tokens/TreasuryStat.tsx", "utf8");
+const govFigure = readFileSync("src/components/tokens/GovFigure.tsx", "utf8");
 const navbar = readFileSync("src/components/Navbar.tsx", "utf8");
 const config = readFileSync("next.config.js", "utf8");
 
@@ -54,28 +55,34 @@ describe("the mUSD page wires each pill to its own view", () => {
   });
 });
 
-describe("the fifth box differs by view, since 2026-11-07", () => {
+describe("the metric rows, and where the treasury went", () => {
   /*
-    It was the treasury on BOTH, and this block asserted that. The treasury
-    is USDC available for liquidity — a fact about the protocol's balance
-    sheet rather than about $U — so it stayed on the mUSD page and the Magnet
-    page took a year-to-date return instead, which is what a reader of that
-    page is actually asking.
+    Both token rows are FOUR cells now.
 
-    Both views still run five across with the fifth cell spanning two columns
-    on the narrow breakpoint, because that part was never about which figure
-    sits in it.
+    The treasury was the fifth on mUSD and a year-to-date return the fifth on
+    Magnet. YTD came out on 2026-11-07 to stand beside the name; the treasury
+    came out on 2026-11-08 into "How voting works" on the Governance pill. It
+    is the balance proposals direct, not a figure about the token, and every
+    cell left in either row is one.
   */
-  it("keeps the treasury on mUSD and NOT on Magnet", () => {
-    expect(musd).toContain("<TreasuryStat />");
-    expect(magnet).not.toContain("<TreasuryStat />");
-    // The import has to go with it, or the next edit re-adds the element
-    // against a still-valid symbol.
-    expect(magnet).not.toContain('from "@/components/tokens/TreasuryStat"');
+  it("runs BOTH rows four across, with no spanning fifth", () => {
+    /* The METRIC row specifically — it is the one with the cell dividers.
+       A bare `lg:grid-cols-5` search also matches the chart-and-swap split
+       below it, which is 3 + 2 and has nothing to do with this. */
+    const metricRow = (src: string) =>
+      src.split("\n").find((l) => l.includes("divide-x") && l.includes("grid-cols")) ?? "";
+
+    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
+      expect(metricRow(src), name).toContain("lg:grid-cols-4");
+      expect(metricRow(src), name).not.toContain("lg:grid-cols-5");
+      // The wrapper that let a fifth cell span two columns on the narrow
+      // breakpoint. Left behind, it is a lone wide cell under a 2x2.
+      expect(src, name).not.toContain('className="col-span-2 lg:col-span-1"');
+    }
   });
 
   it("puts the YTD return on Magnet and NOT on mUSD", () => {
-    // It left the metric row entirely later the same day — see below — so
+    // It left the metric row entirely later the same day — see above — so
     // this asserts the figure is on the page, not which element holds it.
     expect(magnet).toContain("YTD vs ALGO");
     // The rendered label, not the bare acronym: a prose comment on the mUSD
@@ -91,35 +98,37 @@ describe("the fifth box differs by view, since 2026-11-07", () => {
     expect(magnet).not.toMatch(/label="YTD[^"]*\$"/);
   });
 
-  it("runs Magnet four across and mUSD five, which is now the difference", () => {
+  it("renders the treasury from governance and from NEITHER token view", () => {
     /*
-      YTD came out of the metric row on 2026-11-07 to stand beside the name,
-      so Magnet has four cells and no spanning fifth. mUSD still has five
-      with the treasury spanning.
+      One copy on the page. Governance and the mUSD metric row are two pills
+      of a single page, and a balance shown twice invites the reader to ask
+      which one is current — the reason it left the governance panel the
+      first time, in 2026-11.
 
-      Both halves asserted: checking only Magnet's four would pass with mUSD
-      silently dropped to four as well.
+      Asserted at the wiring because the cheapest way to undo the move is to
+      drop `<TreasuryStat />` back into either row: it compiles, and it does
+      not fail the rendered tests in `GovernanceFigures.test.tsx`, which look
+      at the governance side only.
     */
-    /* The METRIC row specifically — it is the one with the cell dividers.
-       A bare `lg:grid-cols-5` search also matches the chart-and-swap split
-       below it, which is 3 + 2 and has nothing to do with this. */
-    const metricRow = (src: string) =>
-      src.split("\n").find((l) => l.includes("divide-x") && l.includes("grid-cols")) ?? "";
+    expect(gov).toContain("<TreasuryStat />");
+    expect(gov).toContain('from "@/components/tokens/TreasuryStat"');
 
-    expect(metricRow(magnet)).toContain("lg:grid-cols-4");
-    expect(metricRow(magnet)).not.toContain("lg:grid-cols-5");
-    expect(magnet).not.toContain('className="col-span-2 lg:col-span-1"');
-
-    expect(metricRow(musd)).toContain("lg:grid-cols-5");
-    expect(metricRow(musd)).not.toContain("lg:grid-cols-4");
-    expect(musd).toContain('className="col-span-2 lg:col-span-1"');
+    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
+      expect(src, name).not.toContain("<TreasuryStat />");
+      // The import has to go with it, or the next edit re-adds the element
+      // against a still-valid symbol.
+      expect(src, name).not.toContain('from "@/components/tokens/TreasuryStat"');
+    }
   });
 
   it("takes its colour from the shared table", () => {
-    // A hardcoded class here is how the row drifts the first time the palette
-    // moves — the same reason TvlRankStat imports it.
-    expect(treasury).toContain("STAT_TONES.green");
+    // A hardcoded class here is how the palette drifts the first time it
+    // moves — the same reason TvlRankStat imports it. `GovFigure` is where
+    // the lookup now lives, since the box took its frame from there.
+    expect(treasury).toContain('tone="green"');
     expect(treasury).not.toMatch(/text-green-\d00/);
+    expect(govFigure).toContain("STAT_TONES[tone]");
+    expect(govFigure).not.toMatch(/text-(green|magnet|amber|teal)-\d00/);
   });
 
   it("says which number it is", () => {
@@ -131,17 +140,11 @@ describe("the fifth box differs by view, since 2026-11-07", () => {
   });
 
   it("renders without a wallet", () => {
-    // It builds its own client: this box exists for a visitor who has never
-    // connected anything.
+    // It builds its own client: the treasury is a fact about the project,
+    // not about the viewer, and a reader weighing a proposal may well not
+    // have connected anything.
     expect(treasury).toContain("new algosdk.Algodv2");
     expect(treasury).not.toContain("useWallet");
-  });
-
-  it("does not also show the balance inside governance", () => {
-    // It was a panel there. Two copies on one page invite the reader to ask
-    // which is current.
-    expect(gov).not.toContain("getTreasuryUsdc");
-    expect(gov).not.toContain("TREASURY_ADDRESS");
   });
 });
 
@@ -220,12 +223,19 @@ describe("governance is the mUSD page's Governance pill", () => {
     expect(gov).toContain("border-amber-400/25");
   });
 
-  it("puts vote power inside that explanation", () => {
+  it("puts vote power inside that explanation, paired with the treasury", () => {
     // Next to the sentence that says one whole token is one vote. As a lone
-    // pill in the header it was a figure without a unit.
+    // pill in the header it was a figure without a unit. The treasury joined
+    // it on 2026-11-08 for the same reason in reverse — in the metric row it
+    // was a balance with no question attached.
+    //
+    // That the two SIT TOGETHER in one two-column row is checked against the
+    // rendered tree in `GovernanceFigures.test.tsx`; this pins them to the
+    // panel rather than to the page.
     const box = gov.slice(gov.indexOf("How voting works"), gov.indexOf("Live proposals"));
     expect(box).toContain("Current vote power");
     expect(box).toContain("${formatWeight(MVOTE, balance)} ${MVOTE.unit}");
+    expect(box).toContain("<TreasuryStat />");
   });
 
   it("says something useful when no wallet is connected", () => {
