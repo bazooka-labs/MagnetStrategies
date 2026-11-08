@@ -1,9 +1,16 @@
 # Trading Terminal — ALGO collateral
 
-**Status: PARKED 2026-11-03, after three independent audits.** The read,
-display and close/cancel paths are collateral-correct and shipped. The toggle
-is NOT built, and both ALGO opens and ALGO closes are refused before any
-signature.
+> **LIVE since 2026-11-05. This file is the build spec, not the status.**
+> The header below said PARKED until 2026-11-08 and was wrong for three days:
+> the toggle shipped in `8290f72`, the assertions were widened in `35b988d`,
+> and the UI gate that outlived that fix was lifted in `b5a3472`. Opens and
+> closes both work and multiple real ALGO positions have been opened and
+> closed on mainnet since.
+>
+> **Status lives in [OVERVIEW.md](./OVERVIEW.md), per CLAUDE.md, and nowhere
+> else — including here.** This block is a pointer so the next reader does
+> not do what the last one did, which was trust a stale header in a SPEC over
+> the OVERVIEW that was correct all along.
 
 | Layer | State |
 |---|---|
@@ -12,12 +19,12 @@ signature.
 | §5b close/cancel — follow the position's own collateral | shipped |
 | §5c audit fixes — four live display bugs, one dead guard, test gaps | shipped |
 | unit plumbing — asset units authoritative, USD derived | shipped |
-| the pill toggle | **not built** |
-| ALGO open | refused: `collateral_asset_unsupported` |
-| ALGO close | refused: `foreign_asset`; button disabled with the reason shown |
+| the pill toggle | shipped — `8290f72` |
+| ALGO open | **live** — the refusal was lifted with the widened assertions |
+| ALGO close | **live** — `b5a3472` |
 
-**Why parked rather than finished.** Measured on chain the same day: ONE
-ALGO-collateral position exists on the entire exchange, worth $20.02, held by
+**Why it was parked, and what changed.** Measured on 2026-11-03: ONE
+ALGO-collateral position existed on the entire exchange, worth $20.02, held by
 a wallet that may not use this terminal. Finishing requires loosening two
 fund-safety assertions, and the audits showed that work in this area
 introduces defects that only independent review catches — four live wrong
