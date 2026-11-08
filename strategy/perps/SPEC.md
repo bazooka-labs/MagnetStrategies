@@ -1433,6 +1433,149 @@ case that raised the question. See [OVERVIEW.md](./OVERVIEW.md#open-items).
 
 ---
 
+## ALGO-denominated result on ALGO-collateral positions — SPEC, not built
+
+**Status: specified 2026-11-08, nothing built.** Display only — no contract
+call, no group, no signature changes. It still gets a review before it ships,
+because every defect in rules 1–4 above was also "display only".
+
+### The problem, measured
+
+A position collateralised in ALGO is reported in dollars, and the dollar
+figure is not what the trader receives. From the 2026-11-05 close recorded in
+[OVERVIEW.md](./OVERVIEW.md):
+
+| | |
+|---|---|
+| Deposited (wallet → PEX) | 200 ALGO |
+| Escrowed after the entry fee (`collateral_amount`) | 196.888673 ALGO |
+| Returned | 194.386612 ALGO + 12.259258 USDC |
+| Card showed | **+$12.03** |
+| Against deposit-time ALGO | **≈ +$10.85** |
+
+Two separate problems hide in that. The 11% gap is the collateral's own price
+move, already pinned as a decision in OVERVIEW.md. This section is about the
+other one: a trader who funds in ALGO and is paid in ALGO thinks in ALGO, and
+a dollar headline makes them do arithmetic to find out whether they have more
+ALGO than they started with. On this trade they did, by a lot — and the card
+never said so.
+
+### The rule
+
+**On a position whose collateral is not USDC, the headline result is
+denominated in the collateral asset.** USD stays, demoted to a secondary line.
+USDC-collateral positions are untouched — for them the two denominations are
+the same number and a change would be churn.
+
+The ALGO figure is built from the legs the close actually pays:
+
+```
+collateral in   = position.collateral_amount            (ALGO, from the p2: box)
+payout in ALGO  = the ALGO leg
+                + every non-ALGO leg valued at the SAME oracle price
+                  the close itself quoted against
+result          = payout in ALGO − collateral in
+```
+
+For the close above that is 194.386612 + (12.259258 ÷ 0.0916) ≈ **328.2 ALGO
+back against 196.9 escrowed — about +131.3 ALGO, +66.7%.** (The 0.0916 is
+back-derived from the close's own figures for this worked example; the
+implementation reads the price from the quote.)
+
+### Three things the implementation must not do
+
+**It must not convert through anything but the close's own oracle price.** The
+whole point is that the figure agrees with the payout. A price fetched
+separately, at a different instant, reintroduces the drift this removes.
+
+**It must not call `collateral_amount` the deposit.** It is post-entry-fee —
+196.888673 against 200 deposited, a 1.6% gap on this trade. The label says
+which one it is. Recovering the true wallet deposit means reading the opening
+transaction from the indexer, which is a new dependency for a display figure
+and is ambiguous across increases and partial closes; it is listed as a
+follow-up below, not assumed.
+
+**It must withhold rather than approximate**, exactly as rule 1 above. If any
+leg cannot be priced, the ALGO headline does not render. `collateralUsdOf`
+already throws `UnpricedCollateralError` for this reason; the new path follows
+it rather than inventing a fallback.
+
+### The figure is approximate until the payout is one asset
+
+While a close pays ALGO + USDC, the USDC leg has to be *converted* to state a
+result in ALGO, and a converted figure is an estimate of what the trader ends
+up with after they swap it. Once the single-asset payout lands (next section),
+the same number becomes exact — the ALGO leg IS the payout. Worth sequencing
+the two in that order for that reason, and worth saying on screen while it is
+still a conversion.
+
+### Leverage stays in the units it has — and that is not the real problem
+
+Asked directly, 2026-11-08: should a 10x on 1000 ALGO be denominated in ALGO
+too?
+
+**No, and re-denominating it would change nothing.** Leverage is a ratio of
+notional to collateral. Convert both to ALGO at one price and the price
+cancels: 10x is 10x in any unit. There is no ALGO version of a dimensionless
+number.
+
+The honest problem is that the figure **drifts**, which no denomination fixes.
+Notional is fixed in USD at open; ALGO collateral is fixed in ALGO. So:
+
+| ALGO price | Collateral value | Notional | Effective leverage |
+|---|---|---|---|
+| $0.10 at open | $100 | $1,000 | 10x |
+| $0.05 | $50 | $1,000 | **20x** |
+| $0.20 | $200 | $1,000 | **5x** |
+
+A USDC-collateralised trader never sees this. An ALGO-collateralised one sees
+it move against them in exactly the wrong direction on a correlated long: the
+market falls, the position loses, and the leverage securing it rises at the
+same moment. `correlatedRisk.ts` already states the consequence —
+*"Liquidation therefore arrives sooner than the leverage figure suggests"* —
+and already handles it the right way, by quoting the counterfactual
+liquidation distance **from PEX** instead of publishing a second opinion.
+
+So: leave the opening leverage alone, and if anything is added, add
+**effective leverage now**, recomputed at the live price beside it. Subject to
+the same restraint that module sets out: a derived leverage is a display
+figure, never a risk authority, and it must never become a second opinion
+about where liquidation sits.
+
+### Guards this needs
+
+Mutation-tested, per the repo's standard. Each one is a defect that would
+otherwise ship silently:
+
+1. A USDC-collateral position still reads in dollars — the change must not
+   leak into the path it does not apply to.
+2. An ALGO-collateral headline is in ALGO, and the USD line is secondary
+   rather than absent.
+3. The conversion uses the quote's price. Mutate it to a separately fetched
+   price and the test goes red.
+4. An unpriceable leg renders no headline, rather than a wrong one.
+5. The label distinguishes escrowed from deposited. A grep-proof assertion on
+   the rendered string, not on the source.
+6. Leverage is unchanged by this work — the number shown for a 10x ALGO
+   position equals the number shown for the equivalent USDC one.
+
+### Follow-ups, deliberately not in scope
+
+- **True wallet-deposit accounting** (200 ALGO, not 196.888673) via the
+  opening transaction. Wanted, but it is an indexer dependency on a display
+  path and needs a rule for increases and partial closes first.
+- **Effective-leverage-now**, above. Separable, and probably worth its own
+  decision.
+
+### Open for the founder
+
+The worked example above reports **+131.3 ALGO against escrowed collateral**.
+Against the 200 ALGO that left the wallet it is **+128.2**. Both are honest
+and they differ by the entry fee. Which is the headline? The spec assumes
+escrowed, because it needs no new data source, and says so on screen.
+
+---
+
 ## Paying Profit Out in One Asset — Native, and Not Free
 
 A close is two legs: collateral in the collateral asset, profit in the PnL

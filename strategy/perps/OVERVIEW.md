@@ -259,7 +259,10 @@ the founder rather than settled in passing.
    ~11%. The label does say the basis, but a green figure reads as profit. The
    original stake is not recoverable from `p2:` (it carries post-fee collateral
    only), so changing this means choosing a different definition of "net", not
-   just fixing a number.
+   just fixing a number. **Specified 2026-11-08** —
+   [SPEC.md → ALGO-denominated result](./SPEC.md#algo-denominated-result-on-algo-collateral-positions--spec-not-built),
+   which proposes escrowed collateral as the basis and leaves the headline
+   choice open.
 2. **No minimum-receive is shown**, because the signed close has no output
    floor — `minPrimaryOutputAmount` and `minSecondaryOutputAmount` are both 0.
    The only protection is `acceptablePrice`, anchored to a quote up to 30s old,
