@@ -176,7 +176,10 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
       </div>
 
       <div className="mt-5">
-        <PrimaryButton onClick={run} disabled={!PROTOCOL_LIVE || !isConnected || busy || amt <= 0 || insufficient || lowReserve}>
+        {/* Taller on a fixed pill: with the output box gone the button is
+            the main object on the panel, and at the default height it read
+            as a footnote under a short form. */}
+        <PrimaryButton tall={!!fixed} onClick={run} disabled={!PROTOCOL_LIVE || !isConnected || busy || amt <= 0 || insufficient || lowReserve}>
           {busy ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…</span>
             : !isConnected ? "Connect wallet"
             : !PROTOCOL_LIVE ? "Launching on mainnet soon"

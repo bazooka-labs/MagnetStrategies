@@ -154,7 +154,18 @@ export function MusdTokenView({
               <VestigeChart assetId={3615600399} denominatingAssetId={31566704} title="mUSD / USDC Chart" />
             </div>
           </div>
-          <div className="lg:col-span-2">
+          {/* Centred in its column.
+
+              The chart is a fixed 440px and the swap panel is shorter — more
+              so since the output box came out of it — so the panel sat at the
+              top of a 440px cell and left ~120px of empty card beneath the
+              button. Measured, not eyeballed.
+
+              Centring splits that into even space above and below, which
+              reads as the panel sitting in the row rather than as the card
+              failing to finish. `lg:` only: at phone width the columns stack
+              and there is no cell to centre within. */}
+          <div className="lg:col-span-2 lg:flex lg:flex-col lg:justify-center">
             <MusdTab fixed={swapMode} />
           </div>
         </div>

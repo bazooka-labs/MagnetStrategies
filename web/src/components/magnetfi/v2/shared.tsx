@@ -196,17 +196,30 @@ export function PrimaryButton({
   onClick,
   disabled = false,
   className = "",
+  tall = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  /**
+   * A taller face, for a panel whose button is the main object on it.
+   *
+   * A SWAPPED class rather than one appended through `className`: both would
+   * be `py-*` utilities at the same specificity, so which wins is decided by
+   * Tailwind's own ordering in the stylesheet, not by the order of the
+   * strings here. That works until it quietly does not.
+   *
+   * Opt-in, so the other six surfaces using this button are unchanged.
+   */
+  tall?: boolean;
 }) {
+  const size = tall ? "py-5 text-base" : "py-3 text-sm";
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full rounded-xl bg-gradient-to-r from-magnet-600 to-magnet-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-magnet-900/40 transition-all hover:from-magnet-500 hover:to-magnet-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:from-magnet-600 disabled:hover:to-magnet-500 ${className}`}
+      className={`w-full rounded-xl bg-gradient-to-r from-magnet-600 to-magnet-500 px-5 ${size} font-semibold text-white shadow-lg shadow-magnet-900/40 transition-all hover:from-magnet-500 hover:to-magnet-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:from-magnet-600 disabled:hover:to-magnet-500 ${className}`}
     >
       {children}
     </button>
