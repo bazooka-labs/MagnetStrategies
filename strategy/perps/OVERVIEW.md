@@ -183,6 +183,70 @@ workaround needs a test naming the condition that removes it, or it outlives
 its cause. This one disabled ALGO closes for two days after the assertion it
 was waiting on had already been widened.
 
+### What a close actually pays out — measured, all eight (2026-11-08)
+
+Recorded here because this was re-derived from scratch during a design
+discussion, and the absence of a written answer cost an hour.
+
+A close pays out **by asset**, aggregating four fields: `primary_output_amount`
+(net collateral), `pnl_output_amount`, and `claimable_long_token_output` /
+`claimable_short_token_output` — see `aggregateCloseOutputs` in
+`pex/quote.ts`. On market 1 the long and short assets are ALGO and USDC, so a
+claimable funding leg can pay ALGO out of a USDC position and vice versa.
+
+Every close either wallet has made:
+
+| Date | Collateral in | Paid out |
+|---|---|---|
+| 10-04 | 15 USDC | 25.656776 ALGO + 5.918314 USDC |
+| 10-05 | 6 USDC | 6.859498 USDC |
+| 10-07 | 10 USDC | 8.877715 USDC |
+| 10-07 | 7 USDC | 13.140676 USDC |
+| 11-04 | 150 ALGO | 149.557022 ALGO + 0.074016 USDC |
+| 11-05 | 200 ALGO | 196.456850 ALGO + 12.259258 USDC |
+| 11-05 | 210 ALGO | 203.455452 ALGO + 10.407770 USDC |
+| 11-08 | 200 ALGO | 194.553455 ALGO + 3.810866 USDC |
+
+**A single-asset payout is not a property of USDC collateral.** Three USDC
+closes paid USDC alone and one paid 25.66 ALGO beside it; the difference is
+whether a claimable funding leg accrued, which scales with time held — the
+two-asset one ran about two days, the clean ones hours. Do not read "USDC in,
+USDC out" as a guarantee.
+
+**The terminal signs ONE group for a close.** `closePosition` is the only
+thing `doClose` calls, the group on chain is `Trading.82f0edaf` plus nine
+price calls, and `outputSwapMode` is pinned to `0` at every call site and
+asserted as `0` by the group check. There is no swap leg in it.
+
+**The USDC leg is converted afterwards, in a separate group.** Measured at
++43s, +52s and +71s after the three ALGO closes, for amounts matching the
+close exactly (10.407770 and 3.810866 USDC), routed through different DEX
+apps that share one fee address — an aggregator. Haystack appears in exactly
+four files in the tree, all of them the Magnet Token page's swap widget, and
+none under `strategy/`.
+
+> **Open question, 2026-11-08.** The founder reports this second transaction
+> is automatic — signed by the terminal, with a two-asset outcome only when
+> the swap fails. Nothing found in the code builds it: not the four client
+> builders (`openPosition`, `openLimitOrder`, `cancelOrder`, `closePosition`),
+> not `doClose` (which calls `closePosition` then `refresh()` and nothing
+> else), not any Haystack or `SwapOps` import under `strategy/` — Haystack
+> resolves to four files, all the Magnet Token page's widget.
+>
+> Note it is **not** `output_swap_mode` either. That is PEX's native
+> single-asset payout, it is still unbuilt (see
+> [SPEC.md](./SPEC.md#paying-profit-out-in-one-asset--native-and-not-free)),
+> and its failure mode is the opposite of the one described: a swap that
+> cannot fill makes the whole decrease fail, rather than leaving two assets
+> and retrying.
+>
+> Unresolved rather than settled either way. The evidence that would close it
+> is one transaction id where a single signature produced both the close and
+> the swap; the three follow-ups measured above landed +43s, +52s and +71s
+> later, in their own groups, which is slow and variable for an automatic
+> second signature. Until someone produces that txid, neither claim belongs
+> in a doc as fact.
+
 ### Open, pinned for a decision — ALGO close (2026-11-05)
 
 Neither of these loses money. Both are judgement calls deliberately left to

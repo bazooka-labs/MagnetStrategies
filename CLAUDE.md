@@ -150,6 +150,15 @@ system rather than reasoning about what they should be. Read the chain, run the
 command, fetch the file. Coherent reasoning over an unverified premise produces
 confident wrong answers.
 
+**A SPEC must not carry a status header.** Status lives in `OVERVIEW.md` and
+nowhere else — that rule is above, and this is the failure that proves why it
+needs teeth. `ALGO_COLLATERAL_SPEC.md` opened with "**Status: PARKED**" for
+three days after the feature shipped. `OVERVIEW.md` was correct the whole
+time, but a reader who opens the SPEC first gets a confident, dated, wrong
+answer and has no reason to look further. Dated and specific is what makes a
+stale header dangerous: it reads as freshly checked. When a SPEC needs to
+say where things stand, it links to `OVERVIEW.md` instead of answering.
+
 **Simulation is not a signature.** A passing hermetic test says nothing about
 whether a real wallet can sign the group; several defects on the liquidity path
 were invisible to tests and obvious to a MainNet simulation. Test the

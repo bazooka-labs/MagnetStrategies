@@ -73,7 +73,8 @@ catches wiring mutations that previously passed.
 ## 1. What is being asked for
 
 A pill toggle beside **Amount**, above the input, letting the user post **ALGO**
-or **USDC** as collateral. Today the terminal is USDC-only.
+or **USDC** as collateral. (Written when the terminal was USDC-only; both
+shipped on 2026-11-05.)
 
 ## 2. What PEX actually supports — verified, not assumed
 

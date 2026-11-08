@@ -989,6 +989,13 @@ Do not overstate this. Three of the four remaining exits can fail: ADL disarms n
 
 ## Collateral
 
+> **Superseded 2026-11-05: ALGO collateral is live.** The reasoning below is
+> kept because it is still true about the *trade-offs* — the collateral's USD
+> value does move with an ALGO-denominated position, and that is exactly the
+> open display question in
+> [OVERVIEW.md](./OVERVIEW.md#open-pinned-for-a-decision--algo-close-2026-11-05).
+> What changed is the conclusion, not the analysis. Status is in OVERVIEW.md.
+
 **USDC only in v1.** Posting ALGO as collateral on an ALGO-denominated position makes the collateral's USD value move with the position, turning the liquidation price into a moving target and the payout harder to reason about. USDC gives a clean denominator.
 
 > Making this exclusive rather than merely default also removes an ambiguity: the position key includes `collateralAssetId`, so if ALGO collateral were reachable a wallet could hold **two** distinct positions on the same market and side. Uniqueness, increase-flow routing and the notional cap would all key on the wrong tuple. USDC-only makes "one position per (market, side)" exactly true.
@@ -1432,6 +1439,16 @@ A close is two legs: collateral in the collateral asset, profit in the PnL
 asset. Confirmed by settlement on 2026-09-29 — a $6 ALGO/USD long returned
 5.744601 USDC and 40.393029 ALGO. Two assets back is a real comprehension
 problem: the user deposited USDC.
+
+> **Still unbuilt as of 2026-11-08, and now it cuts both ways.** Every close
+> we sign still sends `outputSwapMode: 0`, and the group assertion *requires*
+> 0. Re-confirmed against the code and against all eight closes on chain.
+>
+> Worth knowing before anyone specs the ALGO version separately:
+> `PNL_TO_COLLATERAL` converts the PnL leg into **whatever the collateral
+> is**. It is one field, not two features — on a USDC position it pays USDC
+> only, on an ALGO position it pays ALGO only. "Same currency in, same
+> currency out" for both collaterals is the same one-line change.
 
 **PEX solves this natively; do not build a swap.** `output_swap_mode` is a field
 on the order. `V2_OUTPUT_SWAP.PNL_TO_COLLATERAL = 1` converts the PnL leg into
