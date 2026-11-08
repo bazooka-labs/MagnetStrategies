@@ -26,7 +26,8 @@ export default async function TokensPage() {
       */}
       <TokensSplash />
       <TokensView
-        exchangeView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} />}
+        mintView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} swapMode="mint" />}
+        exchangeView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} swapMode="redeem" />}
         governanceView={<GovernanceSection />}
       />
     </>

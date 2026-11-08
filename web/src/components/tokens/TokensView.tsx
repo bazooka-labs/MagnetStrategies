@@ -19,9 +19,9 @@
  */
 
 import { type ReactNode, useEffect, useState } from "react";
-import { ArrowLeftRight, Vote as VoteIcon } from "lucide-react";
+import { ArrowLeftRight, Coins, Vote as VoteIcon } from "lucide-react";
 
-type Tab = "exchange" | "governance";
+type Tab = "mint" | "exchange" | "governance";
 
 function TabButton({
   active,
@@ -85,13 +85,21 @@ function TabButton({
 export const OPEN_GOVERNANCE = "magnet:open-governance";
 
 export function TokensView({
+  mintView,
   exchangeView,
   governanceView,
 }: {
+  /**
+   * Added 2026-11-07. The PSM is one two-way swap; splitting it across two
+   * pills means neither can be pointing the wrong way when a visitor
+   * arrives. Mint leads because it is the on-ramp — the reason most people
+   * open this page — and Exchange keeps the way back out.
+   */
+  mintView: ReactNode;
   exchangeView: ReactNode;
   governanceView: ReactNode;
 }) {
-  const [tab, setTab] = useState<Tab>("exchange");
+  const [tab, setTab] = useState<Tab>("mint");
 
   useEffect(() => {
     const wanted = () =>
@@ -165,6 +173,12 @@ export function TokensView({
       <div className="mb-8 flex justify-center sm:justify-start">
         <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-sm">
           <TabButton
+            active={tab === "mint"}
+            onClick={() => select("mint")}
+            icon={Coins}
+            label="Mint"
+          />
+          <TabButton
             active={tab === "exchange"}
             onClick={() => select("exchange")}
             icon={ArrowLeftRight}
@@ -179,7 +193,7 @@ export function TokensView({
         </div>
       </div>
 
-      {tab === "exchange" ? exchangeView : governanceView}
+      {tab === "mint" ? mintView : tab === "exchange" ? exchangeView : governanceView}
     </div>
   );
 }

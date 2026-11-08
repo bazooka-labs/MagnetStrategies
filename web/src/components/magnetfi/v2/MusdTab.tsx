@@ -26,9 +26,37 @@ function AssetBadge({ asset }: { asset: string }) {
   );
 }
 
-export function MusdTab() {
+/**
+ * `fixed` locks the direction and hides the flip control (2026-11-07).
+ *
+ * The PSM is one two-way swap, and a visitor arriving to buy mUSD had to
+ * notice a small flip button to find out which way it was pointing. Split
+ * across two pills — Mint for USDC -> mUSD, Exchange for mUSD -> USDC —
+ * each is a single text box and a single button, and neither can be
+ * pointing the wrong way when you arrive.
+ *
+ * One component, not two: the contract calls, opt-in handling, balance
+ * guards and the PSM-reserve check are the same on both sides, and a copy
+ * would be the half that stops getting fixes.
+ */
+export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
-  const [mode, setMode] = useState<Mode>("mint");
+  /**
+   * ── `fixed` is DERIVED, never seeded into state ─────────────────────────
+   * The obvious form — `useState(fixed ?? "mint")` — is wrong here, and
+   * wrong in a way that compiles and renders.
+   *
+   * Mint and Exchange are both `<MusdTokenView>` at the same position in the
+   * tree, so switching pills does not remount: React reconciles them as the
+   * same instance and only updates props. An initial-state read happens once
+   * and never again, so Exchange rendered the heading "Redeem mUSD" over a
+   * panel still pointing USDC -> mUSD. Caught by switching tabs in a browser.
+   *
+   * Deriving on every render makes the prop authoritative. `freeMode` is only
+   * consulted when nothing is fixed, which is the two-way PSM panel.
+   */
+  const [freeMode, setFreeMode] = useState<Mode>("mint");
+  const mode = fixed ?? freeMode;
   const [amount, setAmount] = useState("");
   const [bal, setBal] = useState<Balances | null>(null);
   const [psmUsdc, setPsmUsdc] = useState<number | null>(null);
@@ -82,7 +110,9 @@ export function MusdTab() {
   return (
     <div className="p-6">
       <div className="mb-5 flex items-center justify-between">
-        <p className="font-display text-base font-semibold text-white">Stablecoin Swap</p>
+        <p className="font-display text-base font-semibold text-white">
+          {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Redeem mUSD" : "Stablecoin Swap"}
+        </p>
         <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
           {fromAsset} → {toAsset}
         </span>
@@ -106,20 +136,35 @@ export function MusdTab() {
         <AssetBadge asset={fromAsset} />
       </div>
 
-      <div className="my-2 flex justify-center">
-        <button type="button" onClick={() => setMode((m) => (m === "mint" ? "redeem" : "mint"))}
-          aria-label="Switch swap direction"
-          className="group flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-magnet-300 transition-all hover:border-magnet-500/50 hover:bg-magnet-500/10 hover:text-magnet-200">
-          <ArrowDownUp className="h-4 w-4 transition-transform duration-300 group-hover:rotate-180" />
-        </button>
-      </div>
+      {/*
+        ── One box on a fixed pill, and the figure on the button ───────────
+        A read-only output box is a field you cannot type in, sitting under
+        one you can, restating a number the button is about to act on. On a
+        two-way swap it earns its place: it is where the direction reads. On
+        Mint or Exchange the direction is the pill, so the box was a second
+        thing to look at and a flip control that must not be pressed.
 
-      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">You receive</label>
-      <div className="flex items-center rounded-xl border border-white/10 bg-black/30 px-4">
-        <input readOnly value={out ? formatUsd(out) : "0.00"}
-          className="w-full bg-transparent px-1 py-3.5 font-mono text-xl text-white outline-none" />
-        <AssetBadge asset={toAsset} />
-      </div>
+        Both go. What you pay is the only input, and what you get is on the
+        button you press to get it: "Mint: 10.00 mUSD".
+      */}
+      {!fixed && (
+        <>
+          <div className="my-2 flex justify-center">
+            <button type="button" onClick={() => setFreeMode((m) => (m === "mint" ? "redeem" : "mint"))}
+              aria-label="Switch swap direction"
+              className="group flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-magnet-300 transition-all hover:border-magnet-500/50 hover:bg-magnet-500/10 hover:text-magnet-200">
+              <ArrowDownUp className="h-4 w-4 transition-transform duration-300 group-hover:rotate-180" />
+            </button>
+          </div>
+
+          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">You receive</label>
+          <div className="flex items-center rounded-xl border border-white/10 bg-black/30 px-4">
+            <input readOnly value={out ? formatUsd(out) : "0.00"}
+              className="w-full bg-transparent px-1 py-3.5 font-mono text-xl text-white outline-none" />
+            <AssetBadge asset={toAsset} />
+          </div>
+        </>
+      )}
 
       <div className="mt-5 space-y-2 rounded-xl border border-white/5 bg-black/20 p-4 text-sm">
         <div className="flex justify-between"><span className="text-gray-400">Rate</span>
@@ -137,6 +182,13 @@ export function MusdTab() {
             : !PROTOCOL_LIVE ? "Launching on mainnet soon"
             : insufficient ? `Insufficient ${fromAsset}`
             : lowReserve ? "Exceeds PSM reserve"
+            /* The figure rides on the button when the panel has no output
+               box: the amount and the act of committing to it are one
+               thing to read. Bare verb until there is something to quote —
+               "Mint: 0.00 mUSD" on an empty, disabled button reads as a
+               broken quote rather than an empty form. */
+            : fixed && amt > 0 ? `${fixed === "mint" ? "Mint" : "Redeem"}: ${formatUsd(out)} ${toAsset}`
+            : fixed ? (fixed === "mint" ? "Mint" : "Redeem")
             : mode === "mint" ? "Mint mUSD" : "Redeem mUSD"}
         </PrimaryButton>
         {!PROTOCOL_LIVE && <NotLiveNote />}

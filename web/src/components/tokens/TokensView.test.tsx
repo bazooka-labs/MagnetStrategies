@@ -17,11 +17,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OPEN_GOVERNANCE, TokensView } from "./TokensView";
 
+const MINT = <div>mint-content</div>;
 const EXCHANGE = <div>exchange-content</div>;
 const GOVERNANCE = <div>governance-content</div>;
 
 /** Both views are passed every time: the component chooses, never the caller. */
-const mount = () => render(<TokensView exchangeView={EXCHANGE} governanceView={GOVERNANCE} />);
+const mount = () => render(
+  <TokensView mintView={MINT} exchangeView={EXCHANGE} governanceView={GOVERNANCE} />);
 
 afterEach(() => {
   cleanup();
@@ -38,10 +40,32 @@ describe("the two pills", () => {
     expect(screen.queryByRole("button", { name: /^mUSD$/ })).toBeNull();
   });
 
-  it("lands on Exchange", () => {
+  it("lands on Mint, not Exchange", () => {
+    /*
+      Changed 2026-11-07 when the PSM's two-way swap split across two pills.
+      Mint is the on-ramp — bringing USDC in is why most people open this
+      page — so it leads and it is where an unqualified visit lands.
+      Exchange keeps the way back out.
+    */
     mount();
-    expect(screen.getByText("exchange-content")).toBeTruthy();
+    expect(screen.getByText("mint-content")).toBeTruthy();
+    expect(screen.queryByText("exchange-content")).toBeNull();
     expect(screen.queryByText("governance-content")).toBeNull();
+  });
+
+  it("offers all three pills", () => {
+    mount();
+    for (const name of [/^Mint$/, /^Exchange$/, /^Governance$/]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+  });
+
+  it("reaches Exchange from Mint and back", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /^Exchange$/ }));
+    expect(screen.getByText("exchange-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Mint$/ }));
+    expect(screen.getByText("mint-content")).toBeTruthy();
   });
 
   it("swaps the column rather than stacking", () => {
@@ -76,10 +100,10 @@ describe("#governance, which /vote and /dao redirect to", () => {
     /**
      * Following `/tokens#governance` while already on /tokens is a hash change,
      * not a navigation: this component does not remount, so a mount-only read
-     * would leave Exchange selected under a URL claiming Governance.
+     * would leave the landing pill selected under a URL claiming Governance.
      */
     mount();
-    expect(screen.getByText("exchange-content")).toBeTruthy();
+    expect(screen.getByText("mint-content")).toBeTruthy();
     window.history.replaceState({}, "", "/tokens#governance");
     fireEvent(window, new HashChangeEvent("hashchange"));
     expect(screen.getByText("governance-content")).toBeTruthy();
@@ -90,7 +114,7 @@ describe("#governance, which /vote and /dao redirect to", () => {
     // default view, not on a pill the reader did not ask for.
     window.history.replaceState({}, "", "/tokens#psm");
     mount();
-    expect(screen.getByText("exchange-content")).toBeTruthy();
+    expect(screen.getByText("mint-content")).toBeTruthy();
   });
 
   it("stops listening once unmounted", () => {
@@ -197,7 +221,7 @@ describe("the URL follows the pill", () => {
   */
   it("opens Governance on the pill's event, with no hash change at all", () => {
     mount();
-    expect(screen.getByText("exchange-content")).toBeTruthy();
+    expect(screen.getByText("mint-content")).toBeTruthy();
     fireEvent(window, new Event(OPEN_GOVERNANCE));
     expect(screen.getByText("governance-content")).toBeTruthy();
   });

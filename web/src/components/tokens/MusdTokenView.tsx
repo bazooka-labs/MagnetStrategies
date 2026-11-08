@@ -28,9 +28,12 @@ const MusdTab = dynamic(
 export function MusdTokenView({
   holders,
   marketPrice,
+  swapMode,
 }: {
   holders: string;
   marketPrice: number | null;
+  /** Locks the PSM panel's direction. Undefined keeps it two-way. */
+  swapMode?: "mint" | "redeem";
 }) {
   const { algodClient } = useWallet();
   const [stats, setStats] = useState<ProtocolStats | null>(null);
@@ -153,7 +156,7 @@ export function MusdTokenView({
             </div>
           </div>
           <div className="lg:col-span-2">
-            <MusdTab />
+            <MusdTab fixed={swapMode} />
           </div>
         </div>
       </Panel>
