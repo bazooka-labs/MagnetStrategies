@@ -23,9 +23,10 @@ vi.mock("@/components/VestigeChart", () => ({
   VestigeChart: () => <div data-testid="chart" />,
 }));
 /** Records the props, because the peg and the strapline are now ITS job. */
-const swapProps: { fixed?: string; subtitle?: string; peg?: number | null }[] = [];
+type SwapProps = { fixed?: string; subtitle?: string; peg?: number | null; headingAs?: string };
+const swapProps: SwapProps[] = [];
 vi.mock("@/components/magnetfi/v2/MusdTab", () => ({
-  MusdTab: (props: { fixed?: string; subtitle?: string; peg?: number | null }) => {
+  MusdTab: (props: SwapProps) => {
     swapProps.push(props);
     return <div data-testid={`swap-${props.fixed}`} />;
   },
@@ -82,18 +83,40 @@ describe("what the Exchange tab carries", () => {
     expect(swapProps[0].peg).toBeNull();
   });
 
-  it("still says which asset it is", () => {
-    // Dropping the heading entirely made switching tabs feel like losing
-    // the page.
-    expect(mount().container.textContent).toContain("Exchange mUSD");
+  it("still says which asset it is, through the panel's heading", async () => {
+    /*
+      Dropping the title entirely made switching tabs feel like losing the
+      page, so the requirement survived the header's removal on
+      2026-11-08 — it just moved. The view no longer renders the words
+      itself (`MusdTab` is mocked here, so `textContent` cannot see them);
+      what it owes is the `headingAs="h1"` that promotes the panel's
+      heading to the page's only one. `MusdTab.test.tsx` renders it.
+    */
+    mount();
+    await waitFor(() => expect(swapProps.length).toBeGreaterThan(0));
+    expect(swapProps[0].headingAs).toBe("h1");
   });
 
-  it("has no logo and no strapline in the header any more", () => {
-    // Both came out on request; the strapline moved into the card.
+  it("renders no header of its own — no title, no logo, no hairline under one", () => {
+    /*
+      The whole point of the removal: one short page had two "Exchange
+      mUSD" titles, the page header's and the swap card's. Re-adding an
+      `<h1>` here is how it comes back, and it would compile.
+
+      `border-t` is checked too, because the header left a hairline
+      beneath it; a stray divider across the top of the card is the
+      leftover that would survive deleting just the title.
+    */
     const { container } = mount();
+    expect(container.querySelector("h1"), "the page header is back").toBeNull();
     expect(container.querySelector("img")).toBeNull();
-    const header = container.querySelector("h1")!.parentElement!;
-    expect(header.textContent!.trim()).toBe("Exchange mUSD");
+    expect(container.querySelector("[class*='border-t']")).toBeNull();
+  });
+
+  it("keeps the drifting blob the header used to hold", () => {
+    // It was nested inside the header block, so deleting that block takes
+    // the card's ambient glow with it unless it is moved out first.
+    expect(mount().container.querySelector(".animate-blob-drift")).toBeTruthy();
   });
 });
 
@@ -126,10 +149,15 @@ describe("what it deliberately drops", () => {
     expect(mount().container.textContent).not.toContain("mUSD / USDC");
   });
 
-  it("uses a smaller title than the Mint landing page", () => {
-    // A working surface, not an introduction. Mint keeps 4xl/5xl.
-    const h1 = mount().container.querySelector("h1")!;
-    expect(h1.className).toContain("text-2xl");
-    expect(h1.className).not.toContain("text-4xl");
+  it("has no display-sized title", () => {
+    /*
+      A working surface, not an introduction. Mint opens at 4xl/5xl; this
+      tab's title is the swap panel's own `text-base` heading, so any
+      display type in this view means a page header has grown back.
+    */
+    const { container } = mount();
+    for (const size of ["text-2xl", "text-3xl", "text-4xl", "text-5xl"]) {
+      expect(container.querySelector(`[class*='${size}']`), size).toBeNull();
+    }
   });
 });

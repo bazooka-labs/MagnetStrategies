@@ -293,3 +293,43 @@ describe("the direction pill yields its slot to the peg", () => {
     expect(screen.getByText("USDC → mUSD")).toBeTruthy();
   });
 });
+
+describe("the heading tag, after the Exchange page header came out", () => {
+  /*
+    The Exchange tab's page header said "Exchange mUSD" and so did this
+    panel, eight lines apart. The header went on 2026-11-08, which left
+    that page with no level-one heading — so this panel's heading became
+    it. Everywhere else the panel sits under a page that has its own, and
+    a second `<h1>` there would be the defect rather than the fix.
+  */
+  it("renders a <p> by default, so Mint and Finance keep one <h1> each", async () => {
+    const MusdTab = await load();
+    const { container } = render(<MusdTab fixed="mint" />);
+    expect(container.querySelector("h1")).toBeNull();
+    expect(screen.getByText("Mint mUSD").tagName).toBe("P");
+  });
+
+  it("renders the heading as the <h1> when asked", async () => {
+    const MusdTab = await load();
+    const { container } = render(<MusdTab fixed="redeem" headingAs="h1" peg={1.0001} />);
+    const h1 = container.querySelectorAll("h1");
+    expect(h1.length).toBe(1);
+    expect(h1[0].textContent).toBe("Exchange mUSD");
+  });
+
+  it("changes the tag and nothing else — same size, same strapline, same peg", async () => {
+    /*
+      The point of promoting the real heading instead of adding an
+      `sr-only` copy was that nothing on screen moves. If the tag starts
+      carrying type scale with it, a browser default (h1 = 2em bold) is
+      what renders, and this panel's title would jump.
+    */
+    const MusdTab = await load();
+    const plain = render(<MusdTab fixed="redeem" peg={1.0001} subtitle="A line." />).container.innerHTML;
+    cleanup();
+    const promoted = render(
+      <MusdTab fixed="redeem" headingAs="h1" peg={1.0001} subtitle="A line." />,
+    ).container.innerHTML;
+    expect(promoted.replace(/<h1 /g, "<p ").replace(/<\/h1>/g, "</p>")).toBe(plain);
+  });
+});

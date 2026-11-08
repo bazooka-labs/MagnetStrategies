@@ -10,8 +10,9 @@
  * A reader could switch and not notice they had.
  *
  * Mint is the mUSD landing page: what the stablecoin is, what backs it, how
- * it is doing. Exchange is one job — see the peg, make the trade — so it
- * carries a compact header, the chart, and the swap panel.
+ * it is doing. Exchange is one job — see the peg, make the trade — so it is
+ * the chart and the swap panel, and no page header at all: the swap panel's
+ * own heading is the page's title. See the note where that header used to be.
  *
  * A separate component rather than `showHero` / `showStats` / `showAbout`
  * booleans. Three flags is eight states, of which two are ever rendered,
@@ -42,23 +43,23 @@ const MusdTab = dynamic(
 export function MusdExchangeView({ marketPrice }: { marketPrice: number | null }) {
   return (
     <Panel glowClass={MAGNET_GLOW} className="animate-enter mb-8">
-      {/* A bare title. The mark and the strapline came out on request —
-          the pill above already says which tab this is, and the swap card
-          below now carries the description and the peg. */}
-      <div className="relative px-6 py-5 sm:px-8">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
-        </div>
-        <h1 className="relative font-display magnet-glow-soft text-2xl font-bold text-white sm:text-3xl">
-          Exchange mUSD
-        </h1>
-      </div>
+      {/* The header came out on 2026-11-08. It had been stripped to a bare
+          "Exchange mUSD" — no mark, no strapline — which left it saying
+          exactly what the swap card's own heading says, eight lines below
+          and in the same words. Two titles for one short page.
 
-      <div className="border-t border-white/10" />
+          The card's heading won because it is the one with something
+          attached to it: the strapline and the peg square are laid out
+          around it. So the title moved down rather than away, and it
+          carries `headingAs="h1"` — this page has no other heading, and
+          dropping the `<h1>` outright would have left it with none. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+      </div>
 
       {/* Same split and the same chart padding as the Mint view, so the two
           tabs sit at the same rhythm even though one is much shorter. */}
-      <div className="grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
+      <div className="relative grid lg:grid-cols-5 lg:divide-x lg:divide-white/10">
         <div className="lg:col-span-3 p-4 sm:p-5">
           <div className="overflow-hidden rounded-xl">
             <VestigeChart assetId={3615600399} denominatingAssetId={31566704} title="mUSD / USDC Chart" />
@@ -67,6 +68,7 @@ export function MusdExchangeView({ marketPrice }: { marketPrice: number | null }
         <div className="lg:col-span-2 lg:flex lg:flex-col lg:justify-center">
           <MusdTab
             fixed="redeem"
+            headingAs="h1"
             subtitle="Swap mUSD back to USDC through the Peg Stability Module, 1:1 redemption rate less the transaction fee."
             peg={marketPrice}
           />

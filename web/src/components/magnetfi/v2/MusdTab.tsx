@@ -52,12 +52,25 @@ function AssetBadge({ asset }: { asset: string }) {
  * guards and the PSM-reserve check are the same on both sides, and a copy
  * would be the half that stops getting fixes.
  */
-export function MusdTab({ fixed, subtitle, peg }: {
+export function MusdTab({ fixed, subtitle, peg, headingAs = "p" }: {
   fixed?: Mode;
   /** A line under the panel's heading. Moved in from the page header. */
   subtitle?: string;
   /** mUSD/USDC market price, shown inside the card. Null renders a dash. */
   peg?: number | null;
+  /**
+   * The element the heading renders as.
+   *
+   * A `<p>` everywhere this panel sits under a page that has its own `<h1>`
+   * — the Mint tab and the Finance page both do. The Exchange tab dropped
+   * its page header on 2026-11-08 because it duplicated this heading word
+   * for word, which left that page with no level-one heading at all; it
+   * passes `"h1"` so the one remaining title is the real one. An `sr-only`
+   * copy in the view would have read the same words out twice instead.
+   *
+   * Visual size is unchanged either way: it is set here, not by the tag.
+   */
+  headingAs?: "h1" | "p";
 } = {}) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   /**
@@ -126,13 +139,15 @@ export function MusdTab({ fixed, subtitle, peg }: {
   // Redeem cannot exceed the PSM's USDC reserve (M-1).
   const lowReserve = mode === "redeem" && psmUsdc !== null && amt > psmUsdc;
 
+  const Heading = headingAs;
+
   return (
     <div className="p-6">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-display text-base font-semibold text-white">
+          <Heading className="font-display text-base font-semibold text-white">
             {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Exchange mUSD" : "Stablecoin Swap"}
-          </p>
+          </Heading>
           {/* The line that used to sit under the page header. It belongs to
               the trade, not to the page, so it moved in with it. */}
           {subtitle && <p className="mt-1 text-xs leading-relaxed text-gray-400">{subtitle}</p>}
