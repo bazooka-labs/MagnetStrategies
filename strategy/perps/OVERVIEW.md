@@ -225,27 +225,31 @@ apps that share one fee address — an aggregator. Haystack appears in exactly
 four files in the tree, all of them the Magnet Token page's swap widget, and
 none under `strategy/`.
 
-> **Open question, 2026-11-08.** The founder reports this second transaction
-> is automatic — signed by the terminal, with a two-asset outcome only when
-> the swap fails. Nothing found in the code builds it: not the four client
-> builders (`openPosition`, `openLimitOrder`, `cancelOrder`, `closePosition`),
-> not `doClose` (which calls `closePosition` then `refresh()` and nothing
-> else), not any Haystack or `SwapOps` import under `strategy/` — Haystack
-> resolves to four files, all the Magnet Token page's widget.
+> **Answered 2026-11-08.** The automatic two-group swap is real, and it is
+> the **C-Vault exit in Strategy → Vaults**, not the Trading Terminal. Traced
+> from round 66620036: a 13-transaction `cvaVault` group
+> (`withdrawFromMarket` 92ad0e57 + `markMarket` 7eda6c29) at 02:23:22Z,
+> followed **five seconds later** by a 7-transaction `SwapOps` group turning
+> 106.740994 ALGO into 9.716760 USDC. Five seconds is one user action, not
+> two.
 >
-> Note it is **not** `output_swap_mode` either. That is PEX's native
-> single-asset payout, it is still unbuilt (see
-> [SPEC.md](./SPEC.md#paying-profit-out-in-one-asset--native-and-not-free)),
-> and its failure mode is the opposite of the one described: a swap that
-> cannot fill makes the whole decrease fail, rather than leaving two assets
-> and retrying.
+> `cvaClient.ts` builds both under the heading *"One signature, two groups"*:
+> a withdrawal (15 txns) plus a swap (7) exceeds Algorand's 16-transaction
+> GROUP cap, but a signing REQUEST has none — ARC-0001 `signTxns` takes an
+> array spanning several groups, the wallet prompts once, and each group
+> evaluates independently. It also explains the rest of the founder's
+> description exactly: the groups are **not atomic with each other**, so a
+> swap that fails leaves the user holding both assets, and the swap is sized
+> to the exit's on-chain **floor** rather than its simulated output —
+> `dustAlgoMicro` is the deliberate remainder, surfaced in `CvaActions` as
+> "plus N ALGO that could not be converted".
 >
-> Unresolved rather than settled either way. The evidence that would close it
-> is one transaction id where a single signature produced both the close and
-> the swap; the three follow-ups measured above landed +43s, +52s and +71s
-> later, in their own groups, which is slow and variable for an automatic
-> second signature. Until someone produces that txid, neither claim belongs
-> in a doc as fact.
+> So the terminal still signs one group and still pays two assets. Nothing
+> about the close path changes. What changes is the **estimate for building
+> it**: the pattern, the group-cap workaround, the one-prompt signing, the
+> floor-based sizing and the dust accounting all already exist in this
+> repo and are proven on mainnet. A perps version is a port of
+> `buildAlgoToUsdcSwap` run in the other direction, not a design problem.
 
 ### Open, pinned for a decision — ALGO close (2026-11-05)
 
