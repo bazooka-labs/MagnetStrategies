@@ -30,6 +30,7 @@
 // of the page. If the widget fails to load, the SVG chart renders instead.
 
 import { useEffect, useRef, useState } from "react";
+import { Info } from "lucide-react";
 import { ENABLED_MARKET_IDS, PEX_MARKETS } from "@/lib/strategy/pex/config";
 import { PerpsChart } from "./PerpsChart";
 import { fetchDayStats, type DayStats } from "@/lib/strategy/perps/chart";
@@ -227,6 +228,18 @@ type Props = {
   marketId: number;
   label: string;
   onMarketChange: (id: number) => void;
+  /**
+   * Opens the product's info modal, from this panel's control row.
+   *
+   * The trigger lives here and the modal lives in `PerpsView`, which is
+   * deliberate: the dialog is about the whole product — fees, funding,
+   * liquidation, who holds the funds — and this component draws candles. It
+   * takes a callback so the button can sit in the one header row the card
+   * has, without this file knowing what the button opens.
+   *
+   * Optional, so the panel still renders anywhere that has no modal to open.
+   */
+  onInfo?: () => void;
   /** Entry, liquidation and take-profit, as the card quotes them. */
   lines?: { price: number; label: string; colour: string; dash: string }[];
   /**
@@ -250,7 +263,7 @@ type Props = {
   indexUsd?: number | null;
 };
 
-export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], busy = false, indexUsd = null }: Props) {
+export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], busy = false, indexUsd = null, onInfo }: Props) {
   /**
    * Which chart is showing.
    *
@@ -496,7 +509,31 @@ export function PerpsChartPanel({ marketId, label, onMarketChange, lines = [], b
           {canSwitch && <ViewToggle advanced={advanced} onChange={setAdvanced} />}
         </div>
 
-        <IntervalToggle range={range} onChange={setRange} />
+        {/* Intervals and the info trigger wrap as ONE unit.
+            The row is `flex-wrap`, and with the button as a loose third child
+            it dropped to a line of its own on a narrow screen — which is the
+            orphaned button this change exists to remove, reappearing at phone
+            width. Grouped, it always travels beside the timeframes. */}
+        <div className="flex items-center gap-3">
+          <IntervalToggle range={range} onChange={setRange} />
+
+          {onInfo && (
+            <>
+              <span aria-hidden="true" className="h-5 w-px bg-white/10" />
+              {/* Quieter than the raised amber button it replaces. That one
+                  was sized to hold a row by itself; here it sits beside three
+                  neutral control groups, and the full treatment shouted over
+                  all of them. Still amber, because this is the only route to
+                  "you can lose everything you put in" and a help-link grey
+                  would read as optional. */}
+              <button onClick={onInfo} aria-haspopup="dialog"
+                className="flex items-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 hover:text-amber-100">
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                More info
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── The market, in four numbers ─────────────────────────────────────

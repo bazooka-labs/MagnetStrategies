@@ -7,11 +7,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RAISED_AMBER } from "@/components/raisedButton";
 import type { CardOverlay } from "@/components/strategy/perps/PerpsCard";
 import type { PositionLine } from "@/components/strategy/perps/PositionsPanel";
 import dynamic from "next/dynamic";
-import { Info } from "lucide-react";
 import { ACTIVE_MARKET_ID, PEX_MARKETS } from "@/lib/strategy/pex/config";
 import { heldLineQualifiers } from "@/lib/strategy/perps/positionLines";
 import { Panel, MAGNET_GLOW } from "@/components/magnetfi/v2/shared";
@@ -149,19 +147,25 @@ export function PerpsView() {
         and the label looked alike — the same confusion the token headers had —
         and the terminal showing live prices already says it is live.
       */}
-      <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
-        {/* Amber, matching the risk warnings it opens. A help-link grey would
-            read as optional; this is where "you can lose everything you put in"
-            lives, and it is the only route to it — which is exactly why it is
-            now the raised button used on Tokens and Finance rather than a pill.
-            The earlier note said it had to "stay a pill and stay visible": the
-            goal was visibility, and a button that looks pressable serves that
-            better than a pill that looks like a label. */}
-        <button onClick={() => setInfoOpen(true)} aria-haspopup="dialog" className={RAISED_AMBER}>
-          <Info className="h-3.5 w-3.5" />
-          More info
-        </button>
-      </div>
+      {/*
+        The "More info" trigger moved INTO the card on 2026-11-08.
+        ──────────────────────────────────────────────────────────────────────
+        It was the last thing in this file's own markup: one button, right
+        aligned, alone in a full-width row above the card, with 58px of empty
+        page between the two. Nothing anchored it — the page header that used
+        to sit beside it had been removed, and the button was left behind
+        holding the space on its own.
+
+        It now rides at the end of the chart panel's control row, where the
+        market pills, the chart toggle and the timeframes already live, so it
+        reads as part of the terminal rather than as something floating above
+        it. The card starts 58px higher as a result.
+
+        The state stays here. `PerpsInfoModal` is a sibling of the card, not a
+        child of the chart panel, so the panel gets a callback and nothing
+        else — moving the modal down into the panel would put a dialog about
+        the whole product inside the component that draws candles.
+      */}
 
       {/* ONE box. The chart, the order form and what you already hold are a
           single card divided by seams, not three panels stacked with 24px of
@@ -181,7 +185,7 @@ export function PerpsView() {
           it were passed through className. */}
       <Panel glowClass={MAGNET_GLOW}>
         <PerpsChartPanel marketId={marketId} label={market?.label ?? ""}
-          onMarketChange={setMarketId} lines={lines} busy={busy}
+          onMarketChange={setMarketId} lines={lines} busy={busy} onInfo={() => setInfoOpen(true)}
           indexUsd={overlay?.indexPrice12 ? Number(overlay.indexPrice12) / 1e12 : null} />
         <PerpsCard marketId={marketId} onMarketChange={setMarketId}
           onOverlayChange={setOverlay} onBusyChange={setBusy} />
