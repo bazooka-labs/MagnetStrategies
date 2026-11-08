@@ -30,9 +30,12 @@ Deployment mechanics for a $U-paired pool:
   proposals; mUSD holders signal a preferred direction (advisory). See [vote/OVERVIEW.md](../vote/OVERVIEW.md).
 - **Founder oversight** — deployment is executed by the founder, who retains final
   authority to avoid pointing capital at unacceptable risk, regardless of vote outcome.
-- **Visibility** — the treasury's live USDC balance is the Treasury metric box on
-  both token views: the **Magnet Token** pill of `/strategy` and the **Exchange**
-  pill of `/tokens`. Voters can see the pool a decision is directing.
+- **Visibility** — the treasury's live USDC balance is shown inside the
+  "How voting works" panel on the **Governance** pill of `/tokens`, paired with the
+  reader's own vote power, so a voter sees the pool a decision is directing beside
+  the weight they would bring to it. It moved there from the token metric rows on
+  2026-11-08 and is shown in one place only: those rows are figures about a token,
+  and two copies on one page invite the question of which is current.
 
 ---
 

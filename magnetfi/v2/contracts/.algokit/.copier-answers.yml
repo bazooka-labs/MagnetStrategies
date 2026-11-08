@@ -1,8 +1,8 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
 _commit: 1.8.1
 _src_path: gh:algorandfoundation/algokit-python-template
-author_email: bazooka.create@gmail.com
-author_name: bazookacreate-8771
+author_email: noreply@magnetstrategies.io
+author_name: Magnet Strategies
 contract_name: hello_world
 deployment_language: python
 preset_name: starter

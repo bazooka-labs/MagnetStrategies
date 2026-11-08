@@ -600,10 +600,18 @@ pills in the old order and claim it was the rendered one; the order is
 `magnet, liquidity, vaults` in `LiquidityView.tsx` and the landing view
 matches it.
 
-**The Magnet row's fifth box is a YTD return, since 2026-11-07.** It was the
-treasury, which is still on the mUSD page — that figure is USDC available for
-liquidity, a fact about the balance sheet rather than about $U. What a reader
-of the Magnet page is asking is whether the thing has worked.
+**The Magnet row runs four across, and a YTD return stands beside the title.**
+The fifth cell was the treasury — USDC available for liquidity, a fact about
+the balance sheet rather than about $U, where what a reader of this page is
+asking is whether the thing has worked. A year-to-date return replaced it on
+2026-11-07 and then came out of the row later the same day to sit on its own
+beside the page title, in a box carrying the Magnet-300 glow; the row has run
+four cells since.
+
+The treasury went to the mUSD page's metric row, and on 2026-11-08 on again
+into the "How voting works" panel of its Governance pill, paired with the
+reader's vote power. It is on neither token page now — see
+[vote/OVERVIEW.md](../../vote/OVERVIEW.md).
 
 **In ALGO, not dollars.** The protocol's goal is to beat holding vanilla ALGO;
 a dollar return answers a different question and flatters the result in

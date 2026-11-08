@@ -35,8 +35,13 @@ lives in a private place (private notes, a password manager, a private repo).
 - **Infrastructure topology** — where/how the oracle bot (and any service) runs, hosting details,
   IPs, whether it's single-instance vs. redundant.
 - **Weak-point inventories** — anything that catalogs what's least hardened or where the soft spots are.
-- **Role-labeling of wallets** — don't publish "this address = admin/guardian/treasury/bot." The
-  addresses are public on-chain, but a labeled roster hands an attacker the targeting map for free.
+- **Role-labeling of OUR wallets** — don't publish "this address = admin/guardian/treasury/bot."
+  The addresses are public on-chain, but a labeled roster hands an attacker the targeting map for
+  free. This is about *our* keys. A third party's governance keys, read from public chain state
+  and published as the factual basis for a counterparty risk we are asking users to accept, are a
+  disclosure rather than a map — `strategy/perps/PEX.md` names Ultrade's admin and upgrade
+  addresses for exactly that reason, and should. The test is whose attack surface the note
+  enlarges.
 - **Incident / mistake logs & post-mortems** — operational history of what went wrong.
 - **Runbooks with live specifics** — step-by-step ops procedures tied to the live deployment.
 

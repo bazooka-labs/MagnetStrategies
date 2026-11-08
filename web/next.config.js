@@ -38,6 +38,22 @@ const nextConfig = {
       { source: "/token", destination: "/strategy?tab=magnet", permanent: true },
       { source: "/musd", destination: "/tokens", permanent: true },
       { source: "/pools", destination: "/strategy", permanent: true },
+      /*
+        ── /about, added 2026-11-08 — and deliberately NOT permanent ──
+        It was missing entirely: README.md and org/OVERVIEW.md both said it
+        had been "absorbed into /tokens", and it had — the page was deleted —
+        but no rule was ever written, so it has been returning a 404 in
+        production. Measured, not assumed: every other retired path above
+        resolves 200, /about alone did not.
+
+        `permanent: false`, unlike every line above it. Those destinations
+        were decisions someone made; this one is inferred from two docs, and
+        /about was a thesis hub, which the landing page arguably serves
+        better than the mUSD page does. The note at the top of this function
+        records what a wrongly-cached 301 costs — a browser that has one
+        never asks again. A 307 can be retargeted once someone decides.
+      */
+      { source: "/about", destination: "/tokens", permanent: false },
     ];
   },
   /**

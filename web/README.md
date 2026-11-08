@@ -1,8 +1,8 @@
 # Magnet Strategies — Web App
 
-The Next.js frontend for Magnet Strategies: the landing site, the **$U** token page, the
-**MagnetFi "Bank"** (LP-collateral vaults + single-token markets), the **mUSD** page, the
-**Strategy** and **Trade** arms, and the gated admin console. MagnetFi protocol/contract design
+The Next.js frontend for Magnet Strategies: the landing site, the **mUSD** page, the
+**MagnetFi "Bank"** (LP-collateral vaults + single-token markets), the **Strategy** arm
+(Magnet Token, liquidity pools and vaults), the **Trade** arm, and the gated admin console. MagnetFi protocol/contract design
 docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's live in
 [`strategy/`](../strategy/OVERVIEW.md).
 
@@ -13,19 +13,34 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   (`DEPLOYMENTS.mainnet`) before/with any contract redeploy.**
 
 ## Routes (site map)
+
+Every route below exists as a directory under `src/app`. Paths that no longer exist are
+listed separately beneath, because a site map that mixes live routes with retired ones is
+how a reader ends up linking to a 404 — this table listed four dead routes as live until
+2026-11-08.
+
 | Route | What it is |
 |---|---|
-| `/` | Landing splash → "Attract Liquidity" + a link to `/about` |
-| `/about` | The thesis + how the products fit together (a hub linking to each product page) |
-| `/token` | $U token dashboard (price, holders, TVL, **TVL Rank** + Top 100 ASA modal, charts, swap) |
-| `/magnetfi` | **The Bank** — tabbed app (below) |
-| `/musd` | mUSD hub — live PSM metrics + the mint/redeem **Exchange** |
-| `/pools` | $U liquidity pools (Tinyman & Pact) — live fee/farm APRs + add-liquidity deep-links |
+| `/` | Landing splash → "Attract Liquidity", linking out to each product |
+| `/magnetfi` | **The Bank** — tabbed app (below). Nav label **Finance** |
 | `/strategy` | **Strategy** — Magnet Token, Liquidity Pools, and Vaults (C-Vault + magnetALGO dualSTAKE). Docs: [`strategy/OVERVIEW.md`](../strategy/OVERVIEW.md) |
+| `/tokens` | **mUSD** — three pills: **Mint** (landing: peg, holders, supply, backing, chart, USDC → mUSD), **Exchange** (chart + mUSD → USDC) and **Governance**. Nav label **mUSD** |
+| `/tokens` → Governance | **mVote** — advisory founder-led governance weighted by mUSD; the rules, the treasury those proposals direct, live proposals, vote/reclaim, history, gated admin |
 | `/trade` | **Trading Terminal** — leveraged positions on PEX. Docs: [`strategy/perps/OVERVIEW.md`](../strategy/perps/OVERVIEW.md) |
-| `/tokens` → Governance | **mVote** — advisory founder-led governance weighted by mUSD; proposals, vote/reclaim, treasury tracker, gated admin. `/vote` and `/dao` redirect here |
-| `/contact` | Contact |
+| `/trade/admin` | Gated admin console for the terminal |
+| `/predict` | **VPL** volatility ladder. Not in the nav. Docs: [`predict/OVERVIEW.md`](../predict/OVERVIEW.md) |
+| `/contact` | On-chain support inbox. Docs: [`CONTACT.md`](../CONTACT.md) |
 | `/api/leaderboard` | Read API: top 100 ASAs by TVL (cached 300s) — powers the TVL Rank box |
+
+**Retired paths**, all redirecting — the authority is [`next.config.js`](./next.config.js):
+
+| Was | Now | |
+|---|---|---|
+| `/token` | `/strategy?tab=magnet` | the $U dashboard is the Magnet Token pill |
+| `/pools`, `/earn` | `/strategy` | the $U pools are the Liquidity Pools pill |
+| `/musd` | `/tokens` | |
+| `/about` | `/tokens` | 307, not 301 — see the note in `next.config.js` |
+| `/vote`, `/dao` | `/tokens#governance` | the fragment opens the pill |
 
 ## The Bank (`/magnetfi`) — `src/app/magnetfi/page.tsx`
 - **Overview** (`OverviewTab`) — the landing: plain explanations of Single Token Markets and LP
@@ -39,7 +54,7 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   accrued interest, liquidation-buffer bar, and pay/repay/borrow/add actions. Which pools are wired lives
   in `POOL_WIRING` (`magnetfi.ts`); reads/writes are parameterized by pool. Adding a pool = an admin-ops
   config pass + flipping its `POOL_WIRING` entry — **no contract redeploy** (12-pool schema headroom).
-- **mUSD** — deep-links to `/musd` (the swap is no longer rendered inline).
+- **mUSD** — deep-links to `/tokens` (the swap is no longer rendered inline).
 - **Admin** (gated to `MAGNETFI_ADMIN_ADDRESS`) — see below.
 
 ## Admin console — `AdminTab` (gated)
@@ -64,7 +79,8 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   to use them again.
 
 ## Frontend architecture — `src/lib/`
-- **`pools.ts`** — `POOLS` (the Tinyman + Pact pools shown as cards on `/pools`) and `DUST_POOLS`
+- **`pools.ts`** — `POOLS` (the Tinyman + Pact pools shown as cards under the Liquidity Pools pill
+  of `/strategy`) and `DUST_POOLS`
   (real but sub-$150 $U pools found on both DEXes, folded into Total TVL but not worth a card).
   `fetchPoolMetrics(pool)` hits Tinyman's/Pact's own pool API per pool (TVL, fee APR, farm APR);
   `fetchTotalTvlUsd()` sums `tvlUsd` across `POOLS` + `DUST_POOLS` — the shared source for both
@@ -78,8 +94,8 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   Adds the **STAMM** venue nothing else queried. Uses **source precedence, not `max()`**: our own
   Tinyman/Pact fetch wins, and a third party is used only to discover a pool we lack or to backstop
   one whose fetch failed. Guards fail closed (rate-encoded pools hold an exchange rate, not a
-  balance; single-sided pricing is circular). **Never throws** — `/token` is prerendered at build
-  with no try/catch, so a throw here would fail `next build`. Gated by `AGGREGATE_TVL_ENABLED`;
+  balance; single-sided pricing is circular). **Never throws** — `/strategy` is prerendered at
+  build with no try/catch, so a throw here would fail `next build`. Gated by `AGGREGATE_TVL_ENABLED`;
   while false it shadow-logs `[tvl] floor=… aggregate=…` and the displayed number is unchanged.
 - **`leaderboard.ts`** (server-only) — `fetchBoard()`: ranks every ASA by **two-sided TVL** (the full
   value of each pool containing it, matching the Total TVL box). Eligibility: **80% price confidence**
@@ -88,7 +104,7 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   `xALGO`/`tALGO mint/burn`, `Folks Lend` — staked supply, not swappable liquidity), and **Folks
   lending receipts** (fAssets pair only against other fAssets and double-count the underlying; the
   **FOLKS governance token is exempt by asset id**, so a rename could never delist it).
-- **`tokenStats.ts`** — `/token` + homepage `LiveStats` metrics: `fetchHolderCount` (Indexer),
+- **`tokenStats.ts`** — Magnet Token pill + homepage `LiveStats` metrics: `fetchHolderCount` (Indexer),
   `fetchMagnetPriceUSDC` ($U/ALGO from Vestige × ALGO/USD from CoinGecko), `fetchTVL` (converts
   `fetchTotalTvlUsd()`'s USD sum to ALGO via the same CoinGecko rate). Vestige is used only for the
   $U/ALGO price quote — Total TVL is **not** sourced from Vestige's asset-level aggregate, since it
@@ -123,12 +139,12 @@ docs live in [`magnetfi/v2/`](../magnetfi/v2/OVERVIEW.md); the Strategy arm's li
   badges.
 
 ## Notable UI behaviors (and where they live)
-- **Total TVL** (`/token`, homepage `LiveStats`) = live sum of every tracked Tinyman + Pact pool's
+- **Total TVL** (Magnet Token pill, homepage `LiveStats`) = live sum of every tracked Tinyman + Pact pool's
   own reported TVL (`fetchTotalTvlUsd`, `lib/pools.ts`), including `DUST_POOLS`, converted to ALGO
   via CoinGecko's ALGO/USD rate. Not a third-party asset-level aggregate — summing our own known
   pools is what keeps it correct the moment a pool migrates to a new pool id.
 - **TVL Rank + Top 100 modal** (`components/TvlRankStat.tsx`, client) — fetches `/api/leaderboard`
-  so `/token` stays static. The **whole card** is the hit target, not just the "See Top 100" corner
+  so `/strategy` stays static. The **whole card** is the hit target, not just the "See Top 100" corner
   label (a 10px corner link fails on touch). The modal **pins $U's row and scrolls to it** rather
   than landing at rank 1 — which is also what makes it work on the day $U falls outside the top 100
   (its row is then appended below a separator with its true rank). No rank delta yet: that needs an

@@ -196,10 +196,10 @@ await al.newGroup()
 | `web/src/components/contact/CreateTab.tsx` | Compose form: message, optional txn ID, "related to" product select, subscribe checkbox, send + confirmation. |
 | `web/src/components/contact/InboxTab.tsx` | Wallet-gated inbox: threads (ticket + replies) and a separate Announcements section for broadcasts received. |
 | `web/src/components/contact/AdminTab.tsx` | Gated to `CONTACT_ADMIN_ADDRESS`: ticket list + inline reply composer; prominent subscriber-count stat + broadcast composer; **Sent-broadcasts history** with per-broadcast delivered/total + **Resend to missing**; impersonation-attempts panel. |
-| `web/src/components/contact/SubscribeButton.tsx` | One-tap opt-in to the update channel (used on `/about`); errors if no wallet is connected. |
+| `web/src/components/contact/SubscribeButton.tsx` | One-tap opt-in to the update channel; errors if no wallet is connected. **Currently rendered nowhere** — its only call site was `/about`, which was deleted when that page's content was absorbed into `/tokens`, and the button was not rehomed. Kept because the subscribe path it calls is live and the component is the whole of it; give it a home or delete it rather than leaving the question open. |
 | `web/src/components/contact/shared.tsx` | `SecurityNotice` (persistent disclosure/anti-phishing line), `formatTimestamp`, `APP_OPTIONS`. |
 | `web/src/components/Navbar.tsx` | "Contact" added to the header nav (`navLinks`). |
-| `web/src/app/about/page.tsx` | Carries the `SubscribeButton` so new visitors can opt into updates while learning about Magnet Strategies. |
+| ~~`web/src/app/about/page.tsx`~~ | **Deleted.** It carried the `SubscribeButton`; that page's content was absorbed into `/tokens` and the button was not rehomed, so nothing renders it today. See the row above. |
 
 `CONTACT_ADMIN_ADDRESS` (in `lib/contact.ts`) reuses the existing
 `MAGNETFI_ADMIN_ADDRESS` from `lib/magnetfi.ts` — the same house wallet, not a separate

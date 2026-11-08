@@ -163,6 +163,18 @@ rendered with the wrong token's decimals.
 
 # UVote — Build Spec (v2 voting relaunch) — RETIRED
 
+> **Everything below describes the retired generation, as it stood while it
+> was live.** It is kept because its audit history is why mVote looks the way
+> it does, and it is left in its original tense rather than rewritten — a
+> record edited to match the present stops being a record.
+>
+> So read the sections below as *what was true then*. In particular: `/vote`
+> is no longer a route (it 308-redirects to `/tokens#governance`), the nav has
+> no "Vote" entry, and the `lib/uvote*.ts` files named throughout were renamed
+> to `lib/governance*.ts` when mVote landed — one module now serves both
+> generations, with UVote readable and never written. For current behaviour
+> read [OVERVIEW.md](./OVERVIEW.md) and the mVote half of this file.
+
 _This generation is no longer written to. Kept because mVote is a port of it and
 its audit findings are mVote's inheritance. App `3679681107`, voting asset $U._
 _Last updated: 2026-08-19_
@@ -312,8 +324,9 @@ stay byte-identical to the live deploy):
 - ~~Still TODO: retire old `/dao` route + `dao.ts` cruft; set `UVOTE_APP_ID`;
   founder canary.~~ **All done.** Verified 2026-10-27: `/dao` and `/vote` both
   308-redirect to `/tokens#governance` (`web/next.config.js`), no `dao.ts`
-  exists, and `UVOTE_APP_ID` resolves to `3679681107` in
-  `web/src/lib/uvote.ts`.
+  exists, and the retired app resolves to `3679681107`. That constant lived in
+  `web/src/lib/uvote.ts` at the time; it is `UVOTE_RETIRED` in
+  `web/src/lib/governance.ts` now.
 
 ### Go-live sequence
 1. Admin connects (MagnetFi admin wallet) on `/vote` → **Deploy UVote** (2 signatures).

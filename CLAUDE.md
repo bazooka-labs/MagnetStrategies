@@ -114,13 +114,17 @@ Four types. Use these names; do not invent a fifth.
 | `OVERVIEW.md` | What it is, why, **current status**, **open items**, links out. The entry point for a product. |
 | `SPEC.md` | Mechanism detail — box layouts, selectors, invariants, group shapes. |
 | `OPERATIONS.md` | Runbooks: deploy, keys, monitoring, what to do when it breaks. Examples: `magnetfi/v2/`, `predict/`. |
-| `archive/` or `<product>/history/` | Anything **finished and not resuming**. Keep it; a public protocol showing how its failures were found is worth more than a tidy tree. Read the doc before moving it — `REVAMP_PLAN.md` and `AUDIT_HANDOFF.md` both sound historical and are live. |
+| `archive/` or `<product>/history/` | Anything **finished and not resuming**. Keep it; a public protocol showing how its failures were found is worth more than a tidy tree. Every file in one carries a banner saying it is not current. Read the doc before moving it — `REVAMP_PLAN.md` and `AUDIT_HANDOFF.md` both sound historical and are live. |
 
 Root `archive/` is for repo-wide closed work. A product keeps its own
 `history/` when the records are dense protocol detail that only reads correctly
 beside the contracts they describe — `magnetfi/v2/history/` is the example.
-Either way every file in them carries a banner saying it is not current, and
-names what has changed since.
+Either way the folder's `README.md` is the entry point AND every file in it
+carries its own banner saying it is not current, naming what to read instead.
+Both, not either: the README serves someone browsing the tree, and the banner
+serves the far more common arrival — a deep link or a search result that opens
+one file with no folder around it. The three `archive/` specs had only the
+README until 2026-11-08.
 
 **Status and open items go in that product's `OVERVIEW.md` and nowhere else.**
 Separate `STATUS.md` / `TODO.md` / `NEXT.md` files are what rot fastest, because

@@ -1,8 +1,14 @@
 # ASA TVL Aggregation — Spec v2
 
-**Status:** **LIVE.** The top-100 leaderboard and the TVL Rank box ship on `/token`. The $U TVL
+**Status:** **LIVE.** The top-100 leaderboard and the TVL Rank box ship on the **Magnet Token** pill of `/strategy` (`/token` redirects there). The $U TVL
 aggregation remains in shadow mode (`AGGREGATE_TVL_ENABLED = false`) pending a 48h comparison
 before the Total TVL box switches over. See [Where it stands today](#where-it-stands-today).
+> **On the `file.ts:NN` citations below.** They are evidence from the audit
+> that produced this spec, accurate when written. Line numbers drift as files
+> are edited — spot-checked 2026-11-08, some still land and some do not — so
+> treat the **symbol name** as the authority and the number as a hint. Where a
+> claim is load-bearing it names the symbol, not just the line.
+
 **Scope:** analytics/display only — a cross-DEX ASA liquidity tracker. Sections 1-6 cover the $U TVL aggregation; the top-100 leaderboard built on it is documented below.
 **MagnetFi:** no protocol impact — see [MagnetFi Impact Review](#magnetfi-impact-review). One real coupling exists (**shared deployment**), mitigated in §6.
 
@@ -82,7 +88,7 @@ Both third-party paths — LiquiHog **and** the indexer — must apply all of th
 | `tvl_confidence_bps >= 8000` | Excludes manipulated/unpriceable pools. Lowered from 8500 on 2026-09-08 to match Vestige's model — see [Where it stands today](#where-it-stands-today). |
 | Per-pool cap: reject any single discovered pool > the **entire hardcoded floor** | No fabricated pool may dominate the headline. A 40%-of-floor cap was tried first and was **wrong**: measured, the largest legitimate $U pool (u-talgo `3163770927`) is ~48% of the floor alone, so 40% rejected a real pool. |
 | Weighted-pool path: `bootstrapped === 1`, both reserves non-zero, **both sides independently priced**, and `next-token` pagination honoured | The Pact factory is **permissionless** — anyone can create a $U pool and choose weights/reserves to inflate a naive formula. Un-paginated `limit=1000` silently truncates, i.e. understates. |
-| `AbortSignal.timeout(5000)` on every fetch | A hang stalls `/token` ISR regeneration to the function limit. |
+| `AbortSignal.timeout(5000)` on every fetch | A hang stalls `/strategy` ISR regeneration to the function limit. |
 
 ### 5. Failure behaviour
 
@@ -94,13 +100,13 @@ Both third-party paths — LiquiHog **and** the indexer — must apply all of th
 
 ### 6. Deployment coupling — the one real MagnetFi risk
 
-`/magnetfi`, `/musd` and the admin panel are routes of the **same Next app and deployment** as `/token`. This does not let bad data reach the protocol, but it affects the protocol's UI availability and release cadence:
+`/magnetfi`, `/tokens` and the admin panel are routes of the **same Next app and deployment** as `/strategy`. This does not let bad data reach the protocol, but it affects the protocol's UI availability and release cadence:
 
-- `/token` declares no `export const dynamic` (the only such export in the tree is `app/api/pools/route.ts:5`), so it is **prerendered at build**. An unhandled throw in new code fails `next build` → blocks shipping any MagnetFi fix. Prod stays up on the prior deployment, so this is release-blocking, not an outage.
-- `fetchTotalTvlUsd` is called with **no try/catch** from `tokenStats.ts:61` and `app/token/page.tsx:15`'s `Promise.all`. It cannot throw today only because `fetchPoolMetrics` swallows everything (`pools.ts:99-103`). New top-level code sits outside that guard.
+- `/strategy` declares no `export const dynamic` — the only such exports are the three API routes (`api/pools`, `api/leaderboard`, `api/musd-pools`), all `force-dynamic` — so it is **prerendered at build** (`○ /strategy` in the build output, confirmed 2026-11-08). An unhandled throw in new code fails `next build` → blocks shipping any MagnetFi fix. Prod stays up on the prior deployment, so this is release-blocking, not an outage.
+- `fetchTotalTvlUsd` is called with **no try/catch** from `tokenStats.ts` and the `/strategy` route's `Promise.all`. It cannot throw today only because `fetchPoolMetrics` swallows everything (`pools.ts:99-103`). New top-level code sits outside that guard.
 
 Mitigations, all mandatory:
-1. **All new network code lives in a new server-only module**, `web/src/lib/tvlAggregate.ts`, imported only by `tokenStats.ts`. It must **not** be imported by `pools.ts`, because `app/pools/page.tsx:1` is `"use client"` and imports the runtime value `DEX_LABEL` — **`pools.ts` is in the client graph** (v1 wrongly called that import "types only"). Adding fetch code there risks shipping it to browsers or breaking that page's build.
+1. **All new network code lives in a new server-only module**, `web/src/lib/tvlAggregate.ts`, imported only by `tokenStats.ts`. It must **not** be imported by `pools.ts`, because the pools view is `"use client"` and imports the runtime value `DEX_LABEL` — **`pools.ts` is in the client graph** (v1 wrongly called that import "types only"). Adding fetch code there risks shipping it to browsers or breaking that page's build.
 2. Every new code path wrapped in try/catch **inside** the module, so its exported contract is strictly `Promise<Result | null>` and it can never throw.
 3. Rollout flag is a **module constant** — a reviewable code change — not an env var, so flipping it cannot redeploy the borrower-facing repay/withdraw/liquidate UI.
 4. `AbortSignal.timeout` on every fetch, so third-party flakiness cannot fail `next build`.
@@ -113,13 +119,13 @@ Mitigations, all mandatory:
 
 ### The actual proof
 
-**No USD or TVL figure exists anywhere on the MagnetFi or admin surface.** `ADMIN.md:156` does instruct an operator to hand-type a number — *"Operations → Re-anchor price → Pool ID + current price (mUSD/LP)"* — and that number is read from `PositionsPanel.tsx:127` (`oracle?.price`) ← `getOracle` (`magnetfiReads.ts:35-41`), which reads `lp_price_<poolId>` from oracle global state **via algod**. A `tvl` grep across all components hits only `/token`, `/pools`, `LiveStats`, and `CompXMarkets.tsx:93` (CompX's own SDK). So a poisoned display TVL has **no copy-paste path** into `set_price_anchor` or `add_pool`. That, not the import graph, is the load-bearing argument.
+**No USD or TVL figure exists anywhere on the MagnetFi or admin surface.** `ADMIN.md:156` does instruct an operator to hand-type a number — *"Operations → Re-anchor price → Pool ID + current price (mUSD/LP)"* — and that number is read from `PositionsPanel.tsx:127` (`oracle?.price`) ← `getOracle` (`magnetfiReads.ts:35-41`), which reads `lp_price_<poolId>` from oracle global state **via algod**. A `tvl` grep across all components hits only the Magnet Token and Liquidity Pools pills, `LiveStats`, and `CompXMarkets.tsx` (CompX's own SDK). So a poisoned display TVL has **no copy-paste path** into `set_price_anchor` or `add_pool`. That, not the import graph, is the load-bearing argument.
 
 ### Supporting verification
 
 - **Module graph.** Exactly five references to `lib/pools`/`lib/tokenStats` exist, all display surfaces. The transitive import closure of every `magnetfi*.ts` and `components/magnetfi/**` file is `algosdk`, `algokit-utils`, `@compx/sdk`, `useWallet`, and sibling magnetfi modules. No path reaches pools/tokenStats.
 - **Oracle bot.** `magnetfi/v2/oracle_bot/oracle_bot.py` — sole network dependency is `algod.AlgodClient` (`:224-226`); `requirements.txt` is `py-algorand-sdk` only, no `requests`/`httpx`. Prices come from `account_application_info` local state (`:252`, `:305`, `:430`); the CompX second source is an on-chain **box read**, not an API. **No HTTP price API.**
-- **No shared cache/env/route/constant.** pools.ts and tokenStats.ts read no env var. The only protocol-path env var is `NEXT_PUBLIC_ALGO_NETWORK` (`magnetfi.ts:36-37`). Next's data cache is URL-keyed and no MagnetFi path uses it. Poisoned data is cached ≤60s and reaches `/token` visitors only.
+- **No shared cache/env/route/constant.** pools.ts and tokenStats.ts read no env var. The only protocol-path env var is `NEXT_PUBLIC_ALGO_NETWORK` (`magnetfi.ts:36-37`). Next's data cache is URL-keyed and no MagnetFi path uses it. Poisoned data is cached ≤60s and reaches `/strategy` visitors only.
 - **Live protocol healthy**, 2026-09-06 17:05 UTC: u-talgo 0.763238 mUSD/LP (+3.14% vs anchor), u-usdc 2.317459 (+2.61%), both posted <1 min prior, both inside the ±25% band.
 
 ### Footgun — do not unify, and namespace generated ids
@@ -160,7 +166,7 @@ v1's tests asserted live mainnet dollar amounts against third-party APIs. Those 
 
 ## Corrections to v1
 
-- `app/pools/page.tsx:5` imports `DEX_LABEL`, a **runtime value**, and the file is `"use client"` — `pools.ts` is in the **client** graph. v1 called it "types only".
+- The pools view imports `DEX_LABEL`, a **runtime value**, and is `"use client"` — `pools.ts` is in the **client** graph. v1 called it "types only". (It was `app/pools/page.tsx` when this was written; those pools are the Liquidity Pools pill of `/strategy` now.)
 - `components/LiveStats.tsx` is **rendered nowhere** — dead code. Its `"$U pools on Tinyman & Pact"` sublabel needs no update; consider deleting the file.
 - `magnetfiClient.ts:9` also re-exports from `./magnetfiOps`; v1's import list was incomplete. Conclusion unchanged.
 - v1's claim that the v1 oracle bot throws on an empty source list is **false** (see above).
@@ -180,7 +186,7 @@ v1's tests asserted live mainnet dollar amounts against third-party APIs. Those 
 ### Verified
 
 - `npx tsc --noEmit` clean; `npm test` 46/46; `npx next build` succeeds (the property that protects MagnetFi's release cadence).
-- `/pools` First Load JS is 97.6 kB and the client-graph test confirms `tvlAggregate` is unreachable from any `"use client"` entry point.
+- `/strategy` First Load JS is **497 kB** (measured 2026-11-08; the 97.6 kB recorded here was the old standalone `/pools` route, before these pools became a pill on a page that also carries the token view, charts and swap). The client-graph test confirms `tvlAggregate` is unreachable from any `"use client"` entry point — that guard, not the byte count, is the load-bearing claim.
 - Live shadow output at build time:
 
 ```
@@ -212,7 +218,7 @@ The +$182.71 delta is the STAMM pool the old code could not see, plus quote drif
 | Surface | State |
 |---|---|
 | `/api/leaderboard` | **Live** — top 100 ASAs by TVL, cached 300s, `maxDuration` 60 |
-| **TVL Rank** box + Top 100 modal on `/token` | **Live** |
+| **TVL Rank** box + Top 100 modal on the Magnet Token pill of `/strategy` | **Live** |
 | Total TVL box | Still the hardcoded floor — `AGGREGATE_TVL_ENABLED = false` |
 
 Current standings: `FOLKS #6 · GOLD$ #19 · SILVER$ #20 · $U #24` of **623** eligible assets.

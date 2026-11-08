@@ -2,7 +2,7 @@
 name = "contracts"
 version = "0.1.0"
 description = "Algorand smart contracts"
-authors = ["bazookacreate-8771 <bazooka.create@gmail.com>"]
+authors = ["Magnet Strategies"]
 readme = "README.md"
 package-mode = false
 

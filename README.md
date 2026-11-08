@@ -13,7 +13,7 @@ and partner money markets — and reinvests returns into the token's underlying 
 | Route | Nav label | What |
 |---|---|---|
 | [`/`](https://magnetstrategies.io) | — | Landing |
-| [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — PSM swap, peg/backing stats, mVote governance |
+| [`/tokens`](https://magnetstrategies.io/tokens) | mUSD | mUSD — mint and exchange through the PSM, peg/backing stats, mVote governance |
 | [`/magnetfi`](https://magnetstrategies.io/magnetfi) | Finance | MagnetFi — LP vaults, mUSD, PSM |
 | [`/trade`](https://magnetstrategies.io/trade) | Trade | Trading Terminal (perps on PEX) |
 | [`/strategy`](https://magnetstrategies.io/strategy) | Strategy | Magnet Token ($U + ASA TVL Rank), Liquidity Pools, Vaults (C-Vault + magnetALGO) |
@@ -23,6 +23,9 @@ and partner money markets — and reinvests returns into the token's underlying 
 
 > Retired and redirected: `/musd` and `/about` into `/tokens`; `/token`, `/pools`
 > and `/earn` into `/strategy`; `/dao` and `/vote` into `/tokens#governance`.
+> All are permanent except `/about`, which is a 307 — it was absorbed into
+> `/tokens` but had no rule at all until 2026-11-08, and the destination is
+> read off this list rather than decided, so it stays retargetable.
 > The nav label on `/tokens` is **mUSD** and the path is unchanged on purpose —
 > a cached 301 off a live route is what `web/src/app/strategy/page.tsx` records
 > the cost of. The authority for all
@@ -84,9 +87,18 @@ identity and must not be imported into products that do not offer them.
 → [`predict/OVERVIEW.md`](./predict/OVERVIEW.md)
 
 ### mUSD
-`/tokens`, nav label **mUSD**. Two pills: **Exchange** (peg, backing, holders, chart,
-and the PSM swap) and **Governance** (mVote — the rules, live proposals and voting
-history). Absorbed the former `/musd`, `/about`, `/dao` and `/vote` pages.
+`/tokens`, nav label **mUSD**. Three pills:
+
+- **Mint** — the mUSD landing page. What it is, what backs it, four live figures
+  (peg, holders, circulating supply, backing ratio), the chart, and USDC → mUSD at 1:1.
+- **Exchange** — the way back out, stripped to the trade: the chart and mUSD → USDC
+  through the PSM, with the live peg beside the swap.
+- **Governance** — mVote: the rules, the treasury the proposals direct, live
+  proposals and voting history. The pill carries a dot when a vote is open.
+
+The PSM is one two-way swap; it is split across two pills so neither can be pointing
+the wrong way when a visitor arrives. Absorbed the former `/musd`, `/about`, `/dao`
+and `/vote` pages.
 
 ### Magnet Token
 `/strategy`, under the **Magnet Token** pill beside Liquidity Pools and Vaults — $U is a
@@ -98,7 +110,8 @@ same page under **Liquidity Pools**. Absorbed the former `/token`, `/pools` and 
 
 ### ASA TVL Tracker
 Cross-DEX liquidity analytics for the whole Algorand ASA ecosystem: the **top 100 ASAs by
-TVL**, surfaced as the **TVL Rank** metric box on `/token` (with a scrollable Top 100 modal)
+TVL**, surfaced as the **TVL Rank** metric box on the Magnet Token pill of `/strategy`
+(with a scrollable Top 100 modal)
 and as a public read API at `/api/leaderboard`. **Live.**
 
 Built because Vestige — long the ecosystem's ASA index — stopped keeping up with new pool

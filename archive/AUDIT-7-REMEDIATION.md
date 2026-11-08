@@ -1,5 +1,11 @@
 # Audit 7 — remediation spec
 
+> **Closed. Nothing here is current.**
+> The findings below were fixed; this is the record of how. For how the
+> Perps surface behaves today, read
+> [strategy/perps/OVERVIEW.md](../strategy/perps/OVERVIEW.md) and
+> [SPEC.md](../strategy/perps/SPEC.md). See [README.md](./README.md).
+
 Queued before any code is written, per the working rule that changes on this
 surface are specified and reviewed rather than hot-fixed.
 

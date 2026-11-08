@@ -70,7 +70,7 @@ longer carries a vote. See [TOKENOMICS.md](./TOKENOMICS.md).
 | **Strategy Pools** | Liquidity into PEX's perp pools and its managed **C-Vault** — you earn fees and take the other side of the book. Deposits and withdrawals are signed in our own UI. **Live on mainnet**; only the C-Vault is public, the two direct market pools are admin-gated. | `/strategy` → Vaults | [strategy/pools/OVERVIEW.md](../strategy/pools/OVERVIEW.md) |
 | **magnetALGO** | Liquid staking on **Myth Finance's** dualSTAKE: deposit ALGO, hold magnetALGO, and consensus rewards accrue in **$U** rather than ALGO — making every holder a structural $U buyer. Third-party contract, upgradeable behind a one-week timelock. **Live on mainnet 2026-11-07.** | `/strategy` → Vaults | [strategy/dualstake/OVERVIEW.md](../strategy/dualstake/OVERVIEW.md) |
 | **mVote** | Advisory, founder-led governance. Holders lock whole **mUSD** to signal on protocol direction, one mUSD to one vote. **Live on mainnet** (App `3763268387`). Replaces UVote, which voted with $U and is retired (App `3679681107`, readable for history only). | `/tokens#governance` | [vote/OVERVIEW.md](../vote/OVERVIEW.md) |
-| **mUSD page** | Nav label **mUSD**. Two pills: Exchange (peg, backing, holders, chart, PSM swap) and Governance (mVote). The swap reuses MagnetFi's PSM mint/redeem rather than reimplementing it. Absorbed `/musd` and `/about`. | `/tokens` | [mUSD.md](../magnetfi/v2/mUSD.md) |
+| **mUSD page** | Nav label **mUSD**. Three pills: **Mint** (the landing page — peg, holders, supply, backing, chart, USDC → mUSD), **Exchange** (chart + mUSD → USDC, the trade only) and **Governance** (mVote). The PSM is one two-way swap, split across two pills so neither can point the wrong way on arrival; it reuses MagnetFi's PSM rather than reimplementing it. Absorbed `/musd` and `/about`. | `/tokens` | [mUSD.md](../magnetfi/v2/mUSD.md) |
 | **Magnet Token** | $U as a strategy in its own right — the original one: price, holders, TVL, **ASA TVL Rank**, chart and swap, under the **Magnet Token** pill on the Strategy page, beside the $U liquidity pools. Absorbed `/token`, `/pools` and `/earn`. | `/strategy` | [TOKENOMICS.md](./TOKENOMICS.md) |
 | **ASA TVL Tracker** | Cross-DEX liquidity analytics: the top 100 Algorand ASAs by TVL. Surfaced as the **TVL Rank** box on the Magnet Token pill of `/strategy` (with a Top 100 modal) and a public read API. Reads Pact's managed-weighted pools that Vestige and other indexers miss. **Live.** | `/strategy`, `/api/leaderboard` | [ASA_TVL_SPEC.md](../ASA_TVL_SPEC.md) |
 | **Contact** | On-chain support inbox + broadcast channel (no backend — wallet-signed note-field messages). | `/contact` | — |
@@ -82,10 +82,10 @@ longer carries a vote. See [TOKENOMICS.md](./TOKENOMICS.md).
 The treasury is funded by revenue from Bazooka Labs' applications and deployed into
 Algorand DeFi — primarily $U-paired liquidity. It is not a $U accumulator; it acts as
 a deployment engine that pairs treasury capital with $U to build market depth. Its
-live USDC balance is shown as the Treasury box on both token views — the Magnet
-Token pill of `/strategy` and the Exchange pill of `/tokens`. Governance
-proposals often direct where
-that capital is pointed. See [TREASURY.md](./TREASURY.md).
+live USDC balance is shown inside the "How voting works" panel on the Governance
+pill of `/tokens`, paired with the reader's own vote power — governance proposals
+often direct where that capital is pointed, so the figure sits beside the rules for
+directing it. It is shown in one place only. See [TREASURY.md](./TREASURY.md).
 
 ---
 

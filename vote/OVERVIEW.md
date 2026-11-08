@@ -36,7 +36,9 @@ existing safeguards.
 
 ## Where the Live proposals pill lives
 
-In the **mUSD hero**, beside "About mUSD", since 2026-11-07. It rode in the
+In the **mUSD hero**, top right, since 2026-11-07. (It sat beside an "About
+mUSD" button until that modal was replaced by an inline paragraph the same
+day.) It rode in the
 Magnet Token hero on /strategy for three days, on a discovery argument: that
 page had the traffic and nothing else in the nav pointed at a vote. Voting is
 weighted by mUSD, so the holder who can act on the count is the one reading
@@ -47,6 +49,35 @@ same-page navigation, and Next routes a hash change through the history API
 without firing `hashchange` — so `TokensView`'s listener never ran and the
 pill set the URL while leaving Exchange selected. A live count above a button
 that did nothing.
+
+## The dot on the Governance pill
+
+**Since 2026-11-08 the Governance pill itself carries a pulsing dot whenever a
+vote is open.** The hero pill said so already, but only from the Mint tab, and
+the pill row is what a reader scans to decide where to go — a vote could be
+open with nothing in the navigation suggesting it.
+
+It is deliberately the *same* dot as the hero pill's: same size, same shape,
+same pulse, so "a vote is open" reads as one vocabulary rather than two
+different notifications. It adds a halo, because on the pill row it carries
+the message alone — the hero pill has a number and the word "proposals" beside
+it. On the selected pill it turns white; `magnet-400` on that pill's
+magnet-600→500 gradient is purple on purple. An `sr-only` span makes the
+button announce itself as "Governance, a proposal is open".
+
+**One count, three consumers.** The dot, the hero pill and this section all
+read `useLiveProposalCount`, which wraps the module-level store — so the dot
+costs no extra network read and cannot disagree with the number beside it.
+That hook also owns the 15-second re-render that notices a window *closing*:
+`isActive` compares `endTime` to the browser clock, nothing in the store
+changes when that crosses, and a component re-rendering only on store updates
+goes on advertising a closed vote. That timer had been written twice and
+missed once before it was hoisted.
+
+The dot shows on `count > 0` even when a read came back `incomplete`. An
+unreadable era means the count may be *low*, but every proposal counted was
+actually read — the hero pill prints a dash there because it claims a total,
+while a dot claims only "at least one", which survives.
 
 That shipped nowhere: it was caught by clicking the pill in a real browser
 before the push. A jsdom test passed throughout, because it dispatched

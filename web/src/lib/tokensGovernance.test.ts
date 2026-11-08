@@ -305,6 +305,23 @@ describe("the old route is retired, not orphaned", () => {
     expect(config).toContain('{ source: "/dao", destination: "/tokens#governance", permanent: true }');
     expect(config).not.toContain('destination: "/vote"');
   });
+
+  it("leaves no retired path returning a 404", () => {
+    /*
+      `/about` was absorbed into /tokens, the page was deleted, and no rule
+      was written — so it 404'd in production while README.md and
+      org/OVERVIEW.md both described it as redirected. Found by requesting
+      every retired path listed in the docs and following it.
+
+      Temporary on purpose: the destination is inferred from those docs
+      rather than decided, and this function's own header records what a
+      wrongly-cached permanent redirect costs.
+    */
+    expect(config).toContain('{ source: "/about", destination: "/tokens", permanent: false }');
+    for (const path of ["/earn", "/dao", "/vote", "/token", "/musd", "/pools", "/about"]) {
+      expect(config, path).toContain(`source: "${path}"`);
+    }
+  });
 });
 
 describe("the hero points at governance", () => {

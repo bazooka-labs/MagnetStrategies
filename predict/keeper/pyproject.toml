@@ -2,7 +2,7 @@
 name = "vpl-keeper"
 version = "0.1.0"
 description = "VPL keeper — price reads, attestation signing, round operations"
-authors = ["bazookacreate-8771 <bazooka.create@gmail.com>"]
+authors = ["Magnet Strategies"]
 readme = "README.md"
 package-mode = false
 

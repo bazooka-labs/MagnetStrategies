@@ -1,5 +1,11 @@
 # Audit 9 — remediation spec
 
+> **Closed. Nothing here is current.**
+> All five findings were fixed; this is the record of how. For how the
+> Perps surface behaves today, read
+> [strategy/perps/OVERVIEW.md](../strategy/perps/OVERVIEW.md) and
+> [SPEC.md](../strategy/perps/SPEC.md). See [README.md](./README.md).
+
 Written before the code, 2026-10-05. Five findings from
 [AUDIT.md](../strategy/perps/AUDIT.md#audit-9--2026-10-04). All five are fixed here.
 
