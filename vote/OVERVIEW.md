@@ -220,6 +220,32 @@ can be displayed side by side without either lying about the other's numbers.
 
 ---
 
+## Mainnet canary — status
+
+The first real vote was cast **2026-11-08 15:24:49Z**: 31 mUSD on **NIKO**,
+proposal 1, group `N3jznmxWx82IbuUT/rFvyrYOhLw2vg+k/zQmYglBHNI=`, round
+66762687. Read back off the chain rather than from the UI:
+
+| Checked | Found |
+|---|---|
+| Group shape | 3 transactions, `[0]` pay 26,900 µALGO, `[1]` axfer 31 mUSD, `[2]` `cast_vote(1, 1)` NoOp — the order [SPEC.md](./SPEC.md) I-4 specifies |
+| Vote box | choice `1` (NIKO), locked `31.000000` mUSD |
+| Proposal tally | NIKO 31.000000, AKITA/TINY/POW 0 |
+| Contract holding | exactly `31.000000` mUSD — equal to the sum of recorded locked amounts, the invariant the audits turn on |
+| Whole-token rule | 31, not 31.4 — the contract asserts it and the caller floors it |
+
+**I-4 is proven, not just argued.** The payment landed at index 0, before the
+app call that creates the box, and the app's spare ALGO is **unchanged at
+0.200000** across the vote. The box is 45 bytes of name and 16 of value, so
+its minimum-balance cost is 2500 + 400 × 61 = 26,900 µALGO — exactly what the
+voter paid. The standing buffer UVote's audits could never close was not drawn
+down at all, because mVote's reordered group means it never has to be.
+
+**The reclaim leg has not run.** `claim_tokens` is the half carrying I-1
+(`group_size() == 1`) and I-3 (`BoxDelete(...) == 1` asserted), and neither
+has executed on mainnet. The window closes **2026-11-14 19:33:58Z**; the 31
+mUSD and the 26,900 µALGO box deposit both come back then.
+
 ## Lifecycle at a glance
 
 1. **Founder creates a proposal** (question + 2–4 choices) — opens a 7-day window.
