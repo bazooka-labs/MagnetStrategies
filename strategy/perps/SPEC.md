@@ -1590,6 +1590,137 @@ escrowed, because it needs no new data source, and says so on screen.
 
 ---
 
+## Single-asset payout on an ALGO-collateral close — SPEC, not built
+
+**Status: specified 2026-11-08 after a code and route audit. Nothing built,
+nothing signed.** Requested so that ALGO in means ALGO out, mirroring what the
+C-Vault exit already does for USDC.
+
+### The measurement that decides the design
+
+The non-collateral leg of a close is **not the PnL**. Quoted against all three
+meaningful live positions on 2026-11-08 through our own `quoteClose`:
+
+| Position | primary | pnl | claimable_long | claimable_short |
+|---|---|---|---|---|
+| USDC collateral, short, $8 | 22.947542 USDC | 1.847813 USDC | **2.262748 ALGO** | 0 |
+| USDC collateral, long, $1,827 | 140.479150 USDC | 0 | 0 | 0 |
+| ALGO collateral, long, $332 | 3284.459117 ALGO | 0 | 0 | 0 |
+
+The two-asset payout comes from a **claimable funding leg**, paid in the
+market's long or short asset. `pnl_output` is denominated in the collateral
+asset — on the only position carrying PnL, both were USDC.
+
+**So `output_swap_mode` cannot do this, and the previous section's "PEX solves
+this natively; do not build a swap" does not apply to the claimable legs.**
+`PNL_TO_COLLATERAL` converts `pnl_output` into the collateral asset, which is
+where it already is. Confirmed by simulating that same position at mode 0 and
+mode 1: `pnl_output_before_swap` stayed 1846068 and `swap_token_out` stayed
+**0** at both. Mode 1 is a no-op here, exactly as the arithmetic predicts. The
+October probe in `closeswap.live.test.ts` reached "partial" for want of a
+position with something to convert; this is the missing half of that result.
+
+On market 1 the long asset is ALGO and the short asset is USDC. So on an
+**ALGO-collateral** position the stray leg is `claimable_short_token_output`,
+in USDC, and the job is to convert **USDC → ALGO**.
+
+### The pattern to copy, and what it costs
+
+`pools/swapGroup.ts` + `cvaClient.ts` already do this for the C-Vault and are
+proven on mainnet — round 66620036, a 13-txn vault group followed five seconds
+later by a 7-txn `SwapOps` group turning 106.740994 ALGO into 9.716760 USDC.
+
+What transfers unchanged:
+
+- **One signature, two groups.** A close is 10 txns and the swap is 7; 17
+  exceeds Algorand's 16-txn GROUP cap, but a signing REQUEST has none. ARC-0001
+  `signTxns` takes an array spanning both and the wallet prompts once.
+- **`buildAlgoToUsdcSwap` is already direction-agnostic** except for one field.
+  `tokenInAssetId: PEX_ASSETS.algo` becomes `PEX_ASSETS.usdc`; the market
+  descriptors (`indexAssetId`, `longAssetId`, `shortAssetId`) describe market 1
+  and do not change. Rename it rather than fork it.
+- **`assertSwapGroup`** carries over whole, including the check its own doc
+  calls the one that matters most — `receiver`, a plain argument on the call,
+  not implied by the sender.
+- **The two-pass quote**, fee ceiling (100,000 µALGO against a measured
+  43,000), and the `CALLABLE` restriction to swapOps/markets/math.
+
+### The gap, and it is the whole risk
+
+**The C-Vault's first group guarantees its own output. The perps close does
+not.**
+
+`withdraw_from_market(marketId, shareAmount, minLong, minShort, …)` takes
+contract-asserted floors, set from the probe receipt via `withTolerance`. The
+vault either pays at least `minLong` or the withdrawal fails and pays nothing.
+That is what makes sizing the second group safe: its input is guaranteed
+present.
+
+A close has **no such floor on the claimable legs**. `minPrimaryOutputAmount`
+and `minSecondaryOutputAmount` are 0 and the group assertion *requires* 0, and
+they govern the output swap rather than the claimable legs in any case. The
+only protection on a close is `acceptablePrice`.
+
+So a swap sized to the quoted claimable leg can fail **after the close has
+already paid**. Not a loss — the user holds both assets and the ALGO is still
+theirs — but a failed second group and a confusing outcome.
+
+Three ways to handle it, to be decided before implementation:
+
+1. **Discount harder than the C-Vault does.** Size to the quoted claimable leg
+   less a wider tolerance, accepting more dust for a lower failure rate. Both
+   groups carry the SAME signed oracle payload and land in the same round, so
+   the quoted leg should be exact; the variance is other traders moving the
+   pool between simulation and execution. Simplest, and closest to the proven
+   path.
+2. **Floor the leg on the close itself**, if PEX exposes a way to. Unmeasured.
+   Would make the port exact rather than approximate; needs a probe before it
+   can be specified.
+3. **Make the swap explicitly best-effort** — a "convert the USDC" action on
+   the position row after a close, so a failure is a retry rather than a dead
+   end. Weakest ergonomics, strongest honesty, and it composes with 1.
+
+The recommendation is **1 plus 3**: size conservatively, and leave a retry
+path for the case it still misses.
+
+### Scope
+
+- **ALGO-collateral closes only.** A USDC-collateral position whose stray leg
+  is ALGO is the mirror case and is NOT in scope here; it is the same code with
+  the assets swapped, and should follow once this is proven.
+- **Market 1 only**, where the ALGO/USDC swap has liquidity — the same
+  restriction `cvaClient` already applies.
+- **No change to the close group itself.** `outputSwapMode` stays 0 and the
+  assertion keeps requiring 0. Nothing about the signed close changes.
+- **Nothing when there is no stray leg.** The live ALGO position quotes a
+  single 3284.459117 ALGO output today; the feature must be a no-op there, not
+  a zero-amount swap.
+
+### Guards this needs
+
+Beyond porting `swapGroup.test.ts`:
+
+1. The swap is built **only** when the close quote shows a non-collateral leg
+   above the dust threshold.
+2. `tokenInAssetId` is the stray leg's asset and `receiver` is the trader —
+   mutate either and the test goes red.
+3. The swap's input never exceeds the quoted leg.
+4. A USDC-collateral position builds no swap in this path.
+5. The close group is byte-identical to today's with the feature on and off.
+6. The two groups are submitted as groups, never concatenated — `cvaClient`
+   has the same note and it is a real failure mode.
+
+### Open before implementation
+
+- Which of the three handling options above.
+- Whether a probe for option 2 is worth running first.
+- The dust threshold. The C-Vault accepts ~1% of the converted leg; on a close
+  the stray leg is already small (3.810866 USDC on a 200 ALGO position), so the
+  same percentage is a much smaller absolute number and the floor may want to
+  be absolute rather than proportional.
+
+---
+
 ## Paying Profit Out in One Asset — Native, and Not Free
 
 A close is two legs: collateral in the collateral asset, profit in the PnL
