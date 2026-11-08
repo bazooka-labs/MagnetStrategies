@@ -82,10 +82,18 @@ export function Panel({
  * rendering against the red a stale pool already carries, which is the state
  * they have to survive.
  */
-export const MAGNET_GLOW =
-  "ring-1 ring-magnet-400/60 shadow-[0_0_30px_-2px_rgba(168,85,247,0.8),inset_0_0_14px_-8px_rgba(192,132,252,0.9)]";
-export const ALGO_GLOW =
-  "ring-1 ring-amber-300/60 shadow-[0_0_30px_-2px_rgba(251,191,36,0.75),inset_0_0_14px_-8px_rgba(253,224,71,0.9)]";
+/*
+  Re-exported from `@/lib/glow`, which is NOT a client module.
+
+  These strings have to be readable by SERVER components too, and an import
+  from this file gives a server component a client-reference object rather
+  than the value — interpolating one into a className yields "[object
+  Object]". `lib/glow.ts` records the failure in full. The re-export keeps
+  every existing client-side import working against one definition.
+*/
+export { ALGO_GLOW, MAGNET_GLOW, MAGNET_GLOW_300 } from "@/components/glow";
+import { ALGO_GLOW, MAGNET_GLOW } from "@/components/glow";
+
 /** Keyed by VaultType.id / oracle pool id — the one non-$U collateral glows gold. */
 export const collateralGlow = (id: string) => (id === "algo-usdc" ? ALGO_GLOW : MAGNET_GLOW);
 

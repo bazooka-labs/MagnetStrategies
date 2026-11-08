@@ -46,7 +46,9 @@ describe("the fifth box differs by view, since 2026-11-07", () => {
   });
 
   it("puts the YTD return on Magnet and NOT on mUSD", () => {
-    expect(magnet).toContain('label="YTD vs ALGO"');
+    // It left the metric row entirely later the same day — see below — so
+    // this asserts the figure is on the page, not which element holds it.
+    expect(magnet).toContain("YTD vs ALGO");
     expect(musd).not.toContain("YTD");
   });
 
@@ -58,12 +60,28 @@ describe("the fifth box differs by view, since 2026-11-07", () => {
     expect(magnet).not.toMatch(/label="YTD[^"]*\$"/);
   });
 
-  it("keeps both rows five across, fifth cell spanning", () => {
-    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
-      expect(src, name).toContain("lg:grid-cols-5");
-      expect(src, name).not.toContain("lg:grid-cols-4");
-      expect(src, name).toContain('className="col-span-2 lg:col-span-1"');
-    }
+  it("runs Magnet four across and mUSD five, which is now the difference", () => {
+    /*
+      YTD came out of the metric row on 2026-11-07 to stand beside the name,
+      so Magnet has four cells and no spanning fifth. mUSD still has five
+      with the treasury spanning.
+
+      Both halves asserted: checking only Magnet's four would pass with mUSD
+      silently dropped to four as well.
+    */
+    /* The METRIC row specifically — it is the one with the cell dividers.
+       A bare `lg:grid-cols-5` search also matches the chart-and-swap split
+       below it, which is 3 + 2 and has nothing to do with this. */
+    const metricRow = (src: string) =>
+      src.split("\n").find((l) => l.includes("divide-x") && l.includes("grid-cols")) ?? "";
+
+    expect(metricRow(magnet)).toContain("lg:grid-cols-4");
+    expect(metricRow(magnet)).not.toContain("lg:grid-cols-5");
+    expect(magnet).not.toContain('className="col-span-2 lg:col-span-1"');
+
+    expect(metricRow(musd)).toContain("lg:grid-cols-5");
+    expect(metricRow(musd)).not.toContain("lg:grid-cols-4");
+    expect(musd).toContain('className="col-span-2 lg:col-span-1"');
   });
 
   it("takes its colour from the shared table", () => {

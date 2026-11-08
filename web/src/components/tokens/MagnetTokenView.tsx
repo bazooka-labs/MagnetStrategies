@@ -1,6 +1,10 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
+import { Panel } from "@/components/magnetfi/v2/shared";
+/* From `@/lib/glow`, not from `shared.tsx`: this is a SERVER component, and a
+   client module's export arrives here as a reference object that stringifies
+   to "[object Object]". See lib/glow.ts. */
+import { MAGNET_GLOW, MAGNET_GLOW_300 } from "@/components/glow";
 import { VestigeChart } from "@/components/VestigeChart";
 import { TvlRankStat } from "@/components/TvlRankStat";
 import { StatCell } from "@/components/tokens/StatCell";
@@ -93,17 +97,39 @@ export function MagnetTokenView({
             </div>
           </div>
 
-          {/* A right-aligned column, holding one pill today.
+          {/* MOCKUP 2026-11-07: YTD lifted out of the metric row to stand
+              alone beside the name — "Magnet Token ———— +5.00% vs ALGO".
 
-              It was three — a mainnet status badge, About $U, and
-              LiveProposalsPill — and three in a ROW crowded the mark at tablet
-              width and wrapped unpredictably, which is why it is a column. The
-              status badge went some time ago and the proposals pill moved to
-              the mUSD hero on 2026-11-07.
+              It is the one figure on this page that answers "has it worked",
+              and sharing a row with Price, Holders and TVL ranked it equal
+              with them. Out here it reads as the headline the others support.
 
-              Kept as a column rather than collapsed: it gains a second pill
-              again the moment anything else belongs here. See the note at the
-              foot of this file. */}
+              `MAGNET_GLOW_300`, not MAGNET_GLOW: this box sits inside a card
+              already carrying the 400 glow, and the same ring at the same
+              intensity nested in itself reads as one smeared halo rather than
+              as two objects.
+
+              This also refills the right-hand side of the header row, which
+              had been empty since the About pill opened out onto the page —
+              the lopsidedness flagged when that change was mocked up. */}
+          {/* ~30% up on the first pass: padding 5/3 → 7/5, figure 3xl → 4xl,
+              label and basis 11px → 12px, corner xl → 2xl so the radius keeps
+              pace with the box. */}
+          <div className={`shrink-0 rounded-2xl bg-black/30 px-7 py-5 ${MAGNET_GLOW_300}`}>
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
+              YTD vs ALGO
+            </p>
+            <p className={`mt-1.5 font-mono text-4xl font-bold leading-none ${
+              ytd && ytd.pct < 0 ? "text-red-300" : "text-green-400"
+            }`}>
+              {ytd ? `${ytd.pct >= 0 ? "+" : ""}${ytd.pct.toFixed(2)}%` : "—"}
+            </p>
+            <p className="mt-2 text-xs leading-snug text-gray-500">
+              {ytd
+                ? `${ytd.base.toFixed(4)} → ${ytd.now.toFixed(4)} ALGO since ${since}`
+                : "Couldn't read the price history"}
+            </p>
+          </div>
         </div>
 
         {/* MOCKUP 2026-11-07: the About modal, opened out onto the page.
@@ -142,37 +168,11 @@ export function MagnetTokenView({
         {/* Five across on desktop. On two columns the fifth would sit alone in a
             half-width cell with a hanging divider, so it spans the row — a
             deliberate last-row rule, not a gap. */}
-        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-5 lg:divide-y-0">
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10 lg:grid-cols-4 lg:divide-y-0">
           <StatCell label="Price" value={price} sub="USDC" tone="green" />
           <StatCell label="Holders" value={holders} sub="Active wallets" tone="amber" />
           <StatCell label="Total TVL" value={tvl} sub="$U pools on Tinyman & Pact" tone="teal" />
           <TvlRankStat />
-          {/*
-            ── Treasury left this row on 2026-11-07, YTD took its place ─────
-            The treasury figure is still on the mUSD page, which is where it
-            belongs: it is USDC available for liquidity, a fact about the
-            protocol's balance sheet rather than about $U.
-
-            What a reader of THIS page wants is whether the thing has worked,
-            and the protocol's stated goal is to beat holding vanilla ALGO —
-            so the figure is in ALGO, not dollars. A dollar return would read
-            as a gain in a month when ALGO itself rose further, which is
-            exactly when this number most needs to be honest.
-
-            The sub-line carries the arithmetic rather than a sentence under
-            it: "1.4015 → 1.4716" is a measurement showing its own basis,
-            where "+5.00%" alone is a claim.
-          */}
-          <div className="col-span-2 lg:col-span-1">
-            <StatCell
-              label="YTD vs ALGO"
-              value={ytd ? `${ytd.pct >= 0 ? "+" : ""}${ytd.pct.toFixed(2)}%` : "—"}
-              sub={ytd
-                ? `${ytd.base.toFixed(4)} → ${ytd.now.toFixed(4)} ALGO since ${since}`
-                : "Couldn't read the price history"}
-              tone={ytd && ytd.pct < 0 ? "red" : "green"}
-            />
-          </div>
         </div>
 
         <div className="border-t border-white/10" />
