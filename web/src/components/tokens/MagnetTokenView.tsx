@@ -132,7 +132,7 @@ export function MagnetTokenView({
           </div>
         </div>
 
-        {/* MOCKUP 2026-11-07: the About modal, opened out onto the page.
+        {/* ── The About modal, opened out onto the page (2026-11-07) ──
 
             Same amber frame the modal used — `border-amber-400/25` on the
             solid `#0b0b0d` surface — so it still reads as the same object,

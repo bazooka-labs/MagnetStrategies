@@ -49,7 +49,9 @@ describe("the fifth box differs by view, since 2026-11-07", () => {
     // It left the metric row entirely later the same day — see below — so
     // this asserts the figure is on the page, not which element holds it.
     expect(magnet).toContain("YTD vs ALGO");
-    expect(musd).not.toContain("YTD");
+    // The rendered label, not the bare acronym: a prose comment on the mUSD
+    // view mentions the YTD box by name and a substring match caught it.
+    expect(musd).not.toContain("YTD vs ALGO");
   });
 
   it("measures it in ALGO, not dollars", () => {
@@ -363,21 +365,30 @@ describe("the hero points at governance", () => {
     expect(magnet).toContain("fixed supply of 750,000 tokens");
   });
 
-  it("keeps the modal on mUSD, which did NOT change", () => {
-    // The divergence is deliberate and one-sided; asserting only the Magnet
-    // half would pass with mUSD's modal removed too.
-    expect(musd).toContain('triggerLabel="About mUSD"');
-    expect(musd).toContain('from "@/components/tokens/AboutModal"');
+  it("has opened its About out onto the page too, since 2026-11-07", () => {
+    /*
+      This asserted the OPPOSITE for most of a day: Magnet opened its About
+      panel out and mUSD kept the modal, a deliberate one-sided divergence.
+      The founder then asked for the same treatment here, so the two match
+      again and the assertion flips with them.
+    */
+    for (const [name, src] of [["magnet", magnet], ["musd", musd]] as const) {
+      expect(src, name).not.toContain("triggerLabel=");
+      expect(src, name).not.toContain('from "@/components/tokens/AboutModal"');
+    }
+    expect(musd).toContain("What is mUSD?");
+    expect(musd).toContain("Peg Stability Module");
   });
 
-  it("puts the pill beside About mUSD in the mUSD hero", () => {
-    const about = musd.indexOf('triggerLabel="About mUSD"');
-    const pillAt = musd.indexOf("<LiveProposalsPill />");
-    expect(about).toBeGreaterThan(-1);
-    expect(pillAt).toBeGreaterThan(about);
-    // Same flex row: no closing div between the two.
-    expect(musd.slice(musd.indexOf("</AboutModal>", about), pillAt))
-      .not.toContain("</div>");
+  it("leaves the proposals pill alone in the mUSD hero's action slot", () => {
+    /*
+      It shared that row with the About trigger until 2026-11-07, when the
+      About content moved onto the page. The pill is what keeps the header
+      balanced now — the Magnet hero had no such replacement and sat
+      lopsided until its YTD box arrived.
+    */
+    expect(musd).toContain("<LiveProposalsPill />");
+    expect(musd).not.toContain("About mUSD\"");
   });
 
 });

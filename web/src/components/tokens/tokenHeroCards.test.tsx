@@ -68,14 +68,33 @@ afterEach(cleanup);
 const glowing = (c: HTMLElement) =>
   [...c.querySelectorAll("[class*='ring-magnet-400']")] as HTMLElement[];
 
-const CASES = [
+/**
+ * How a view presents its About copy.
+ *
+ * Both are `inline` today. The `pill` arm stays because they were split for
+ * most of 2026-11-07 — Magnet inline, mUSD still a modal — and a table that
+ * cannot express the difference is a table that hides the next one. Typed
+ * explicitly so the dead arm does not narrow away.
+ */
+type AboutShape =
+  | { readonly kind: "inline"; readonly heading: string }
+  | { readonly kind: "pill"; readonly name: RegExp };
+
+const CASES: readonly {
+  readonly name: string;
+  readonly title: string;
+  readonly about: AboutShape;
+  readonly mount: () => Promise<ReturnType<typeof render>>;
+  readonly figure: string;
+}[] = [
   {
     name: "Magnet Token",
     title: "Magnet Token",
-    /* Magnet opened its About out onto the page on 2026-11-07; mUSD kept the
-       modal. A deliberate divergence, so each case states its own shape
-       rather than the table pretending they are the same. */
-    about: { kind: "inline", heading: "What is $U?" } as const,
+    /* Both views opened their About out onto the page on 2026-11-07 —
+       Magnet first, mUSD a few hours later. The shape stays per-case
+       anyway: it diverged for most of that day, and a table that assumes
+       they match is how the next divergence goes unnoticed. */
+    about: { kind: "inline", heading: "What is $U?" },
     mount: async () => {
       const { MagnetTokenView } = await import("./MagnetTokenView");
       return render(
@@ -88,14 +107,14 @@ const CASES = [
   {
     name: "mUSD",
     title: "mUSD",
-    about: { kind: "pill", name: /About mUSD/ } as const,
+    about: { kind: "inline", heading: "What is mUSD?" },
     mount: async () => {
       const { MusdTokenView } = await import("./MusdTokenView");
       return render(<MusdTokenView holders="8" marketPrice={1.0001} />);
     },
     figure: "8",
   },
-] as const;
+];
 
 describe.each(CASES)("$name — the merged card", (c) => {
   it("renders exactly one glowing container, not two stacked", async () => {
@@ -170,8 +189,21 @@ describe.each(CASES)("$name — the merged card", (c) => {
       // Inline: the heading and the copy are on the page, and there is no
       // longer a trigger to press.
       expect(card.textContent).toContain(c.about.heading);
-      expect(card.textContent).toContain("fixed supply of 750,000 tokens");
-      expect(screen.queryByRole("button", { name: /About \$U/ })).toBeNull();
+      expect(card.textContent).toContain(
+        c.name === "mUSD" ? "Peg Stability Module" : "fixed supply of 750,000 tokens");
+      expect(screen.queryByRole("button", { name: /^About / })).toBeNull();
+
+      /*
+        The amber frame is what makes it read as the object that used to be
+        behind the button, rather than as a new block of copy. Both views
+        carry the identical one — Magnet's shipped first and mUSD's was
+        asked for to match it, so this is where they would drift.
+      */
+      const panel = [...card.querySelectorAll("div")]
+        .find((d) => d.className.includes("border-amber-400/25"));
+      expect(panel, "the About panel has lost its amber frame").toBeTruthy();
+      expect(panel!.className).toContain("bg-[#0b0b0d]");
+      expect(panel!.querySelector("h2")!.className).toContain("text-amber-200");
     }
   });
 });

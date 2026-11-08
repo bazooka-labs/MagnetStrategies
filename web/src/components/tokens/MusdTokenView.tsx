@@ -11,7 +11,6 @@ import {
 } from "@/lib/magnetfiReads";
 import { MAGNET_GLOW, Panel } from "@/components/magnetfi/v2/shared";
 import { VestigeChart } from "@/components/VestigeChart";
-import { AboutModal } from "@/components/tokens/AboutModal";
 import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
@@ -101,14 +100,6 @@ export function MusdTokenView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <AboutModal triggerLabel="About mUSD" heading="What is mUSD?">
-              <p>
-                Magnet USD is an Algorand-native stablecoin issued by Magnet Strategies. It holds
-                a 1:1 peg to USDC through a protocol-owned Peg Stability Module (PSM), and is
-                fully collateral-backed. Users mint mUSD by either depositing USDC 1:1 (no fee),
-                or by borrowing against specified collateral options.
-              </p>
-            </AboutModal>
             {/*
               Moved here from the Magnet Token hero on 2026-11-07.
 
@@ -119,6 +110,34 @@ export function MusdTokenView({
               there first.
             */}
             <LiveProposalsPill />
+          </div>
+        </div>
+
+        {/* ── The About modal, opened out onto the page (2026-11-07) ──────
+            The same move the Magnet Token view got earlier the same day, and
+            the same frame: `border-amber-400/25` on the solid `#0b0b0d`
+            surface, so it reads as the object that used to be behind the
+            button. Solid rather than the site's translucent panel for the
+            reason AboutModal records — an animated field runs behind every
+            route, and body copy being read is the one place motion is not
+            ambience.
+
+            Between the subheader and the metric row, so the page reads name
+            → what it is → how it is doing.
+
+            The header row keeps its balance without the trigger, because
+            `LiveProposalsPill` moved here on the same day. The Magnet hero
+            had no such replacement and sat lopsided until the YTD box
+            arrived. */}
+        <div className="relative mt-5 overflow-hidden rounded-2xl border border-amber-400/25 bg-[#0b0b0d] p-5 sm:p-6">
+          <h2 className="font-display text-lg font-semibold text-amber-200">What is mUSD?</h2>
+          <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-400">
+            <p>
+              Magnet USD is an Algorand-native stablecoin issued by Magnet Strategies. It holds
+              a 1:1 peg to USDC through a protocol-owned Peg Stability Module (PSM), and is
+              fully collateral-backed. Users mint mUSD by either depositing USDC 1:1 (no fee),
+              or by borrowing against specified collateral options.
+            </p>
           </div>
         </div>
       </div>
