@@ -52,7 +52,13 @@ function AssetBadge({ asset }: { asset: string }) {
  * guards and the PSM-reserve check are the same on both sides, and a copy
  * would be the half that stops getting fixes.
  */
-export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
+export function MusdTab({ fixed, subtitle, peg }: {
+  fixed?: Mode;
+  /** A line under the panel's heading. Moved in from the page header. */
+  subtitle?: string;
+  /** mUSD/USDC market price, shown inside the card. Null renders a dash. */
+  peg?: number | null;
+} = {}) {
   const { address, isConnected, algodClient, transactionSigner } = useWallet();
   /**
    * ── `fixed` is DERIVED, never seeded into state ─────────────────────────
@@ -122,13 +128,45 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
 
   return (
     <div className="p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <p className="font-display text-base font-semibold text-white">
-          {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Exchange mUSD" : "Stablecoin Swap"}
-        </p>
-        <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
-          {fromAsset} → {toAsset}
-        </span>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-base font-semibold text-white">
+            {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Exchange mUSD" : "Stablecoin Swap"}
+          </p>
+          {/* The line that used to sit under the page header. It belongs to
+              the trade, not to the page, so it moved in with it. */}
+          {subtitle && <p className="mt-1 text-xs leading-relaxed text-gray-400">{subtitle}</p>}
+        </div>
+
+        {/* The peg, square, beside the heading.
+
+            It sits in the slot the direction pill used to hold — the two do
+            not both fit, and on this panel the direction is already stated
+            twice: the heading says Exchange mUSD and the strapline says
+            "back to USDC". On Mint and on the two-way panel the pill is the
+            only direction marker there is, so it stays. */}
+        {peg !== undefined && (
+          <div className="flex h-[120px] w-[120px] shrink-0 flex-col items-center justify-center rounded-xl border border-white/10 bg-black/30 px-3 text-center">
+            <p className="text-[10px] font-medium uppercase leading-tight tracking-wider text-gray-500">
+              mUSD peg
+            </p>
+            <p className="mt-1.5 font-mono text-xl font-bold leading-none text-green-400">
+              {peg === null ? "—" : `$${peg.toFixed(4)}`}
+            </p>
+            {/* Allowed to wrap: at 120px the attribution fits on one line
+                today, and a longer source name should stack rather than
+                overflow the square. */}
+            <p className="mt-1.5 text-[10px] leading-tight text-gray-500">Market price via Vestige</p>
+          </div>
+        )}
+        {/* `shrink-0 whitespace-nowrap`: the heading block grew a strapline
+            under it on 2026-11-07, and the badge started wrapping onto two
+            lines — "mUSD →" over "USDC", which reads as a broken arrow. */}
+        {peg === undefined && (
+          <span className="shrink-0 whitespace-nowrap rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
+            {fromAsset} → {toAsset}
+          </span>
+        )}
       </div>
 
       <div className="mb-1.5 flex items-center justify-between">
@@ -182,6 +220,23 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
       <div className="mt-5 space-y-2 rounded-xl border border-white/5 bg-black/20 p-4 text-sm">
         <div className="flex justify-between"><span className="text-gray-400">Rate</span>
           <span className="font-mono text-white">1 {fromAsset} = 1 {toAsset}</span></div>
+        {/* The ceiling, before you hit it (2026-11-07).
+
+            `lowReserve` already refused an oversized exchange — but only on
+            the button, after an amount was typed. The PSM's USDC is what
+            caps a redemption, the number was already fetched for that
+            guard, and `Current Available` lives on the Finance page, so
+            there was no way to size a trade from here at all.
+
+            Redeem side only: minting is capped by `max_balance`, not by
+            this reserve, and showing it there would answer a question
+            nobody on that tab is asking. */}
+        {mode === "redeem" && (
+          <div className="flex justify-between"><span className="text-gray-400">PSM reserve</span>
+            <span className="font-mono text-white">
+              {psmUsdc === null ? "…" : `${formatUsd(psmUsdc)} USDC`}
+            </span></div>
+        )}
         <div className="flex justify-between"><span className="text-gray-400">Fee</span>
           <span className="font-mono text-white">
             {mode === "mint" ? "0%" : `${pct(REDEEM_FEE_BPS)}%`}{fee > 0 && <span className="text-gray-500"> · {formatUsd(fee)} USDC</span>}

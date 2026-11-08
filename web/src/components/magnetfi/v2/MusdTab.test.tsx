@@ -203,3 +203,93 @@ describe("the word on screen is Exchange, not Redeem", () => {
     expect(container.textContent).not.toMatch(/Redeem/);
   });
 });
+
+describe("the PSM reserve, shown before you hit it", () => {
+  /*
+    `lowReserve` already refused an oversized exchange — but only on the
+    button, after an amount was typed. The reserve is the ceiling on a
+    redemption, the number was already fetched for that guard, and
+    `Current Available` lives on the Finance page, so there was no way to
+    size a trade from the mUSD page at all.
+  */
+  it("appears on the exchange side", async () => {
+    const MusdTab = await load();
+    render(<MusdTab fixed="redeem" />);
+    expect(screen.getByText("PSM reserve")).toBeTruthy();
+  });
+
+  it("does NOT appear on mint, which this reserve does not cap", async () => {
+    // Minting is bounded by `max_balance`, not by the USDC reserve. Showing
+    // it there would answer a question nobody on that tab is asking.
+    const MusdTab = await load();
+    render(<MusdTab fixed="mint" />);
+    expect(screen.queryByText("PSM reserve")).toBeNull();
+  });
+});
+
+describe("the peg and strapline, now inside the card", () => {
+  /*
+    They were in the page header until 2026-11-07. The peg is what the
+    trade is priced against, so it reads better beside the form than as a
+    stat detached from it, and moving it closed the gap the header left
+    when the logo and strapline came out.
+  */
+  it("shows the peg when one is given", async () => {
+    const MusdTab = await load();
+    render(<MusdTab fixed="redeem" peg={1.0001} />);
+    expect(screen.getByText("$1.0001")).toBeTruthy();
+    expect(screen.getByText(/mUSD peg/i)).toBeTruthy();
+    // Shortened to "via Vestige" when the box became a 104px square —
+    // the attribution survives, the sentence does not fit.
+    expect(screen.getByText(/via Vestige/)).toBeTruthy();
+  });
+
+  it("shows a dash, never a zero, for an unread peg", async () => {
+    // "$0.0000" on a stablecoin reads as a depeg rather than a failed read.
+    const MusdTab = await load();
+    render(<MusdTab fixed="redeem" peg={null} />);
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("$0.0000")).toBeNull();
+  });
+
+  it("omits the box entirely when no peg is passed", async () => {
+    // The Mint tab does not pass one; an empty peg box there would be a
+    // figure the panel never had.
+    const MusdTab = await load();
+    render(<MusdTab fixed="mint" />);
+    expect(screen.queryByText(/mUSD peg/i)).toBeNull();
+  });
+
+  it("renders the strapline under the heading", async () => {
+    const MusdTab = await load();
+    render(<MusdTab fixed="redeem" subtitle="Back to USDC through the PSM." />);
+    expect(screen.getByText("Back to USDC through the PSM.")).toBeTruthy();
+  });
+});
+
+describe("the direction pill yields its slot to the peg", () => {
+  /*
+    They do not both fit beside the heading. On the Exchange panel the
+    direction is already stated twice — "Exchange mUSD" and a strapline
+    reading "back to USDC" — so the pill is the thing that goes. On Mint
+    and on the two-way panel it is the only direction marker there is.
+  */
+  it("drops the pill when a peg box is shown", async () => {
+    const MusdTab = await load();
+    render(<MusdTab fixed="redeem" peg={1.0001} />);
+    expect(screen.queryByText("mUSD → USDC")).toBeNull();
+    expect(screen.getByText(/mUSD peg/i)).toBeTruthy();
+  });
+
+  it("keeps the pill on Mint, which has no other direction marker", async () => {
+    const MusdTab = await load();
+    render(<MusdTab fixed="mint" />);
+    expect(screen.getByText("USDC → mUSD")).toBeTruthy();
+  });
+
+  it("keeps the pill on the two-way panel", async () => {
+    const MusdTab = await load();
+    render(<MusdTab />);
+    expect(screen.getByText("USDC → mUSD")).toBeTruthy();
+  });
+});

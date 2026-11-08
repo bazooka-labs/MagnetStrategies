@@ -1,6 +1,7 @@
 import { TokensView } from "@/components/tokens/TokensView";
 import { TokensSplash } from "@/components/tokens/TokensSplash";
 import { MusdTokenView } from "@/components/tokens/MusdTokenView";
+import { MusdExchangeView } from "@/components/tokens/MusdExchangeView";
 import { GovernanceSection } from "@/components/tokens/GovernanceSection";
 import { MUSD_ASA_ID, fetchHolderCount, fetchMusdMarketPriceUsd } from "@/lib/tokenStats";
 
@@ -27,7 +28,7 @@ export default async function TokensPage() {
       <TokensSplash />
       <TokensView
         mintView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} swapMode="mint" />}
-        exchangeView={<MusdTokenView holders={musdHolders} marketPrice={musdPrice} swapMode="redeem" />}
+        exchangeView={<MusdExchangeView marketPrice={musdPrice} />}
         governanceView={<GovernanceSection />}
       />
     </>

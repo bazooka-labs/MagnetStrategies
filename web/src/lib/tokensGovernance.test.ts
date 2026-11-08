@@ -25,6 +25,35 @@ const treasury = readFileSync("src/components/tokens/TreasuryStat.tsx", "utf8");
 const navbar = readFileSync("src/components/Navbar.tsx", "utf8");
 const config = readFileSync("next.config.js", "utf8");
 
+describe("the mUSD page wires each pill to its own view", () => {
+  const page = readFileSync("src/app/tokens/page.tsx", "utf8");
+
+  /*
+    Mint is the landing page — hero, About, five stats, chart, swap.
+    Exchange is the trade — compact header, chart, swap. They rendered the
+    SAME view with one prop different until 2026-11-07.
+
+    This is asserted at the wiring because the cheapest way to undo the
+    split is one line here: point `exchangeView` back at `MusdTokenView`.
+    It compiles, and every component test still passes — confirmed by
+    mutation, which is why this block exists.
+  */
+  it("gives Exchange its own component, not the full view with a flag", () => {
+    expect(page).toContain("exchangeView={<MusdExchangeView");
+    expect(page).not.toMatch(/exchangeView=\{<MusdTokenView/);
+  });
+
+  it("keeps Mint on the full landing view", () => {
+    expect(page).toContain("mintView={<MusdTokenView");
+    expect(page).toContain('swapMode="mint"');
+  });
+
+  it("imports both, so neither is wired by accident", () => {
+    expect(page).toContain('from "@/components/tokens/MusdExchangeView"');
+    expect(page).toContain('from "@/components/tokens/MusdTokenView"');
+  });
+});
+
 describe("the fifth box differs by view, since 2026-11-07", () => {
   /*
     It was the treasury on BOTH, and this block asserted that. The treasury
