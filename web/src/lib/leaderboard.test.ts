@@ -89,7 +89,7 @@ describe("board basics", () => {
   });
 });
 
-describe("confidence gate is 80%, matching Vestige", () => {
+describe("confidence gate is 75%, lowered from 80% on 2026-11-07", () => {
   const withConf = (bps: number) =>
     vi.stubGlobal("fetch", async (input: string | URL) => {
       const url = String(input);
@@ -106,14 +106,28 @@ describe("confidence gate is 80%, matching Vestige", () => {
       return { ok: true, status: 200, json: async () => json };
     });
 
-  // GOLD$ 8306 and SILVER$ 8149 were excluded by the old 8500 floor despite 48 and 40 pools.
-  it.each([8306, 8149, 8000])("admits an asset at %i bps", async (bps) => {
+  /*
+    ── Why the floor moved, and why 7599 is in this list ──────────────────
+    GOLD$ 8306 and SILVER$ 8149 were excluded by an old 8500 floor despite 48
+    and 40 pools, which is why it came down to 8000.
+
+    8000 then excluded $U itself. The U/uALGO pool opened 2026-11-04 and is
+    now the largest single $U pool at 22.6% of its liquidity, against a
+    three-day-old counterparty Vestige rates 7384 bps — so $U's own blended
+    figure fell to 7599 and the rank cell went blank.
+
+    7599 is in the admitted list deliberately: it is the live measurement,
+    not a round number, so this test is about the situation that actually
+    happened rather than an abstract boundary. 7500 is the floor itself and
+    must be inclusive; 7499 is the first value below it.
+  */
+  it.each([8306, 8149, 8000, 7599, 7500])("admits an asset at %i bps", async (bps) => {
     withConf(bps);
     const b = await fetchBoard();
     expect(b?.top.some((r) => r.assetId === A)).toBe(true);
   });
 
-  it.each([7999, 6726, 10])("still excludes an asset at %i bps", async (bps) => {
+  it.each([7499, 6726, 10])("still excludes an asset at %i bps", async (bps) => {
     withConf(bps);
     const b = await fetchBoard();
     expect(b?.top.some((r) => r.assetId === A)).toBe(false);

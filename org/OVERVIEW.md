@@ -9,6 +9,38 @@ DeFi products and diversified yield strategies rather than a single bet.
 
 ---
 
+
+## The ASA TVL confidence floor, and why it moved
+
+Lowered from **8000 bps to 7500** on 2026-11-07, after $U fell off our own
+leaderboard.
+
+Nothing broke. The U/uALGO pool opened on 2026-11-04 and is now the largest
+single $U pool at **22.6%** of all $U liquidity. uALGO is a days-old liquid
+staking token in one pool, which Vestige's model rates 7384 bps against
+tALGO's 9984 — so about a quarter of $U's liquidity now sits against a
+counterparty the model cannot price confidently, and $U's blended figure fell
+to 7599, under the floor. The rank cell went blank.
+
+**Confidence cuts both ways here.** uALGO is no less sound than tALGO; being
+backed solely by $U is what makes the model read it as thinner liquidity
+rather than as our own. The pool is our deepest and it is the dualSTAKE
+flywheel — it is doing exactly what it should, and it is what knocked us off
+the board.
+
+Measured before choosing: at 7500 the board gains 19 assets and none of them
+enters the top 100; at 7000 it gains 31 and one does. $U ranks **21** at
+either floor, so this governs whether we appear, not where.
+
+The margin is thin — 99 bps — and deliberate. `leaderboard.live.test.ts`
+asserts $U is on the board and prints the headroom, so the next time the
+model moves this fails in CI rather than going quiet in the UI.
+
+**Haystack was checked first and has nothing to offer here.** Their SDK and
+full documentation index cover order routing only — no TVL, liquidity-stats
+or ranking endpoint, and `api.haystack.fi` does not resolve.
+
+
 ## The Magnet Token ($U)
 
 | Field | Value |

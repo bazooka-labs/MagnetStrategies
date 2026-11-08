@@ -25,13 +25,50 @@ const NON_LP_VENUES = new Set([
   "Folks Lend",
 ]);
 
-/** Eligibility floor, deliberately matched to Vestige's 80% model so rankings stay familiar
- *  to anyone who used it. 80% is also the measured point at which junk disappears: below it,
- *  entries like AlgoBrent (1 pool, 1 bps) reach the top 100.
- *  Raising it to 85% excluded the Meld RWA tokens — GOLD$ at 8306 bps across 48 pools and
- *  SILVER$ at 8149 across 40 — which are plainly legitimate, so 85% cost more than it bought.
- *  Also admits fGOLD$/fSILVER$, consistent with fALGO/fUSDC already ranking. */
-const MIN_ASSET_CONFIDENCE_BPS = 8000;
+/**
+ * Eligibility floor, in bps of Vestige's price-confidence model.
+ *
+ * ── It was 8000, and 8000 excluded $U on 2026-11-07 ──────────────────────
+ * Matched to Vestige's own 80% model so rankings stayed familiar, and 80%
+ * was the measured point at which junk disappeared. Raising it to 85% had
+ * already been rejected: that excluded the Meld RWA tokens — GOLD$ at 8306
+ * bps across 48 pools, SILVER$ at 8149 across 40 — which are plainly
+ * legitimate.
+ *
+ * Then $U fell under it. Not because anything went wrong: the U/uALGO pool
+ * opened on 2026-11-04 and is now the LARGEST single $U pool at 22.6% of all
+ * $U liquidity ($9,412 of $41,640). uALGO is a three-day-old liquid staking
+ * token in one pool, which Vestige rates 7384 bps against tALGO's 9984 — so
+ * about a quarter of $U's liquidity sits against a counterparty the model
+ * cannot price confidently, and $U's blended figure followed it down.
+ *
+ * The pool is doing exactly what it is meant to. It is our deepest, and it
+ * is the dualSTAKE flywheel. Confidence is a double-edged measure here:
+ * uALGO is no less sound than tALGO, but being backed solely by $U means the
+ * model reads it as thinner liquidity rather than as our own.
+ *
+ * ── Why 7500, and what it costs ──────────────────────────────────────────
+ * Measured against the live board, 2026-11-07:
+ *
+ *   gate   eligible   $U        visible change in the top 100
+ *   8000       602    absent    —
+ *   7500       621    rank 21   none
+ *   7000       633    rank 21   one more token ($jUSD at 89)
+ *
+ * $U ranks 21 at either floor, so this changes whether we appear, not where.
+ *
+ * ── The number that has to clear this is 7599, not 7867 ──────────────────
+ * Worth stating because it is a trap. Vestige's `/assets/price` reports $U at
+ * 7867 bps; the figure this gate actually tests is `confidence_bps` from the
+ * asset listing, which reads **7599**. A floor set just under 7867 — the
+ * obvious reading — would still have excluded us.
+ *
+ * So 7500 leaves only ~99 bps of headroom, which is thin. It is deliberate
+ * and it is watched: `leaderboard.live.test.ts` asserts $U is on the board
+ * and reports its margin, so this fails in CI rather than going quiet in the
+ * UI the next time the model moves.
+ */
+const MIN_ASSET_CONFIDENCE_BPS = 7500;
 const MIN_POOL_CONFIDENCE_BPS = 3000;
 const MIN_POOLS = 2;
 /** Pool floor, kept low so the eligible count (the rank denominator) reflects the real
