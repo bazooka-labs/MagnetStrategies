@@ -25,6 +25,7 @@ import { ALGOD_URLS } from "@/lib/constants";
 import { cancelOrder, closePosition } from "@/lib/strategy/perps/client";
 import { exitBanner } from "@/lib/strategy/perps/preflight";
 import { usePerpsPreflight } from "@/hooks/usePerpsPreflight";
+import { RAISED_TEAL } from "@/components/raisedButton";
 import { Seam } from "./Seam";
 import { useWallet } from "@/hooks/useWallet";
 
@@ -723,7 +724,7 @@ export function PositionsPanel({ onLinesChange }: {
                   disabled={!p.close?.ok || !!closing || !!cancelling || !!blocked
                     || !!closeUnavailable(p.collateralAssetId)}
                   title={closeUnavailable(p.collateralAssetId) ?? blocked ?? undefined}
-                  className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
+                  className={RAISED_TEAL}>
                   {closing === closeKey(p) ? "Closing…" : "Close position"}
                 </button>
                 <span className="text-[10px] text-white/30">
