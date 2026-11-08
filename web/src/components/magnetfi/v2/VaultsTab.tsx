@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetState
 import Link from "next/link";
 import { Coins } from "lucide-react";
 import { SectionHero } from "./SectionHero";
+import { MAGNET_GLOW } from "@/components/glow";
 import { LpVaultLearnMore } from "./LpVaultLearnMore";
 import { StatCell } from "@/components/tokens/StatCell";
 import { RAISED_MAGNET } from "@/components/raisedButton";
@@ -581,58 +582,69 @@ export function VaultsTab() {
 
   return (
     <section>
+      {/* ── One card, since 2026-11-07 ──────────────────────────────────
+
+          They were a SectionHero with a Panel stacked under it — identical
+          chrome drawn twice with a gap between, which is what the token
+          pages shed earlier today. The three figures ARE the subject the
+          title introduces, so they belong inside it rather than beneath it.
+
+          Both the footer and the glow are gated on PROTOCOL_LIVE, so the
+          pre-launch state is a plain header rather than a glowing card with
+          an empty strip under it. */}
       <SectionHero
         title="LP Collateral Vaults"
         description="Borrow mUSD against your Tinyman LP tokens — your liquidity keeps earning trading fees the whole time it backs the loan."
+        glowClass={PROTOCOL_LIVE ? MAGNET_GLOW : ""}
+        footer={PROTOCOL_LIVE ? (
+          <>
+            {/* The lending book in three figures. Capacity is the PSM's
+                ceiling, so the first box grows as the reserve does — it is
+                not a constant. All three come from reads already made for
+                the per-card utilisation bar.
+
+                Tones are POSITIONAL, matching the token pages left-to-right
+                green/amber/teal. Tempting to make them semantic here (green
+                = available, amber = borrowed) but these are three slices of
+                one number, and colouring them by mood would imply a
+                judgement the protocol is not making. */}
+            <div className="grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <StatCell label="Total Max Lending" value={money(capacityOrNull)} sub="PSM lending ceiling" tone="green" />
+              <StatCell label="Current Borrowed" value={money(borrowed)} sub="Across all vaults" tone="amber" />
+              <StatCell label="Current Available" value={money(ceiling)} sub="Left to borrow" tone="teal" />
+            </div>
+
+            {/* One bar, not one per card. The PSM ceiling backs every vault,
+                so the same percentage was repeating on all four — and sitting
+                inside a card it read as that pair's utilisation rather than
+                the protocol's. Here it belongs to the three numbers it is
+                computed from, directly beneath them. */}
+            <div className="border-t border-white/10 px-5 py-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
+                  PSM Utilization
+                </p>
+                <p className="font-mono text-xs text-gray-400">
+                  {util === null ? "…" : `${util.toFixed(1)}%`}
+                </p>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                {util !== null && (
+                  <div
+                    className="h-full rounded-full bg-magnet-500 transition-all duration-700"
+                    style={{ width: `${Math.min(100, util)}%` }}
+                  />
+                )}
+              </div>
+            </div>
+          </>
+        ) : undefined}
       >
         <LpVaultLearnMore />
         <Link href="/tokens" className={RAISED_MAGNET}>
           <Coins className="h-3.5 w-3.5" /> mUSD
         </Link>
       </SectionHero>
-
-      {/* The lending book in three figures. Capacity is the PSM's ceiling, so
-          the first box grows as the reserve does — it is not a constant. All
-          three come from reads already made for the per-card utilisation bar.
-
-          Tones are POSITIONAL, matching the token pages left-to-right
-          green/amber/teal. Tempting to make them semantic here (green =
-          available, amber = borrowed) but these are three slices of one number,
-          and colouring them by mood would imply a judgement the protocol is not
-          making. */}
-      {PROTOCOL_LIVE && (
-        <Panel className="mb-6">
-          <div className="grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <StatCell label="Total Max Lending" value={money(capacityOrNull)} sub="PSM lending ceiling" tone="green" />
-            <StatCell label="Current Borrowed" value={money(borrowed)} sub="Across all vaults" tone="amber" />
-            <StatCell label="Current Available" value={money(ceiling)} sub="Left to borrow" tone="teal" />
-          </div>
-
-          {/* One bar, not one per card. The PSM ceiling backs every vault, so
-              the same percentage was repeating on all four — and sitting inside
-              a card it read as that pair's utilisation rather than the
-              protocol's. Here it belongs to the three numbers it is computed
-              from, directly beneath them. */}
-          <div className="border-t border-white/10 px-5 py-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">
-                PSM Utilization
-              </p>
-              <p className="font-mono text-xs text-gray-400">
-                {util === null ? "…" : `${util.toFixed(1)}%`}
-              </p>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              {util !== null && (
-                <div
-                  className="h-full rounded-full bg-magnet-500 transition-all duration-700"
-                  style={{ width: `${Math.min(100, util)}%` }}
-                />
-              )}
-            </div>
-          </div>
-        </Panel>
-      )}
 
       {!PROTOCOL_LIVE ? (
         <Panel className="p-10"><p className="text-center text-sm text-gray-400">Vaults open once the contracts are live.</p></Panel>

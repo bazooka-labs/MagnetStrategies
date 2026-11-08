@@ -17,29 +17,59 @@ export function SectionHero({
   title,
   description,
   children,
+  footer,
+  glowClass = "",
 }: {
   title: string;
   description: ReactNode;
   children?: ReactNode;
+  /**
+   * Content folded into the SAME card, under a hairline.
+   *
+   * Added 2026-11-07. Without it a caller stacks its own `<Panel>` beneath
+   * this one, and the page draws identical chrome twice with a gap between:
+   * same `rounded-2xl`, same `border-white/10`, same `bg-black/40
+   * backdrop-blur-sm`, each rendering its own top hairline. That is exactly
+   * the duplication the two token pages shed earlier today, and the Bank's
+   * vault header still had it.
+   *
+   * Optional, so `CompXMarkets` and the $U pools section are untouched.
+   */
+  footer?: ReactNode;
+  /** Passed through so a merged card can carry the house neon. */
+  glowClass?: string;
 }) {
   return (
-    <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-black/40 px-6 py-7 backdrop-blur-sm sm:px-8">
+    <div className={`relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm ${glowClass}`}>
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-magnet-500/60 to-transparent" />
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+
+      {/* The padding moved off the root onto this section when `footer`
+          arrived: a footer has to sit flush to the card's edges, and its own
+          children bring their own padding. */}
+      <div className="relative px-6 py-7 sm:px-8">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="animate-blob-drift absolute -right-16 -top-16 h-56 w-56 rounded-full bg-magnet-600/20 blur-3xl" />
+        </div>
+
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="font-display magnet-glow-soft text-2xl font-bold text-white sm:text-3xl">
+              {title}
+            </h1>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-gray-300">{description}</p>
+          </div>
+          {/* Actions sit in the header bar rather than floating above it, so the
+              title and the things you can do with it are one object. */}
+          {children && <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>}
+        </div>
       </div>
 
-      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display magnet-glow-soft text-2xl font-bold text-white sm:text-3xl">
-            {title}
-          </h1>
-          <p className="mt-1 max-w-xl text-sm leading-relaxed text-gray-300">{description}</p>
-        </div>
-        {/* Actions sit in the header bar rather than floating above it, so the
-            title and the things you can do with it are one object. */}
-        {children && <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>}
-      </div>
+      {footer && (
+        <>
+          <div className="border-t border-white/10" />
+          {footer}
+        </>
+      )}
     </div>
   );
 }
