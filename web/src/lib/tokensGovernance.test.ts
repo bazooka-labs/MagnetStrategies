@@ -306,21 +306,26 @@ describe("the old route is retired, not orphaned", () => {
     expect(config).not.toContain('destination: "/vote"');
   });
 
-  it("leaves no retired path returning a 404", () => {
-    /*
-      `/about` was absorbed into /tokens, the page was deleted, and no rule
-      was written — so it 404'd in production while README.md and
-      org/OVERVIEW.md both described it as redirected. Found by requesting
-      every retired path listed in the docs and following it.
-
-      Temporary on purpose: the destination is inferred from those docs
-      rather than decided, and this function's own header records what a
-      wrongly-cached permanent redirect costs.
-    */
-    expect(config).toContain('{ source: "/about", destination: "/tokens", permanent: false }');
-    for (const path of ["/earn", "/dao", "/vote", "/token", "/musd", "/pools", "/about"]) {
+  it("redirects every retired path that still has a destination", () => {
+    // Checked against production by requesting each one: all resolve 200.
+    for (const path of ["/earn", "/dao", "/vote", "/token", "/musd", "/pools"]) {
       expect(config, path).toContain(`source: "${path}"`);
     }
+  });
+
+  it("does NOT redirect /about, which is retired outright", () => {
+    /*
+      It briefly had a 307 here. Two docs described /about as redirected into
+      /tokens and it was really 404ing, so the rule looked like a missing
+      one — but the path is an early page nobody has used in months, and a
+      URL that no longer means anything should say so rather than quietly
+      land somewhere else.
+
+      Asserted rather than left to the diff, because "a retired path with no
+      redirect" reads as exactly the oversight it was mistaken for, and the
+      next person to sweep these will want to re-add it.
+    */
+    expect(config).not.toContain('source: "/about"');
   });
 });
 

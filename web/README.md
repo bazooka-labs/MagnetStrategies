@@ -39,8 +39,11 @@ how a reader ends up linking to a 404 — this table listed four dead routes as 
 | `/token` | `/strategy?tab=magnet` | the $U dashboard is the Magnet Token pill |
 | `/pools`, `/earn` | `/strategy` | the $U pools are the Liquidity Pools pill |
 | `/musd` | `/tokens` | |
-| `/about` | `/tokens` | 307, not 301 — see the note in `next.config.js` |
 | `/vote`, `/dao` | `/tokens#governance` | the fragment opens the pill |
+
+`/about` is **retired with no redirect** and 404s on purpose — an early page, unused
+for months and then deleted. See the note where the rule would go in
+[`next.config.js`](./next.config.js).
 
 ## The Bank (`/magnetfi`) — `src/app/magnetfi/page.tsx`
 - **Overview** (`OverviewTab`) — the landing: plain explanations of Single Token Markets and LP

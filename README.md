@@ -21,11 +21,11 @@ and partner money markets — and reinvests returns into the token's underlying 
 | [`/contact`](https://magnetstrategies.io/contact) | Contact | On-chain support inbox |
 | [`/api/leaderboard`](https://magnetstrategies.io/api/leaderboard) | — | Top 100 ASA TVL, public read API |
 
-> Retired and redirected: `/musd` and `/about` into `/tokens`; `/token`, `/pools`
-> and `/earn` into `/strategy`; `/dao` and `/vote` into `/tokens#governance`.
-> All are permanent except `/about`, which is a 307 — it was absorbed into
-> `/tokens` but had no rule at all until 2026-11-08, and the destination is
-> read off this list rather than decided, so it stays retargetable.
+> Retired and redirected: `/musd` into `/tokens`; `/token`, `/pools` and
+> `/earn` into `/strategy`; `/dao` and `/vote` into `/tokens#governance`.
+> `/about` is retired with **no** redirect — an early page, unused for months
+> and then deleted, so the URL 404s rather than landing somewhere that is not
+> what it promised.
 > The nav label on `/tokens` is **mUSD** and the path is unchanged on purpose —
 > a cached 301 off a live route is what `web/src/app/strategy/page.tsx` records
 > the cost of. The authority for all
@@ -97,8 +97,8 @@ identity and must not be imported into products that do not offer them.
   proposals and voting history. The pill carries a dot when a vote is open.
 
 The PSM is one two-way swap; it is split across two pills so neither can be pointing
-the wrong way when a visitor arrives. Absorbed the former `/musd`, `/about`, `/dao`
-and `/vote` pages.
+the wrong way when a visitor arrives. Absorbed the former `/musd`, `/dao` and
+`/vote` pages. (`/about` was an early page retired separately, not folded in.)
 
 ### Magnet Token
 `/strategy`, under the **Magnet Token** pill beside Liquidity Pools and Vaults — $U is a
