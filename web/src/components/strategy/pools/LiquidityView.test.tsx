@@ -640,6 +640,17 @@ describe("your share of pool", () => {
   });
 });
 
+/*
+  ── The pill and the section heading now share a label ──────────────────
+  The $U pools section was headed "$U Liquidity Pools" until 2026-11-07,
+  when the mUSD pools moved in beside them and the heading became just
+  "Liquidity Pools" — the same words as the pill that selects it.
+
+  So presence and absence of that COLUMN are asserted by heading role, not
+  by text: a bare `queryByText(/^Liquidity Pools$/)` matches the pill, which
+  is always in the document, and reported the column as present on every
+  tab.
+*/
 describe("the two pills separate vaults from liquidity pools", () => {
   /**
    * The $U liquidity pools moved here from the Tokens page on 2026-11-04.
@@ -671,7 +682,7 @@ describe("the two pills separate vaults from liquidity pools", () => {
     const { LiquidityView } = await import("./LiquidityView");
     render(<LiquidityView magnetView={MAGNET_STUB} />);
     expect(await screen.findByText("magnet-tab-content")).toBeTruthy();
-    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Liquidity Pools$/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
   });
 
@@ -689,14 +700,14 @@ describe("the two pills separate vaults from liquidity pools", () => {
     // mount() selects Vaults, so this asserts the pairing holds in both
     // directions rather than just that one tab renders.
     await mount("visitor");
-    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Liquidity Pools$/ })).toBeNull();
   });
 
   it("swaps the column when Liquidity Pools is picked", async () => {
     await mount("visitor");
     fireEvent.click(screen.getByRole("button", { name: /^Liquidity Pools$/ }));
     expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
-    expect(screen.getByText(/\$U Liquidity Pools/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Liquidity Pools$/ })).toBeTruthy();
   });
 
   it("goes back, rather than being a one-way door", async () => {
@@ -746,7 +757,7 @@ describe("the Magnet Token pill", () => {
     await mount("visitor");
     fireEvent.click(screen.getByRole("button", { name: /^Magnet Token$/ }));
     expect(screen.queryByRole("heading", { name: "C-Vault Strategy" })).toBeNull();
-    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Liquidity Pools$/ })).toBeNull();
   });
 
   it("goes back, rather than being a one-way door", async () => {
@@ -780,6 +791,6 @@ describe("the Magnet Token pill", () => {
     render(<LiquidityView magnetView={MAGNET_STUB} />);
     // The default, which is Magnet Token — not a blank column.
     expect(await screen.findByText("magnet-tab-content")).toBeTruthy();
-    expect(screen.queryByText(/\$U Liquidity Pools/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Liquidity Pools$/ })).toBeNull();
   });
 });

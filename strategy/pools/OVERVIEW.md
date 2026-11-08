@@ -631,6 +631,22 @@ at −0.15% impact, which also agrees with the 0.676 $U/ALGO the dualSTAKE
 contract realises on its own harvests. Driven in a browser afterwards, both
 routes and the switch between them.
 
+**The mUSD pools moved here on 2026-11-07, and the heading dropped "$U".**
+They lived on the mUSD page until splitting the PSM swap into Mint and
+Exchange pills made both tabs render them — the same cards twice on one page.
+Providing liquidity is a strategy and the $U pools were already here, so the
+two sets now sit under one hero titled **Liquidity Pools**, with a quiet
+group label above each grid and a single Farming legend after both.
+
+`MusdPoolsSection` takes an `embedded` flag for this: it drops its own hero
+and its own copy of the legend, because two legends saying the same thing is
+how a merged page starts reading as two pages stacked.
+
+One consequence worth knowing when writing tests here: the hero's title is now
+the same string as the pill that selects it, so presence of the SECTION has to
+be asserted by heading role. A bare text query matches the pill, which is in
+the document on every tab.
+
 **The Liquidity Pools pill marks liquid staking, since 2026-11-07.** tALGO
 and uALGO are the same kind of pair — $U against ALGO staked for consensus by
 a third party — and read as two different kinds, because uALGO was gold and

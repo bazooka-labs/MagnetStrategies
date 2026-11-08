@@ -15,7 +15,6 @@ import { AboutModal } from "@/components/tokens/AboutModal";
 import { LiveProposalsPill } from "@/components/tokens/LiveProposalsPill";
 import { StatCell } from "@/components/tokens/StatCell";
 import { TreasuryStat } from "@/components/tokens/TreasuryStat";
-import { MusdPoolsSection } from "@/components/tokens/MusdPoolsSection";
 
 const pulse = () => <div className="h-96 rounded-2xl border border-white/10 bg-black/40 animate-pulse" />;
 
@@ -161,8 +160,16 @@ export function MusdTokenView({
         </div>
       </Panel>
 
-      {/* mUSD liquidity pools */}
-      <MusdPoolsSection />
+      {/*
+        ── The mUSD pools left this view on 2026-11-07 ─────────────────────
+        Splitting the PSM swap into Mint and Exchange pills meant both tabs
+        rendered this list, so the same cards appeared twice on one page.
+        They moved to the Strategy page's Liquidity Pools pill, beside the $U
+        pools: providing liquidity is a strategy, and the two sets now sit
+        under one heading rather than one per asset page.
+
+        See components/strategy/pools/LpPoolsSection.tsx.
+      */}
     </>
   );
 }

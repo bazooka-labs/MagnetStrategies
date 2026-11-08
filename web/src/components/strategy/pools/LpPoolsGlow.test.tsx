@@ -49,6 +49,15 @@ const POOLS = [
   },
 ];
 
+/** The mUSD pools, which moved onto this page on 2026-11-07. */
+const MUSD_POOLS = [
+  {
+    id: "musd-usdc", pair: "mUSD / USDC", partner: "USDC",
+    venues: [{ dex: "tinyman", ref: "M", addLiquidityUrl: "#" }],
+    tvlUsd: 200, feeApr: null, farmApr: null, totalApr: null, farmLive: false, venueData: [],
+  },
+];
+
 afterEach(cleanup);
 
 /** Panel renders its own root; the classes under test live on it. */
@@ -102,7 +111,18 @@ describe("the POOL CARDS themselves, not just the Panel contract", () => {
    * routed through the wrong prop — which is how this shipped.
    */
   const renderCards = async () => {
-    vi.stubGlobal("fetch", () => Promise.resolve({ json: () => Promise.resolve({ pools: POOLS }) }));
+    /*
+      Routed by URL, not blanket. A single stub returning the same list for
+      every request fed the embedded mUSD group the $U pools too, so each
+      pair rendered twice and every getByText threw "found multiple
+      elements". The mUSD group lives on this page since 2026-11-07 and
+      fetches its own endpoint.
+    */
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) =>
+      Promise.resolve({
+        json: () => Promise.resolve(
+          String(input).includes("/api/musd-pools") ? { pools: MUSD_POOLS } : { pools: POOLS }),
+      }));
     const { LpPoolsSection } = await import("@/components/strategy/pools/LpPoolsSection");
     const { container } = render(<LpPoolsSection />);
     await waitFor(() => expect(screen.getByText("U / uALGO")).toBeTruthy());
@@ -144,7 +164,18 @@ describe("the Liquid Staking badge", () => {
     POOLS.map((p) => ({ ...p, ...(patch[p.id] ?? {}) }));
 
   const renderCards = async (list: unknown[] = pools()) => {
-    vi.stubGlobal("fetch", () => Promise.resolve({ json: () => Promise.resolve({ pools: list }) }));
+    /*
+      Routed by URL, not blanket. A single stub returning the same list for
+      every request fed the embedded mUSD group the $U pools too, so each
+      pair rendered twice and every getByText threw "found multiple
+      elements". The mUSD group lives on this page since 2026-11-07 and
+      fetches its own endpoint.
+    */
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) =>
+      Promise.resolve({
+        json: () => Promise.resolve(
+          String(input).includes("/api/musd-pools") ? { pools: MUSD_POOLS } : { pools: list }),
+      }));
     const { LpPoolsSection } = await import("@/components/strategy/pools/LpPoolsSection");
     const r = render(<LpPoolsSection />);
     await waitFor(() => expect(screen.getByText("U / uALGO")).toBeTruthy());
@@ -204,5 +235,52 @@ describe("the Liquid Staking badge", () => {
     expect(legend.textContent).toContain("ALGO staked for consensus");
     expect(legend.textContent).toMatch(/tALGO on Tinyman/);
     expect(legend.textContent).toMatch(/uALGO on Myth Finance/);
+  });
+});
+
+describe("the mUSD pools moved onto this page", () => {
+  /*
+    2026-11-07. Splitting the PSM swap into Mint and Exchange pills meant
+    both tabs rendered the mUSD list, so the same cards appeared twice on
+    one page. Liquidity provision is a strategy, and the $U pools already
+    lived here — so the two sets now sit under one hero.
+
+    Asserted because the move is a deleted line in one file and an added
+    one in another: nothing else fails if either half is reverted.
+  */
+  const renderAll = async () => {
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) =>
+      Promise.resolve({
+        json: () => Promise.resolve(
+          String(input).includes("/api/musd-pools") ? { pools: MUSD_POOLS } : { pools: POOLS }),
+      }));
+    const { LpPoolsSection } = await import("@/components/strategy/pools/LpPoolsSection");
+    const r = render(<LpPoolsSection />);
+    await waitFor(() => expect(screen.getByText("U / uALGO")).toBeTruthy());
+    return r;
+  };
+
+  it("renders the mUSD pools beside the $U ones", async () => {
+    await renderAll();
+    await waitFor(() => expect(screen.getByText("mUSD / USDC")).toBeTruthy());
+  });
+
+  it("heads the page for BOTH assets, not just $U", async () => {
+    await renderAll();
+    expect(screen.getByRole("heading", { name: /^Liquidity Pools$/ })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /\$U Liquidity Pools/ })).toBeNull();
+  });
+
+  it("labels each group, since there are two under one hero", async () => {
+    await renderAll();
+    expect(screen.getByText("$U pools")).toBeTruthy();
+    expect(screen.getByText("mUSD pools")).toBeTruthy();
+  });
+
+  it("carries ONE Farming legend, not one per group", async () => {
+    // Two legends saying the same thing is how a merged page starts reading
+    // as two pages stacked.
+    await renderAll();
+    expect(screen.getAllByText(/badge indicates a farm is currently live/).length).toBe(1);
   });
 });

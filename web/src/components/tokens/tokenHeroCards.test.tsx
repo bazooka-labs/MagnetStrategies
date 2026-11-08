@@ -287,3 +287,17 @@ describe("the Magnet subheader", () => {
     expect(container.textContent).not.toContain("Built to compound liquidity");
   });
 });
+
+describe("the mUSD page no longer lists the mUSD pools", () => {
+  it("does not render them — they moved to Strategy on 2026-11-07", async () => {
+    /*
+      Both PSM pills render this view, so leaving the list here showed the
+      same cards twice on one page. The other half of this assertion lives
+      in LpPoolsGlow.test.tsx, which checks they arrived.
+    */
+    const { MusdTokenView } = await import("./MusdTokenView");
+    const { container } = render(<MusdTokenView holders="8" marketPrice={1.0001} />);
+    expect(container.querySelector("[data-testid='musd-pools']")).toBeNull();
+    expect(container.textContent).not.toContain("mUSD / USDC");
+  });
+});

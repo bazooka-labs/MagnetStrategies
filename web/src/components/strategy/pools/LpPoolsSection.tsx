@@ -23,6 +23,7 @@ import { Blocks, Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
 import { ALGO_GLOW, MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
 import { SectionHero } from "@/components/magnetfi/v2/SectionHero";
+import { MusdPoolsSection } from "@/components/tokens/MusdPoolsSection";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
@@ -231,11 +232,15 @@ export function LpPoolsSection() {
         are mutually exclusive so only one tab's heading is ever in the
         document.
       */}
+      {/* "Liquidity Pools", not "$U Liquidity Pools", since 2026-11-07: the
+          mUSD pools moved here from the mUSD page and the heading now covers
+          both assets. */}
       <SectionHero
-        title="$U Liquidity Pools"
+        title="Liquidity Pools"
         description={<>
-          Provide liquidity to <span className="font-semibold text-white">$U</span> pools on
-          Tinyman and Pact to earn trading fees — plus farm rewards whenever incentives are live.
+          Provide liquidity to <span className="font-semibold text-white">$U</span> and{" "}
+          <span className="font-semibold text-white">mUSD</span> pools on Tinyman and Pact to
+          earn trading fees — plus farm rewards whenever incentives are live.
         </>}
       >
         {/* A label, not an action — the slot is for things you can do, and
@@ -243,6 +248,14 @@ export function LpPoolsSection() {
             below are live reads, not a published table. */}
         <span className="text-xs text-gray-500">Live from Tinyman &amp; Pact</span>
       </SectionHero>
+
+      {/* Each group gets a quiet label now that there are two of them under
+          one hero. The pair names make the split obvious — "U / X" against
+          "mUSD / USDC" — but a reader scrolling should not have to infer a
+          section boundary from the contents of the cards. */}
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        $U pools
+      </h2>
 
       {err ? (
         <Panel className="p-8 text-center"><p className="text-sm text-gray-400">Couldn&apos;t load pool data. Try refreshing.</p></Panel>
@@ -266,6 +279,13 @@ export function LpPoolsSection() {
             .map((p) => <PoolCard key={p.id} p={p} />)}
         </div>
       )}
+
+      {/* The mUSD pools, moved here from the mUSD page. Embedded, so it
+          contributes a group heading and a grid rather than its own hero and
+          its own copy of the legend below. */}
+      <div className="mt-8">
+        <MusdPoolsSection embedded />
+      </div>
 
       {/* The icon row is the flex container; the copy is a single <p> inside it.
           Previously the <p> itself was the flex container, which made every

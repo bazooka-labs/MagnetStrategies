@@ -93,7 +93,20 @@ function PoolCard({ p }: { p: PoolData }) {
   );
 }
 
-export function MusdPoolsSection() {
+/**
+ * `embedded` renders this as a GROUP inside another section, not a section.
+ *
+ * It moved off the mUSD page on 2026-11-07. Splitting the PSM swap into Mint
+ * and Exchange pills meant both tabs rendered this list, so the same four
+ * cards appeared twice on one page — and liquidity provision is a strategy,
+ * which is where the $U pools already live.
+ *
+ * Embedded it drops its own heading block and its own Farming legend: the
+ * host supplies one hero for both groups and one legend after them. Two
+ * legends saying the same thing, one per group, is how a merged page starts
+ * reading as two pages stacked.
+ */
+export function MusdPoolsSection({ embedded = false }: { embedded?: boolean } = {}) {
   const [pools, setPools] = useState<PoolData[] | null>(null);
   const [err, setErr] = useState(false);
 
@@ -105,17 +118,23 @@ export function MusdPoolsSection() {
   }, []);
 
   return (
-    <section className="mb-10">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">mUSD Liquidity Pools</h2>
-          <p className="mt-1 text-sm text-gray-400">
-            Provide liquidity to <span className="font-semibold text-white">mUSD</span> pools on Algorand
-            DEXes to earn trading fees — plus farm rewards whenever incentives are live.
-          </p>
+    <section className={embedded ? "" : "mb-10"}>
+      {embedded ? (
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          mUSD pools
+        </h2>
+      ) : (
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">mUSD Liquidity Pools</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Provide liquidity to <span className="font-semibold text-white">mUSD</span> pools on Algorand
+              DEXes to earn trading fees — plus farm rewards whenever incentives are live.
+            </p>
+          </div>
+          <span className="hidden shrink-0 text-xs text-gray-500 sm:inline">Live from Tinyman</span>
         </div>
-        <span className="hidden shrink-0 text-xs text-gray-500 sm:inline">Live from Tinyman</span>
-      </div>
+      )}
 
       {err ? (
         <Panel className="p-8 text-center"><p className="text-sm text-gray-400">Couldn&apos;t load pool data. Try refreshing.</p></Panel>
@@ -129,19 +148,23 @@ export function MusdPoolsSection() {
         </div>
       )}
 
-      {/* The icon row is the flex container; the copy is a single <p> inside it.
-          Previously the <p> itself was the flex container, which made every
-          child its own flex item — so "Farming" was pulled out of the sentence
-          into its own gapped column and the rest wrapped beside it as a second
-          column. It read as a label with a paragraph hanging off it rather than
-          as one sentence. */}
-      <div className="mt-5 flex items-start gap-2 text-xs text-gray-500">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <p>
-          <span className="font-medium text-gray-400">Farming</span> badge indicates a farm is currently live for
-          the associated liquidity pool. Farm pools pay reward incentives on top of swap fees.
-        </p>
-      </div>
+      {/* The host's legend covers Farming when embedded — see the note on
+          this component. Standalone, it carries its own.
+
+          The icon row is the flex container; the copy is a single <p> inside
+          it. Previously the <p> itself was the flex container, which made
+          every child its own flex item — so "Farming" was pulled out of the
+          sentence into its own gapped column and the rest wrapped beside it
+          as a second column. */}
+      {!embedded && (
+        <div className="mt-5 flex items-start gap-2 text-xs text-gray-500">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            <span className="font-medium text-gray-400">Farming</span> badge indicates a farm is currently live for
+            the associated liquidity pool. Farm pools pay reward incentives on top of swap fees.
+          </p>
+        </div>
+      )}
     </section>
   );
 }
