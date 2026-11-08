@@ -1433,7 +1433,21 @@ case that raised the question. See [OVERVIEW.md](./OVERVIEW.md#open-items).
 
 ---
 
-## ALGO-denominated result on ALGO-collateral positions — SPEC, not built
+## ALGO-denominated result on ALGO-collateral positions — SPEC, declined for now
+
+> **Declined 2026-11-08, on the mockup, by the founder.** Not rejected on the
+> reasoning — the figure is real and the dollar headline does understate an
+> ALGO-collateral result. Rejected on **cost to the panel**: carrying both
+> denominations means two numbers on every changed line, and the positions
+> row already shows six figures, an itemisation and a payout list. The
+> judgement was that the clutter costs more than the clarity buys.
+>
+> Pinned rather than closed, and the analysis below is kept intact. The thing
+> that would change the answer is a presentation that does **not** double up —
+> a toggle, a unit preference, or waiting for the single-asset payout, after
+> which the ALGO figure is exact and could replace the dollar one rather than
+> sit beside it. Do not re-propose the side-by-side version; that question is
+> answered.
 
 **Status: specified 2026-11-08, nothing built.** Display only — no contract
 call, no group, no signature changes. It still gets a review before it ships,

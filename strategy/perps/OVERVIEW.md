@@ -259,10 +259,21 @@ the founder rather than settled in passing.
    ~11%. The label does say the basis, but a green figure reads as profit. The
    original stake is not recoverable from `p2:` (it carries post-fee collateral
    only), so changing this means choosing a different definition of "net", not
-   just fixing a number. **Specified 2026-11-08** —
-   [SPEC.md → ALGO-denominated result](./SPEC.md#algo-denominated-result-on-algo-collateral-positions--spec-not-built),
-   which proposes escrowed collateral as the basis and leaves the headline
-   choice open.
+   just fixing a number. **Specified and then declined 2026-11-08** —
+   [SPEC.md → ALGO-denominated result](./SPEC.md#algo-denominated-result-on-algo-collateral-positions--spec-declined-for-now).
+   The founder reviewed it as a mockup against a real closed position and
+   declined on panel clutter, not on the reasoning: showing both
+   denominations puts two numbers on every changed line. Still pinned. The
+   single-asset payout would change the calculus, because the ALGO figure
+   becomes exact and could then replace the dollar one instead of joining it.
+
+   One finding from that round is worth keeping regardless of the display:
+   **leverage needs no ALGO version.** It is notional over collateral, so the
+   price cancels and 10x is 10x in any unit. What is misleading is that it
+   DRIFTS — notional is fixed in USD, ALGO collateral is not, so the same
+   position reads 10x at $0.10 and 20x at $0.05, moving the wrong way on a
+   correlated long. `correlatedRisk.ts` already states the consequence.
+   Effective-leverage-now is a separate, still-open idea.
 2. **No minimum-receive is shown**, because the signed close has no output
    floor — `minPrimaryOutputAmount` and `minSecondaryOutputAmount` are both 0.
    The only protection is `acceptablePrice`, anchored to a quote up to 30s old,
