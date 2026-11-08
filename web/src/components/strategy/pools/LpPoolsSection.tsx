@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import { Blocks, Wheat, ArrowUpRight, Info } from "lucide-react";
 import { DEX_LABEL, type PoolData, type PoolDex } from "@/lib/pools";
 import { ALGO_GLOW, MAGNET_GLOW, Panel, PairGlyph } from "@/components/magnetfi/v2/shared";
+import { SectionHero } from "@/components/magnetfi/v2/SectionHero";
 
 const fmtUsd = (n: number | null) =>
   n == null ? "—" : n >= 1_000_000 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1e3).toFixed(1)}K` : `$${n.toFixed(0)}`;
@@ -215,16 +216,33 @@ export function LpPoolsSection() {
 
   return (
     <section className="mb-10">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">$U Liquidity Pools</h2>
-          <p className="mt-1 text-sm text-gray-400">
-            Provide liquidity to <span className="font-semibold text-white">$U</span> pools on Tinyman and
-            Pact to earn trading fees — plus farm rewards whenever incentives are live.
-          </p>
-        </div>
-        <span className="hidden shrink-0 text-xs text-gray-500 sm:inline">Live from Tinyman &amp; Pact</span>
-      </div>
+      {/*
+        ── The Finance page's section header, reused ─────────────────────────
+        This was a 12px uppercase label with a paragraph under it — the kind
+        of heading that reads as a caption on a list rather than as the top of
+        a section. The Bank's vault pages have carried a proper hero since
+        `SectionHero` was extracted, and the note on that component is the
+        argument: two hand-built header rows with different title weights and
+        description colours are what made one page look unfinished beside the
+        other.
+
+        Imported rather than copied, for the same reason it was extracted.
+        `SectionHero` renders an `h1`; this tab has no other, and the pills
+        are mutually exclusive so only one tab's heading is ever in the
+        document.
+      */}
+      <SectionHero
+        title="$U Liquidity Pools"
+        description={<>
+          Provide liquidity to <span className="font-semibold text-white">$U</span> pools on
+          Tinyman and Pact to earn trading fees — plus farm rewards whenever incentives are live.
+        </>}
+      >
+        {/* A label, not an action — the slot is for things you can do, and
+            this is the one thing worth saying beside the title: the figures
+            below are live reads, not a published table. */}
+        <span className="text-xs text-gray-500">Live from Tinyman &amp; Pact</span>
+      </SectionHero>
 
       {err ? (
         <Panel className="p-8 text-center"><p className="text-sm text-gray-400">Couldn&apos;t load pool data. Try refreshing.</p></Panel>
