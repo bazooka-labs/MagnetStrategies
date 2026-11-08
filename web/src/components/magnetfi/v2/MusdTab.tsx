@@ -10,6 +10,19 @@ import { makeAlgorand, optIn, mintMusd, redeemMusd } from "@/lib/magnetfiClient"
 import { getBalances, getProtocolStats, MUSD_ID, USDC_ID, REDEEM_FEE_BPS, type Balances } from "@/lib/magnetfiReads";
 import { PrimaryButton, NotLiveNote, tokenIcon } from "./shared";
 
+/**
+ * The protocol's two directions.
+ *
+ * ── "redeem" here, "Exchange" on screen, deliberately ────────────────────
+ * The contract call is `redeemMusd` and the fee is `REDEEM_FEE_BPS`; those
+ * are what the PSM does and renaming them would put a UI word on a protocol
+ * term, which is how a codebase stops matching its own contracts.
+ *
+ * The screen says Exchange (2026-11-07). "Redeem" asks a reader to know that
+ * mUSD is a claim on a reserve before the label makes sense, and the pill
+ * that gets them here already says Exchange — two words for one action, one
+ * of them jargon.
+ */
 type Mode = "mint" | "redeem";
 
 function AssetBadge({ asset }: { asset: string }) {
@@ -93,7 +106,7 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
       } else {
         if (b && !b.optedUsdc) { await optIn(algorand, address, USDC_ID); toast.success("Opted into USDC"); }
         await redeemMusd(algorand, address, amt);
-        toast.success(`Redeemed for ${formatUsd(out)} USDC`);
+        toast.success(`Exchanged for ${formatUsd(out)} USDC`);
       }
       refresh();
     } catch (e) {
@@ -111,7 +124,7 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
     <div className="p-6">
       <div className="mb-5 flex items-center justify-between">
         <p className="font-display text-base font-semibold text-white">
-          {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Redeem mUSD" : "Stablecoin Swap"}
+          {fixed === "mint" ? "Mint mUSD" : fixed === "redeem" ? "Exchange mUSD" : "Stablecoin Swap"}
         </p>
         <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-[11px] text-gray-400">
           {fromAsset} → {toAsset}
@@ -190,9 +203,9 @@ export function MusdTab({ fixed }: { fixed?: Mode } = {}) {
                thing to read. Bare verb until there is something to quote —
                "Mint: 0.00 mUSD" on an empty, disabled button reads as a
                broken quote rather than an empty form. */
-            : fixed && amt > 0 ? `${fixed === "mint" ? "Mint" : "Redeem"}: ${formatUsd(out)} ${toAsset}`
-            : fixed ? (fixed === "mint" ? "Mint" : "Redeem")
-            : mode === "mint" ? "Mint mUSD" : "Redeem mUSD"}
+            : fixed && amt > 0 ? `${fixed === "mint" ? "Mint" : "Exchange"}: ${formatUsd(out)} ${toAsset}`
+            : fixed ? (fixed === "mint" ? "Mint" : "Exchange")
+            : mode === "mint" ? "Mint mUSD" : "Exchange mUSD"}
         </PrimaryButton>
         {!PROTOCOL_LIVE && <NotLiveNote />}
       </div>

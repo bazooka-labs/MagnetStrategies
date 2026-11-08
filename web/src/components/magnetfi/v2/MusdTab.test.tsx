@@ -48,10 +48,10 @@ describe("a fixed direction", () => {
     expect(screen.getByText("USDC → mUSD")).toBeTruthy();
   });
 
-  it("redeem pays mUSD and receives USDC", async () => {
+  it("the redeem direction pays mUSD and receives USDC", async () => {
     const MusdTab = await load();
     render(<MusdTab fixed="redeem" />);
-    expect(screen.getByText("Redeem mUSD")).toBeTruthy();
+    expect(screen.getByText("Exchange mUSD")).toBeTruthy();
     expect(screen.getByText("mUSD → USDC")).toBeTruthy();
   });
 
@@ -67,7 +67,7 @@ describe("a fixed direction", () => {
     rerender(<MusdTab fixed="redeem" />);
     expect(screen.getByText("mUSD → USDC")).toBeTruthy();
     expect(screen.queryByText("USDC → mUSD")).toBeNull();
-    expect(screen.getByText("Redeem mUSD")).toBeTruthy();
+    expect(screen.getByText("Exchange mUSD")).toBeTruthy();
   });
 
   it("hides the flip control, which would undo the pill", async () => {
@@ -134,7 +134,7 @@ describe("one box, and the figure on the button", () => {
     const MusdTab = await load();
     render(<MusdTab fixed="redeem" />);
     type("10");
-    expect(screen.getByRole("button", { name: /Redeem: 9\.90 USDC/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Exchange: 9\.90 USDC/ })).toBeTruthy();
   });
 
   it("shows a bare verb before an amount is typed", async () => {
@@ -152,5 +152,54 @@ describe("one box, and the figure on the button", () => {
     render(<MusdTab fixed="mint" />);
     type("10");
     expect(screen.getByRole("button", { name: /Mint: 10\.00 mUSD/ })).toBeTruthy();
+  });
+});
+
+describe("the word on screen is Exchange, not Redeem", () => {
+  /*
+    Changed 2026-11-07. "Redeem" asks a reader to know mUSD is a claim on a
+    reserve before the label makes sense, and the pill that gets them here
+    already says Exchange — two words for one action, one of them jargon.
+
+    The PROTOCOL term stays: the call is `redeemMusd`, the fee is
+    `REDEEM_FEE_BPS`, and the internal mode is "redeem". Asserted here so
+    the split is deliberate rather than something half-renamed later.
+  */
+  it("says Exchange nowhere near the word Redeem", async () => {
+    /*
+      CONNECTED. Disconnected, the wallet gate wins the button label and
+      the verb branch never renders — a first pass asserted this without a
+      wallet and two mutations putting "Redeem" back on the button survived
+      it untouched.
+    */
+    connected();
+    const MusdTab = await load();
+    const { container } = render(<MusdTab fixed="redeem" />);
+    expect(container.textContent).toContain("Exchange mUSD");
+    expect(screen.getByRole("button", { name: /^Exchange$/ })).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Redeem/);
+  });
+
+  it("keeps Mint untouched — only the other direction was jargon", async () => {
+    const MusdTab = await load();
+    const { container } = render(<MusdTab fixed="mint" />);
+    expect(container.textContent).toContain("Mint mUSD");
+  });
+
+  it("renames the two-way panel's button too", async () => {
+    /*
+      The free panel is unreachable in the app today but still rendered by
+      tests; leaving "Redeem mUSD" there is how one surface keeps the old
+      word after the rest move on.
+
+      It has to be CONNECTED and FLIPPED to reach that label: the panel
+      opens on mint, and the wallet gate otherwise owns the button.
+    */
+    connected();
+    const MusdTab = await load();
+    const { container } = render(<MusdTab />);
+    fireEvent.click(screen.getByRole("button", { name: /Switch swap direction/ }));
+    expect(screen.getByRole("button", { name: /^Exchange mUSD$/ })).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Redeem/);
   });
 });
