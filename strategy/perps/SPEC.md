@@ -1714,7 +1714,55 @@ figure should be chosen from measurement, not picked.
 
 A proportional floor also behaves badly at the bottom: 1% of a $0.20 leg is
 $0.002, which is below the point where converting is worth a transaction at
-all. Hence the open question below about an absolute threshold.
+all. Hence the absolute threshold, measured below.
+
+### The two numbers, measured 2026-11-09
+
+**Price impact is flat and negligible across every size a stray leg takes.**
+Quoted `quoteV2SwapExactIn` USDC → ALGO against the live market 1 pool, with
+ALGO at $0.093982:
+
+| USDC in | ALGO out | impact | swap fee as % of the leg |
+|---|---|---|---|
+| 0.05 | 0.531694 | −0.06% | **8.08%** |
+| 0.10 | 1.063389 | −0.06% | **4.04%** |
+| 0.20 | 2.126778 | −0.06% | **2.02%** |
+| 0.50 | 5.316947 | −0.06% | 0.81% |
+| 1.00 | 10.633894 | −0.06% | 0.40% |
+| 3.81 | 40.515138 | −0.06% | 0.11% |
+| 12.26 | 130.371547 | −0.06% | 0.03% |
+| 50.00 | 531.694730 | −0.06% | 0.01% |
+
+Impact is **−0.06% at every size**, so the pool is deep relative to these
+amounts and slippage is not what sizing has to defend against. What dominates
+at the bottom is the group fee: 43,000 µALGO, $0.004 at that price, fixed
+regardless of size.
+
+**Threshold: skip the swap below 1.00 USDC** (`1_000_000` µUSDC). At a dollar
+the fee is 0.40% of the leg; at twenty cents it is 2.02% and at five cents
+8.08%. Below the threshold the right behaviour is to leave the leg alone —
+the user keeps a sub-dollar USDC balance, which is exactly today's outcome
+and costs them nothing.
+
+**Discount: 2% of the quoted leg.** Measured rather than chosen:
+
+- Price impact contributes 0.06%.
+- The claimable leg itself was sampled six times over 100 seconds on the only
+  live position carrying one: **3.343368 ALGO every time, 0.0000% spread.**
+- Over hours it moves, and in the safe direction — the same position quoted
+  2.262748 ALGO earlier the same day. Funding accrues, so the leg delivered at
+  execution is generally **larger** than the one quoted at build time, and the
+  signing window only adds to it.
+
+2% is roughly thirty times the only measured source of variance, and on the
+real 3.810866 USDC leg it costs **$0.076** of dust. 5% would cost $0.19 if a
+wider margin is ever wanted; the figure is cheap either way, which is the
+point.
+
+> **Not proven: that the leg cannot shrink.** Monotonic accrual is what the two
+> observations are consistent with, not something established. The 2% is sized
+> to be comfortable if it is wrong by a little, and option 3's retry path is
+> what covers it being wrong by a lot.
 
 ### Scope
 
@@ -1747,10 +1795,8 @@ Beyond porting `swapGroup.test.ts`:
 
 - Which of the three handling options above.
 - Whether a probe for option 2 is worth running first.
-- The dust threshold. The C-Vault accepts ~1% of the converted leg; on a close
-  the stray leg is already small (3.810866 USDC on a 200 ALGO position), so the
-  same percentage is a much smaller absolute number and the floor may want to
-  be absolute rather than proportional.
+- ~~The dust threshold.~~ **Measured 2026-11-09**: skip below 1.00 USDC,
+  discount the quoted leg by 2%. See above.
 
 ---
 
