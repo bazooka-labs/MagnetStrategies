@@ -1590,6 +1590,80 @@ escrowed, because it needs no new data source, and says so on screen.
 
 ---
 
+## Single-asset payout on an ALGO-collateral close — SPEC, redesigned after review
+
+> **The two-group version was built, reviewed by three independent agents on
+> 2026-11-09, and abandoned.** It is on branch `wip/algo-sweep-reviewed`,
+> never merged. Three findings, each measured against MainNet, and the first
+> two are fatal to the APPROACH rather than to the code:
+>
+> **1. A position that triggers a sweep could not be closed at all.** The
+> sweep build sat before the close's oracle-budget gate. The oracle lives 20s
+> with an 8s minimum signing budget, it is already 5–6s old when fetched, and
+> the sweep build measured **6.4–8.4s**. The gate threw on essentially every
+> attempt. On a leveraged perp an inability to exit is a liquidation path.
+> Reordering helps but does not fix it: the work still has to happen inside
+> one oracle's life.
+>
+> **2. It could not run anyway.** `buildSwapExactIn` simulates, and at build
+> time the close has not paid, so the wallet does not hold the leg the swap
+> spends — *"underflow on subtracting 3734648 from sender amount 8606"*
+> against the real position holder. Where it DOES fire, it fires because the
+> user already held that USDC, so it spends their own balance and the margin
+> defends nothing. Simulating both groups together is not available: algod
+> answers `expected 1 transaction group, got 2`.
+>
+> **3. The margin was wrong about what it was sweeping.** On an
+> ALGO-collateral SHORT the USDC leg is the whole realised profit, not a
+> funding crumb — 12.259258 USDC against a +$12.03 result on the real
+> 2026-11-05 close. Leaving 2% of that behind contradicts the feature's own
+> goal.
+>
+> **What held up**, and carries into the redesign: the direction
+> generalisation of `assertSwapGroup` is sound — both real groups were built
+> against MainNet and assert ok, USDC→ALGO as 7 txns `[axfer, appl×6]` and
+> ALGO→USDC as `[pay, appl×6]`. The close group was unchanged. No theft
+> vector was found. 22 of 23 policy mutations were killed.
+
+### The redesign: convert AFTER the close confirms
+
+One user action more, and every finding above dissolves rather than being
+patched:
+
+- The trader **holds the leg** by then, so the swap simulates honestly and
+  finding 2 cannot arise.
+- It is **off the close's critical path**, so finding 1 cannot arise — the
+  close keeps its whole oracle budget.
+- It converts **what actually arrived**, read back after confirmation, so
+  there is no margin, no dust, and finding 3 cannot arise. 100% converted,
+  which is what "ALGO in, ALGO out in full" asked for.
+- There is **no non-atomic pair**, so the entire class of partial-state
+  reporting bugs the reviews found in the UI has nowhere to live.
+
+`convertLeftover` on the WIP branch is already most of it, and
+`buildSwapExactIn`'s direction work carries over whole.
+
+### What must be true before any of it ships
+
+- **`pools/submit.ts` gets a test file.** It has none. A reviewer mutated
+  `partial` → `rejected` there and the full 1409-test suite passed.
+- **The wiring gets guarded, not just the policy.** 13 of 13 mutations to
+  `client.ts` and `submit.ts` survived, including one deleting the margin.
+- **One live USDC-in run**, per "simulation is not a signature".
+
+### Two measured facts to carry forward
+
+- **USDC→ALGO costs 63,000 µALGO, not 43,000.** The extra 20,000 is
+  `XALGO_PROVIDER_FEE_CREDIT_MICRO_ALGO`, added only when the swap's OUTPUT
+  is ALGO. The threshold table below was computed at 43,000 and is therefore
+  optimistic: a $1 leg costs 0.59%, not 0.40%. Re-derive the threshold before
+  using it.
+- **algod refuses more than one group per simulate call.**
+
+---
+
+## The abandoned two-group design, kept for its measurements
+
 ## Single-asset payout on an ALGO-collateral close — SPEC, not built
 
 **Status: specified 2026-11-08 after a code and route audit. Nothing built,
