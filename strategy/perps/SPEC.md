@@ -1680,8 +1680,41 @@ Three ways to handle it, to be decided before implementation:
    the position row after a close, so a failure is a retry rather than a dead
    end. Weakest ergonomics, strongest honesty, and it composes with 1.
 
-The recommendation is **1 plus 3**: size conservatively, and leave a retry
-path for the case it still misses.
+**Decided 2026-11-08: 1 plus 3.** Size conservatively, and leave a retry path
+for the case it still misses.
+
+### Where the dust goes — the trader's own wallet, always
+
+It is never held, never swept, never ours. Group 1 pays the whole payout into
+the trader's wallet; group 2 removes only the floored portion and returns the
+proceeds to the same address (`receiver: sender`, which `assertSwapGroup`
+checks and which its own doc calls the check that matters most). The
+unconverted remainder simply never leaves.
+
+Measured on the C-Vault exit at round 66620034/66620036:
+
+| | |
+|---|---|
+| Withdrawal paid the trader | 107.819197 ALGO + 16.447091 USDC |
+| Group 2 swapped | 106.740994 ALGO → 9.716760 USDC |
+| **Dust left in the wallet** | **1.078203 ALGO — exactly 1.00%** |
+
+1.00% because `slippageBps` is 100. The user is told: `CvaActions` renders
+"plus N ALGO that could not be converted".
+
+**On a close the economics are different and favour a wider discount.** The
+stray leg is small — 3.810866 USDC on a 200 ALGO close — so a proportional
+floor leaves almost nothing either way: 1% is $0.04, 5% is $0.19. But the
+discount is doing more work here than it does on the vault, because there is
+no contract-asserted floor behind it (see above); it is absorbing the chance
+that the delivered leg is smaller than the quoted one, not just rounding.
+Buying a materially lower failure rate for a few cents of dust is the right
+trade, so the floor should be set well wider than the vault's 1% — and the
+figure should be chosen from measurement, not picked.
+
+A proportional floor also behaves badly at the bottom: 1% of a $0.20 leg is
+$0.002, which is below the point where converting is worth a transaction at
+all. Hence the open question below about an absolute threshold.
 
 ### Scope
 
