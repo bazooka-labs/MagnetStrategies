@@ -1847,3 +1847,35 @@ def test_add_without_max_gap_is_unchanged(tmp_path):
     s.add(7, base, 1_000_000, 5)
     s.add(7, base + 1200, 700_000, 5)
     assert s.count(7) == 2
+
+
+def test_pex_pin_matches_the_frontend_pin():
+    """
+    The bot and the Trading Terminal must pin the SAME PEX signer.
+
+    PEX rotated this key on 2026-10-22. The frontend was updated and has a
+    drift detector plus `web/src/lib/oracleSignerPin.test.ts`; this constant
+    was not, and sat wrong for 19 days while every cycle logged "PEX
+    cross-check unavailable: Signature was forged or corrupt". Long enough
+    that the line stopped reading as an outage.
+
+    It surfaced on 2026-11-10, when CompX's Flux oracle went 58h stale on $U
+    and the fail-stale rule stopped every price rise. U/tALGO and U/ALGO aged
+    past the vault's 30-minute window. The PEX cross-check is the second
+    opinion that exists for exactly that case, and it had been dead the whole
+    time.
+
+    Checked against the frontend's source rather than against the network, so
+    it fails in CI rather than only when someone reads a log. One pin is
+    wrong; two pins that disagree is a bug either way round.
+    """
+    import pathlib, re
+    repo = pathlib.Path(__file__).resolve().parents[4]
+    cfg = (repo / "web/src/lib/strategy/pex/config.ts").read_text(encoding="utf-8")
+    m = re.search(
+        r"PEX_ORACLE_SIGNER_PUBKEY_HEX\s*(?::\s*string\s*)?=\s*\n?\s*\"([0-9a-f]{64})\"", cfg)
+    assert m, "could not find the frontend's signer pin — has it moved or been renamed?"
+    assert ob.PEX_ORACLE_PUBKEY_HEX == m.group(1), (
+        f"bot pins {ob.PEX_ORACLE_PUBKEY_HEX}, frontend pins {m.group(1)}. "
+        "PEX rotates this without notice; update both or the cross-check dies silently."
+    )

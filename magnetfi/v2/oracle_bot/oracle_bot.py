@@ -151,7 +151,26 @@ PEX_BUNDLE_URL = (
 )
 # PINNED. The payload carries its own `pubkey_hex`, and verifying against that
 # only proves the message signed itself. Same key the Trading Terminal pins.
-PEX_ORACLE_PUBKEY_HEX = "4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb"
+#
+# ── Rotated by PEX; updated 2026-11-10 ──────────────────────────────────────
+# Was 4cc6bcc8c281d1e1b5eec887adc373fee95f6e580125132e72303618d2e3dffb. PEX
+# rotated the signer and this constant was not updated with it, so every cycle
+# logged "PEX cross-check unavailable: Signature was forged or corrupt" — for
+# long enough that nobody read it as an outage any more.
+#
+# That mattered on 2026-11-10: CompX's Flux oracle went stale (58h on $U), the
+# fail-stale rule stopped every price rise, and U/tALGO and U/ALGO aged past
+# the vault's 30-minute window. The PEX cross-check is the second opinion that
+# exists for exactly that case, and it had been silently dead.
+#
+# Verified before changing, not inferred from the bundle's own `pubkey_hex`:
+#   - OrderOps (3690309166) and CvaVault (3690309167) global `oc` both carry
+#     ac4b7131…932ec9b6 on chain;
+#   - web/src/lib/strategy/pex/config.ts pins the same value;
+#   - the live bundle's 133-byte message verifies under it and FAILS under the
+#     old key, and its signed fields decode to targetAppId 3690309160,
+#     marketId 1, ALGO/USD $0.0884, 8s old.
+PEX_ORACLE_PUBKEY_HEX = "ac4b7131e62f4a715e4357f237b996d335b96b2127731cc44b6d34eb932ec9b6"
 PEX_TRADING_APP_ID = 3_690_309_160
 PEX_ALGO_MARKET_ID = 1
 PEX_MSG_LEN = 133
