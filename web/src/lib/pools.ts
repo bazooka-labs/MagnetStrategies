@@ -170,11 +170,19 @@ export const POOLS: Pool[] = ([
   { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", venues: [{ dex: "pact", ref: "3693600164" }] },
   { id: "u-compx", pair: "U / COMPX", partner: "COMPX", venues: [{ dex: "pact", ref: "3692558822" }] },
   /**
-   * Replaced U/HAY on 2026-11-10, and it is the pool governance picked.
+   * Replaced U/HAY on 2026-11-10.
    *
-   * mVote proposal 1 — "Where should Magnet Strategies' Treasury be invested
-   * towards for U token Liquidity Pools in Q4 '26?" — closed on NIKO. This is
-   * that decision executed.
+   * mVote proposal 1 asks "Where should Magnet Strategies' Treasury be
+   * invested towards for U token Liquidity Pools in Q4 '26?", and NIKO leads
+   * it with 31 mUSD — every vote cast so far. **The window does not close
+   * until 2026-11-14 19:33:58Z**, so this pool was created while the vote was
+   * still open, not after it resolved.
+   *
+   * That is the founder's call to make: mVote is advisory and treasury
+   * deployment is a founder action, which `vote/OVERVIEW.md` states plainly.
+   * Recorded here because the first version of this comment said the vote had
+   * "closed on NIKO" — it had not, and a doc that overstates a governance
+   * process is worse than one that says nothing about it.
    *
    * The old U/HAY pool (`3692640639`) was left behind rather than migrated:
    * read on the day of the swap it held reserves of 79 and 12,903 base units
