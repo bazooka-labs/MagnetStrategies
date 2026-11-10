@@ -4,6 +4,11 @@
 Bot-side only — no contract change. The contract side is
 [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md); this is what feeds it.
 
+**Decision 2026-11-10: CompX is ruled out, not demoted.** It has now frozen the
+book twice, and its future is uncertain enough that we do not want a dependency
+on it at any authority level. §4a is how to remove it without silently removing
+the guard with it — the obvious way does exactly that.
+
 ---
 
 ## 1. Why this exists
@@ -71,12 +76,16 @@ nobody is alerted on is worth exactly as much as no timestamp.** This is the
 cheapest change here by a wide margin and the only one that would have
 prevented the outage we actually had, which is why §9 puts it first.
 
-**CompX was the only thing that could block a post.** The PEX cross-check is
-`ALERT-ONLY by design` — its own docstring says making it able to block would
-let their oracle freeze ours. So this was not "both sources failed". It was
-"the one source failed, and the telemetry that should have shouted was also
-broken" (its pinned signer had been wrong since PEX rotated on 2026-10-23;
-fixed in `14268ed`, and the running process picks it up on restart).
+**CompX was the only thing that could block a post — and the only thing that
+could freeze one.** Every other check is advisory by construction: the PEX
+cross-check is `ALERT-ONLY by design`, because its docstring notes that letting
+it block would hand PEX's oracle the power to freeze ours, and the route
+cross-check `logs only, never gates`. So this was not "both sources failed".
+One vendor held a unilateral veto, used it correctly, and nobody was told
+(the PEX pin had also been wrong since PEX rotated on 2026-10-23 — fixed in
+`14268ed`, picked up on restart).
+
+**That veto is the thing being removed.** Not the guard: §4a.
 
 ---
 
@@ -91,7 +100,7 @@ Measured 2026-11-10. The distinction that governs the whole design is
 | Vestige | its own index of on-chain pool contracts | **No** — same pools, different aggregation |
 | LiquiHog | same, and the same Pact managed-weighted blind spot | **No** |
 | Haystack | a *router*; quotes by routing across the same pools | **No** — and adds an API dependency |
-| CompX Flux | on-chain oracle box, timestamped | **No** |
+| ~~CompX Flux~~ | on-chain oracle box, timestamped | **Ruled out** — see header |
 | Pact pools | separate on-chain liquidity | **Yes** — but only $1,658 deep |
 | Coinbase / Kraken / CoinGecko | real order books | **Yes** — but ALGO and USDC only |
 
@@ -112,6 +121,38 @@ system's incidents have actually come from:
   unattended, noticed only because someone happened to be watching.
 - **2026-11-10** the same thing again, for 58 hours.
 
+### What CompX was supposedly providing, we already have
+
+This is the fact that reorders everything below, and I had it wrong in the
+first draft of this spec. `derive_asset_price_usdc` **already** runs a
+multi-route cross-check, and its own comment says what it is for:
+
+> *"This is what replaces the CompX dependency for assets with several routes:
+> independent arithmetic over independent pools, catching the derivation bugs
+> an absolute bound cannot."*
+
+In `config.lean.json`, `$U` (`3081853135`) carries **three** configured routes,
+not one:
+
+| Route | Quoted via | Role |
+|---|---|---|
+| 0 | tALGO (`2537013734`) | the pricing route — deepest, ~$5.7K |
+| 1 | USDC (`31566704`) | advisory cross-check |
+| 2 | ALGO (`0`) | advisory cross-check |
+
+Routes 1 and 2 are priced every cycle and compared against route 0 at
+`ROUTE_DIVERGENCE_ALERT = 0.05`, transition-gated so a standing divergence is
+one log line rather than one per cycle. **So $U already has two independent
+second opinions on our own arithmetic** — the exact job CompX was nominally
+doing, done by pools instead of a vendor.
+
+**ALGO and tALGO have exactly one route each.** In the same config they are
+plain objects, not lists, so the cross-check loop never executes for them. The
+root of every price in the system has no second opinion of any kind — not
+CompX (never configured for ALGO/USDC), not a second route, nothing.
+
+That is the real gap, and it is why §3's ordering is not what I first proposed.
+
 ---
 
 ## 3. The sources, in priority order
@@ -122,24 +163,11 @@ Reserves read from algod, TWAP'd. Keep exactly as is. It is the only thing
 that can price $U at all, and it is trustless: no vendor, no API key, no rate
 limit.
 
-### 2 — Vestige (secondary: the validator that replaces CompX's veto)
+### 2 — Coinbase + one fallback (independent truth for ALGO *and* USDC)
 
-Agreed to **0.136%** today ($0.133661 against the bot's $0.133843) at the same
-moment CompX's frozen value was **4.85%** out — close enough to the 5%
-divergence limit that slightly more staleness would have flipped it from
-`unverified` to a *hard* refuse.
-
-It computes from a different pool set with different weighting, so it catches
-our route graph being wrong. It cannot catch Tinyman being wrong.
-
-> **It returns no timestamp.** Fields are `price`, `confidence`,
-> `total_lockup`. So it may **vote** but may never **satisfy freshness** — see
-> §4. Staleness is detected by observation instead: flag a Vestige price that
-> has not moved across N cycles while the primary has.
-
-### 3 — Coinbase + one fallback (independent truth for ALGO *and* USDC)
-
-The only genuinely non-Algorand input available. Measured today:
+**Promoted above Vestige.** This is the only item here that covers the gap
+§2 identifies: ALGO is single-routed, it is the root every other price derives
+through, and nothing has ever cross-checked it. Measured today:
 
 | | ALGO/USD | vs median |
 |---|---|---|
@@ -152,22 +180,41 @@ Spread across the three: **0.296%**. Two venues, not three — the third buys
 0.1% of accuracy against a 5% tolerance and costs a third rate limit, outage
 mode and schema.
 
-**This covers more than anything else here**, for a reason that is easy to
-miss: in `config.lean.json` the `ALGO/USDC` pool carries **no
-`compx_check_asset_id` at all**. The reference pool — the root every other
-price is derived through — has never had a second source of any kind. It was
-the only pool unaffected on both 2026-10-27 and 2026-11-10, and that is the
-same fact seen from the other side: nothing can freeze it because nothing
-checks it. The bot's own alert text makes the stakes plain: *"ALGO is the root
-of every pool's price, so this affects all of them."*
+In `config.lean.json` the `ALGO/USDC` pool also carries **no
+`compx_check_asset_id` at all**, so it was the one pool unaffected on both
+2026-10-27 and 2026-11-10 — the same fact from the other side: nothing can
+freeze it because nothing checks it. The bot's own alert text makes the stakes
+plain: *"ALGO is the root of every pool's price, so this affects all of them."*
 
-Exchanges would be its first cross-check ever, and they are also the only layer
-in this document that survives Tinyman being compromised rather than merely
-unavailable.
+Exchanges are also the only layer in this document that survives Tinyman being
+**wrong** rather than merely absent, since every other row reads the same pools.
 
-**Price USDC too.** The derivation currently treats USDC as $1.00 axiomatically
+**Price USDC too.** The derivation treats USDC as $1.00 axiomatically
 (`derive_asset_price_usdc` returns 1.0 for it). A depeg would silently inflate
 every $U price. One call turns an assumption into a measurement.
+
+### 3 — Vestige (cross-DEX sanity on $U)
+
+Agreed to **0.136%** today ($0.133661 against the bot's $0.133843) at the same
+moment CompX's frozen value was **4.85%** out — close enough to the 5%
+divergence limit that slightly more staleness would have flipped it from
+`unverified` to a *hard* refuse, freezing the book outright instead of merely
+declining to raise.
+
+**Lower value than the first draft of this spec claimed.** Its job was to
+replace CompX's veto, but §2 shows the three configured routes already do that
+for $U. What Vestige still adds is the one thing routes cannot: it aggregates
+across DEXes, so it sees $U liquidity we have not configured — Pact, and
+anything new — and would catch our route set becoming unrepresentative rather
+than merely inconsistent. Useful, genuinely independent of our config, and not
+urgent.
+
+It cannot catch Tinyman being wrong, because it reads the same pools.
+
+> **It returns no timestamp.** Fields are `price`, `confidence`,
+> `total_lockup`. So it may **vote** but may never **satisfy freshness** — see
+> §4. Staleness is detected by observation instead: flag a Vestige price that
+> has not moved across N cycles while the primary has.
 
 ### 4 — Pact (low-authority sanity only)
 
@@ -188,22 +235,77 @@ Replace *"CompX agrees, or fail-stale"* with:
 
 > **At least two sources must be fresh and agree within tolerance.**
 
-Any single source may die — including Vestige, including CompX, including one
-exchange — without freezing the vault. That is precisely the property today's
-design lacks, and the whole point of the change.
+Any single source may die — a route, Vestige, one exchange — without freezing
+the vault. That is precisely the property today's design lacks, and the whole
+point of the change. No source gets a unilateral veto again; that property is
+what made one vendor's outage our outage, twice.
 
 Freshness is satisfiable only by sources that can prove it:
 
 | Source | Can prove freshness? |
 |---|---|
 | Tinyman | yes — chain round |
+| Tinyman routes 1–2 | yes — chain round, already running |
 | Exchanges | yes — their timestamps |
-| CompX | yes — `lastUpdated` |
 | **Vestige** | **no** — confirming vote only |
 | **Pact** | yes (chain), but authority-capped to alerting |
 
 So a quorum can never consist of Vestige alone, and the primary must always be
 one of the two.
+
+---
+
+## 4a. Removing CompX without removing the guard
+
+**The obvious way to rule CompX out is wrong, and fails silently.** Deleting
+`compx_check_asset_id` from the pools — or clearing `compx_oracle_app_id` —
+does not disable a check. It makes the check *pass*:
+
+```python
+if pool.compx_check_asset_id is None or not cfg.compx_oracle_app_id:
+    return "ok"
+```
+
+`"ok"` sets `compx_verified = True`, and the fail-stale gate in `update_pool`
+is guarded by `if not compx_verified:`. So a config-only removal asserts
+"verified" with nothing verifying, and the gate that refused to raise an
+unconfirmed price never engages again on any pool.
+
+The code is honest about this — `get_lp_price` logs `compx_state = "skipped"`
+separately from the flag, with the comment *"compx_verified=True covers two
+different situations — confirmed, and no check configured — and only the first
+is verification."* It is a known sharp edge, not a bug, and ruling CompX out is
+exactly the operation that runs onto it.
+
+**So removal is a code change, not a config change.** `compx_verified` should
+become a verdict with three states that the gate reads explicitly — verified,
+unverified, and *no verifier configured* — so that the third is a deliberate
+decision recorded in one place rather than an accident of a falsy config key.
+Then delete `compx_cross_check`, `read_compx_price`, the three `compx_*` config
+keys and the per-pool `compx_check_asset_id`, and point the gate at the §4
+quorum.
+
+### What is still standing in the meantime
+
+Worth stating precisely, because "CompX was the only thing that could block a
+post" is true of the *veto* and not of the guards. With CompX gone and nothing
+built yet, a posted price still has to pass:
+
+| Guard | Setting today | Bites at |
+|---|---|---|
+| `MIN_TWAP_READINGS` | 3 | thin history after a restart |
+| TWAP window | — | smooths a single-cycle spike |
+| `asset_price_bounds` ($U) | `$0.02 – $1.00` | **raises**, hard stop |
+| `asset_price_bounds` (ALGO) | `$0.02 – $0.50` | **raises**, hard stop |
+| per-pool `min_price`/`max_price` (U/tALGO) | `660000 – 1079000` | refuses the post |
+| route cross-check ($U only) | 5% | **logs only**, never gates |
+
+Two things follow. The per-asset bounds are **wide** — $U's ceiling is 7.5×
+its current $0.1338 — so they stop absurdity, not manipulation. The per-pool
+LP bounds are **narrow**, roughly ±24% around their midpoint, and they are the
+live constraint: U/tALGO posted 690929 against a 1079000 ceiling. Those need
+re-anchoring as the price moves, and a bound left behind a genuine rally is
+precisely the 2026-10-09 outage.
 
 ---
 
@@ -242,10 +344,12 @@ for a token called "U" — a completely different asset:
 | Coinbase `U-USD` | $0.000068543 | **1,953×** |
 | Kraken `UUSD` | $0.000089 | **1,504×** |
 
-`read_compx_price` already has the right discipline — it verifies the box's
-embedded `assetId` matches what was asked for. **Ticker symbols cannot provide
-that.** No external source may price $U. Exchanges are for ALGO and USDC only,
-and that restriction belongs in code, not in a comment.
+`read_compx_price` had the right discipline and is worth copying before it is
+deleted: it verified the box's embedded `assetId` matched what was asked for,
+rather than trusting the key it looked up under. **Ticker symbols cannot
+provide that** — there is no asset id in `U-USD`. So: no external source may
+price $U, exchanges are restricted to ALGO and USDC, and that restriction
+belongs in code rather than in a comment.
 
 **Vestige freezing into agreement.** A frozen feed that happens to agree votes
 "yes" for ever and silently adds nothing. §5's detector is the mitigation.
@@ -290,19 +394,29 @@ is what makes that acceptable today.
 
 ## 9. Sequencing
 
-Ordered by cost-to-benefit against **the failure we have actually had twice**,
-which is not the same as ordering by coverage — §3's exchange work protects
-more and comes third here because it addresses a risk that has never yet fired.
+Reordered after the §2 finding. Vestige was second in the first draft; the
+three existing $U routes already do most of its job, so it drops below the
+exchange work, which covers an asset nothing checks at all.
 
 1. **Alerting (§5).** Would have bought 58 hours of warning on 2026-11-10
    instead of 15 minutes, with no change to how prices are computed. Smallest
-   change in the document.
-2. **Vestige as the second validator**, and the two-of-three rule (§4). This is
-   what ends the single-veto dependency.
-3. **Exchanges for ALGO + USDC (§3).** Independently valuable and separable: it
-   is the first cross-check the reference pool has ever had, and the only layer
-   that survives Tinyman being wrong rather than absent.
-4. **Pact as alert-only**, if at all.
+   change here, and worthless until `ALERT_WEBHOOK_URL` is set.
+2. **Remove CompX properly (§4a)**, as a code change with a three-state verdict.
+   This is what unfreezes the book and ends the vendor veto. Doing it by config
+   instead would unfreeze the book *and* permanently disable the fail-stale
+   gate, which is the trap worth not walking into.
+3. **Exchanges for ALGO + USDC (§3).** The first cross-check the reference pool
+   has ever had, on the one asset with no second route, and the only layer that
+   survives Tinyman being wrong rather than absent.
+4. **A second ALGO route** in `reference_pools`, turning ALGO from a bare object
+   into a list. Cheapest possible redundancy for the root asset — it reuses
+   machinery that already runs for $U — though it stays inside Tinyman, so it
+   complements the exchanges rather than substituting for them.
+5. **Re-anchor the per-pool `min_price`/`max_price` bounds** and give them a
+   maintenance story. §4a shows they are now the narrowest live constraint, and
+   a stale bound is already a two-time outage cause.
+6. **Vestige**, for cross-DEX coverage of liquidity our routes do not see.
+7. **Pact as alert-only**, if at all.
 
 ---
 
@@ -311,9 +425,9 @@ more and comes third here because it addresses a risk that has never yet fired.
 - Does Vestige expose freshness anywhere? Checked `/assets/{id}/price` (404)
   and `/assets/{id}/candles` (422); worth one pass over their docs before
   designing around its absence.
-- Does CompX stay in the quorum once it recovers, or become a fourth opinion?
-  It held a veto it could not be trusted with; it does not get that back by
-  default.
+- ~~Does CompX stay in the quorum once it recovers?~~ **Answered 2026-11-10:
+  ruled out entirely.** Twice-demonstrated unreliability plus an uncertain
+  future is not something to carry at any authority level. §4a is the removal.
 - The route graph is a separate question this spec does not settle: $U's
   route 0 is quoted in **tALGO**, tALGO in ALGO, ALGO in USDC — three hops,
   every one a Tinyman v2 pool, and tALGO is itself issued by Tinyman. Route 0

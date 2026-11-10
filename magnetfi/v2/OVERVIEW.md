@@ -310,11 +310,18 @@ single-sourced and that the alerting watches the posted price rather than the
 feed that predicts it, so the warning arrives 15 minutes before the freeze
 instead of 58 hours before.
 
-**[PRICE_SOURCES.md](./PRICE_SOURCES.md) is the proposed fix** — Tinyman
-primary, Vestige as the second validator, exchanges for independent ALGO and
-USDC truth, and a two-of-three quorum in place of CompX's single veto, so no
-one source can freeze the book. Nothing is built yet; alerting on the cause is
-step one and is much the smallest part.
+**CompX is ruled out as of 2026-11-10** — twice-demonstrated unreliability and
+an uncertain future, so we do not want the dependency at any authority level.
+[PRICE_SOURCES.md](./PRICE_SOURCES.md) is the replacement: Tinyman primary,
+exchanges for independent ALGO and USDC truth, Vestige for cross-DEX sanity,
+and a quorum in place of a single vendor veto, so no one source can freeze the
+book. Nothing is built yet.
+
+**Remove it in code, not in config.** `compx_cross_check` returns `"ok"` when
+no check is configured, which sets `compx_verified = True` — so deleting
+`compx_check_asset_id` would unfreeze the pools *and* permanently disable the
+fail-stale gate on all of them. PRICE_SOURCES.md §4a has the sequence and an
+inventory of what still guards a post in the meantime.
 
 **The PEX cross-check was dead for 18 days — fixed 2026-11-10, pending a bot
 restart.** The bot logged `PEX cross-check unavailable: Signature was forged or
@@ -436,7 +443,7 @@ operated by one person is not a solvency plan at scale.
 |---|---|
 | **This file** | Current. Start here. |
 | [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) | **Executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this; §5's rate limit is the one deferred piece |
-| [PRICE_SOURCES.md](./PRICE_SOURCES.md) | **Spec, nothing built.** The proposed replacement for the single-sourced CompX check, after the 2026-11-10 outage |
+| [PRICE_SOURCES.md](./PRICE_SOURCES.md) | **Spec, nothing built.** The replacement for the CompX check, ruled out 2026-11-10. §4a is the removal; read it before touching `compx_*` config |
 | [ADMIN.md](./ADMIN.md) | Accurate for what is running — swept 2026-10-17 |
 | [OPERATIONS.md](./OPERATIONS.md) | Runbooks — oracle bot key rotation, diagnosing a stale feed |
 | [PSM.md](./PSM.md) · [VAULT.md](./VAULT.md) · [LIQUIDATION.md](./LIQUIDATION.md) · [mUSD.md](./mUSD.md) · [FOLKS_ADAPTER.md](./FOLKS_ADAPTER.md) | Current |
