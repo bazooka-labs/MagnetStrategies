@@ -22,7 +22,10 @@ worth fresh eyes, especially the oracle/collateral surface discussed in §8:**
   the standalone `repay_principal()` was removed and `pay_interest()` made the single repayment path
   (interest always charged before principal; clamp-and-refund on overpay). See [AUDIT.md](./AUDIT.md)
   Pass 28. The live vault reflects this; review the current source.
-- `lp_oracle` — LP price oracle + **manipulation guards** (±25% anchor, ±50% deviation, freshness).
+- ~~`lp_oracle`~~ — **retired.** It carried the ±25% anchor, ±50% deviation and freshness guards.
+  The live oracle is the **lean** one (`3741272132`), which applies **no price cap at all** — see
+  [LP_ORACLE.md](./LP_ORACLE.md) and §8.3. Every mention of an anchor band in this document
+  describes the retired contract.
   ~270 lines. This is the oracle-attack surface in §8.1/§8.3.
 
 **Out of scope:**
@@ -136,11 +139,11 @@ so directly relevant.
 
 | Attack class | Real-world precedent | Our defense |
 |---|---|---|
-| **Oracle price manipulation** to over-value collateral → over-borrow → default (bad debt) | Mango, Cream | Layered: LP-token valuation (pumping U removes it from reserves), **~25-min TWAP** (5 readings), **asymmetric upward-spike block** (15% spot-vs-TWAP — aimed at inflation specifically), **CompX Flux cross-check** (refuse to post on divergence), **±50% vs prior**, **±25% anchor band** (hard cap on cumulative drift), freshness gating. **Quantified bound below (8.3).** |
+| **Oracle price manipulation** to over-value collateral → over-borrow → default (bad debt) | Mango, Cream | Layered: LP-token valuation (pumping U removes it from reserves), **~25-min TWAP** (5 readings), **asymmetric upward-spike block** (15% spot-vs-TWAP — aimed at inflation specifically), **CompX Flux cross-check** (refuse to post on divergence), freshness gating. ~~**±50% vs prior**, **±25% anchor band**~~ — **both removed with the banded oracle on 2026-10-17**; the lean oracle caps nothing, so these are bot-side only and do nothing against a compromised bot key. See §8.3's banner and ADMIN.md. |
 | **Unvalidated asset in a group transfer** (receive the wrong/same asset) | **Tinyman 2022** | Every inbound transfer asserts `xfer_asset` + `asset_receiver`; every outbound `itxn` hardcodes a stored, validated ASA id. No caller-chosen multi-asset payout exists. See 8.2. |
 | **Reentrancy** | The DAO, Cream | AVM forbids an app appearing twice in one call stack; all read-modify-write across an `abi_call` is safe. Confirmed in both audit passes. |
 | **Lying/compromised yield venue** (inflated value, hidden loss, principal drain) | Euler, composability failures | `min(principal, recoverable)` valuation, **on-chain balance-delta accounting** (H-2/M-1 — never trust the adapter's reported return), deficit/impairment freeze, 48h adapter whitelist, fractional deployment. |
-| **Bad-debt / liquidation failure** | Venus | Over-collateralization (60% LTV / 75% liq threshold), liquidation tiers, the anchor+LTV margin (8.3). |
+| **Bad-debt / liquidation failure** | Venus | Over-collateralization (60% LTV / 75% liq threshold), liquidation tiers. ~~the anchor+LTV margin (8.3)~~ — that margin assumed a 1.25 ceiling the lean oracle does not apply; see §8.3. |
 | **Privileged-key abuse** | many | Two-role hot/cold model, 48h timelocks + guardian veto on all catastrophic repoints, guardian-only unpause + impairment-clear, treasury change timelocked. |
 
 ### 8.2 The Tinyman 2022 lesson, specifically
@@ -177,7 +180,7 @@ anchor+LTV math bounds it, but it is unusual and an auditor should look at it ex
 
 MagnetFi is *composed on top of* two external protocols it does not control:
 - **Tinyman** — the U/tALGO LP is the collateral and the price source. A catastrophic Tinyman failure
-  would corrupt reserves/LP value. Mitigation: TWAP + ±25% anchor + CompX cross-check + guardian pause
+  would corrupt reserves/LP value. Mitigation: TWAP + CompX cross-check + guardian pause (the ±25% anchor is gone — §8.3)
   + fractional exposure — but a total AMM failure is inherited risk, not engineered away. (This is why
   the deepest-liquidity pool, U/tALGO, is the launch collateral.)
 - **Folks** — the yield venue holding deployed reserve principal. The *entire* v3 productive-reserves
@@ -195,8 +198,18 @@ MagnetFi is *composed on top of* two external protocols it does not control:
    amounts** — irrelevant in practice (the PSM deploys thousands of USDC). Folks is a mature, deep
    pool (not an empty vault), so the classic first-depositor inflation attack does not apply.
 2. **Liquidation liveness under a fast multi-vault cascade.** Logic is tested; *operational* speed at
-   scale (many positions underwater within the ±25% window) is not.
-3. **Self-referential U pricing (8.3)** — bounded by math, but flagged for explicit auditor review.
+   scale is not. (The "±25% window" this used to be scoped by is gone with the banded oracle — there
+   is no longer a bounded window within which the cascade must be cleared.)
+3. **Self-referential U pricing (8.3)** — $U is priced *from* the U/tALGO pool whose LP is the
+   collateral. This previously read "bounded by math"; that bound was the ±25% anchor, which the
+   lean oracle does not apply. **It is now bounded only by the bot's own TWAP, the CompX
+   cross-check and its fail-stale rule — all off-chain.** Priority for auditor review should go up,
+   not down, and §8.3's banner explains why.
+
+   Worth stating for the auditor: the route graph compounds this. $U's route 0 is quoted in
+   **tALGO**, tALGO in ALGO, ALGO in USDC — three hops, every one a Tinyman v2 pool, and tALGO is
+   itself issued by Tinyman. A move in the tALGO/ALGO pool propagates to $U and therefore to every
+   vault's collateral value.
 
 ## 9. Build & test
 

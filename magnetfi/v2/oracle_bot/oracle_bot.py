@@ -186,6 +186,23 @@ PEX_DIVERGENCE_ALERT = 0.02
 
 # Bot price bounds, as a fraction of the oracle's on-chain anchor.
 #
+# ⚠️ **The band this describes is GONE.** It belonged to `lp_oracle`
+# (3644230020), retired 2026-10-17. The live oracle is the LEAN one
+# (3741272132) — no `lp_anchor_` state, no +/-25% band, no +/-50%
+# deviation guard, no `set_price_anchor`. Confirmed on chain: the posts in
+# today's log land on 3741272132.
+#
+# So nothing below is a second line of defence any more. With no anchor,
+# `effective_bounds_with_anchor` returns (0,0,0) and these bounds are INERT
+# (ADMIN.md:192). The only things standing between a bad reading and a
+# posted price are the TWAP, the CompX cross-check, and the fail-stale rule
+# in `update_pool` — all of them bot-side, all of them useless against a
+# compromised bot key.
+#
+# Kept because the history below is still the reason bounds are derived
+# rather than hardcoded, and because the lean oracle could regain a cap.
+#
+# The ORIGINAL rationale, true only of the retired contract:
 # The contract enforces anchor x0.75 .. x1.25 (lp_oracle/contract.py
 # ANCHOR_BAND_LOW/HIGH). The bot's own bounds sit just INSIDE that, so a bad
 # reading is refused here — before paying a fee — rather than posting into a
