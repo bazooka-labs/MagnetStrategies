@@ -297,22 +297,38 @@ outage ~96 minutes. `ALGO/USDC` was unaffected throughout because it is the
 reference pool and carries `compx_check_asset_id: null`, so it is never
 cross-checked.
 
+**Then it happened again on 2026-11-10**, and for far longer. CompX's $U box
+froze at 06:26:22Z on 2026-11-08; by the afternoon of the 10th it was 58 hours
+stale, $U was rising, and every cycle refused the raise. The last U/ALGO post
+was 16:03:35 and both $U/ALGO-side pools aged out of the vault's window by
+16:38. Unlike 2026-10-27 this did not self-heal, because CompX never resumed.
+
 The refusal is **correct behaviour** — declining to raise a price that cannot
 be independently verified is exactly the protection that exists because the bot
 key is a single point of trust. The problems are that the dependency is
-undocumented, that it is single-sourced, and that nothing alerts: the incident
-was noticed only because someone happened to be watching. Options worth
-weighing are a second verification source, a longer tolerance with an explicit
-staleness alarm, or allowing a bounded raise when unverified.
+single-sourced and that the alerting watches the posted price rather than the
+feed that predicts it, so the warning arrives 15 minutes before the freeze
+instead of 58 hours before.
 
-**The PEX cross-check has been failing since 2026-10-23.** The bot logs
-`PEX cross-check unavailable: Signature was forged or corrupt` on every cycle.
-`PEX_ORACLE_PUBKEY_HEX` in `oracle_bot.py:154` is pinned to
-`4cc6bcc8…`, the signer PEX **retired** on 2026-10-23; the live key is
-`ac4b7131…`. The frontend pin in `web/src/lib/strategy/pex/config.ts` was updated at the
-time and the bot's copy was missed. This is a cross-check rather than a gate,
-so nothing is blocked by it — but it means a verification we believe is running
-has been dead for four days.
+**[PRICE_SOURCES.md](./PRICE_SOURCES.md) is the proposed fix** — Tinyman
+primary, Vestige as the second validator, exchanges for independent ALGO and
+USDC truth, and a two-of-three quorum in place of CompX's single veto, so no
+one source can freeze the book. Nothing is built yet; alerting on the cause is
+step one and is much the smallest part.
+
+**The PEX cross-check was dead for 18 days — fixed 2026-11-10, pending a bot
+restart.** The bot logged `PEX cross-check unavailable: Signature was forged or
+corrupt` on every cycle from 2026-10-23, because `PEX_ORACLE_PUBKEY_HEX` was
+left pinned to the signer PEX retired that day. The frontend pin in
+`web/src/lib/strategy/pex/config.ts` was updated at the time and the bot's copy
+was missed; a test now asserts the two agree. This is a cross-check rather than
+a gate, so nothing was blocked — the lesson is that *a verification we believed
+was running had not run for 18 days*, which is the same class of problem as the
+CompX outage above and the reason [PRICE_SOURCES.md](./PRICE_SOURCES.md) §5
+alerts on source transitions rather than only on outcomes.
+
+**The running process still carries the old pin.** It picks up the fix on
+restart; until then the log line continues.
 
 **`ALERT_WEBHOOK_URL` and `HEARTBEAT_URL` are unset.** The bot states this on
 every startup. Three feed incidents have now run ~27h, ~48h and ~96min before
@@ -420,6 +436,7 @@ operated by one person is not a solvency plan at scale.
 |---|---|
 | **This file** | Current. Start here. |
 | [ORACLE_LEAN_SPEC.md](./ORACLE_LEAN_SPEC.md) | **Executed 2026-10-17**, all 8 steps. Still the reference for why the oracle looks like this; §5's rate limit is the one deferred piece |
+| [PRICE_SOURCES.md](./PRICE_SOURCES.md) | **Spec, nothing built.** The proposed replacement for the single-sourced CompX check, after the 2026-11-10 outage |
 | [ADMIN.md](./ADMIN.md) | Accurate for what is running — swept 2026-10-17 |
 | [OPERATIONS.md](./OPERATIONS.md) | Runbooks — oracle bot key rotation, diagnosing a stale feed |
 | [PSM.md](./PSM.md) · [VAULT.md](./VAULT.md) · [LIQUIDATION.md](./LIQUIDATION.md) · [mUSD.md](./mUSD.md) · [FOLKS_ADAPTER.md](./FOLKS_ADAPTER.md) | Current |
