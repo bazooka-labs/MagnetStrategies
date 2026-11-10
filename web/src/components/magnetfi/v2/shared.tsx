@@ -14,7 +14,14 @@ const TOKEN_ICONS: Record<string, string> = {
   MOOJ: "/tokens/mooj.png",
   ALPHA: "/tokens/alpha.png",
   COMPX: "/tokens/compx.png",
-  HAY: "/tokens/hay.png",
+  /* HAY came out with the U/HAY pool on 2026-11-10. `public/tokens/hay.png`
+     is left on disk — unreferenced, and one line to restore if that pair ever
+     comes back. */
+  // NIKO (ASA 1265975021) — the partner mVote proposal 1 chose. Pera-verified;
+  // the logo is their published artwork, resized to the 256px this directory
+  // uses and vendored rather than hot-linked from Pera's CDN, for the same two
+  // reasons recorded under UALGO below.
+  NIKO: "/tokens/niko.png",
   FOLKS: "/tokens/folks.png",
   // magnetALGO (ASA 3760411000, unit uALGO) — Myth Finance's ALGO+U dualSTAKE
   // token. Pera-verified 2026-11-05; the logo is their published artwork,

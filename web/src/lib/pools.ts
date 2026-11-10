@@ -169,7 +169,20 @@ export const POOLS: Pool[] = ([
   // ── Pact ──
   { id: "u-alpha", pair: "U / ALPHA", partner: "ALPHA", venues: [{ dex: "pact", ref: "3693600164" }] },
   { id: "u-compx", pair: "U / COMPX", partner: "COMPX", venues: [{ dex: "pact", ref: "3692558822" }] },
-  { id: "u-hay",   pair: "U / HAY",   partner: "HAY",   venues: [{ dex: "pact", ref: "3692640639" }] },
+  /**
+   * Replaced U/HAY on 2026-11-10, and it is the pool governance picked.
+   *
+   * mVote proposal 1 — "Where should Magnet Strategies' Treasury be invested
+   * towards for U token Liquidity Pools in Q4 '26?" — closed on NIKO. This is
+   * that decision executed.
+   *
+   * The old U/HAY pool (`3692640639`) was left behind rather than migrated:
+   * read on the day of the swap it held reserves of 79 and 12,903 base units
+   * against 1,000 issued LP — dust, so no supplier is stranded by dropping the
+   * card. A Pact MANAGED_WEIGHTED pool, like the other Pact entries here, which
+   * is the kind Vestige does not index and `lib/leaderboard.ts` reads directly.
+   */
+  { id: "u-niko",  pair: "U / NIKO",  partner: "NIKO",  venues: [{ dex: "pact", ref: "3766535860" }] },
   { id: "u-folks", pair: "U / FOLKS", partner: "FOLKS", venues: [{ dex: "pact", ref: "3693574268" }] },
 ] satisfies PoolDef[]).map(withUrl);
 
