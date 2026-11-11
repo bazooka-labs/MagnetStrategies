@@ -310,6 +310,22 @@ single-sourced and that the alerting watches the posted price rather than the
 feed that predicts it, so the warning arrives 15 minutes before the freeze
 instead of 58 hours before.
 
+**STILL FROZEN as of 2026-11-11 01:10Z.** Read live from app 3741272132:
+
+| Pool | Posted | Age | CompX-checked |
+|---|---|---|---|
+| ALGO/USDC | 1022054 | **0m — healthy** | no |
+| U/ALGO | 688110 | **7.8h** | yes |
+| U/tALGO | 742022 | **7.8h** | yes |
+| U/USDC | 2328773 | **47.1h** | yes |
+
+CompX's $U box has not moved since 2026-11-08 06:26:22Z — now **66.7h** stale
+against a 1h limit. The bot itself is healthy and posting: ALGO/USDC is current
+to the second, and it is the only pool with no `compx_check_asset_id`. Every
+pool that CompX gates is past the vault's 30-minute window, so borrowing and
+all liquidations revert on all three. This does not self-heal — unlike
+2026-10-27, CompX has not come back.
+
 **CompX is ruled out as of 2026-11-10** — twice-demonstrated unreliability and
 an uncertain future, so we do not want the dependency at any authority level.
 [PRICE_SOURCES.md](./PRICE_SOURCES.md) is the replacement: Tinyman primary,

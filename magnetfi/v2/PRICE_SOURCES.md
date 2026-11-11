@@ -153,6 +153,44 @@ CompX (never configured for ALGO/USDC), not a second route, nothing.
 
 That is the real gap, and it is why §3's ordering is not what I first proposed.
 
+### Measured: the routes would have held the feed up
+
+Priced live from reserves on 2026-11-11 01:1xZ, replicating
+`_price_via_route` exactly:
+
+| | $U | vs route 0 | quote-side depth |
+|---|---|---|---|
+| route 0 (via tALGO) | $0.135728 | — | ~$2,881 |
+| route 1 (via USDC) | $0.135642 | **0.06%** | ~$942 |
+| route 2 (via ALGO) | $0.135601 | **0.09%** | ~$1,032 |
+| CompX (frozen 66.7h) | $0.140338 | 3.29% | — |
+
+**The routes agree to within 0.09% while CompX is 3.29% out and climbing.**
+That is tighter than Vestige's 0.136% and it needs no vendor, no API key and no
+new dependency. Promoting this check from advisory to the verifier is the
+smallest change that both removes CompX and leaves $U better verified than it
+is today — and the agreement has evidently held throughout the outage, since
+these are the same pools the bot has been reading all along.
+
+> **Two caveats, and they shape the rule.** First, the routes are thin: route 1
+> holds about $942 on the quote side, so moving it 5% takes roughly $23 of swap
+> (constant product: √1.05 − 1 ≈ 2.47% of reserves) and costs only the round
+> trip. If a *unanimous* route agreement were required to post, that is a
+> freeze-the-vault attack for a few dollars. So the rule must be **majority
+> agreement, never unanimity** — §4. Second, the routes share Tinyman, so they
+> catch our arithmetic and our config, never Tinyman itself (§7).
+
+### A trap to avoid while CompX is still wired
+
+Do **not** "fix" the freeze by raising `compx_max_age_seconds`. Staleness is
+checked before divergence, so today CompX short-circuits to `unverified` and
+the fail-stale rule still permits flat and small declines. Widen the age limit
+and the frozen $0.140338 becomes *eligible*, and the divergence check runs
+against it: currently 3.29%, measured at 4.85% the day before, against a 5%
+`compx_divergence_limit` that returns `"diverged"` — a **hard refuse with no
+flat-or-decline escape**. That turns a partial freeze into a total one, and it
+gets likelier as $U moves away from CompX's stuck value.
+
 ---
 
 ## 3. The sources, in priority order
@@ -291,21 +329,30 @@ Worth stating precisely, because "CompX was the only thing that could block a
 post" is true of the *veto* and not of the guards. With CompX gone and nothing
 built yet, a posted price still has to pass:
 
-| Guard | Setting today | Bites at |
+| Guard | Setting | Live on the lean oracle? |
 |---|---|---|
-| `MIN_TWAP_READINGS` | 3 | thin history after a restart |
-| TWAP window | — | smooths a single-cycle spike |
-| `asset_price_bounds` ($U) | `$0.02 – $1.00` | **raises**, hard stop |
-| `asset_price_bounds` (ALGO) | `$0.02 – $0.50` | **raises**, hard stop |
-| per-pool `min_price`/`max_price` (U/tALGO) | `660000 – 1079000` | refuses the post |
-| route cross-check ($U only) | 5% | **logs only**, never gates |
+| TWAP window / `MAX_TWAP_AGE` | 1800s | **yes** |
+| `MIN_TWAP_READINGS` | 3 | **yes** — holds after a restart |
+| `DIVERGENCE_LIMIT` spot-vs-TWAP | 15%, upward only | **yes** — skips the post |
+| `asset_price_bounds` | $U `$0.02–$1.00`, ALGO `$0.02–$0.50` | **yes** — raises |
+| route cross-check ($U only) | 5% | logs only, never gates |
+| per-pool `min_price`/`max_price` | e.g. U/tALGO `660000–1079000` | **NO — dead config** |
 
-Two things follow. The per-asset bounds are **wide** — $U's ceiling is 7.5×
-its current $0.1338 — so they stop absurdity, not manipulation. The per-pool
-LP bounds are **narrow**, roughly ±24% around their midpoint, and they are the
-live constraint: U/tALGO posted 690929 against a 1079000 ceiling. Those need
-re-anchoring as the price moves, and a bound left behind a genuine rally is
-precisely the 2026-10-09 outage.
+So the real remaining guard is **TWAP plus a 15% upward spot deviation cap**,
+with absolute bounds catching absurdity. That is thinner than it looks in the
+config but not nothing: a single-cycle spike is smoothed and a >15% upward
+spot jump is skipped outright. What it does not stop is a manipulation held
+across the TWAP window, and §3's thin-pool economics are why that matters.
+
+> **The per-pool bounds do not fire, and that is a hazard in itself.** On the
+> lean oracle `read_onchain_anchor` returns 0 (there are no `lp_anchor_` keys
+> on app 3741272132 — verified, 17 global keys, none of them an anchor), so
+> `effective_bounds` returns `(0, 0)` and both checks are skipped by their own
+> `if min_price > 0` guards. The four `min_price`/`max_price` pairs in
+> `config.lean.json` therefore enforce nothing. They read exactly like live
+> safety bounds, and an earlier draft of this spec was itself fooled by them.
+> Either delete them or make the bot log once at startup that they are inert —
+> a bound that looks enforced and is not is how 2026-10-10 happened.
 
 ---
 
@@ -412,9 +459,8 @@ exchange work, which covers an asset nothing checks at all.
    into a list. Cheapest possible redundancy for the root asset — it reuses
    machinery that already runs for $U — though it stays inside Tinyman, so it
    complements the exchanges rather than substituting for them.
-5. **Re-anchor the per-pool `min_price`/`max_price` bounds** and give them a
-   maintenance story. §4a shows they are now the narrowest live constraint, and
-   a stale bound is already a two-time outage cause.
+5. **Delete or flag the dead per-pool bounds** (§4a). No behaviour change —
+   it stops the config claiming a guard that does not exist.
 6. **Vestige**, for cross-DEX coverage of liquidity our routes do not see.
 7. **Pact as alert-only**, if at all.
 
