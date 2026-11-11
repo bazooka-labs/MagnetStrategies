@@ -333,6 +333,16 @@ exchanges for independent ALGO and USDC truth, Vestige for cross-DEX sanity,
 and a quorum in place of a single vendor veto, so no one source can freeze the
 book. Nothing is built yet.
 
+**Reviewed 2026-11-11 by three fresh agents — [AUDIT.md](./AUDIT.md) Pass 29.**
+The contract is clean (byte-identical recompile, every method auth-gated in the
+TEAL, no `itxn`/rekey/update surface, keys clean, no committed secret). The
+defects are bot-side, and three are serious: the `unverified` rule is a latch
+that freezes permanently on a >10% crash (C1 — this is the live freeze), the
+manipulation guard publishes the spike it just rejected on the next cycle (C2),
+and the heartbeat reports green while the watchdog is blind (C3). `config.json`
+still points at the retired oracle, which will bite on the next manual restart
+(H1). Repair order is at the end of Pass 29.
+
 **Remove it in code, not in config.** `compx_cross_check` returns `"ok"` when
 no check is configured, which sets `compx_verified = True` — so deleting
 `compx_check_asset_id` would unfreeze the pools *and* permanently disable the

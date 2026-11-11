@@ -295,6 +295,18 @@ one of the two.
 
 ## 4a. Removing CompX without removing the guard
 
+> **The gate being removed is also a latch.** Pass 29 C1: while `compx_verified`
+> is false the rule refuses **in whole** — it never clamps and never re-posts to
+> refresh `lp_ts_` — so `onchain` never moves and the same comparison recurs
+> every cycle. The posted price becomes a running minimum and the feed freezes
+> permanently the first time the real price rises above it. Worse, a drop
+> *greater* than `UNVERIFIED_MAX_DROP` is refused entirely rather than clamped
+> to the 10% step, so **a >10% crash while the second source is down freezes the
+> oracle at the pre-crash price indefinitely**, blocking every liquidation path
+> exactly when it is needed. So this section is not only cleanup: the removal
+> must also replace refuse-in-whole with a step limiter and put a time bound on
+> the unverified state. One reviewed change, not two.
+
 **The obvious way to rule CompX out is wrong, and fails silently.** Deleting
 `compx_check_asset_id` from the pools — or clearing `compx_oracle_app_id` —
 does not disable a check. It makes the check *pass*:
@@ -336,7 +348,7 @@ built yet, a posted price still has to pass:
 | `DIVERGENCE_LIMIT` spot-vs-TWAP | 15%, upward only | **yes** — skips the post |
 | `asset_price_bounds` | $U `$0.02–$1.00`, ALGO `$0.02–$0.50` | **yes** — raises |
 | route cross-check ($U only) | 5% | logs only, never gates |
-| per-pool `min_price`/`max_price` | e.g. U/tALGO `660000–1079000` | **NO — dead config** |
+| per-pool `min_price`/`max_price` | e.g. U/tALGO `660000–1079000` | **inert — but armed by one algod error** |
 
 So the real remaining guard is **TWAP plus a 15% upward spot deviation cap**,
 with absolute bounds catching absurdity. That is thinner than it looks in the
@@ -344,15 +356,21 @@ config but not nothing: a single-cycle spike is smoothed and a >15% upward
 spot jump is skipped outright. What it does not stop is a manipulation held
 across the TWAP window, and §3's thin-pool economics are why that matters.
 
-> **The per-pool bounds do not fire, and that is a hazard in itself.** On the
-> lean oracle `read_onchain_anchor` returns 0 (there are no `lp_anchor_` keys
-> on app 3741272132 — verified, 17 global keys, none of them an anchor), so
-> `effective_bounds` returns `(0, 0)` and both checks are skipped by their own
-> `if min_price > 0` guards. The four `min_price`/`max_price` pairs in
-> `config.lean.json` therefore enforce nothing. They read exactly like live
-> safety bounds, and an earlier draft of this spec was itself fooled by them.
-> Either delete them or make the bot log once at startup that they are inert —
-> a bound that looks enforced and is not is how 2026-10-10 happened.
+> **The per-pool bounds are inert in normal operation and armed by a single
+> algod error** — which is worse than either being live or being dead. On the
+> happy path `read_onchain_anchor` returns 0 (app 3741272132 has 17 global
+> keys and no `lp_anchor_`), so `effective_bounds` returns `(0, 0)` and both
+> checks skip themselves. But when that read *fails* it returns `None`, and the
+> `None` branch at `oracle_bot.py:1057-1064` falls back to the config bounds —
+> at which point live U/ALGO sits only **~5.6% above its floor** of 661141. So
+> one degraded reply during a 6% decline refuses that pool's post, in the
+> direction where liquidation needs the price. That is the 2026-10-09 bug still
+> wired in, behind a comment asserting it is dead. Either gate on the posted
+> value directly or delete them; do not leave the choice to a network blip.
+>
+> Two earlier drafts of this spec got this wrong in both directions — first
+> calling the bounds the narrowest live constraint, then calling them dead
+> config. The audited answer is in [AUDIT.md](./AUDIT.md) Pass 29 H3.
 
 ---
 

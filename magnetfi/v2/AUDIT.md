@@ -1114,6 +1114,306 @@ timelock, then validated end-to-end on mainnet (open → borrow → interest-acc
 correct refund, reconciled on-chain). Supersedes the `repay_principal`-specific notes in Passes 6 / 8 /
 14 / 27.
 
+## Pass 29 — Oracle bot review during the CompX outage (3 fresh independent agents)
+
+Run 2026-11-10/11 **while the feed was frozen**, which is why several findings are measured
+rather than reasoned. Three agents on separate angles — price correctness / manipulation,
+liveness / state, and auth / signing / contract boundary — each told not to trust comments,
+docstrings or any `.md`, because this bot has repeatedly carried confident comments describing
+retired behaviour. Every finding below was re-verified against the code or the chain before
+being recorded here. **Nothing is fixed yet**; the ordering at the end is the repair plan.
+
+### The contract is clean, and that is the headline
+
+`lean_oracle` (app `3741272132`) was recompiled from the current `contract.py` with puyapy 5.9.0
+and assembled: sha256 `e797a6ce1b94388cfd69d0c3b298e0128125e86428ba06ffd95c040e04860568`,
+625 bytes — **byte-identical** to the on-chain approval program and to the committed TEAL. The
+committed TEAL's source-line comments sit a uniform −9 lines from `contract.py` (the Oct 30 edit
+touched only the module comment block); the uniform offset plus the identical recompile proves
+zero logic drift. Global schema on chain (57/7) matches `StateTotals`.
+
+Every method is auth-gated **in the compiled TEAL**, not just the source: `update_lp_price`
+checks `Txn.sender` against `authorized_updater` via `app_global_get_ex` plus an existence
+assert, so an unset updater fails **closed** rather than falling back to the zero address.
+`main:` opens `txn OnCompletion; !; assert`, so every call including create must be NoOp — the
+app is permanently immutable and undeletable. The approval program contains **zero** `itxn*`,
+`box_*` and `app_local_*` opcodes, so the app account can never move ALGO or an ASA.
+
+Key handling is clean. The signing key comes only from `BOT_MNEMONIC` in the process
+environment — no file, no dotenv, no config entry — and `bot_sk` reaches only
+`AccountTransactionSigner`, never a format string; only `bot_address` is logged. `notify()`
+sends only its `text`. No mnemonic appears in any of 697 commits, `.gitignore` covers the env
+and state files, and no role account (`bot` / `admin` / `guardian`) is rekeyed, with both
+pending-role slots at the zero address. The PEX pin is correct and verification is against the
+**pin**, not the payload envelope: the live 133-byte message verifies under `ac4b7131…` and
+fails under the retired `4cc6bcc8…`, and every consumed field is unpacked from the signed bytes.
+
+### C1 — The `unverified` rule is a one-way ratchet, and a >10% drop latches it forever
+
+`oracle_bot.py:1225-1237`. While `compx_verified` is false the gate refuses **in whole** — it
+never clamps and never re-posts the prior value to refresh `lp_ts_`:
+
+```python
+if final_price > onchain: return                    # any rise refused
+drop = (onchain - final_price) / onchain
+if drop > UNVERIFIED_MAX_DROP: return               # any drop >10% refused
+```
+
+Because nothing is posted, `onchain` never moves, so the identical comparison re-runs against
+the identical reference every cycle. The posted price becomes a running **minimum**, and the
+first time the real price rises above it the feed freezes **permanently**. That is the live
+freeze: all three $U pools wanted an increase of +0.99% to +2.01%, so each stopped at its own
+local minimum, hours or days apart.
+
+The severe case has not fired yet. A drop **greater than** 10% is refused *in whole* rather than
+clamped to the 10% step, so a >10% $U crash while CompX is unavailable **freezes the oracle at
+the pre-crash price indefinitely** — positions go underwater and no liquidation path can run. It
+is pro-cyclical, it is armed whenever the second source is down, and it is the exact failure the
+gate was written to prevent, inverted. There is also no time bound on the unverified state:
+`compx_max_age` is 3600s, but once exceeded the bot stays ratchet-down-only forever (66.8h and
+counting at audit time).
+
+The inversion is worth stating plainly: **a pool with no second source posts fine; a pool with a
+dead second source freezes.** ALGO/USDC carries no `compx_check_asset_id` and stayed current to
+the second throughout, which is the control that isolates the cause. The divergence was never
+the problem — CompX was only 3.1% from our derived price, well inside the 5% limit. One source
+stopped publishing. The same file's PEX comment says letting a vendor's oracle freeze ours is
+"the dependency `strategy/perps/SPEC.md` exists to forbid"; the CompX path does exactly that.
+
+A step limiter posting `onchain * (1 - UNVERIFIED_MAX_DROP)` and walking down 10% a cycle fixes
+both halves. **Test gap:** `test_update_pool_unverified_refuses_upward` asserts one cycle posts
+nothing. Nothing tests the second cycle, so the ratchet is invisible to the suite.
+
+### C2 — The manipulation guard detects a spike, skips one cycle, then publishes it
+
+`twap.add` runs at `:1178`, **before** the spot-vs-TWAP check at `:1190-1195`, and that guard
+`return`s without evicting the reading it just identified as manipulation. The only `twap.clear`
+call site is `:1167`, on the anchor-move path — which is dead against the lean oracle, since
+`read_onchain_anchor` returns 0 and the `if anchor:` branch never runs. **So on the live oracle
+there is no eviction path at all.**
+
+Simulated against the real module with the `(0,0,0)` bounds the live chain actually returns: a
+one-cycle pump to +138% is refused that cycle, then posts **+34.5% for three consecutive cycles
+(~18 min)** and +17.3% for a fourth. The second cycle passes cleanly because `spot < final_price`
+takes the *downward* branch, which only logs. Single-reading weight is **50% at
+`MIN_TWAP_READINGS = 3`** and never below 12.5% in a full window, so right after any clear — a
+>600s gap, or a restart — one reading owns half the posted price.
+
+This is the only demonstrated **wrong price posted** in the review. One line fixes it: clear or
+evict on the spike path.
+
+### C3 — The heartbeat reports green while the watchdog is blind
+
+`:1563` pings `heartbeat()` when `all(lvl == "ok" for lvl in watch.level.values())`, but
+`FeedWatch.check` never **writes** an `"ok"` entry — `:1426` `continue`s before storing it. So
+`watch.level` is `{}` both when everything is healthy and when the watchdog learned nothing, and
+`all([])` is `True`. Two reachable triggers: a hard read failure (`:1409`, at least logs), and a
+**degraded reply** — `:1407` defaults `global-state` to `[]`, so every pool reads `ts == 0` and
+is skipped at `:1416` with **no alert and no log line**, while the dead-man's switch asserts
+health. Measured over 100 simulated cycles: `alerts=0, heartbeats=100`, zero log output.
+
+The same codebase is careful about exactly this distinction in `read_onchain_active` and
+`read_onchain_anchor` ("an empty or missing state list is indistinguishable from a degraded
+response") and does not apply it in the watchdog. Fix: track `"ok"` explicitly and ping only when
+every configured pool was positively observed fresh this cycle.
+
+### H1 — `DEFAULT_CONFIG_PATH` points at the retired oracle
+
+`:92` defaults to `config.json`, whose `oracle_app_id` is **`3644230020`** — the retired app.
+Only `start_oracles.cmd` passes `config.lean.json`. So a bare `python oracle_bot.py` posts
+nothing (that app's updater is a different key, so every call reverts) **and** points `FeedWatch`
+at the retired app, firing CRITICAL about the wrong oracle while the live one silently ages out.
+`ADMIN.md:347`'s runbook line is stale too. Delete `config.json` or make it the lean one.
+
+### H2 — Two of the four posted prices are derived from the pool being priced
+
+For U/tALGO, `reference_pools[3081853135][0]` is `AIR4CSC…` — **the same pool**. For ALGO/USDC,
+`reference_pools[0]` is `2PIFZW…` — likewise. Substituting `_price_via_route` into
+`compute_lp_price`, the $U side cancels exactly and the LP price collapses to
+`2 · quote_reserve · p_quote / issued_pool_tokens`.
+
+Two consequences. `POOL_IMBALANCE_ALERT` — described at `:245-249` as "the only thing watching
+for a wrong MAGNITUDE once the bands are gone" — is **identically zero by construction** for
+those two pools, confirmed empirically (0.000% for exactly those two, 0.129% / 0.046% for the
+two priced from elsewhere). It can only detect a disagreement between the two independent
+decimal sources, which `load_config` never cross-validates. And the posted price is **linear in
+one manipulable reserve**, with no independent feed anywhere in the expression. This extends the
+self-referential-$U residual already recorded in `AUDIT_HANDOFF.md` §5 to the imbalance alert.
+
+### H3 — No absolute bound applies to the value that reaches the chain
+
+App `3741272132` has 17 global keys and no `lp_anchor_`, so `read_onchain_anchor` returns 0,
+`:1054` short-circuits to `(0,0,0)`, and **both** per-pool gate sites (`get_lp_price:876-881` on
+the spot, `update_pool:1210-1218` on the TWAP) are unreachable. Every `min_price`/`max_price` in
+`config.lean.json` is dead on the happy path. What remains gates **asset** prices, never the LP
+price, with 4.5x–6.4x of headroom live. C2's +34.5% post sails through all of it.
+
+**But the dead bounds are armed by a single algod error.** `:1057-1064` — when
+`read_onchain_anchor` returns `None` (any exception, or an empty state list) the bot falls back
+to the config bounds, and live U/ALGO sits **~5.6% above its floor** of 661141. So a degraded
+reply during a 6% decline refuses that pool's post. That is the 2026-10-09 bug still wired in,
+one network blip from active, behind a comment asserting it is dead. Either make the bounds gate
+directly on the posted value, or delete them — a bound that looks enforced and is not is how
+2026-10-10 happened.
+
+### H4 — The vault's 48h oracle timelock is bypassable by the key that administers the oracle
+
+Verified on chain: oracle `3741272132`, vault `3671287267` and PSM `3644230181` all share
+`admin = KNML6OW2…` and `guardian = TM6NWOLL…`. `update_lp_price` has no price bound by design
+("A price ten times the prior one is accepted"). So admin can `set_authorized_updater` to itself
+and post any price in ~2 rounds; `add_pool` refuses an already-registered pool, but
+`remove_pool` + `add_pool` in one atomic group overwrites the price **and** stamps `lp_ts_`
+fresh without touching the updater. `vault/contract.py:985-1004`'s `TIMELOCK_DELAY = 172_800`,
+described as guarding "the catastrophic oracle-repointing power", therefore guards an edge no
+attacker needs.
+
+Requires key theft, and the ceiling today is **~$2,415** of vault LP plus **181.40 USDC** of PSM
+reserve. The finding is that the documented trust model discusses only the **bot** key being
+trusted, while the **admin** key has strictly more power with zero delay. Related, informational:
+`accept_admin` does not re-check `new_admin != guardian`, which `propose_admin` checks at propose
+time.
+
+### M1 — Price posts stay independently committable for ~1000 rounds, and the contract has no nonce
+
+`post_price:1089-1121` rebuilds and re-signs a **new** transaction per retry instead of
+re-broadcasting, and never checks whether the previous attempt landed. Demonstrated on chain —
+two distinct txids, same app, same selector `7d781a7f`, identical args
+`update_lp_price(3673941603, 2467169)`, **both committed**, 1000 µALGO each:
+
+- `GBCYJDNK7N6GSNJILTMH4UOGZEE5IPUCRJE4R5IEIPT6OW7M4RIA` — round 65987437, fv 65987432, lv 65988432
+- `6X5DJCEUWNZD3ZTVJAODE4K2XIVJQYD4EH3LJMUKCCMIEEJUWMDA` — round 65987440, fv 65987438, lv 65988438
+
+The first had already landed and the bot re-signed anyway. The contract takes only
+`(pool_id, new_price)` and writes `Global.latest_timestamp` at **execution**, with no sequence
+number, round binding or timestamp argument, and the bot sets no `lease`. So a price computed up
+to ~47 minutes ago can commit stamped **0 seconds old**, which the vault's freshness guard
+structurally cannot detect; and because these are broadcast publicly, an uncommitted attempt can
+be held and rebroadcast at a chosen round to overwrite a newer price with an older one. Fix:
+`last_valid = first_valid + ~8`, a `lease` keyed to (pool_id, cycle), and check
+`pending_transaction_info` or on-chain `lp_ts_` before re-signing.
+
+### M2 — Sustained cycles slower than 600s post nothing, indefinitely
+
+`:1178` passes `max_gap = 2 * POLL_INTERVAL` (600s); `TwapState.add` discards the entire history
+past that, and `MIN_TWAP_READINGS = 3` then blocks the post, so the count resets to 1 every
+cycle. Measured: 620s cycles over 40 consecutive cycles → **0 posts**, with only a
+`log.warning`. It cannot self-heal while cycles stay above 600s. Reachable on a flaky-but-alive
+algod: `ALGOD_TIMEOUT = 10` at `:275` is **dead code**, never passed to `AlgodClient` (`:553`),
+so the real per-request timeout is the SDK default **30s**, and one `fetch_pool_state` that times
+out twice before succeeding costs 70s against a per-cycle budget of ~10 algod calls per $U pool.
+Gate on `MIN_TWAP_READINGS` within `MAX_TWAP_AGE` instead of discarding on one long gap.
+
+### M3 — One page per incident, ever
+
+`FeedWatch.check:1427-1448` alerts on transition only, so the 47-hour U/USDC freeze produced
+exactly **one** `notify()`. No repeat, no escalation, no daily "still frozen", and no delivery
+confirmation from ntfy/Discord/Slack — a single missed push is indistinguishable from a healthy
+feed. The transition-gating rationale is sound ("a 5-minute alarm clock for six hours is how
+people learn to mute the channel"); the fix is a backoff (one page, then hourly), not per-cycle.
+
+### M4 — A `TwapState._save()` failure stops all four feeds
+
+`_save:359-366` re-raises into `add:400`, called at `:1178` **before** the fail-stale gate and
+before `post_price`. So one write failure aborts `update_pool` for every pool. Triggers: disk
+full, read-only filesystem, and on the Windows production box `os.replace` raising
+`PermissionError` while any other process holds a handle on `twap_state.lean.json` — an antivirus
+scan, a backup indexer, or an operator tailing the file during an outage. `FeedWatch` does alert
+here, so this is an alerted total freeze rather than a silent one.
+
+### M5 — No single-instance guard, and the launcher cannot survive an unattended reboot
+
+No `flock`, `fcntl`, pidfile, `msvcrt` or `O_EXCL` anywhere. `start_oracles.cmd` runs from the
+Windows **Startup folder**, which requires an interactive logon — so a 3am Windows Update reboot
+leaves the machine at the lock screen and the bot never starts, which is precisely the hole the
+launcher was added to close "after a power cut left an oracle down for 48 hours". `cmd /k` keeps
+a dead window open after a crash or a startup `sys.exit(1)`, and nothing restarts it. A second
+logon, or an operator running the bot manually to investigate, starts a second instance: two
+instances on one state path each clobber the whole file with their own view, and both post every
+cycle. A Scheduled Task with *Run whether user is logged on or not* + *Restart on failure*
+closes the reboot hole.
+
+### M6 — `asset_price_bounds` freezes every pool on a deep crash, and is startup-only
+
+`derive_asset_price_usdc:646-648` **raises** out of bounds, which `get_lp_price` turns into a
+`log.warning` and `None`. ALGO is the graph root, so breaching ALGO's floor freezes **all four**
+pools. Headroom is genuinely wide (−78% on ALGO), so this is not imminent — but the **lower**
+bound is the dangerous end, because a 78% ALGO drawdown is exactly when every liquidation must
+run. `cfg` is read once at startup (`:1521`), so widening a bound needs a restart, and if the
+restart gap exceeds 600s M2 adds ~12 more minutes of silence on top.
+
+### L1 — CompX read failures are undiagnosable
+
+`read_compx_price:758-760` logs at `log.debug`, below the `INFO` level set at `:297`. An absent
+box, a <24-byte box, an `assetId` mismatch and a plain algod error all surface identically as
+"CompX cross-check unavailable" with no reason — so diagnosing *why* the ratchet engaged needs a
+debugger or a log-level edit.
+
+### L2 — Hardcoded flat fee discards the node minimum
+
+`:1101-1103` sets `params.fee = 1000; params.flat_fee = True`. Live `min-fee` is 1000, so it
+works today, but any min-fee increase or congestion pricing turns every post into a rejected
+transaction — i.e. a feed freeze, which per C1/H3 blocks liquidations. Use
+`max(1000, params.min_fee)`.
+
+### L3 — `read_pex_algo_price` does not check the signed genesis hash
+
+`:1269-1278` never compares `msg[5:37]` to mainnet's genesis hash (live payload confirmed as
+mainnet). The `target_app != PEX_TRADING_APP_ID` binding already excludes a cross-network payload
+in practice and the path is alert-only, so this is defence-in-depth only.
+
+### Dead code worth knowing before trusting a comment
+
+The re-anchor logic at `:1154-1168` cannot run against the live oracle (`anchor` is always 0), so
+it never discards a reading and is not an active recovery path. The repo's `twap_state.json` is a
+stale Oct-9 artifact; the running bot uses `twap_state.lean.json`.
+
+### Verified sound — stated explicitly, because several were expected to be defects
+
+- **Constant-product and decimals math is correct.** All four LP prices re-derived independently
+  from raw local state, matching the chain to within exactly the C1 staleness. On chain
+  $U = **5** decimals, tALGO / USDC / ALGO = 6, all four LP tokens = 6 matching `LP_DECIMALS`,
+  and both independent decimal sources agree for all four pools.
+- **`asset_a`/`asset_b` ordering cannot be confused**, and the right reserve keys are used:
+  `asset_N_reserves` excludes protocol fees, verified as
+  `reserves + protocol_fees == the pool account's holding`.
+- **`asset_price_bounds` apply at every hop** — the recursion bounds ALGO, then tALGO, then $U —
+  the cycle guard and memo are correct, and a cross-check route can never leak into the priced
+  value (`memo` is written only from route 0).
+- **The main loop survives everything short of a hang.** `run_once:1547-1570` wraps the per-pool
+  call and the whole watchdog block; `AlgodHTTPError` and `AlgodResponseError` both subclass
+  `Exception`. One bad pool cannot take down the others — three frozen $U pools alongside a
+  healthy ALGO/USDC is the live proof.
+- **The TWAP write is atomic** (`.tmp` + `os.replace`, tmp cleaned up on failure) and corrupt,
+  truncated, missing or stale state all self-heal. **`notify()` genuinely never raises.**
+- **Restart cost is bounded:** a 601s downtime delays the first post to 1,341s after the last
+  reading, under the 1800s window; the crossover is ~18 minutes of downtime.
+- **`read_compx_price` validates length and the embedded `assetId`** — no way to feed it a
+  wrong-asset or garbage price. **PEX is genuinely alert-only** — `check_algo_against_pex`
+  returns `None` and no call site feeds it into a post decision.
+- **Replay of a *committed* post is not possible** (txid dedup plus the validity window); the
+  exposure in M1 is the uncommitted in-flight case.
+- **Vault-side consumption is gated** — all five priced paths assert `_oracle_is_fresh` and
+  `_oracle_price` asserts `exists and price > 0`.
+
+### Repair order
+
+1. **C1** — step limiter plus a time bound on `unverified`. It is what is freezing the feed, and
+   the >10% crash latch is the one defect here that can lose money unattended.
+2. **C2** — evict or clear on the spike path. One line, and it closes the only demonstrated
+   wrong-price post.
+3. **H1** — point the default config at the live oracle. Trivial, and it will bite on the next
+   manual restart.
+4. **C3** — fix the heartbeat gate and distinguish a degraded `global-state` reply, so C1-class
+   failures cannot hide again.
+5. **H3** — bound the value that actually reaches the chain, and delete or arm the dead per-pool
+   bounds deliberately rather than leaving them to a network blip.
+6. **M1** — short `last_valid`, a `lease`, and check before re-signing.
+7. **H2/H4** — price each pool from somewhere other than itself; document the admin key's real
+   power and split it from the oracle's admin.
+
+Removing CompX ([PRICE_SOURCES.md](./PRICE_SOURCES.md)) is the same work as C1 and should be done
+as one reviewed change, not two.
+
 ---
 
 ## Forward — v3 Productive Reserves (NOT YET AUDITED)
